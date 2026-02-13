@@ -1,0 +1,485 @@
+# Kong API Configuration Trait for OpenChoreo
+#
+# This trait enables Kong API management features on HTTPRoutes:
+#   - Rate Limiting: Configurable request rate limits via Kong's rate-limiting plugin
+#   - Security: Authentication enforcement via Kong auth plugins (key-auth, basic-auth, jwt, etc.)
+#   - Request Headers: Add custom headers to upstream requests via Kong's request-transformer plugin
+#
+# Each feature is independently toggleable. The trait conditionally creates KongPlugin CRDs
+# and patches the HTTPRoute with the appropriate `konghq.com/plugins` annotation.
+#
+# Prerequisites:
+#   - Kong Gateway installed in the data plane (see kong-gateway-module.md)
+#   - Kong CRDs available (KongPlugin, KongClusterPlugin)
+#   - ComponentType must have an HTTPRoute resource for the patch to target
+#
+# Usage:
+#   1. Add "kong-api-configuration" to the ComponentType's allowedTraits
+#   2. Reference it in the Component's traits with desired parameters
+#   3. Optionally override rate limits per environment via ReleaseBinding traitOverrides
+#
+# See the end of this file for a complete usage example with ComponentType, Component,
+# Workload, and ReleaseBinding.
+
+---
+apiVersion: openchoreo.dev/v1alpha1
+kind: Trait
+metadata:
+  name: kong-api-configuration
+  namespace: default
+spec:
+  schema:
+    parameters:
+      # --- Rate Limiting ---
+      # Controls Kong's rate-limiting plugin.
+      # When enabled, creates a KongPlugin that limits requests per minute.
+      rateLimiting:
+        $default: {}
+        enabled: "boolean | default=true"
+        # Rate limiting policy: "local" (per-node) or "redis" (shared across nodes).
+        policy: "string | default=local"
+
+      # --- Security (Authentication) ---
+      # Controls Kong's authentication plugin.
+      # When enabled, creates a KongPlugin that enforces the selected auth method.
+      # Supported authType values: key-auth, basic-auth, jwt, hmac-auth, oauth2
+      security:
+        $default: {}
+        enabled: "boolean | default=false"
+        authType: "string | default=key-auth"
+
+      # --- Request Header Injection ---
+      # Controls Kong's request-transformer plugin to add headers to upstream requests.
+      # Headers use Kong's format: "Header-Name:value"
+      # Example: ["X-Gateway:Kong", "X-Trace-Id:${request_id}"]
+      addHeaders:
+        $default: {}
+        enabled: "boolean | default=false"
+        headers: 'array<string> | default=[]'
+
+    envOverrides:
+      # Platform engineers can tune rate limits per environment.
+      # For example, development might allow 600 req/min while production allows 60.
+      rateLimiting:
+        $default: {}
+        requestsPerMinute: "integer | default=60"
+
+  creates:
+    # --- KongPlugin: Rate Limiting ---
+    # Created when parameters.rateLimiting.enabled is true.
+    # Uses envOverrides.rateLimiting.requestsPerMinute so platform engineers
+    # can set different limits per environment via ReleaseBinding traitOverrides.
+    - includeWhen: ${parameters.rateLimiting.enabled}
+      template:
+        apiVersion: configuration.konghq.com/v1
+        kind: KongPlugin
+        metadata:
+          name: ${metadata.name}-${trait.instanceName}-rate-limiting
+          namespace: ${metadata.namespace}
+          labels: ${metadata.labels}
+        config:
+          minute: ${envOverrides.rateLimiting.requestsPerMinute}
+          policy: ${parameters.rateLimiting.policy}
+        plugin: rate-limiting
+
+    # --- KongPlugin: Security (Authentication) ---
+    # Created when parameters.security.enabled is true.
+    # The plugin type is determined by parameters.security.authType.
+    # For key-auth: Requires a KongConsumer + Secret with credentials (created separately).
+    # For jwt: Requires a KongConsumer with JWT credentials.
+    # For basic-auth: Requires a KongConsumer with basic-auth credentials.
+    - includeWhen: ${parameters.security.enabled}
+      template:
+        apiVersion: configuration.konghq.com/v1
+        kind: KongPlugin
+        metadata:
+          name: ${metadata.name}-${trait.instanceName}-security
+          namespace: ${metadata.namespace}
+          labels: ${metadata.labels}
+        plugin: ${parameters.security.authType}
+
+    # --- KongPlugin: Request Header Injection ---
+    # Created when parameters.addHeaders.enabled is true.
+    # Adds the specified headers to every request forwarded to the upstream service.
+    - includeWhen: ${parameters.addHeaders.enabled}
+      template:
+        apiVersion: configuration.konghq.com/v1
+        kind: KongPlugin
+        metadata:
+          name: ${metadata.name}-${trait.instanceName}-request-headers
+          namespace: ${metadata.namespace}
+          labels: ${metadata.labels}
+        config:
+          add:
+            headers: ${parameters.addHeaders.headers}
+        plugin: request-transformer
+
+  patches:
+    # --- Patch HTTPRoute: Add Kong Plugin Annotation ---
+    # Adds the `konghq.com/plugins` annotation to the HTTPRoute with a comma-separated
+    # list of only the enabled plugin names. Uses CEL list comprehension to dynamically
+    # build the annotation value based on which features are enabled.
+    - target:
+        group: gateway.networking.k8s.io
+        version: v1
+        kind: HTTPRoute
+      operations:
+        - op: add
+          path: /metadata/annotations
+          value:
+            konghq.com/plugins: >-
+              ${[
+                parameters.rateLimiting.enabled ? (metadata.name + "-" + trait.instanceName + "-rate-limiting") : "",
+                parameters.security.enabled ? (metadata.name + "-" + trait.instanceName + "-security") : "",
+                parameters.addHeaders.enabled ? (metadata.name + "-" + trait.instanceName + "-request-headers") : ""
+              ].filter(s, s != "").join(",")}
+
+---
+# =============================================================================
+# USAGE EXAMPLE
+# =============================================================================
+#
+# The following resources demonstrate how to use the kong-api-configuration trait
+# with a simple HTTP service ComponentType.
+
+# --- ComponentType: HTTP Service with Kong API Configuration ---
+# Lists kong-api-configuration as an allowed trait.
+# The HTTPRoute resource in the template is what the trait patches.
+apiVersion: openchoreo.dev/v1alpha1
+kind: ComponentType
+metadata:
+  name: http-service-with-kong
+  namespace: default
+spec:
+  workloadType: deployment
+
+  allowedTraits:
+    - kong-api-configuration
+
+  schema:
+    parameters:
+      replicas: "integer | default=1"
+      imagePullPolicy: "string | default=IfNotPresent"
+      port: "integer | default=80"
+
+    envOverrides:
+      resources:
+        $default: {}
+        requests:
+          $default: {}
+          cpu: "string | default=100m"
+          memory: "string | default=256Mi"
+        limits:
+          $default: {}
+          cpu: "string | default=1000m"
+          memory: "string | default=1Gi"
+
+  resources:
+    - id: deployment
+      template:
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: ${metadata.name}
+          namespace: ${metadata.namespace}
+          labels: ${metadata.labels}
+        spec:
+          replicas: ${parameters.replicas}
+          selector:
+            matchLabels: ${metadata.podSelectors}
+          template:
+            metadata:
+              labels: ${metadata.podSelectors}
+            spec:
+              containers:
+                - name: app
+                  image: ${workload.containers["app"].image}
+                  imagePullPolicy: ${parameters.imagePullPolicy}
+                  ports:
+                    - name: http
+                      containerPort: ${parameters.port}
+                      protocol: TCP
+                  resources:
+                    requests:
+                      cpu: ${envOverrides.resources.requests.cpu}
+                      memory: ${envOverrides.resources.requests.memory}
+                    limits:
+                      cpu: ${envOverrides.resources.limits.cpu}
+                      memory: ${envOverrides.resources.limits.memory}
+
+    - id: service
+      template:
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: ${metadata.componentName}
+          namespace: ${metadata.namespace}
+          labels: ${metadata.labels}
+        spec:
+          type: ClusterIP
+          selector: ${metadata.podSelectors}
+          ports:
+            - name: http
+              port: 80
+              targetPort: ${parameters.port}
+              protocol: TCP
+
+    - id: httproute
+      template:
+        apiVersion: gateway.networking.k8s.io/v1
+        kind: HTTPRoute
+        metadata:
+          name: ${metadata.name}
+          namespace: ${metadata.namespace}
+          labels: ${metadata.labels}
+        spec:
+          parentRefs:
+            - name: gateway-default
+              namespace: openchoreo-data-plane
+          hostnames:
+            - ${metadata.componentNamespace}.${metadata.environmentName}.${dataplane.publicVirtualHost}
+          rules:
+          - matches:
+            - path:
+                type: PathPrefix
+                value: /${metadata.componentName}
+            filters:
+              - type: URLRewrite
+                urlRewrite:
+                  path:
+                    type: ReplacePrefixMatch
+                    replacePrefixMatch: /
+            backendRefs:
+            - name: ${metadata.componentName}
+              port: 80
+
+---
+# --- Component: Using all three Kong API configuration features ---
+apiVersion: openchoreo.dev/v1alpha1
+kind: Component
+metadata:
+  name: greeter-service
+  namespace: default
+spec:
+  owner:
+    projectName: default
+  autoDeploy: true
+  componentType: deployment/http-service-with-kong
+
+  parameters:
+    replicas: 2
+    port: 9090
+
+  traits:
+    - name: kong-api-configuration
+      instanceName: greeter-api
+      parameters:
+        rateLimiting:
+          enabled: true
+          policy: local
+        security:
+          enabled: true
+          authType: key-auth
+        addHeaders:
+          enabled: true
+          headers:
+            - "X-Gateway:Kong"
+            - "X-Managed-By:OpenChoreo"
+
+---
+# --- Workload ---
+apiVersion: openchoreo.dev/v1alpha1
+kind: Workload
+metadata:
+  name: greeter-service-workload
+  namespace: default
+spec:
+  owner:
+    projectName: default
+    componentName: greeter-service
+
+  containers:
+    app:
+      image: "ghcr.io/openchoreo/samples/greeter-service:latest"
+      args:
+        - --port
+        - "9090"
+
+---
+# --- ReleaseBinding: Development environment ---
+# Overrides rate limit to 600 req/min for development (more permissive).
+apiVersion: openchoreo.dev/v1alpha1
+kind: ReleaseBinding
+metadata:
+  name: greeter-service-development
+  namespace: default
+spec:
+  owner:
+    projectName: default
+    componentName: greeter-service
+
+  environment: development
+
+  componentTypeEnvOverrides:
+    resources:
+      requests:
+        cpu: "50m"
+        memory: "128Mi"
+      limits:
+        cpu: "200m"
+        memory: "256Mi"
+
+  traitOverrides:
+    greeter-api:
+      rateLimiting:
+        requestsPerMinute: 600  # Higher limit for development
+
+---
+# --- ReleaseBinding: Production environment ---
+# Uses the default rate limit of 60 req/min (stricter).
+apiVersion: openchoreo.dev/v1alpha1
+kind: ReleaseBinding
+metadata:
+  name: greeter-service-production
+  namespace: default
+spec:
+  owner:
+    projectName: default
+    componentName: greeter-service
+
+  environment: production
+
+  componentTypeEnvOverrides:
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "512Mi"
+      limits:
+        cpu: "2000m"
+        memory: "2Gi"
+
+  traitOverrides:
+    greeter-api:
+      rateLimiting:
+        requestsPerMinute: 60  # Strict limit for production
+
+# =============================================================================
+# RENDERED OUTPUT (what gets applied to the data plane)
+# =============================================================================
+#
+# With all three features enabled, the trait produces:
+#
+# 1. KongPlugin: rate-limiting
+#    ---
+#    apiVersion: configuration.konghq.com/v1
+#    kind: KongPlugin
+#    metadata:
+#      name: <release-name>-greeter-api-rate-limiting
+#    config:
+#      minute: 600        # From envOverrides (development)
+#      policy: local
+#    plugin: rate-limiting
+#
+# 2. KongPlugin: key-auth
+#    ---
+#    apiVersion: configuration.konghq.com/v1
+#    kind: KongPlugin
+#    metadata:
+#      name: <release-name>-greeter-api-security
+#    plugin: key-auth
+#
+# 3. KongPlugin: request-transformer
+#    ---
+#    apiVersion: configuration.konghq.com/v1
+#    kind: KongPlugin
+#    metadata:
+#      name: <release-name>-greeter-api-request-headers
+#    config:
+#      add:
+#        headers:
+#          - "X-Gateway:Kong"
+#          - "X-Managed-By:OpenChoreo"
+#    plugin: request-transformer
+#
+# 4. Patched HTTPRoute (annotation added):
+#    ---
+#    apiVersion: gateway.networking.k8s.io/v1
+#    kind: HTTPRoute
+#    metadata:
+#      annotations:
+#        konghq.com/plugins: "<release-name>-greeter-api-rate-limiting,<release-name>-greeter-api-security,<release-name>-greeter-api-request-headers"
+#
+# =============================================================================
+# NOTES
+# =============================================================================
+#
+# 1. KongConsumer Setup (required for key-auth/basic-auth/jwt):
+#    The security plugin only enforces authentication — consumers and credentials
+#    must be provisioned separately. For example, for key-auth:
+#
+#    apiVersion: configuration.konghq.com/v1
+#    kind: KongConsumer
+#    metadata:
+#      name: my-consumer
+#      annotations:
+#        kubernetes.io/ingress.class: kong
+#    username: my-consumer
+#    ---
+#    apiVersion: v1
+#    kind: Secret
+#    metadata:
+#      name: my-consumer-key
+#      labels:
+#        konghq.com/credential: key-auth
+#    stringData:
+#      key: my-api-key
+#
+# 2. Selective Feature Use:
+#    Enable only the features you need:
+#
+#    traits:
+#      - name: kong-api-configuration
+#        instanceName: my-api
+#        parameters:
+#          rateLimiting:
+#            enabled: true      # Only rate limiting
+#          security:
+#            enabled: false     # No auth
+#          addHeaders:
+#            enabled: false     # No header injection
+#
+# 3. Multiple Trait Instances:
+#    You can apply different configurations to different routes by using
+#    multiple instances (if the ComponentType has multiple HTTPRoutes):
+#
+#    traits:
+#      - name: kong-api-configuration
+#        instanceName: public-api
+#        parameters:
+#          rateLimiting:
+#            enabled: true
+#          security:
+#            enabled: true
+#            authType: jwt
+#      - name: kong-api-configuration
+#        instanceName: internal-api
+#        parameters:
+#          rateLimiting:
+#            enabled: false
+#          security:
+#            enabled: false
+#          addHeaders:
+#            enabled: true
+#            headers:
+#              - "X-Internal:true"
+#
+# 4. Redis-backed Rate Limiting (for multi-replica consistency):
+#    For production with multiple Kong replicas, use redis policy:
+#
+#    parameters:
+#      rateLimiting:
+#        enabled: true
+#        policy: redis
+#
+#    Note: Redis must be available and Kong must be configured with
+#    KONG_RATE_LIMITING_REDIS_HOST and related env vars.

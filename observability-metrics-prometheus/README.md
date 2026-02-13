@@ -4,7 +4,7 @@ This module collects and stores metrics using Prometheus.
 
 ## Installation
 
-Install this module in your OpenChoreo cluster u
+Install this module in your OpenChoreo cluster using:
 
 ```bash
 helm install observability-metrics-prometheus \

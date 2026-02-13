@@ -70,12 +70,8 @@ openSearchSetup:
   openSearchUsername: "admin"
   openSearchPassword: "ThisIsTheOpenSearchPassword1"
 
-  alertingWebhookUrl: "http://observer.openchoreo-observability-plane:8080/api/alerting/webhook/opensearch"
-
   dataRetentionTime:
-    containerLogs: "30d"
     traces: "30d"
-    rcaReports: "90d"
 
 
 opentelemetryCollectorCustomizations:

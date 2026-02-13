@@ -3,8 +3,8 @@
 
 FROM alpine:3.23
 
-RUN apk upgrade && \
-    apk add bash curl jq && \
+RUN apk upgrade --no-cache && \
+    apk add --no-cache bash curl jq && \
     addgroup -g 10500 opensearch && \
     adduser -D -u 10500 -G opensearch opensearch
 

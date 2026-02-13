@@ -107,7 +107,7 @@ otelTracesIndexTemplate='
 # The following array holds pairs of index template names and their definitions. Define more templates above
 # and add them to this array.
 # Format: (templateName1 templateDefinition1 templateName2 templateDefinition2 ...)
-indexTemplates=("container-logs" "containerLogsIndexTemplate" "otel-traces" "otelTracesIndexTemplate" "rca-reports" "rcaReportsIndexTemplate")
+indexTemplates=("otel-traces" "otelTracesIndexTemplate" "rca-reports" "rcaReportsIndexTemplate")
 
 # Create index templates through a loop using the above array
 echo "Creating index templates..."

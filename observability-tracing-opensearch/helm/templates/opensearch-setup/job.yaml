@@ -25,14 +25,8 @@ spec:
             secretKeyRef:
               name: opensearch-tracing
               key: password
-        - name: OBSERVER_ALERTING_WEBHOOK_URL
-          value: "{{ .Values.openSearchSetup.alertingWebhookUrl }}"
-        - name: CONTAINER_LOGS_MIN_INDEX_AGE
-          value: "{{ .Values.openSearchSetup.dataRetentionTime.containerLogs }}"
         - name: OTEL_TRACES_MIN_INDEX_AGE
           value: "{{ .Values.openSearchSetup.dataRetentionTime.traces }}"
-        - name: RCA_REPORTS_MIN_INDEX_AGE
-          value: "{{ .Values.openSearchSetup.dataRetentionTime.rcaReports }}"
         image: "{{ .Values.openSearchSetup.image.repository }}:{{ .Values.openSearchSetup.image.tag | default .Chart.AppVersion }}"
         imagePullPolicy: {{ .Values.openSearchSetup.image.pullPolicy | default "IfNotPresent" }}
         resources:

@@ -114,7 +114,7 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git add '*/helm/Chart.yaml' '*/helm/values.yaml'
-            git commit -m "ci: update image tags to ${SHORT_SHA} [skip ci]"
+            git diff --cached --quiet || git commit -m "ci: update image tags to ${SHORT_SHA} [skip ci]"
             git push
           fi
 
@@ -129,8 +129,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           # Pull the latest commit (may include the appVersion update from build-images)
+          # fetch-depth: 3 ensures HEAD~2 exists for diffing when build-images pushed a commit
           ref: ${{ github.ref }}
-          fetch-depth: 2
+          fetch-depth: 3
 
       - name: Pull latest changes
         run: git pull --ff-only origin ${{ github.ref_name }}

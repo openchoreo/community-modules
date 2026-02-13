@@ -2,6 +2,9 @@
 # Copyright 2026 The OpenChoreo Authors
 # SPDX-License-Identifier: Apache-2.0
 
+# Exit on errors, unset variables, and pipeline failures
+set -euo pipefail
+
 ## NOTE
 # Please ensure that any commands in this script are idempotent as the script may run multiple times
 
@@ -149,6 +152,7 @@ for ((i=0; i<${#indexTemplates[@]}; i+=2)); do
     else
         echo "Response: $responseBody"
         echo "Failed to create/update index template: $templateName. HTTP response code: $httpCode"
+        exit 1
     fi
 done
 
@@ -368,6 +372,7 @@ for ((i=0; i<${#ismPolicies[@]}; i+=2)); do
             else
                 echo "Failed to update ISM policy $ismPolicyName. HTTP response code: $updateHttpCode"
                 echo "Response: $updateResponseBody"
+                exit 1
             fi
         fi
 
@@ -395,11 +400,13 @@ for ((i=0; i<${#ismPolicies[@]}; i+=2)); do
         else
             echo "Failed to create ISM policy $ismPolicyName. HTTP response code: $createHttpCode"
             echo "Response: $createResponseBody"
+            exit 1
         fi
 
     else
         echo "Error checking ISM policy $ismPolicyName. HTTP response code: $httpCode"
         echo "Response: $responseBody"
+        exit 1
     fi
 
     echo ""

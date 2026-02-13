@@ -4,7 +4,8 @@
 name: Build Images and Release Charts
 
 on:
-  push:
+  pull_request:
+    types: [closed]
     branches: [main]
     paths:
       - "**/init/**"
@@ -17,6 +18,7 @@ permissions:
 
 jobs:
   build-images:
+    if: github.event.pull_request.merged == true || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     outputs:
       images-built: ${{ steps.build.outputs.images-built }}

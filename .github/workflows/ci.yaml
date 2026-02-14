@@ -9,18 +9,16 @@ on:
     paths:
       - "**/init/**"
       - "**/helm/**"
+      - "**/module.yaml"
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
   packages: write
 
 jobs:
-  build-images:
+  build-and-release:
     runs-on: ubuntu-latest
-    outputs:
-      images-built: ${{ steps.build.outputs.images-built }}
-      built-modules: ${{ steps.build.outputs.built-modules }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -30,23 +28,25 @@ jobs:
       - name: Install yq
         uses: mikefarah/yq@v4
 
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to GHCR
+      - name: Login to GHCR (Docker)
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Detect changes, build and push images
-        id: build
+      - name: Login to GHCR (Helm)
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io --username "${{ github.actor }}" --password-stdin
+
+      - name: Build images and release charts
         run: |
-          SHORT_SHA=$(git rev-parse --short HEAD)
           REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          UPDATED=false
-          BUILT_MODULES=""
 
           # Determine changed files
           if git rev-parse HEAD~1 >/dev/null 2>&1; then
@@ -55,169 +55,64 @@ jobs:
             CHANGED_FILES=$(git ls-files)
           fi
 
-          for dir in */; do
-            module="${dir%/}"
-
-            # Skip if no changes in this module's init/ directory (unless manually triggered)
-            if [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
-              if ! echo "$CHANGED_FILES" | grep -q "^${module}/init/"; then
-                continue
-              fi
-            fi
-
-            # Skip if no module.yaml exists
-            if [ ! -f "${module}/module.yaml" ]; then
-              echo "No module.yaml found for ${module}, skipping"
-              continue
-            fi
-
-            image_count=$(yq '.images | length' "${module}/module.yaml")
-            if [ "$image_count" = "0" ] || [ "$image_count" = "null" ]; then
-              continue
-            fi
-
-            for i in $(seq 0 $((image_count - 1))); do
-              image_name=$(yq ".images[${i}].name" "${module}/module.yaml")
-              context=$(yq ".images[${i}].context" "${module}/module.yaml")
-              dockerfile=$(yq ".images[${i}].dockerfile" "${module}/module.yaml")
-              values_repo_path=$(yq ".images[${i}].valuesYaml.repositoryPath" "${module}/module.yaml")
-
-              FULL_IMAGE="ghcr.io/${REPO_OWNER}/${image_name}"
-
-              echo "::group::Building and pushing ${FULL_IMAGE}:${SHORT_SHA}"
-              docker buildx build \
-                --push \
-                -t "${FULL_IMAGE}:${SHORT_SHA}" \
-                -t "${FULL_IMAGE}:latest" \
-                -f "${module}/${dockerfile}" \
-                "${module}/${context}"
-              echo "::endgroup::"
-
-              # Update image repository in values.yaml
-              yq -i "${values_repo_path} = \"${FULL_IMAGE}\"" "${module}/helm/values.yaml"
-
-              # Update appVersion in Chart.yaml (used as default image tag)
-              yq -i ".appVersion = \"${SHORT_SHA}\"" "${module}/helm/Chart.yaml"
-              UPDATED=true
-
-              # Track which modules had images built
-              if [ -z "$BUILT_MODULES" ]; then
-                BUILT_MODULES="${module}"
-              else
-                BUILT_MODULES="${BUILT_MODULES},${module}"
-              fi
-            done
-          done
-
-          if [ "$UPDATED" = true ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add '*/helm/Chart.yaml' '*/helm/values.yaml'
-            git diff --cached --quiet || git commit -m "ci: update image tags to ${SHORT_SHA} [skip ci]"
-            git push
-          fi
-
-          echo "images-built=${UPDATED}" >> "$GITHUB_OUTPUT"
-          echo "built-modules=${BUILT_MODULES}" >> "$GITHUB_OUTPUT"
-
-  release-charts:
-    needs: build-images
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          # Pull the latest commit (may include the appVersion update from build-images)
-          # fetch-depth: 3 ensures HEAD~2 exists for diffing when build-images pushed a commit
-          ref: ${{ github.ref }}
-          fetch-depth: 3
-
-      - name: Pull latest changes
-        run: git pull --ff-only origin ${{ github.ref_name }}
-
-      - name: Install Helm
-        uses: azure/setup-helm@v4
-
-      - name: Install yq
-        uses: mikefarah/yq@v4
-
-      - name: Login to GHCR
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io --username "${{ github.actor }}" --password-stdin
-
-      - name: Detect charts with version changes and publish
-        env:
-          BUILT_MODULES: ${{ needs.build-images.outputs.built-modules }}
-        run: |
-          REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-
-          # Determine changed files in the original commit (before any bot commits)
-          # If build-images pushed a commit, we need to look 2 commits back
-          if [ "${{ needs.build-images.outputs.images-built }}" = "true" ]; then
-            # HEAD is the bot commit, HEAD~1 is the user commit, HEAD~2 is the previous state
-            CHANGED_FILES=$(git diff --name-only HEAD~2 HEAD~1)
-          elif git rev-parse HEAD~1 >/dev/null 2>&1; then
-            CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
-          else
-            CHANGED_FILES=$(git ls-files)
-          fi
-
-          PUBLISHED=false
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+          echo ""
 
           for module_dir in */; do
             module="${module_dir%/}"
             chart_dir="${module}/helm"
 
+            # Skip directories without a helm chart
             if [ ! -f "${chart_dir}/Chart.yaml" ]; then
               continue
             fi
 
-            SHOULD_PUBLISH=false
+            # Determine if this module's chart version was bumped
+            CHART_VERSION=$(yq '.version' "${chart_dir}/Chart.yaml")
+            OLD_CHART_VERSION=$(git show HEAD~1:"${chart_dir}/Chart.yaml" 2>/dev/null | yq '.version' 2>/dev/null || echo "")
+            VERSION_BUMPED=false
 
-            # Check if Chart.yaml version field was changed in this module
-            if echo "$CHANGED_FILES" | grep -q "^${module}/helm/Chart.yaml"; then
-              # Verify the 'version' field actually changed (not just appVersion)
-              if [ "${{ needs.build-images.outputs.images-built }}" = "true" ]; then
-                OLD_VERSION=$(git show HEAD~2:"${chart_dir}/Chart.yaml" 2>/dev/null | yq '.version' || echo "")
-                NEW_VERSION=$(git show HEAD~1:"${chart_dir}/Chart.yaml" 2>/dev/null | yq '.version' || echo "")
-              else
-                OLD_VERSION=$(git show HEAD~1:"${chart_dir}/Chart.yaml" 2>/dev/null | yq '.version' || echo "")
-                NEW_VERSION=$(yq '.version' "${chart_dir}/Chart.yaml")
-              fi
-
-              if [ "$OLD_VERSION" != "$NEW_VERSION" ] && [ -n "$NEW_VERSION" ]; then
-                echo "Chart version changed for ${module}: ${OLD_VERSION} -> ${NEW_VERSION}"
-                SHOULD_PUBLISH=true
-              fi
+            if [ "$OLD_CHART_VERSION" != "$CHART_VERSION" ]; then
+              VERSION_BUMPED=true
             fi
 
-            # For modules without images, publish if any helm files changed
-            if [ "$SHOULD_PUBLISH" != "true" ]; then
-              image_count="0"
-              if [ -f "${module}/module.yaml" ]; then
-                image_count=$(yq '.images | length' "${module}/module.yaml")
-              fi
-              if [ "$image_count" = "0" ] || [ "$image_count" = "null" ]; then
-                if echo "$CHANGED_FILES" | grep -q "^${module}/helm/"; then
-                  echo "Helm files changed for image-less module ${module}, publishing chart"
-                  SHOULD_PUBLISH=true
-                fi
-              fi
-            fi
-
-            # For workflow_dispatch, publish all charts
+            # For workflow_dispatch, always publish
             if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-              SHOULD_PUBLISH=true
+              VERSION_BUMPED=true
             fi
 
-            if [ "$SHOULD_PUBLISH" != "true" ]; then
-              echo "Skipping ${module}: no chart version change detected"
+            if [ "$VERSION_BUMPED" != "true" ]; then
+              echo "Skipping ${module}: chart version unchanged (${CHART_VERSION})"
               continue
             fi
 
-            chart_name=$(yq '.name' "${chart_dir}/Chart.yaml")
-            chart_version=$(yq '.version' "${chart_dir}/Chart.yaml")
+            echo "::group::${module} v${CHART_VERSION}"
 
-            echo "::group::${chart_name} v${chart_version}"
+            # ── Build container images if this module has any ──
+            if [ -f "${module}/module.yaml" ]; then
+              image_count=$(yq '.images | length' "${module}/module.yaml")
+              if [ "$image_count" != "0" ] && [ "$image_count" != "null" ]; then
+                for i in $(seq 0 $((image_count - 1))); do
+                  image_name=$(yq ".images[${i}].name" "${module}/module.yaml")
+                  context=$(yq ".images[${i}].context" "${module}/module.yaml")
+                  dockerfile=$(yq ".images[${i}].dockerfile" "${module}/module.yaml")
+
+                  FULL_IMAGE="ghcr.io/${REPO_OWNER}/${image_name}"
+
+                  echo "Building and pushing ${FULL_IMAGE}:${CHART_VERSION}"
+                  docker buildx build \
+                    --push \
+                    -t "${FULL_IMAGE}:${CHART_VERSION}" \
+                    -t "${FULL_IMAGE}:latest" \
+                    -f "${module}/${dockerfile}" \
+                    "${module}/${context}"
+                done
+              fi
+            fi
+
+            # ── Package and publish the Helm chart ──
+            chart_name=$(yq '.name' "${chart_dir}/Chart.yaml")
 
             # Add dependency repos and build
             dep_count=$(yq '.dependencies | length' "${chart_dir}/Chart.yaml")
@@ -234,13 +129,8 @@ jobs:
 
             helm package "${chart_dir}" -d .packages
 
-            echo "Pushing ${chart_name}:${chart_version} to ghcr.io/${REPO_OWNER}/charts..."
-            helm push ".packages/${chart_name}-${chart_version}.tgz" "oci://ghcr.io/${REPO_OWNER}/charts"
+            echo "Pushing ${chart_name}:${CHART_VERSION} to ghcr.io/${REPO_OWNER}/charts..."
+            helm push ".packages/${chart_name}-${CHART_VERSION}.tgz" "oci://ghcr.io/${REPO_OWNER}/charts"
 
-            PUBLISHED=true
             echo "::endgroup::"
           done
-
-          if [ "$PUBLISHED" != "true" ]; then
-            echo "No charts required publishing"
-          fi

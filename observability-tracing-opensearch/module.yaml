@@ -9,5 +9,3 @@ images:
   - name: observability-tracing-opensearch-setup
     context: init
     dockerfile: init/Dockerfile
-    valuesYaml:
-      repositoryPath: ".openSearchSetup.image.repository"

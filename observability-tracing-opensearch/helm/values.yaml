@@ -64,8 +64,7 @@ opentelemetry-collector:
 ## -----------------------------------------------------------
 openSearchSetup:
   image:
-    repository: "oc-module-opensearch-init"
-    tag: "latest"
+    repository: "ghcr.io/openchoreo/observability-tracing-opensearch-setup"
 
   openSearchUsername: "admin"
   openSearchPassword: "ThisIsTheOpenSearchPassword1"

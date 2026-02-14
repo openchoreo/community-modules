@@ -31,7 +31,7 @@ spec:
           value: "{{ .Values.openSearchSetup.dataRetentionTime.containerLogs }}"
         - name: RCA_REPORTS_MIN_INDEX_AGE
           value: "{{ .Values.openSearchSetup.dataRetentionTime.rcaReports }}"
-        image: "{{ .Values.openSearchSetup.image.repository }}:{{ .Values.openSearchSetup.image.tag | default .Chart.AppVersion }}"
+        image: "{{ .Values.openSearchSetup.image.repository }}:{{ .Values.openSearchSetup.image.tag | default .Chart.Version }}"
         imagePullPolicy: {{ .Values.openSearchSetup.image.pullPolicy | default "IfNotPresent" }}
         resources:
           requests:

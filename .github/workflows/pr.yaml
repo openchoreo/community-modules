@@ -1,0 +1,79 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+name: Validate PR
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "**/init/**"
+      - "**/helm/**"
+      - "**/module.yaml"
+
+permissions:
+  contents: read
+
+jobs:
+  check-version-bump:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install yq
+        uses: mikefarah/yq@v4
+
+      - name: Ensure chart version is bumped for changed modules
+        run: |
+          # Get the list of changed files compared to the base branch
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+          echo ""
+
+          FAILED=false
+
+          for module_dir in */; do
+            module="${module_dir%/}"
+            chart_dir="${module}/helm"
+
+            # Skip if this module has no helm chart
+            if [ ! -f "${chart_dir}/Chart.yaml" ]; then
+              continue
+            fi
+
+            # Check if any files in this module were changed (init/ or helm/)
+            if ! echo "$CHANGED_FILES" | grep -q "^${module}/"; then
+              continue
+            fi
+
+            # Skip if only non-helm, non-init files changed (e.g., README.md)
+            if ! echo "$CHANGED_FILES" | grep -qE "^${module}/(init/|helm/|module\.yaml)"; then
+              continue
+            fi
+
+            # Check if version was bumped
+            OLD_VERSION=$(git show origin/${{ github.base_ref }}:"${chart_dir}/Chart.yaml" 2>/dev/null | yq '.version' 2>/dev/null || echo "")
+            NEW_VERSION=$(yq '.version' "${chart_dir}/Chart.yaml")
+
+            if [ "$OLD_VERSION" = "$NEW_VERSION" ]; then
+              echo "::error::Module '${module}' has changes but Chart.yaml version was not bumped (still ${OLD_VERSION}). Please bump the version in ${chart_dir}/Chart.yaml."
+              FAILED=true
+            else
+              echo "✓ ${module}: version bumped ${OLD_VERSION} → ${NEW_VERSION}"
+            fi
+          done
+
+          if [ "$FAILED" = "true" ]; then
+            echo ""
+            echo "One or more modules have changes without a version bump."
+            echo "Please update the 'version' field in the relevant Chart.yaml file(s)."
+            exit 1
+          fi
+
+          echo ""
+          echo "All changed modules have version bumps. ✓"

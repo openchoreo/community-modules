@@ -13,7 +13,7 @@ helm install observability-tracing-opensearch \
   oci://ghcr.io/openchoreo/charts/observability-tracing-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.1.0
+  --version 0.2.0
 ```
 
 > **Note:** If OpenSearch is already installed by another module (e.g., `observability-logs-opensearch`), disable it to avoid conflicts:
@@ -23,6 +23,6 @@ helm install observability-tracing-opensearch \
 >   oci://ghcr.io/openchoreo/charts/observability-tracing-opensearch \
 >   --create-namespace \
 >   --namespace openchoreo-observability-plane \
->   --version 0.1.0 \
+>   --version 0.2.0 \
 >   --set openSearch.enabled=false
 > ```

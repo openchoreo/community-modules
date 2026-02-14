@@ -15,5 +15,5 @@ helm install observability-metrics-prometheus \
   oci://ghcr.io/openchoreo/charts/observability-metrics-prometheus \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.1.0
+  --version 0.2.0
 ```

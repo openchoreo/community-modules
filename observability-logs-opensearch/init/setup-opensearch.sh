@@ -167,6 +167,7 @@ done
 
 echo -e "Index template creation complete\n"
 
+
 # 3. Add Channel for Notifications
 # Reference: https://opensearch.org/docs/latest/observing-your-data/notifications/api
 webhookName="openchoreo-observer-alerting-webhook"
@@ -231,6 +232,8 @@ else
     echo "Error checking webhook destination. HTTP response code: $webhookCheckResponseCode"
     exit 1
 fi
+
+
 # 4. Add/Update ISM Policies
 # Reference: https://docs.opensearch.org/latest/im-plugin/ism/api/
 echo -e "\nManaging ISM Policies..."

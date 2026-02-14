@@ -2,6 +2,10 @@
 
 This module collects and stores metrics using Prometheus.
 
+## Prerequisites
+
+- [OpenChoreo](https://github.com/openchoreo/openchoreo) must be installed with the **observability plane** enabled for this module to work.
+
 ## Installation
 
 Install this module in your OpenChoreo cluster using:

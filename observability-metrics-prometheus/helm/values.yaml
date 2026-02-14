@@ -13,7 +13,7 @@ kube-prometheus-stack:
     resources:
       limits:
         cpu: 40m
-        memory: 50Mi
+        memory: 60Mi
       requests:
         cpu: 20m
         memory: 30Mi

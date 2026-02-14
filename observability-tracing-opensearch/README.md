@@ -2,6 +2,10 @@
 
 This module collects traces using OpenTelemetry Collector and stores them in OpenSearch.
 
+## Prerequisites
+
+- [OpenChoreo](https://github.com/openchoreo/openchoreo) must be installed with the **observability plane** enabled for this module to work.
+
 ## Installation
 
 ```bash

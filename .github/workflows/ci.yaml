@@ -8,7 +8,7 @@ on:
     branches: [main]
     paths:
       - "**/init/**"
-      - "**/helm/Chart.yaml"
+      - "**/helm/**"
   workflow_dispatch:
 
 permissions:
@@ -187,6 +187,20 @@ jobs:
               if [ "$OLD_VERSION" != "$NEW_VERSION" ] && [ -n "$NEW_VERSION" ]; then
                 echo "Chart version changed for ${module}: ${OLD_VERSION} -> ${NEW_VERSION}"
                 SHOULD_PUBLISH=true
+              fi
+            fi
+
+            # For modules without images, publish if any helm files changed
+            if [ "$SHOULD_PUBLISH" != "true" ]; then
+              image_count="0"
+              if [ -f "${module}/module.yaml" ]; then
+                image_count=$(yq '.images | length' "${module}/module.yaml")
+              fi
+              if [ "$image_count" = "0" ] || [ "$image_count" = "null" ]; then
+                if echo "$CHANGED_FILES" | grep -q "^${module}/helm/"; then
+                  echo "Helm files changed for image-less module ${module}, publishing chart"
+                  SHOULD_PUBLISH=true
+                fi
               fi
             fi
 

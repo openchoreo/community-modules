@@ -23,7 +23,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 0
 
       - name: Install yq
         uses: mikefarah/yq@v4
@@ -48,9 +48,11 @@ jobs:
         run: |
           REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
 
+          BEFORE_SHA="${{ github.event.before }}"
+
           # Determine changed files
-          if git rev-parse HEAD~1 >/dev/null 2>&1; then
-            CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
+          if [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ]; then
+            CHANGED_FILES=$(git diff --name-only "$BEFORE_SHA" HEAD)
           else
             CHANGED_FILES=$(git ls-files)
           fi
@@ -70,7 +72,7 @@ jobs:
 
             # Determine if this module's chart version was bumped
             CHART_VERSION=$(yq '.version' "${chart_dir}/Chart.yaml")
-            OLD_CHART_VERSION=$(git show HEAD~1:"${chart_dir}/Chart.yaml" 2>/dev/null | yq '.version' 2>/dev/null || echo "")
+            OLD_CHART_VERSION=$(git show "${BEFORE_SHA}:${chart_dir}/Chart.yaml" 2>/dev/null | yq '.version' 2>/dev/null || echo "")
             VERSION_BUMPED=false
 
             if [ "$OLD_CHART_VERSION" != "$CHART_VERSION" ]; then

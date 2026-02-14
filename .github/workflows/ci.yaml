@@ -4,8 +4,7 @@
 name: Build Images and Release Charts
 
 on:
-  pull_request:
-    types: [closed]
+  push:
     branches: [main]
     paths:
       - "**/init/**"
@@ -18,7 +17,6 @@ permissions:
 
 jobs:
   build-images:
-    if: github.event.pull_request.merged == true || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     outputs:
       images-built: ${{ steps.build.outputs.images-built }}
@@ -86,14 +84,13 @@ jobs:
 
               FULL_IMAGE="ghcr.io/${REPO_OWNER}/${image_name}"
 
-              echo "::group::Building ${FULL_IMAGE}:${SHORT_SHA}"
-              docker build \
+              echo "::group::Building and pushing ${FULL_IMAGE}:${SHORT_SHA}"
+              docker buildx build \
+                --push \
                 -t "${FULL_IMAGE}:${SHORT_SHA}" \
                 -t "${FULL_IMAGE}:latest" \
                 -f "${module}/${dockerfile}" \
                 "${module}/${context}"
-
-              docker push "${FULL_IMAGE}" --all-tags
               echo "::endgroup::"
 
               # Update image repository in values.yaml

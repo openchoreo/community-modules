@@ -27,7 +27,7 @@ spec:
               key: password
         - name: OTEL_TRACES_MIN_INDEX_AGE
           value: "{{ .Values.openSearchSetup.dataRetentionTime.traces }}"
-        image: "{{ .Values.openSearchSetup.image.repository }}:{{ .Values.openSearchSetup.image.tag | default .Chart.AppVersion }}"
+        image: "{{ .Values.openSearchSetup.image.repository }}:{{ .Values.openSearchSetup.image.tag | default .Chart.Version }}"
         imagePullPolicy: {{ .Values.openSearchSetup.image.pullPolicy | default "IfNotPresent" }}
         resources:
           requests:

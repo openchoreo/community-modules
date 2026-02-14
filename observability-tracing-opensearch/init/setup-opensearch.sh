@@ -188,7 +188,6 @@ otelTracesIsmPolicy='{
   }
 }'
 
-
 # Array to hold policy names and their definitions
 # Format: (ismPolicyName1 ismPolicyDefinition1 ismPolicyName2 ismPolicyDefinition2 ...)
 ismPolicies=("otel-traces" "otelTracesIsmPolicy")

@@ -31,6 +31,9 @@ jobs:
       - name: Install Helm
         uses: azure/setup-helm@v4
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -104,6 +107,7 @@ jobs:
 
                   echo "Building and pushing ${FULL_IMAGE}:${CHART_VERSION}"
                   docker buildx build \
+                    --platform linux/amd64,linux/arm64 \
                     --push \
                     -t "${FULL_IMAGE}:${CHART_VERSION}" \
                     -t "${FULL_IMAGE}:latest" \

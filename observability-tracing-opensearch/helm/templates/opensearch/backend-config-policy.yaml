@@ -1,6 +1,8 @@
 # Copyright 2026 The OpenChoreo Authors
 # SPDX-License-Identifier: Apache-2.0
 
+{{- if .Values.openSearch.enabled }}
+
 apiVersion: gateway.kgateway.dev/v1alpha1
 kind: BackendConfigPolicy
 metadata:
@@ -14,3 +16,5 @@ spec:
   tls:
     sni: "opensearch"
     insecureSkipVerify: true
+    
+{{- end }}

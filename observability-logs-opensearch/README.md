@@ -10,7 +10,7 @@ This module collects logs using Fluent Bit and stores them in OpenSearch.
 
 ### Pre-requisites
 
-1. OpenSearch setup scripts in this helm chart needs admin credentials to connect to OpenSearch and configure it. The command below pulls values from the `ClusterSecretStore` created earlier in the [OpenChoreo installation guide](https://openchoreo.dev/docs)
+1. OpenSearch setup scripts in this helm chart need admin credentials to connect to OpenSearch and configure it. The command below pulls values from the `ClusterSecretStore` created earlier in the [OpenChoreo installation guide](https://openchoreo.dev/docs)
 
 ```bash
 kubectl apply -f - <<EOF
@@ -36,7 +36,7 @@ spec:
 EOF
 ```
 
-2. If you wish to use the Kubernetes operator based OpenSearch version included with this Helm chart, install the operator as follows
+2. If you wish to use the Kubernetes operator-based OpenSearch version included with this Helm chart, install the operator as follows
 ```bash
 helm repo add opensearch-operator https://opensearch-project.github.io/opensearch-k8s-operator/
 helm repo update
@@ -45,7 +45,7 @@ helm install opensearch-operator opensearch-operator/opensearch-operator --names
 
 ## Deploy Helm chart
 
-> **Note:** If you wish to use the Kubernetes operator based OpenSearch version, add `--set openSearch.enabled=false --set openSearchCluster.enabled=true` flags when installaing the Helm chart
+> **Note:** If you wish to use the Kubernetes operator-based OpenSearch version, add `--set openSearch.enabled=false --set openSearchCluster.enabled=true` flags when installing the Helm chart
 
 ```bash
 helm install observability-logs-opensearch \

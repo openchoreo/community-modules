@@ -2,6 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 
 {{- if .Values.openSearchSetup.enabled }}
+{{- if not .Values.openSearchSetup.openSearchSecretName }}
+{{- fail "openSearchSetup.openSearchSecretName is required when openSearchSetup is enabled. Create a Secret with 'username' and 'password' keys." }}
+{{- end }}
 apiVersion: batch/v1
 kind: Job
 metadata:

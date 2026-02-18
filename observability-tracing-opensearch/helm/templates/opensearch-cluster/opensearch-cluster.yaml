@@ -3,7 +3,7 @@ apiVersion: opensearch.opster.io/v1
 kind: OpenSearchCluster
 metadata:
   name: opensearch
-  namespace: openchoreo-observability-plane
+  namespace: {{ .Release.Namespace }}
 spec:
   bootstrap:
     resources:
@@ -26,7 +26,7 @@ spec:
     diskSize: {{ .Values.openSearchCluster.nodePools.data.diskSize }}
     pdb:
       enable: true
-      minAvailable: {{ sub .Values.openSearchCluster.nodePools.data.replicas 1 }}
+      minAvailable: {{ max 0 (sub .Values.openSearchCluster.nodePools.data.replicas 1) }}
     replicas: {{ .Values.openSearchCluster.nodePools.data.replicas }}
     resources:
       limits:
@@ -41,7 +41,7 @@ spec:
     diskSize: {{ .Values.openSearchCluster.nodePools.master.diskSize }}
     pdb:
       enable: true
-      minAvailable: {{ sub .Values.openSearchCluster.nodePools.master.replicas 1 }}
+      minAvailable: {{ max 0 (sub .Values.openSearchCluster.nodePools.master.replicas 1) }}
     replicas: {{ .Values.openSearchCluster.nodePools.master.replicas }}
     resources:
       limits:

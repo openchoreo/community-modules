@@ -218,11 +218,7 @@ spec:
         spec:
           type: ClusterIP
           selector: ${metadata.podSelectors}
-          ports:
-            - name: http
-              port: 80
-              targetPort: ${parameters.port}
-              protocol: TCP
+          ports: ${workload.toServicePorts()}
 
     - id: httproute
       template:
@@ -237,7 +233,7 @@ spec:
             - name: gateway-default
               namespace: openchoreo-data-plane
           hostnames:
-            - ${metadata.componentNamespace}.${metadata.environmentName}.${dataplane.publicVirtualHost}
+            - ${metadata.environmentName}-${metadata.componentNamespace}.${dataplane.publicVirtualHost}
           rules:
           - matches:
             - path:
@@ -251,7 +247,7 @@ spec:
                     replacePrefixMatch: /
             backendRefs:
             - name: ${metadata.componentName}
-              port: 80
+              port: ${workload.toServicePorts()[0].port}
 
 ---
 # --- Component: Using all three Kong API configuration features ---
@@ -264,7 +260,9 @@ spec:
   owner:
     projectName: default
   autoDeploy: true
-  componentType: deployment/http-service-with-kong
+  componentType: 
+    kind: ComponentType
+    name: deployment/http-service-with-kong
 
   parameters:
     replicas: 2
@@ -297,6 +295,12 @@ spec:
   owner:
     projectName: default
     componentName: greeter-service
+
+  endpoints:
+    http:
+      type: HTTP
+      port: 9090
+      visibility: external
 
   containers:
     app:

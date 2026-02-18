@@ -189,14 +189,11 @@ helm install kong kong/ingress \
   --set ingressController.enabled=true \
   --set ingressController.installCRDs=true \
   --set ingressController.gatewayAPI.enabled=true \
-  --set gateway.env.proxy_listen="0.0.0.0:19080\, 0.0.0.0:19443 http2 ssl" \
+  --set gateway.env.proxy_listen="0.0.0.0:19080" \
   --set gateway.proxy.type=LoadBalancer \
   --set gateway.proxy.http.enabled=true \
   --set gateway.proxy.http.servicePort=19080 \
-  --set gateway.proxy.http.containerPort=19080 \
-  --set gateway.proxy.tls.enabled=true \
-  --set gateway.proxy.tls.servicePort=19443 \
-  --set gateway.proxy.tls.containerPort=19443
+  --set gateway.proxy.http.containerPort=19080
 
 # Wait for Kong to be ready
 kubectl wait --for=condition=ready pod \
@@ -232,39 +229,15 @@ kubectl get gatewayclass kong
 Install or upgrade the OpenChoreo data plane Helm chart with the Kong `gatewayClassName`:
 
 ```bash
-helm upgrade openchoreo-data-plane ./install/helm/openchoreo-data-plane \
-  --namespace openchoreo-data-plane \
-  --set gatewayController.enabled=false \
+helm upgrade openchoreo-data-plane oci://ghcr.io/openchoreo/helm-charts/openchoreo-data-plane \
+  --version 0.0.0-latest-dev --namespace openchoreo-data-plane \
   --set gateway.gatewayClassName=kong \
-  --set gateway.httpPort=19080 \
-  --set gateway.httpsPort=19443 \
-  --set gateway.selfSignedIssuer.enabled=false
+  --set gateway.httpPort=19080 --reuse-values
 ```
 
 This creates the `gateway-default` Gateway CR referencing the `kong` GatewayClass instead of `kgateway`.
 
-### Step 5: Create TLS Certificate
-
-If using cert-manager with a self-signed issuer:
-
-```bash
-kubectl apply -f - <<EOF
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: openchoreo-gateway-tls
-  namespace: openchoreo-data-plane
-spec:
-  secretName: openchoreo-gateway-tls
-  issuerRef:
-    name: openchoreo-selfsigned-issuer
-    kind: ClusterIssuer
-  dnsNames:
-    - "*.openchoreoapis.localhost"
-EOF
-```
-
-### Step 6: Verify the Installation
+### Step 5: Verify the Installation
 
 ```bash
 # Check Kong pods
@@ -284,7 +257,7 @@ Expected pods:
 | `kong-controller-*` | Kong Kubernetes Ingress Controller — watches Gateway API resources |
 | `kong-gateway-*`    | Kong Gateway proxy — processes traffic                             |
 
-### Step 7: Grant RBAC for Kong CRDs
+### Step 6: Grant RBAC for Kong CRDs
 
 The data plane service account needs permissions to manage Kong plugin resources. Patch the ClusterRole:
 
@@ -299,15 +272,14 @@ kubectl patch clusterrole cluster-agent-dataplane-openchoreo-data-plane --type=j
 
 > **Note:** Without this, the Release controller will fail to apply KongPlugin resources to the data plane with a "forbidden" error.
 
-### Step 8: Deploy and Invoke the Greeter Service
+### Step 7: Deploy and Invoke the Greeter Service
 
 Deploy the sample greeter service to verify end-to-end traffic flow through Kong, including the `kong-api-configuration` trait for API management plugins.
 
 **Apply the ComponentType, Trait, Component, and Workload:**
 
 ```bash
-kubectl apply -f samples/component-types/component-http-service/http-service-component.yaml
-kubectl apply -f samples/from-image/go-greeter-service/greeter-service.yaml
+kubectl apply -f kong-api-configuration-trait.yaml
 ```
 
 > **Note:** The greeter service Component uses `componentType: deployment/http-service-with-kong` and attaches the `kong-api-configuration` trait. See [Kong API Configuration Trait](#kong-api-configuration-trait) below for details on available plugins.
@@ -322,7 +294,7 @@ kubectl get componentrelease
 kubectl get release
 
 # Wait for the greeter pod to be ready
-kubectl get pods -A -l openchoreo.dev/component-name=greeter-service
+kubectl get pods -A
 ```
 
 **Create a test API key (required when key-auth plugin is enabled):**
@@ -331,7 +303,7 @@ The `kong-api-configuration` trait can enable key-auth on routes. To test, creat
 
 ```bash
 # Find the data plane namespace for the component
-DP_NS=$(kubectl get httproute -A -l openchoreo.dev/component-name=greeter-service \
+DP_NS=$(kubectl get httproute -A -l openchoreo.dev/component=greeter-service \
   -o jsonpath='{.items[0].metadata.namespace}')
 
 echo "Data plane namespace: $DP_NS"
@@ -368,8 +340,40 @@ EOF
 **Invoke the greeter service through Kong:**
 
 ```bash
-curl -k "https://default.development.openchoreoapis.localhost:19443/greeter-service/greeter/greet?name=OpenChoreo" \
-  -H "apikey: my-test-api-key"
+curl http://development-default.openchoreoapis.localhost:19080/greeter-service/greeter/greet\?name\=OpenChoreo -H "apikey: my-test-api-key" -v
+
+* Host development-default.openchoreoapis.localhost:19080 was resolved.
+* IPv6: ::1
+* IPv4: 127.0.0.1
+*   Trying [::1]:19080...
+* connect to ::1 port 19080 from ::1 port 60030 failed: Connection refused
+*   Trying 127.0.0.1:19080...
+* Connected to development-default.openchoreoapis.localhost (127.0.0.1) port 19080
+> GET /greeter-service/greeter/greet?name=OpenChoreo HTTP/1.1
+> Host: development-default.openchoreoapis.localhost:19080
+> User-Agent: curl/8.7.1
+> Accept: */*
+> apikey: my-test-api-key
+>
+* Request completely sent off
+< HTTP/1.1 200 OK
+< Content-Type: text/plain; charset=utf-8
+< Content-Length: 19
+< Connection: keep-alive
+< X-RateLimit-Remaining-Minute: 596
+< X-RateLimit-Limit-Minute: 600
+< RateLimit-Remaining: 596
+< RateLimit-Reset: 28
+< RateLimit-Limit: 600
+< Date: Wed, 18 Feb 2026 10:06:32 GMT
+< Server: kong/3.9.1
+< X-Kong-Upstream-Latency: 1
+< X-Kong-Proxy-Latency: 1
+< Via: 1.1 kong/3.9.1
+< X-Kong-Request-Id: 587d07393b6bad28452c127e85ba9e06
+<
+Hello, OpenChoreo!
+* Connection #0 to host development-default.openchoreoapis.localhost left intact
 ```
 
 Expected response:
@@ -468,18 +472,14 @@ traitOverrides:
 
 The following values control gateway behavior in the data plane Helm chart:
 
-| Value                              | Type   | Default                        | Description                                                              |
-| ---------------------------------- | ------ | ------------------------------ | ------------------------------------------------------------------------ |
-| `gatewayController.enabled`        | bool   | `true`                         | Enable the kgateway controller sub-chart. Set to `false` when using Kong |
-| `gateway.enabled`                  | bool   | `true`                         | Create the `gateway-default` Gateway CR                                  |
-| `gateway.gatewayClassName`         | string | `"kgateway"`                   | GatewayClass name referenced by the Gateway CR. Set to `"kong"` for Kong |
-| `gateway.httpPort`                 | int    | `9080`                         | HTTP listener port                                                       |
-| `gateway.httpsPort`                | int    | `9443`                         | HTTPS listener port                                                      |
-| `gateway.tls.hostname`             | string | `"*.openchoreoapis.localhost"` | Wildcard hostname for TLS certificate                                    |
-| `gateway.tls.certName`             | string | `"openchoreo-gateway-tls"`     | Secret name for the TLS certificate                                      |
-| `gateway.tls.clusterIssuer`        | string | `""`                           | cert-manager ClusterIssuer name                                          |
-| `gateway.selfSignedIssuer.enabled` | bool   | `true`                         | Create a self-signed ClusterIssuer                                       |
-| `gateway.infrastructure`           | object | `{}`                           | Cloud provider load balancer annotations                                 |
+| Value                         | Type   | Default                        | Description                                                              |
+| ----------------------------- | ------ | ------------------------------ | ------------------------------------------------------------------------ |
+| `gateway.gatewayClassName`    | string | `"kgateway"`                   | GatewayClass name referenced by the Gateway CR. Set to `"kong"` for Kong |
+| `gateway.httpPort`            | int    | `9080`                         | HTTP listener port                                                       |
+| `gateway.httpsPort`           | int    | `9443`                         | HTTPS listener port                                                      |
+| `gateway.tls.hostname`        | string | `"*.openchoreoapis.localhost"` | Wildcard hostname for TLS certificate                                    |
+| `gateway.tls.certificateRefs` | string | `"openchoreo-gateway-tls"`     | Secret name for the TLS certificate                                      |
+| `gateway.infrastructure`      | object | `{}`                           | Cloud provider load balancer annotations                                 |
 
 ### DataPlane CR Gateway Configuration
 
@@ -679,28 +679,6 @@ Ensure `publicGatewayName` and `publicGatewayNamespace` match the Gateway CR's n
 ---
 
 ## Customization
-
-### Switching Between Gateway Implementations
-
-The gateway implementation is controlled entirely by Helm values. To switch:
-
-**To Kong:**
-
-```bash
-helm upgrade openchoreo-data-plane ./install/helm/openchoreo-data-plane \
-  --namespace openchoreo-data-plane \
-  --set gatewayController.enabled=false \
-  --set gateway.gatewayClassName=kong
-```
-
-**Back to kgateway:**
-
-```bash
-helm upgrade openchoreo-data-plane ./install/helm/openchoreo-data-plane \
-  --namespace openchoreo-data-plane \
-  --set gatewayController.enabled=true \
-  --set gateway.gatewayClassName=kgateway
-```
 
 ### Adding Kong Plugins to ComponentType Templates
 

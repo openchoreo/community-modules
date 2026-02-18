@@ -1,6 +1,7 @@
 # Copyright 2026 The OpenChoreo Authors
 # SPDX-License-Identifier: Apache-2.0
 
+{{- if .Values.openSearchSetup.enabled }}
 
 apiVersion: batch/v1
 kind: Job
@@ -19,11 +20,14 @@ spec:
         - name: OPENSEARCH_ADDRESS
           value: "https://opensearch:9200"
         - name: OPENSEARCH_USERNAME
-          value: {{ .Values.openSearchSetup.openSearchUsername | quote }}
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.openSearchSetup.openSearchSecretName }}
+              key: username
         - name: OPENSEARCH_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: opensearch-logs
+              name: {{ .Values.openSearchSetup.openSearchSecretName }}
               key: password
         - name: OBSERVER_ALERTING_WEBHOOK_URL
           value: "{{ .Values.openSearchSetup.alertingWebhookUrl }}"
@@ -53,3 +57,5 @@ spec:
       securityContext:
         seccompProfile:
           type: RuntimeDefault
+
+{{- end }}

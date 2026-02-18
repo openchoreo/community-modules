@@ -142,12 +142,74 @@ openSearch:
 ## -----------------------------------------------------------
 ## Values for OpenChoreo specific customizations and workloads
 ## -----------------------------------------------------------
+
+openSearchCluster:
+  enabled: false
+
+  bootstrap:
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 1000Mi
+      requests:
+        cpu: 100m
+        memory: 1000Mi
+
+  general:
+    setVMMaxMapCount: true
+    version: 3.3.0
+
+  dashboards:
+    enable: false
+    replicas: 1
+    version: 3.3.0
+
+  nodePools:
+    data:
+      replicas: 2
+      diskSize: 5Gi
+      resources:
+        limits:
+          cpu: 1000m
+          memory: 1000Mi
+        requests:
+          cpu: 100m
+          memory: 1000Mi
+
+    master:
+      replicas: 3
+      diskSize: 1Gi
+      resources:
+        limits:
+          cpu: 1000m
+          memory: 900Mi
+        requests:
+          cpu: 100m
+          memory: 900Mi
+
+  credentialsSecretName: ""
+  adminPassword: ""
+
+  internalUsers: |
+    # This is the internal user database
+    # The hash value is a bcrypt hash and can be generated with plugin/tools/hash.sh
+
+    _meta:
+      type: "internalusers"
+      config_version: 2
+
+    admin:
+      hash: "%s"
+      reserved: true
+      backend_roles:
+      - "admin"
+      description: "Admin user"
+
 openSearchSetup:
+  enabled: true
   image:
     repository: "ghcr.io/openchoreo/observability-logs-opensearch-setup"
-
-  openSearchUsername: "admin"
-  openSearchPassword: "ThisIsTheOpenSearchPassword1"
+  openSearchSecretName: ""
 
   alertingWebhookUrl: "http://observer.openchoreo-observability-plane:8080/api/alerting/webhook/opensearch"
 

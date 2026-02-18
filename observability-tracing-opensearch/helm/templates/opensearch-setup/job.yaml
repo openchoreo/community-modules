@@ -1,7 +1,7 @@
 # Copyright 2026 The OpenChoreo Authors
 # SPDX-License-Identifier: Apache-2.0
 
-
+{{- if .Values.openSearchSetup.enabled }}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -19,11 +19,14 @@ spec:
         - name: OPENSEARCH_ADDRESS
           value: "https://opensearch:9200"
         - name: OPENSEARCH_USERNAME
-          value: {{ .Values.openSearchSetup.openSearchUsername | quote }}
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.openSearchSetup.openSearchSecretName }}
+              key: username
         - name: OPENSEARCH_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: opensearch-tracing
+              name: {{ .Values.openSearchSetup.openSearchSecretName }}
               key: password
         - name: OTEL_TRACES_MIN_INDEX_AGE
           value: "{{ .Values.openSearchSetup.dataRetentionTime.traces }}"
@@ -49,3 +52,4 @@ spec:
       securityContext:
         seccompProfile:
           type: RuntimeDefault
+{{- end }}

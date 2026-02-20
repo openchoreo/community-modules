@@ -40,7 +40,10 @@ EOF
 ```bash
 helm repo add opensearch-operator https://opensearch-project.github.io/opensearch-k8s-operator/
 helm repo update
-helm install opensearch-operator opensearch-operator/opensearch-operator --namespace openchoreo-observability-plane
+helm install opensearch-operator opensearch-operator/opensearch-operator \
+  --create-namespace \
+  --namespace openchoreo-observability-plane \
+  --version 2.8.0
 ```
 
 ### Deploy Helm chart
@@ -48,7 +51,7 @@ helm install opensearch-operator opensearch-operator/opensearch-operator --names
 > **Note:** If you wish to use the Kubernetes operator-based OpenSearch version, add `--set openSearch.enabled=false --set openSearchCluster.enabled=true` flags when installing the Helm chart
 
 ```bash
-helm install observability-tracing-opensearch \
+helm upgrade --install observability-tracing-opensearch \
   oci://ghcr.io/openchoreo/charts/observability-tracing-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
@@ -59,7 +62,7 @@ helm install observability-tracing-opensearch \
 > **Note:** If OpenSearch is already installed by another module (e.g., `observability-logs-opensearch`), disable it to avoid conflicts:
 >
 > ```bash
-> helm install observability-tracing-opensearch \
+> helm upgrade --install observability-tracing-opensearch \
 >   oci://ghcr.io/openchoreo/charts/observability-tracing-opensearch \
 >   --create-namespace \
 >   --namespace openchoreo-observability-plane \

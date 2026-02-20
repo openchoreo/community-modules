@@ -5,8 +5,8 @@ apiVersion: v2
 name: observability-logs-opensearch
 description: A Helm chart for OpenChoreo Observability Logs module with Fluent Bit and OpenSearch
 type: application
-version: 0.3.0
-appVersion: "0.3.0"
+version: 0.3.1
+appVersion: "0.3.1"
 keywords:
   - opensearch
   - observability

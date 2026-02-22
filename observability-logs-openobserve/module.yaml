@@ -1,0 +1,14 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+# Module manifest used by the CI workflow to discover Docker images to build.
+# Each entry defines the image name, build context, Dockerfile path, and the
+# corresponding field in helm/values.yaml to update with the published image URI.
+
+images:
+  - name: observability-logs-openobserve-adapter
+    context: .
+    dockerfile: Dockerfile
+  - name: observability-logs-openobserve-setup
+    context: init
+    dockerfile: init/Dockerfile

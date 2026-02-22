@@ -1,0 +1,67 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: openobserve
+  namespace: {{ .Release.Namespace }}
+  labels:
+    name: openobserve
+spec:
+  serviceName: openobserve
+  replicas: 1
+  selector:
+    matchLabels:
+      name: openobserve
+      app: openobserve
+  template:
+    metadata:
+      labels:
+        name: openobserve
+        app: openobserve
+    spec:
+      securityContext:
+        fsGroup: 2000
+        runAsUser: 10000
+        runAsGroup: 3000
+        runAsNonRoot: true
+      containers:
+        - name: openobserve
+          image: o2cr.ai/openobserve/openobserve:v0.40.4
+          env:
+            - name: ZO_ROOT_USER_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: openobserve-admin-credentials
+                  key: username
+            - name: ZO_ROOT_USER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: openobserve-admin-credentials
+                  key: password
+            - name: ZO_DATA_DIR
+              value: /data
+          imagePullPolicy: Always
+          resources:
+            limits:
+              cpu: {{ .Values.openObserve.resources.limits.cpu }}
+              memory: {{ .Values.openObserve.resources.limits.memory }}
+            requests:
+              cpu: {{ .Values.openObserve.resources.requests.cpu }}
+              memory: {{ .Values.openObserve.resources.requests.memory }}
+          ports:
+            - containerPort: 5080
+              name: http
+          volumeMounts:
+          - name: data
+            mountPath: /data
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes:
+        - ReadWriteOnce
+      resources:
+        requests:
+          storage: {{ .Values.openObserve.storage.size | quote }}

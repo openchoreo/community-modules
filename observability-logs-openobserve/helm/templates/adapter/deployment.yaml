@@ -1,0 +1,56 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: logs-adapter-openobserve
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: logs-adapter-openobserve
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: logs-adapter-openobserve
+  template:
+    metadata:
+      labels:
+        app: logs-adapter-openobserve
+    spec:
+      securityContext:
+        runAsUser: 10500
+        runAsGroup: 10500
+        runAsNonRoot: true
+      containers:
+      - name: logs-adapter-openobserve
+        image: "{{ .Values.adapter.image.repository }}:{{ .Values.adapter.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.adapter.image.pullPolicy | default "IfNotPresent" }}
+        ports:
+        - containerPort: 9098
+        env:
+        - name: SERVER_PORT
+          value: "9098"
+        - name: OPENOBSERVE_URL
+          value: "http://openobserve:5080"
+        - name: OPENOBSERVE_ORG
+          value: {{ .Values.common.openObserveOrg | quote }}
+        - name: OPENOBSERVE_STREAM
+          value: {{ .Values.common.openObserveStream | quote }}
+        - name: OPENOBSERVE_USER
+          valueFrom:
+            secretKeyRef:
+              name: openobserve-admin-credentials
+              key: username
+        - name: OPENOBSERVE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: openobserve-admin-credentials
+              key: password
+        resources:
+          limits:
+            cpu: {{ .Values.adapter.resources.limits.cpu }}
+            memory: {{ .Values.adapter.resources.limits.memory }}
+          requests:
+            cpu: {{ .Values.adapter.resources.requests.cpu }}
+            memory: {{ .Values.adapter.resources.requests.memory }}

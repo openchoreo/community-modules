@@ -1,0 +1,21 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v2
+name: observability-logs-openobserve
+description: A Helm chart for OpenChoreo Logs Module for OpenObserve
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - openobserve
+  - openchoreo
+  - logs
+maintainers:
+  - name: OpenChoreo Team
+home: https://github.com/openchoreo/observability-logs-openobserve
+dependencies:
+  - name: fluent-bit
+    version: "0.48.0"
+    repository: https://fluent.github.io/helm-charts
+    condition: fluent-bit.enabled

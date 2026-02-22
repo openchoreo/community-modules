@@ -1,0 +1,35 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: openobserve-setup-logs
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: openobserve-setup-logs
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: openobserve-setup-logs
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: openobserve-setup-logs
+        image: "{{ .Values.openObserveSetup.image.repository }}:{{ .Values.openObserveSetup.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.openObserveSetup.image.pullPolicy | default "IfNotPresent" }}
+        env:
+        - name: OPENOBSERVE_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: openobserve-admin-credentials
+              key: username
+        - name: OPENOBSERVE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: openobserve-admin-credentials
+              key: password
+        - name: OPENOBSERVE_ORG
+          value: {{ .Values.common.openObserveOrg | quote }}

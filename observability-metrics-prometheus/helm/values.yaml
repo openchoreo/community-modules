@@ -26,6 +26,7 @@ kube-prometheus-stack:
   prometheus:
     enabled: true
     prometheusSpec:
+      enableRemoteWriteReceiver: true
       serviceMonitorNamespaceSelector: {}
       serviceMonitorSelector: {}
       serviceMonitorSelectorNilUsesHelmValues: false
@@ -35,6 +36,7 @@ kube-prometheus-stack:
     service:
       port: 9091
       reloaderWebPort: 8081
+      type: LoadBalancer
 
   alertmanager:
     enabled: true

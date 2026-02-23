@@ -57,6 +57,9 @@ opentelemetry-collector:
     requests:
       cpu: 50m
       memory: 100Mi
+  
+  service:
+    type: LoadBalancer
 
 
 ## -----------------------------------------------------------

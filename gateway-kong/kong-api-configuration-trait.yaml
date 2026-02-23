@@ -300,7 +300,7 @@ spec:
     http:
       type: HTTP
       port: 9090
-      visibility: external
+      visibility: [external]
 
   containers:
     app:

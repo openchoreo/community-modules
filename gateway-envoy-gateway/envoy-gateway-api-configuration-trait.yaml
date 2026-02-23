@@ -1,20 +1,21 @@
-# Kong API Configuration Trait for OpenChoreo
+# Envoy Gateway API Configuration Trait for OpenChoreo
 #
-# This trait enables Kong API management features on HTTPRoutes:
-#   - Rate Limiting: Configurable request rate limits via Kong's rate-limiting plugin
-#   - Security: Authentication enforcement via Kong auth plugins (key-auth, basic-auth, jwt, etc.)
-#   - Request Headers: Add custom headers to upstream requests via Kong's request-transformer plugin
+# This trait enables Envoy Gateway API management features on HTTPRoutes:
+#   - Rate Limiting: Configurable request rate limits via BackendTrafficPolicy
+#   - Security: JWT authentication enforcement via SecurityPolicy
+#   - Request Headers: Add custom headers to upstream requests via HTTPRoute RequestHeaderModifier
 #
-# Each feature is independently toggleable. The trait conditionally creates KongPlugin CRDs
-# and patches the HTTPRoute with the appropriate `konghq.com/plugins` annotation.
+# Each feature is independently toggleable. The trait conditionally creates
+# BackendTrafficPolicy and SecurityPolicy CRDs targeting the component's HTTPRoute,
+# and patches the HTTPRoute with request header modification filters.
 #
 # Prerequisites:
-#   - Kong Gateway installed in the data plane (see kong-gateway-module.md)
-#   - Kong CRDs available (KongPlugin, KongClusterPlugin)
-#   - ComponentType must have an HTTPRoute resource for the patch to target
+#   - Envoy Gateway installed in the data plane (see README.md)
+#   - Envoy Gateway CRDs available (BackendTrafficPolicy, SecurityPolicy)
+#   - ComponentType must have an HTTPRoute resource for the patch and targetRef to work
 #
 # Usage:
-#   1. Add "kong-api-configuration" to the ComponentType's allowedTraits
+#   1. Add "envoy-gateway-api-configuration" to the ComponentType's allowedTraits
 #   2. Reference it in the Component's traits with desired parameters
 #   3. Optionally override rate limits per environment via ReleaseBinding traitOverrides
 #
@@ -25,33 +26,35 @@
 apiVersion: openchoreo.dev/v1alpha1
 kind: Trait
 metadata:
-  name: kong-api-configuration
+  name: envoy-gateway-api-configuration
   namespace: default
 spec:
   schema:
     parameters:
       # --- Rate Limiting ---
-      # Controls Kong's rate-limiting plugin.
-      # When enabled, creates a KongPlugin that limits requests per minute.
+      # Controls Envoy Gateway's global rate limiting via BackendTrafficPolicy.
+      # When enabled, creates a BackendTrafficPolicy that limits requests per unit of time.
       rateLimiting:
         $default: {}
         enabled: "boolean | default=true"
-        # Rate limiting policy: "local" (per-node) or "redis" (shared across nodes).
-        policy: "string | default=local"
+        # Rate limiting time unit: Second, Minute, or Hour
+        unit: "string | default=Minute"
 
-      # --- Security (Authentication) ---
-      # Controls Kong's authentication plugin.
-      # When enabled, creates a KongPlugin that enforces the selected auth method.
-      # Supported authType values: key-auth, basic-auth, jwt, hmac-auth, oauth2
+      # --- Security (JWT Authentication) ---
+      # Controls Envoy Gateway's JWT authentication via SecurityPolicy.
+      # When enabled, creates a SecurityPolicy that enforces JWT token validation.
+      # JWKS fetching uses remoteJWKS.uri pointing to the thunder-service OIDC provider.
       security:
         $default: {}
         enabled: "boolean | default=false"
-        authType: "string | default=key-auth"
+        # Expected JWT issuer claim (iss). Tokens with a different issuer are rejected.
+        # Example: https://accounts.google.com
+        issuer: "string | default=''"
 
       # --- Request Header Injection ---
-      # Controls Kong's request-transformer plugin to add headers to upstream requests.
-      # Headers use Kong's format: "Header-Name:value"
-      # Example: ["X-Gateway:Kong", "X-Trace-Id:${request_id}"]
+      # Injects custom headers into upstream requests via HTTPRoute RequestHeaderModifier.
+      # Headers use "Header-Name:value" format (same as Kong module for consistency).
+      # Example: ["X-Gateway:Envoy", "X-Managed-By:OpenChoreo"]
       addHeaders:
         $default: {}
         enabled: "boolean | default=false"
@@ -62,99 +65,102 @@ spec:
       # For example, development might allow 600 req/min while production allows 60.
       rateLimiting:
         $default: {}
-        requestsPerMinute: "integer | default=60"
+        requestsPerUnit: "integer | default=60"
 
   creates:
-    # --- KongPlugin: Rate Limiting ---
+    # --- BackendTrafficPolicy: Rate Limiting ---
     # Created when parameters.rateLimiting.enabled is true.
-    # Uses envOverrides.rateLimiting.requestsPerMinute so platform engineers
+    # Targets the component's HTTPRoute by name and applies a local rate limit.
+    # Uses envOverrides.rateLimiting.requestsPerUnit so platform engineers
     # can set different limits per environment via ReleaseBinding traitOverrides.
     - includeWhen: ${parameters.rateLimiting.enabled}
       template:
-        apiVersion: configuration.konghq.com/v1
-        kind: KongPlugin
+        apiVersion: gateway.envoyproxy.io/v1alpha1
+        kind: BackendTrafficPolicy
         metadata:
-          name: ${metadata.name}-${trait.instanceName}-rate-limiting
+          name: ${metadata.name}-${trait.instanceName}-rate-limit
           namespace: ${metadata.namespace}
           labels: ${metadata.labels}
-        config:
-          minute: ${envOverrides.rateLimiting.requestsPerMinute}
-          policy: ${parameters.rateLimiting.policy}
-        plugin: rate-limiting
+        spec:
+          targetRefs:
+            - group: gateway.networking.k8s.io
+              kind: HTTPRoute
+              name: ${metadata.name}
+          rateLimit:
+            type: Local
+            local:
+              rules:
+                - limit:
+                    requests: ${envOverrides.rateLimiting.requestsPerUnit}
+                    unit: ${parameters.rateLimiting.unit}
 
-    # --- KongPlugin: Security (Authentication) ---
+    # --- SecurityPolicy: JWT Authentication ---
     # Created when parameters.security.enabled is true.
-    # The plugin type is determined by parameters.security.authType.
-    # For key-auth: Requires a KongConsumer + Secret with credentials (created separately).
-    # For jwt: Requires a KongConsumer with JWT credentials.
-    # For basic-auth: Requires a KongConsumer with basic-auth credentials.
+    # Targets the component's HTTPRoute and validates JWT tokens against the
+    # JWKS endpoint via remoteJWKS.uri.
+    # The token must be passed in the Authorization header: "Bearer <token>"
     - includeWhen: ${parameters.security.enabled}
       template:
-        apiVersion: configuration.konghq.com/v1
-        kind: KongPlugin
+        apiVersion: gateway.envoyproxy.io/v1alpha1
+        kind: SecurityPolicy
         metadata:
           name: ${metadata.name}-${trait.instanceName}-security
           namespace: ${metadata.namespace}
           labels: ${metadata.labels}
-        plugin: ${parameters.security.authType}
-
-    # --- KongPlugin: Request Header Injection ---
-    # Created when parameters.addHeaders.enabled is true.
-    # Adds the specified headers to every request forwarded to the upstream service.
-    - includeWhen: ${parameters.addHeaders.enabled}
-      template:
-        apiVersion: configuration.konghq.com/v1
-        kind: KongPlugin
-        metadata:
-          name: ${metadata.name}-${trait.instanceName}-request-headers
-          namespace: ${metadata.namespace}
-          labels: ${metadata.labels}
-        config:
-          add:
-            headers: ${parameters.addHeaders.headers}
-        plugin: request-transformer
+        spec:
+          targetRefs:
+            - group: gateway.networking.k8s.io
+              kind: HTTPRoute
+              name: ${metadata.name}
+          jwt:
+            providers:
+              - name: ${metadata.name}-${trait.instanceName}-jwt-provider
+                issuer: ${parameters.security.issuer}
+                remoteJWKS:
+                  uri: http://thunder-service.openchoreo-control-plane:8090/oauth2/jwks
 
   patches:
-    # --- Patch HTTPRoute: Add Kong Plugin Annotation ---
-    # Adds the `konghq.com/plugins` annotation to the HTTPRoute with a comma-separated
-    # list of only the enabled plugin names. Uses CEL list comprehension to dynamically
-    # build the annotation value based on which features are enabled.
+    # --- Patch HTTPRoute: Add Request Headers ---
+    # Adds a RequestHeaderModifier filter to the HTTPRoute's first rule.
+    # Headers are specified as "Header-Name:value" strings and parsed into
+    # the structured format required by the Gateway API RequestHeaderModifier spec.
+    # The patch is skipped via omit() when addHeaders.enabled is false.
     - target:
         group: gateway.networking.k8s.io
         version: v1
         kind: HTTPRoute
       operations:
         - op: add
-          path: /metadata/annotations
-          value:
-            konghq.com/plugins: >-
-              ${[
-                parameters.rateLimiting.enabled ? (metadata.name + "-" + trait.instanceName + "-rate-limiting") : "",
-                parameters.security.enabled ? (metadata.name + "-" + trait.instanceName + "-security") : "",
-                parameters.addHeaders.enabled ? (metadata.name + "-" + trait.instanceName + "-request-headers") : ""
-              ].filter(s, s != "").join(",")}
+          path: /spec/rules/0/filters/-
+          value: >-
+            ${parameters.addHeaders.enabled ?
+              {"type": "RequestHeaderModifier", "requestHeaderModifier":
+                {"add": parameters.addHeaders.headers.map(h,
+                  {"name": h.split(":")[0], "value": h.split(":")[1]})}} :
+              oc_omit()}
 
 ---
 # =============================================================================
 # USAGE EXAMPLE
 # =============================================================================
 #
-# The following resources demonstrate how to use the kong-api-configuration trait
-# with a simple HTTP service ComponentType.
+# The following resources demonstrate how to use the envoy-gateway-api-configuration
+# trait with a simple HTTP service ComponentType.
 
-# --- ComponentType: HTTP Service with Kong API Configuration ---
-# Lists kong-api-configuration as an allowed trait.
-# The HTTPRoute resource in the template is what the trait patches.
+# --- ComponentType: HTTP Service with Envoy Gateway API Configuration ---
+# Lists envoy-gateway-api-configuration as an allowed trait.
+# The HTTPRoute resource in the template is what the trait patches and targets.
 apiVersion: openchoreo.dev/v1alpha1
 kind: ComponentType
 metadata:
-  name: http-service-with-kong
+  name: http-service-with-envoy-gateway
   namespace: default
 spec:
   workloadType: deployment
 
   allowedTraits:
-    - kong-api-configuration
+    - kind: Trait
+      name: envoy-gateway-api-configuration
 
   schema:
     parameters:
@@ -250,7 +256,7 @@ spec:
               port: ${workload.toServicePorts()[0].port}
 
 ---
-# --- Component: Using all three Kong API configuration features ---
+# --- Component: Using all three Envoy Gateway API configuration features ---
 apiVersion: openchoreo.dev/v1alpha1
 kind: Component
 metadata:
@@ -260,28 +266,28 @@ spec:
   owner:
     projectName: default
   autoDeploy: true
-  componentType: 
+  componentType:
     kind: ComponentType
-    name: deployment/http-service-with-kong
+    name: deployment/http-service-with-envoy-gateway
 
   parameters:
     replicas: 2
     port: 9090
 
   traits:
-    - name: kong-api-configuration
+    - name: envoy-gateway-api-configuration
       instanceName: greeter-api
       parameters:
         rateLimiting:
           enabled: true
-          policy: local
+          unit: Minute
         security:
           enabled: true
-          authType: key-auth
+          issuer: http://thunder.openchoreo.localhost:8080
         addHeaders:
           enabled: true
           headers:
-            - "X-Gateway:Kong"
+            - "X-Gateway:Envoy"
             - "X-Managed-By:OpenChoreo"
 
 ---
@@ -336,7 +342,7 @@ spec:
   traitOverrides:
     greeter-api:
       rateLimiting:
-        requestsPerMinute: 600  # Higher limit for development
+        requestsPerUnit: 600  # Higher limit for development
 
 ---
 # --- ReleaseBinding: Production environment ---
@@ -365,7 +371,7 @@ spec:
   traitOverrides:
     greeter-api:
       rateLimiting:
-        requestsPerMinute: 60  # Strict limit for production
+        requestsPerUnit: 60  # Strict limit for production
 
 # =============================================================================
 # RENDERED OUTPUT (what gets applied to the data plane)
@@ -373,99 +379,111 @@ spec:
 #
 # With all three features enabled, the trait produces:
 #
-# 1. KongPlugin: rate-limiting
+# 1. BackendTrafficPolicy: rate limiting
 #    ---
-#    apiVersion: configuration.konghq.com/v1
-#    kind: KongPlugin
+#    apiVersion: gateway.envoyproxy.io/v1alpha1
+#    kind: BackendTrafficPolicy
 #    metadata:
-#      name: <release-name>-greeter-api-rate-limiting
-#    config:
-#      minute: 600        # From envOverrides (development)
-#      policy: local
-#    plugin: rate-limiting
+#      name: <release-name>-greeter-api-rate-limit
+#    spec:
+#      targetRefs:
+#        - group: gateway.networking.k8s.io
+#          kind: HTTPRoute
+#          name: <release-name>
+#      rateLimit:
+#        type: Local
+#        local:
+#          rules:
+#            - limit:
+#                requests: 600      # From envOverrides (development)
+#                unit: Minute
 #
-# 2. KongPlugin: key-auth
+# 2. SecurityPolicy: JWT authentication
 #    ---
-#    apiVersion: configuration.konghq.com/v1
-#    kind: KongPlugin
+#    apiVersion: gateway.envoyproxy.io/v1alpha1
+#    kind: SecurityPolicy
 #    metadata:
 #      name: <release-name>-greeter-api-security
-#    plugin: key-auth
+#    spec:
+#      targetRefs:
+#        - group: gateway.networking.k8s.io
+#          kind: HTTPRoute
+#          name: <release-name>
+#      jwt:
+#        providers:
+#          - name: <release-name>-greeter-api-jwt-provider
+#            issuer: http://thunder.openchoreo.localhost:8080
+#            remoteJWKS:
+#              uri: http://thunder-service.openchoreo-control-plane:8090/oauth2/jwks
 #
-# 3. KongPlugin: request-transformer
-#    ---
-#    apiVersion: configuration.konghq.com/v1
-#    kind: KongPlugin
-#    metadata:
-#      name: <release-name>-greeter-api-request-headers
-#    config:
-#      add:
-#        headers:
-#          - "X-Gateway:Kong"
-#          - "X-Managed-By:OpenChoreo"
-#    plugin: request-transformer
-#
-# 4. Patched HTTPRoute (annotation added):
+# 3. Patched HTTPRoute (header filter appended to rules[0].filters):
 #    ---
 #    apiVersion: gateway.networking.k8s.io/v1
 #    kind: HTTPRoute
-#    metadata:
-#      annotations:
-#        konghq.com/plugins: "<release-name>-greeter-api-rate-limiting,<release-name>-greeter-api-security,<release-name>-greeter-api-request-headers"
+#    spec:
+#      rules:
+#        - filters:
+#            - type: URLRewrite        # Pre-existing filter from ComponentType (preserved)
+#              urlRewrite:
+#                path:
+#                  type: ReplacePrefixMatch
+#                  replacePrefixMatch: /
+#            - type: RequestHeaderModifier
+#              requestHeaderModifier:
+#                add:
+#                  - name: X-Gateway
+#                    value: Envoy
+#                  - name: X-Managed-By
+#                    value: OpenChoreo
 #
 # =============================================================================
 # NOTES
 # =============================================================================
 #
-# 1. KongConsumer Setup (required for key-auth/basic-auth/jwt):
-#    The security plugin only enforces authentication — consumers and credentials
-#    must be provisioned separately. For example, for key-auth:
+# 1. JWT Authentication:
+#    The SecurityPolicy enforces JWT token validation. Clients must pass a valid
+#    JWT in the Authorization header:
 #
-#    apiVersion: configuration.konghq.com/v1
-#    kind: KongConsumer
-#    metadata:
-#      name: my-consumer
-#      annotations:
-#        kubernetes.io/ingress.class: kong
-#    username: my-consumer
-#    ---
-#    apiVersion: v1
-#    kind: Secret
-#    metadata:
-#      name: my-consumer-key
-#      labels:
-#        konghq.com/credential: key-auth
-#    stringData:
-#      key: my-api-key
+#    curl -H "Authorization: Bearer <jwt-token>" http://...
 #
-# 2. Selective Feature Use:
+#    JWKS fetching uses remoteJWKS.uri pointing directly to the thunder-service
+#    OIDC provider.
+#
+# 2. Rate Limiting Scope:
+#    BackendTrafficPolicy rate limits are local (per-Envoy-instance) when using
+#    the Local type. No external rate limit service is required. The limit applies
+#    per HTTPRoute per instance, not per client.
+#    For per-client rate limiting, add clientSelectors to the policy.
+#
+# 3. Selective Feature Use:
 #    Enable only the features you need:
 #
 #    traits:
-#      - name: kong-api-configuration
+#      - name: envoy-gateway-api-configuration
 #        instanceName: my-api
 #        parameters:
 #          rateLimiting:
-#            enabled: true      # Only rate limiting
+#            enabled: true       # Only rate limiting
 #          security:
-#            enabled: false     # No auth
+#            enabled: false      # No JWT auth
 #          addHeaders:
-#            enabled: false     # No header injection
+#            enabled: false      # No header injection
 #
-# 3. Multiple Trait Instances:
+# 4. Multiple Trait Instances:
 #    You can apply different configurations to different routes by using
 #    multiple instances (if the ComponentType has multiple HTTPRoutes):
 #
 #    traits:
-#      - name: kong-api-configuration
+#      - name: envoy-gateway-api-configuration
 #        instanceName: public-api
 #        parameters:
 #          rateLimiting:
 #            enabled: true
+#            unit: Minute
 #          security:
 #            enabled: true
-#            authType: jwt
-#      - name: kong-api-configuration
+#            issuer: https://idp.example.com
+#      - name: envoy-gateway-api-configuration
 #        instanceName: internal-api
 #        parameters:
 #          rateLimiting:
@@ -477,13 +495,12 @@ spec:
 #            headers:
 #              - "X-Internal:true"
 #
-# 4. Redis-backed Rate Limiting (for multi-replica consistency):
-#    For production with multiple Kong replicas, use redis policy:
+# 5. Rate Limit Units:
+#    Envoy Gateway supports Second, Minute, and Hour as rate limit units.
+#    Use envOverrides.rateLimiting.requestsPerUnit to set environment-specific
+#    thresholds without changing the unit:
 #
-#    parameters:
-#      rateLimiting:
-#        enabled: true
-#        policy: redis
-#
-#    Note: Redis must be available and Kong must be configured with
-#    KONG_RATE_LIMITING_REDIS_HOST and related env vars.
+#    traitOverrides:
+#      my-api:
+#        rateLimiting:
+#          requestsPerUnit: 1000   # 1000 requests per Minute in production

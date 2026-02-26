@@ -102,21 +102,12 @@ rcaReportsIndexTemplate='
         "status": {
           "type": "keyword"
         },
-        "version": {
-          "type": "integer"
-        },
         "resource": {
           "properties": {
             "openchoreo.dev/project-uid": {
               "type": "keyword"
             },
-            "openchoreo.dev/component-uids": {
-              "type": "keyword"
-            },
             "openchoreo.dev/environment-uid": {
-              "type": "keyword"
-            },
-            "openchoreo.dev/organization-uid": {
               "type": "keyword"
             }
           }

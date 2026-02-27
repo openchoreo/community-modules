@@ -20,6 +20,6 @@ WORKDIR /home/appuser
 COPY --from=builder --chown=appuser:appuser --chmod=0550 /app/main .
 
 USER appuser
-EXPOSE 9098
+EXPOSE 9100
 
 CMD ["./main"]

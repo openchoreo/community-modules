@@ -17,8 +17,6 @@ data:
             endpoint: 0.0.0.0:4318
 
     exporters:
-      debug:
-        verbosity: detailed
       otlphttp:
         traces_endpoint: http://openobserve:5080/api/{{ .Values.common.openObserveOrg }}/traces
         auth:
@@ -83,4 +81,4 @@ data:
           {{- if $processors }}
           processors: [{{ join ", " $processors }}]
           {{- end }}
-          exporters: [debug,otlphttp]
+          exporters: [otlphttp]

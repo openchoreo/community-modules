@@ -6,6 +6,7 @@ package app
 import (
 	"context"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/openchoreo/community-modules/observability-tracing-openobserve/internal/api/gen"
@@ -36,6 +37,24 @@ func (h *TracingHandler) Health(ctx context.Context, _ gen.HealthRequestObject) 
 
 // QueryTraces implements POST /api/v1alpha1/traces/query.
 func (h *TracingHandler) QueryTraces(ctx context.Context, request gen.QueryTracesRequestObject) (gen.QueryTracesResponseObject, error) {
+	if request.Body == nil {
+		return gen.QueryTraces400JSONResponse{
+			Title:  ptr(gen.BadRequest),
+			Detail: ptr("request body is required"),
+		}, nil
+	}
+	if strings.TrimSpace(request.Body.SearchScope.Namespace) == "" {
+		return gen.QueryTraces400JSONResponse{
+			Title:  ptr(gen.BadRequest),
+			Detail: ptr("namespace is required"),
+		}, nil
+	}
+	if request.Body.EndTime.Before(request.Body.StartTime) {
+		return gen.QueryTraces400JSONResponse{
+			Title:  ptr(gen.BadRequest),
+			Detail: ptr("endTime must be >= startTime"),
+		}, nil
+	}
 	params := toTracesQueryParams(request.Body)
 
 	result, err := h.client.GetTraces(ctx, params)
@@ -53,6 +72,24 @@ func (h *TracingHandler) QueryTraces(ctx context.Context, request gen.QueryTrace
 
 // QuerySpansForTrace implements POST /api/v1alpha1/traces/{traceId}/spans/query.
 func (h *TracingHandler) QuerySpansForTrace(ctx context.Context, request gen.QuerySpansForTraceRequestObject) (gen.QuerySpansForTraceResponseObject, error) {
+	if request.Body == nil {
+		return gen.QuerySpansForTrace400JSONResponse{
+			Title:  ptr(gen.BadRequest),
+			Detail: ptr("request body is required"),
+		}, nil
+	}
+	if strings.TrimSpace(request.Body.SearchScope.Namespace) == "" {
+		return gen.QuerySpansForTrace400JSONResponse{
+			Title:  ptr(gen.BadRequest),
+			Detail: ptr("namespace is required"),
+		}, nil
+	}
+	if request.Body.EndTime.Before(request.Body.StartTime) {
+		return gen.QuerySpansForTrace400JSONResponse{
+			Title:  ptr(gen.BadRequest),
+			Detail: ptr("endTime must be >= startTime"),
+		}, nil
+	}
 	params := toTracesQueryParams(request.Body)
 	params.TraceID = request.TraceId
 
@@ -119,7 +156,7 @@ func toTracesQueryParams(req *gen.TracesQueryRequest) openobserve.TracesQueryPar
 // toTracesListResponse converts the internal result to the generated response model.
 func toTracesListResponse(result *openobserve.TracesResult) gen.TracesListResponse {
 	traces := make([]struct {
-		DurationNs   *float32   `json:"durationNs,omitempty"`
+		DurationNs   *int64     `json:"durationNs,omitempty"`
 		EndTime      *time.Time `json:"endTime,omitempty"`
 		RootSpanId   *string    `json:"rootSpanId,omitempty"`
 		RootSpanKind *string    `json:"rootSpanKind,omitempty"`
@@ -131,7 +168,7 @@ func toTracesListResponse(result *openobserve.TracesResult) gen.TracesListRespon
 	}, 0, len(result.Traces))
 
 	for _, t := range result.Traces {
-		dur := float32(t.DurationNs)
+		dur := t.DurationNs
 		startTime := t.StartTime
 		endTime := t.EndTime
 		traceId := t.TraceID
@@ -141,7 +178,7 @@ func toTracesListResponse(result *openobserve.TracesResult) gen.TracesListRespon
 		rootSpanName := t.RootSpanName
 		rootSpanKind := t.RootSpanKind
 		traces = append(traces, struct {
-			DurationNs   *float32   `json:"durationNs,omitempty"`
+			DurationNs   *int64     `json:"durationNs,omitempty"`
 			EndTime      *time.Time `json:"endTime,omitempty"`
 			RootSpanId   *string    `json:"rootSpanId,omitempty"`
 			RootSpanKind *string    `json:"rootSpanKind,omitempty"`
@@ -175,7 +212,7 @@ func toTracesListResponse(result *openobserve.TracesResult) gen.TracesListRespon
 // toSpansListResponse converts the internal result to the generated response model.
 func toSpansListResponse(result *openobserve.SpansResult) gen.TraceSpansListResponse {
 	spans := make([]struct {
-		DurationNs   *float32   `json:"durationNs,omitempty"`
+		DurationNs   *int64     `json:"durationNs,omitempty"`
 		EndTime      *time.Time `json:"endTime,omitempty"`
 		ParentSpanId *string    `json:"parentSpanId,omitempty"`
 		SpanId       *string    `json:"spanId,omitempty"`
@@ -185,7 +222,7 @@ func toSpansListResponse(result *openobserve.SpansResult) gen.TraceSpansListResp
 	}, 0, len(result.Spans))
 
 	for _, s := range result.Spans {
-		dur := float32(s.DurationNs)
+		dur := s.DurationNs
 		startTime := s.StartTime
 		endTime := s.EndTime
 		spanId := s.SpanID
@@ -193,7 +230,7 @@ func toSpansListResponse(result *openobserve.SpansResult) gen.TraceSpansListResp
 		spanKind := s.SpanKind
 		parentSpanId := s.ParentSpanID
 		spans = append(spans, struct {
-			DurationNs   *float32   `json:"durationNs,omitempty"`
+			DurationNs   *int64     `json:"durationNs,omitempty"`
 			EndTime      *time.Time `json:"endTime,omitempty"`
 			ParentSpanId *string    `json:"parentSpanId,omitempty"`
 			SpanId       *string    `json:"spanId,omitempty"`
@@ -222,7 +259,7 @@ func toSpansListResponse(result *openobserve.SpansResult) gen.TraceSpansListResp
 
 // toSpanDetailsResponse converts the internal span detail to the generated response model.
 func toSpanDetailsResponse(span *openobserve.SpanDetail) gen.TraceSpanDetailsResponse {
-	dur := float32(span.DurationNs)
+	dur := span.DurationNs
 	startTime := span.StartTime
 	endTime := span.EndTime
 

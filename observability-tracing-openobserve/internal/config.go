@@ -57,8 +57,12 @@ func LoadConfig() (*Config, error) {
 		return nil, fmt.Errorf("Environment variable OPENOBSERVE_PASSWORD is required")
 	}
 
-	if _, err := strconv.Atoi(serverPort); err != nil {
-		return nil, fmt.Errorf("invalid SERVER_PORT: %w", err)
+	port, err := strconv.Atoi(serverPort)
+	if err != nil {
+		return nil, fmt.Errorf("invalid SERVER_PORT: must be integer in 1..65535: %w", err)
+	}
+	if port < 1 || port > 65535 {
+		return nil, fmt.Errorf("invalid SERVER_PORT: must be integer in 1..65535")
 	}
 
 	return &Config{

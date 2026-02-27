@@ -10,6 +10,8 @@ This module collects container logs using Fluent Bit and stores them in OpenObse
 
 Before installing, create Kubernetes Secrets with the OpenObserve admin credentials:
 
+> ⚠️ **Important:** Replace `YOUR_PASSWORD` with a strong, unique password.
+
 ```bash
 kubectl create secret generic openobserve-admin-credentials \
   --namespace openchoreo-observability-plane \

@@ -157,11 +157,13 @@ func (c *Client) executeSearchQuery(ctx context.Context, queryJSON []byte) (*Ope
 		c.logger.Error("OpenObserve returned error",
 			slog.Int("statusCode", resp.StatusCode),
 			slog.String("body", string(body)))
-		return nil, fmt.Errorf("openobserve returned status %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("openobserve returned status %d: response body omitted", resp.StatusCode)
 	}
 
 	var openObserveResp OpenObserveResponse
-	if err := json.Unmarshal(body, &openObserveResp); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.UseNumber()
+	if err := decoder.Decode(&openObserveResp); err != nil {
 		c.logger.Error("Failed to unmarshal response from OpenObserve", slog.Any("error", err))
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
@@ -209,14 +211,14 @@ func (c *Client) GetTraces(ctx context.Context, params TracesQueryParams) (*Trac
 		agg.entry.SpanCount++
 
 		var startTime, endTime int64
-		if v, ok := hit["start_time"].(float64); ok {
-			startTime = int64(v)
+		if v, ok := hit["start_time"].(json.Number); ok {
+			startTime, _ = v.Int64()
 			if agg.minStart == 0 || startTime < agg.minStart {
 				agg.minStart = startTime
 			}
 		}
-		if v, ok := hit["end_time"].(float64); ok {
-			endTime = int64(v)
+		if v, ok := hit["end_time"].(json.Number); ok {
+			endTime, _ = v.Int64()
 			if endTime > agg.maxEnd {
 				agg.maxEnd = endTime
 			}
@@ -315,14 +317,16 @@ func parseSpanEntry(hit map[string]interface{}) SpanEntry {
 	if v, ok := hit["span_kind"].(string); ok {
 		entry.SpanKind = v
 	}
-	if v, ok := hit["start_time"].(float64); ok {
-		entry.StartTime = time.Unix(0, int64(v))
+	if v, ok := hit["start_time"].(json.Number); ok {
+		n, _ := v.Int64()
+		entry.StartTime = time.Unix(0, n)
 	}
-	if v, ok := hit["end_time"].(float64); ok {
-		entry.EndTime = time.Unix(0, int64(v))
+	if v, ok := hit["end_time"].(json.Number); ok {
+		n, _ := v.Int64()
+		entry.EndTime = time.Unix(0, n)
 	}
-	if v, ok := hit["duration"].(float64); ok {
-		entry.DurationNs = int64(v)
+	if v, ok := hit["duration"].(json.Number); ok {
+		entry.DurationNs, _ = v.Int64()
 	}
 	if v, ok := hit["reference_parent_span_id"].(string); ok {
 		entry.ParentSpanID = v
@@ -360,14 +364,16 @@ func parseSpanDetail(hit map[string]interface{}) SpanDetail {
 	if v, ok := hit["span_kind"].(string); ok {
 		detail.SpanKind = v
 	}
-	if v, ok := hit["start_time"].(float64); ok {
-		detail.StartTime = time.Unix(0, int64(v))
+	if v, ok := hit["start_time"].(json.Number); ok {
+		n, _ := v.Int64()
+		detail.StartTime = time.Unix(0, n)
 	}
-	if v, ok := hit["end_time"].(float64); ok {
-		detail.EndTime = time.Unix(0, int64(v))
+	if v, ok := hit["end_time"].(json.Number); ok {
+		n, _ := v.Int64()
+		detail.EndTime = time.Unix(0, n)
 	}
-	if v, ok := hit["duration"].(float64); ok {
-		detail.DurationNs = int64(v)
+	if v, ok := hit["duration"].(json.Number); ok {
+		detail.DurationNs, _ = v.Int64()
 	}
 	if v, ok := hit["reference_parent_span_id"].(string); ok {
 		detail.ParentSpanID = v

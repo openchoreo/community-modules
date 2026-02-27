@@ -1,0 +1,26 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: openobserve
+  namespace: {{ .Release.Namespace }}
+spec:
+  parentRefs:
+  - name: gateway-default
+    namespace: {{ .Release.Namespace }}
+  {{- with .Values.openObserve.httpRouteHostnames }}
+  hostnames:
+    {{- range . }}
+    - {{ . | quote }}
+    {{- end }}
+  {{- end }}
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /api/default/container-logs/_json
+    backendRefs:
+    - name: openobserve
+      port: 5080

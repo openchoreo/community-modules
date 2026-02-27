@@ -1,0 +1,86 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opentelemetry-collector-config
+  namespace: {{ .Release.Namespace }}
+data:
+  relay: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+    exporters:
+      debug:
+        verbosity: detailed
+      otlphttp:
+        traces_endpoint: http://openobserve:5080/api/{{ .Values.common.openObserveOrg }}/traces
+        auth:
+          authenticator: basicauth/openobserve
+
+    extensions:
+      basicauth/openobserve:
+        client_auth:
+          username: ${OPENOBSERVE_USERNAME}
+          password: ${OPENOBSERVE_PASSWORD}
+      health_check:
+        endpoint: ${env:MY_POD_IP}:13133
+  
+    processors:
+      {{- if eq .Values.opentelemetryCollectorCustomizations.installationMode "singleCluster" }}
+      k8sattributes:
+        auth_type: "serviceAccount"
+        passthrough: false
+
+        extract:
+          labels:
+            - tag_name: $$1
+              key_regex: (.*)
+              from: pod
+            
+          metadata:
+            - k8s.pod.name
+            - k8s.pod.uid
+            - k8s.deployment.name
+            - k8s.namespace.name
+            - k8s.node.name
+      {{- end }}
+      {{- if .Values.opentelemetryCollectorCustomizations.tailSampling.enabled }}
+      tail_sampling:
+        decision_wait: {{ .Values.opentelemetryCollectorCustomizations.tailSampling.decisionWait }}
+        num_traces: {{ .Values.opentelemetryCollectorCustomizations.tailSampling.numTraces }}
+        expected_new_traces_per_sec: {{ .Values.opentelemetryCollectorCustomizations.tailSampling.expectedNewTracesPerSec }}
+        decision_cache:
+          sampled_cache_size: {{ .Values.opentelemetryCollectorCustomizations.tailSampling.decisionCache.sampledCacheSize }}
+          non_sampled_cache_size: {{ .Values.opentelemetryCollectorCustomizations.tailSampling.decisionCache.nonSampledCacheSize }}
+        policies: [
+            {
+              name: rate_limiting,
+              type: rate_limiting,
+              rate_limiting: {spans_per_second: {{ .Values.opentelemetryCollectorCustomizations.tailSampling.spansPerSecond }} }
+            },
+        ]
+      {{- end }}
+
+    service:
+      extensions: [basicauth/openobserve, health_check]
+      pipelines:
+        traces:
+          receivers: [otlp]
+          {{- $processors := list }}
+          {{- if eq .Values.opentelemetryCollectorCustomizations.installationMode "singleCluster" }}
+          {{- $processors = append $processors "k8sattributes" }}
+          {{- end }}
+          {{- if .Values.opentelemetryCollectorCustomizations.tailSampling.enabled }}
+          {{- $processors = append $processors "tail_sampling" }}
+          {{- end }}
+          {{- if $processors }}
+          processors: [{{ join ", " $processors }}]
+          {{- end }}
+          exporters: [debug,otlphttp]

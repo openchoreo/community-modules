@@ -13,7 +13,7 @@ keywords:
   - logs
 maintainers:
   - name: OpenChoreo Team
-home: https://github.com/openchoreo/observability-logs-openobserve
+home: https://github.com/openchoreo/community-modules
 dependencies:
   - name: fluent-bit
     version: "0.48.0"

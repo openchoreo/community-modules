@@ -135,6 +135,7 @@ fluent-bit:
 
 openObserve:
   enabled: true
+  httpRouteHostnames: []
   resources:
     limits:
       cpu: 500m

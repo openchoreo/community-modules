@@ -1,6 +1,6 @@
 # Observability Tracing Module for OpenObserve
 
-This module collects distributed traces using Opentelemetry collector and stores them in OpenObserve.
+This module collects distributed traces using OpenTelemetry collector and stores them in OpenObserve.
 
 ## Prerequisites
 
@@ -9,6 +9,8 @@ This module collects distributed traces using Opentelemetry collector and stores
 ## Installation
 
 Before installing, create Kubernetes Secrets with the OpenObserve admin credentials:
+
+> ⚠️ **Important:** Replace `YOUR_PASSWORD` with a strong, unique password.
 
 ```bash
 kubectl create secret generic openobserve-admin-credentials \

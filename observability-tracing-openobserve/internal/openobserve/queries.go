@@ -8,8 +8,28 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"regexp"
 	"strings"
 )
+
+// MaxQueryLimit is the upper bound for query result sizes to prevent
+// excessively large responses from OpenObserve.
+const MaxQueryLimit = 1000
+
+// validateSQLIdentifier checks that the identifier contains only alphanumeric
+// characters, underscores, hyphens, or dots. It returns an error if the
+// identifier is empty or contains disallowed characters.
+var validIdentifierRe = regexp.MustCompile(`^[a-zA-Z0-9_.\-]+$`)
+
+func validateSQLIdentifier(identifier string) (string, error) {
+	if identifier == "" {
+		return "", fmt.Errorf("SQL identifier must not be empty")
+	}
+	if !validIdentifierRe.MatchString(identifier) {
+		return "", fmt.Errorf("SQL identifier %q contains invalid characters", identifier)
+	}
+	return identifier, nil
+}
 
 // escapeSQLString escapes backslashes and single quotes in a value
 // to prevent SQL injection when interpolating into single-quoted SQL strings.
@@ -22,11 +42,16 @@ func escapeSQLString(value string) string {
 // generateTracesListQuery generates the OpenObserve query to list individual spans
 // so that traces can be grouped in Go code to identify root spans.
 func generateTracesListQuery(params TracesQueryParams, stream string, logger *slog.Logger) ([]byte, error) {
+	safeStream, err := validateSQLIdentifier(stream)
+	if err != nil {
+		return nil, fmt.Errorf("invalid stream identifier: %w", err)
+	}
+
 	sql := fmt.Sprintf(
 		"SELECT trace_id, span_id, operation_name, span_kind, "+
 			"start_time, end_time, reference_parent_span_id "+
 			"FROM %s",
-		stream,
+		safeStream,
 	)
 
 	conditions := buildFilterConditions(params)
@@ -34,7 +59,19 @@ func generateTracesListQuery(params TracesQueryParams, stream string, logger *sl
 		sql += " WHERE " + strings.Join(conditions, " AND ")
 	}
 
-	sql += " ORDER BY start_time"
+	// Add sort order
+	if params.Sort == "asc" || params.Sort == "ASC" {
+		sql += " ORDER BY start_time ASC"
+	} else {
+		sql += " ORDER BY start_time DESC"
+	}
+
+	limit := params.Limit
+	if limit <= 0 {
+		limit = 100
+	} else if limit > MaxQueryLimit {
+		limit = MaxQueryLimit
+	}
 
 	query := map[string]interface{}{
 		"query": map[string]interface{}{
@@ -42,7 +79,7 @@ func generateTracesListQuery(params TracesQueryParams, stream string, logger *sl
 			"start_time": params.StartTime.UnixMicro(),
 			"end_time":   params.EndTime.UnixMicro(),
 			"from":       0,
-			"size":       -1,
+			"size":       limit,
 		},
 	}
 
@@ -62,11 +99,16 @@ func generateSpansListQuery(params TracesQueryParams, stream string, logger *slo
 		"trace_id = '" + escapeSQLString(params.TraceID) + "'",
 	}
 
+	safeStream, err := validateSQLIdentifier(stream)
+	if err != nil {
+		return nil, fmt.Errorf("invalid stream identifier: %w", err)
+	}
+
 	sql := fmt.Sprintf(
 		"SELECT span_id, operation_name, span_kind, start_time, end_time, "+
 			"end_time - start_time as duration, reference_parent_span_id "+
 			"FROM %s WHERE %s",
-		stream, strings.Join(conditions, " AND "),
+		safeStream, strings.Join(conditions, " AND "),
 	)
 
 	// Add sort order
@@ -79,6 +121,8 @@ func generateSpansListQuery(params TracesQueryParams, stream string, logger *slo
 	limit := params.Limit
 	if limit <= 0 {
 		limit = 100
+	} else if limit > MaxQueryLimit {
+		limit = MaxQueryLimit
 	}
 
 	query := map[string]interface{}{
@@ -99,13 +143,6 @@ func generateSpansListQuery(params TracesQueryParams, stream string, logger *slo
 		}
 	}
 
-	if logger.Enabled(nil, slog.LevelDebug) {
-		if prettyJSON, err := json.MarshalIndent(query, "", "    "); err == nil {
-			fmt.Printf("Generated query to fetch %s application logs:\n", stream)
-			fmt.Println(string(prettyJSON))
-		}
-	}
-
 	return json.Marshal(query)
 }
 
@@ -116,9 +153,14 @@ func generateSpanDetailQuery(params TracesQueryParams, stream string, logger *sl
 		"span_id = '" + escapeSQLString(params.SpanID) + "'",
 	}
 
+	safeStream, err := validateSQLIdentifier(stream)
+	if err != nil {
+		return nil, fmt.Errorf("invalid stream identifier: %w", err)
+	}
+
 	sql := fmt.Sprintf(
 		"SELECT * FROM %s WHERE %s",
-		stream, strings.Join(conditions, " AND "),
+		safeStream, strings.Join(conditions, " AND "),
 	)
 
 	query := map[string]interface{}{

@@ -27,10 +27,10 @@ spec:
         image: "{{ .Values.adapter.image.repository }}:{{ .Values.adapter.image.tag | default .Chart.AppVersion }}"
         imagePullPolicy: {{ .Values.adapter.image.pullPolicy | default "IfNotPresent" }}
         ports:
-        - containerPort: 9098
+        - containerPort: 9100
         env:
         - name: SERVER_PORT
-          value: "9098"
+          value: "9100"
         - name: OPENOBSERVE_URL
           value: "http://openobserve:5080"
         - name: OPENOBSERVE_ORG

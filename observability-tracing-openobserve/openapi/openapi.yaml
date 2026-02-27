@@ -31,7 +31,7 @@ paths:
       tags:
         - Health
       summary: Health check
-      description: Check the health status of the observer service including OpenSearch and Prometheus connectivity
+      description: Check the health status of the tracing adapter service
       operationId: health
       security: []
       responses:
@@ -57,7 +57,7 @@ paths:
                     example: unhealthy
                   error:
                     type: string
-                    example: "logs backend: connection failed"
+                    example: "tracing backend: connection failed"
 
 
   /api/v1alpha1/traces/query:
@@ -323,7 +323,8 @@ components:
                 description: The end time of the trace
                 format: date-time
               durationNs:
-                type: number
+                type: integer
+                format: int64
                 description: The duration of the trace in nanoseconds
         total:
           type: integer
@@ -360,7 +361,8 @@ components:
                 description: The end time of the span
                 format: date-time
               durationNs:
-                type: number
+                type: integer
+                format: int64
                 description: The duration of the span in nanoseconds
               parentSpanId:
                 type: string
@@ -394,7 +396,8 @@ components:
           description: The end time of the span
           format: date-time
         durationNs:
-          type: number
+          type: integer
+          format: int64
           description: The duration of the span in nanoseconds
         parentSpanId:
           type: string

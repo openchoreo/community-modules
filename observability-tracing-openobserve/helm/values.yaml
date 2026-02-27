@@ -76,7 +76,7 @@ opentelemetry-collector:
 adapter:
   image:
     repository: "ghcr.io/openchoreo/observability-tracing-openobserve-adapter"
-    tag: "latest"
+    tag: ""  # Defaults to Chart.AppVersion via the template
   resources:
     limits:
       cpu: 200m

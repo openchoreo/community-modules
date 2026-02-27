@@ -42,7 +42,6 @@ fluent-bit:
           Keep_Log On
           Match kube.*
           Merge_Log Off
-          Replace_Dots On
           tls.verify Off
           Use_Kubelet true
 
@@ -143,6 +142,8 @@ openObserve:
     requests:
       cpu: 20m
       memory: 500Mi
+  service:
+    type: ClusterIP
   storage:
     size: 10Gi
       

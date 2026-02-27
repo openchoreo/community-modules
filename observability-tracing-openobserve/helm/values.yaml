@@ -1,0 +1,104 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+common:
+  openObserveOrg: "default"
+  openObserveStream: "default"
+
+
+openObserve:
+  enabled: true
+  resources:
+    limits:
+      cpu: 500m
+      memory: 1000Mi
+    requests:
+      cpu: 20m
+      memory: 500Mi
+  service:
+    type: ClusterIP
+  storage:
+    size: 10Gi
+
+
+opentelemetry-collector:
+  enabled: true
+
+  clusterRole:
+    create: true
+    rules:
+      - apiGroups: [""]
+        resources: ["pods"]
+        verbs: ["list", "watch"]
+      - apiGroups: ["apps"]
+        resources: ["replicasets"]
+        verbs: ["list","watch"]
+
+  configMap:
+    create: false
+    existingName: "opentelemetry-collector-config"
+
+  extraEnvs:
+    - name: OPENOBSERVE_USERNAME
+      valueFrom:
+        secretKeyRef:
+          name: openobserve-admin-credentials
+          key: username
+    - name: OPENOBSERVE_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: openobserve-admin-credentials
+          key: password
+
+  fullnameOverride: "opentelemetry-collector"
+
+  image:
+    repository: otel/opentelemetry-collector-contrib
+
+  mode: deployment
+
+  resources:
+    limits:
+      cpu: 100m
+      memory: 200Mi
+    requests:
+      cpu: 50m
+      memory: 100Mi
+
+  service:
+    type: LoadBalancer
+      
+
+## -----------------------------------------------------------
+## Values for OpenChoreo specific customizations and workloads
+## -----------------------------------------------------------
+
+adapter:
+  image:
+    repository: "ghcr.io/openchoreo/observability-tracing-openobserve-adapter"
+    tag: "latest"
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 128Mi
+
+
+opentelemetryCollectorCustomizations:
+  installationMode: "singleCluster"
+  openSearchQueue:
+    numConsumers: 5
+    queueSize: 1000
+    sizer: items
+
+  tailSampling:
+    enabled: true
+    decisionWait: 10s
+    numTraces: 100
+    expectedNewTracesPerSec: 10
+    decisionCache:
+      sampledCacheSize: 10000
+      nonSampledCacheSize: 1000
+    spansPerSecond: 10

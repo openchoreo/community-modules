@@ -1,0 +1,21 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v2
+name: observability-tracing-openobserve
+description: A Helm chart for OpenChoreo Tracing Module for OpenObserve
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - openobserve
+  - openchoreo
+  - tracing
+maintainers:
+  - name: OpenChoreo Team
+home: https://github.com/openchoreo/community-modules
+dependencies:
+  - name: opentelemetry-collector
+    repository: https://open-telemetry.github.io/opentelemetry-helm-charts
+    version: 0.140.0
+    condition: opentelemetry-collector.enabled

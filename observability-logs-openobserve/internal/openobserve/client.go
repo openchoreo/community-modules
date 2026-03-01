@@ -304,7 +304,7 @@ func (c *Client) CreateAlert(ctx context.Context, params LogAlertParams) (string
 		return createResp.AlertID, nil
 	}
 
-	return "", nil
+	return "", fmt.Errorf("openobserve create alert response missing alert_id")
 }
 
 // DeleteAlert deletes an alert from OpenObserve by name and returns the backend alert ID.

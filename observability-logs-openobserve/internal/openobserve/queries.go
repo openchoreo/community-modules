@@ -10,6 +10,12 @@ import (
 	"strings"
 )
 
+// quoteIdentifier wraps a SQL identifier (e.g. table/stream name) in double
+// quotes and escapes any embedded double-quote characters to prevent SQL injection.
+func quoteIdentifier(identifier string) string {
+	return `"` + strings.ReplaceAll(identifier, `"`, `""`) + `"`
+}
+
 // escapeSQLString escapes backslashes and single quotes in a value
 // to prevent SQL injection when interpolating into single-quoted SQL strings.
 func escapeSQLString(value string) string {
@@ -19,33 +25,38 @@ func escapeSQLString(value string) string {
 }
 
 // mapOperator maps the API operator string to the OpenObserve SQL operator.
-func mapOperator(op string) string {
+func mapOperator(op string) (string, error) {
 	switch op {
 	case "gt":
-		return ">"
+		return ">", nil
 	case "gte":
-		return ">="
+		return ">=", nil
 	case "lt":
-		return "<"
+		return "<", nil
 	case "lte":
-		return "<="
+		return "<=", nil
 	case "eq":
-		return "="
+		return "=", nil
 	case "neq":
-		return "!="
+		return "!=", nil
 	default:
-		return ">"
+		return "", fmt.Errorf("unsupported operator %q: must be one of gt, gte, lt, lte, eq, neq", op)
 	}
 }
 
 // generateAlertConfig generates an OpenObserve alert configuration as JSON
 func generateAlertConfig(params LogAlertParams, streamName string, logger *slog.Logger) ([]byte, error) {
 	query := fmt.Sprintf(
-		"SELECT count(*) as %s FROM \"%s\" WHERE str_match(log, '%s')",
+		"SELECT count(*) as %s FROM %s WHERE str_match(log, '%s')",
 		"match_count",
-		streamName,
+		quoteIdentifier(streamName),
 		escapeSQLString(params.SearchPattern),
 	)
+
+	sqlOperator, err := mapOperator(params.Operator)
+	if err != nil {
+		return nil, fmt.Errorf("invalid alert operator: %w", err)
+	}
 
 	alertName := ""
 	if params.Name != nil {
@@ -58,7 +69,7 @@ func generateAlertConfig(params LogAlertParams, streamName string, logger *slog.
 		"query":       query,
 		"condition": map[string]interface{}{
 			"column":   "match_count",
-			"operator": mapOperator(params.Operator),
+			"operator": sqlOperator,
 			"value":    params.ThresholdValue,
 		},
 		"duration":     params.Window,
@@ -107,7 +118,7 @@ func generateWorkflowLogsQuery(params WorkflowLogsParams, stream string, logger 
 	}
 
 	// Build SQL
-	sql := "SELECT * FROM " + stream
+	sql := "SELECT * FROM " + quoteIdentifier(stream)
 	if len(conditions) > 0 {
 		sql += " WHERE " + strings.Join(conditions, " AND ")
 	}
@@ -189,7 +200,7 @@ func generateComponentLogsQuery(params ComponentLogsParams, stream string, logge
 	}
 
 	// Build SQL
-	sql := "SELECT * FROM " + stream
+	sql := "SELECT * FROM " + quoteIdentifier(stream)
 	if len(conditions) > 0 {
 		sql += " WHERE " + strings.Join(conditions, " AND ")
 	}

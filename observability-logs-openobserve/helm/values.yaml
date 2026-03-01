@@ -51,7 +51,7 @@ fluent-bit:
           Match *
           Host openobserve
           Port 5080
-          URI /api/default/container-logs/_json
+          URI /api/default/default/_json
           Format json
           http_user ${OPENOBSERVE_USERNAME}
           http_passwd ${OPENOBSERVE_PASSWORD}

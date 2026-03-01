@@ -18,9 +18,28 @@ func escapeSQLString(value string) string {
 	return value
 }
 
+// mapOperator maps the API operator string to the OpenObserve SQL operator.
+func mapOperator(op string) string {
+	switch op {
+	case "gt":
+		return ">"
+	case "gte":
+		return ">="
+	case "lt":
+		return "<"
+	case "lte":
+		return "<="
+	case "eq":
+		return "="
+	case "neq":
+		return "!="
+	default:
+		return ">"
+	}
+}
+
 // generateAlertConfig generates an OpenObserve alert configuration as JSON
 func generateAlertConfig(params LogAlertParams, streamName string, logger *slog.Logger) ([]byte, error) {
-
 	query := fmt.Sprintf(
 		"SELECT count(*) as %s FROM \"%s\" WHERE str_match(log, '%s')",
 		"match_count",
@@ -28,17 +47,22 @@ func generateAlertConfig(params LogAlertParams, streamName string, logger *slog.
 		escapeSQLString(params.SearchPattern),
 	)
 
+	alertName := ""
+	if params.Name != nil {
+		alertName = *params.Name
+	}
+
 	alertConfig := map[string]interface{}{
-		"name":        params.Name,
+		"name":        alertName,
 		"stream_name": streamName,
 		"query":       query,
 		"condition": map[string]interface{}{
 			"column":   "match_count",
-			"operator": ">",
+			"operator": mapOperator(params.Operator),
 			"value":    params.ThresholdValue,
 		},
-		"duration":     params.Duration,
-		"frequency":    params.Frequency,
+		"duration":     params.Window,
+		"frequency":    params.Interval,
 		"is_realtime":  "no",
 		"destinations": []string{"openchoreo_alerts"},
 		"alert_type":   "scheduled",
@@ -46,7 +70,7 @@ func generateAlertConfig(params LogAlertParams, streamName string, logger *slog.
 
 	if logger.Enabled(nil, slog.LevelDebug) {
 		if prettyJSON, err := json.MarshalIndent(alertConfig, "", "    "); err == nil {
-			fmt.Printf("Generated alert config for %s:\n", params.Name)
+			fmt.Printf("Generated alert config for %s:\n", alertName)
 			fmt.Println(string(prettyJSON))
 		}
 	}
@@ -54,16 +78,94 @@ func generateAlertConfig(params LogAlertParams, streamName string, logger *slog.
 	return json.Marshal(alertConfig)
 }
 
-// generateComponentLogsQuery generates the OpenObserve query for application logs
-func generateComponentLogsQuery(params ComponentLogsParams, stream string, logger *slog.Logger) ([]byte, error) {
+// generateWorkflowLogsQuery generates the OpenObserve query for workflow logs
+func generateWorkflowLogsQuery(params WorkflowLogsParams, stream string, logger *slog.Logger) ([]byte, error) {
+	var conditions []string
 
-	conditions := []string{
-		"kubernetes_labels_openchoreo_dev_project_uid = '" + escapeSQLString(params.ProjectID) + "'",
-		"kubernetes_labels_openchoreo_dev_environment_uid = '" + escapeSQLString(params.EnvironmentID) + "'",
+	// Add namespace filter
+	if params.Namespace != "" {
+		conditions = append(conditions, "kubernetes_labels_openchoreo_dev_namespace = '"+escapeSQLString(params.Namespace)+"'")
 	}
 
-	// Add optional component IDs filter. i.e. If this is empty, it returns all components logs in the specified
-	// project and environment
+	// Add workflow run name filter
+	if params.WorkflowRunName != "" {
+		conditions = append(conditions, "kubernetes_labels_workflows_argoproj_io_workflow = '"+escapeSQLString(params.WorkflowRunName)+"'")
+	}
+
+	// Add search phrase filter
+	if params.SearchPhrase != "" {
+		conditions = append(conditions, "log LIKE '%"+escapeSQLString(params.SearchPhrase)+"%'")
+	}
+
+	// Add log levels filter
+	if len(params.LogLevels) > 0 {
+		levelConditions := make([]string, len(params.LogLevels))
+		for i, level := range params.LogLevels {
+			levelConditions[i] = "logLevel = '" + escapeSQLString(level) + "'"
+		}
+		conditions = append(conditions, "("+strings.Join(levelConditions, " OR ")+")")
+	}
+
+	// Build SQL
+	sql := "SELECT * FROM " + stream
+	if len(conditions) > 0 {
+		sql += " WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	// Add sort order
+	if params.SortOrder == "ASC" || params.SortOrder == "asc" {
+		sql += " ORDER BY _timestamp ASC"
+	} else {
+		sql += " ORDER BY _timestamp DESC"
+	}
+
+	// Set default limit if not specified
+	limit := params.Limit
+	if limit <= 0 {
+		limit = 100
+	}
+
+	query := map[string]interface{}{
+		"query": map[string]interface{}{
+			"sql":        sql,
+			"start_time": params.StartTime.UnixMicro(),
+			"end_time":   params.EndTime.UnixMicro(),
+			"from":       0,
+			"size":       limit,
+		},
+		"timeout": 0,
+	}
+
+	if logger.Enabled(nil, slog.LevelDebug) {
+		if prettyJSON, err := json.MarshalIndent(query, "", "    "); err == nil {
+			fmt.Printf("Generated query to fetch %s workflow logs:\n", stream)
+			fmt.Println(string(prettyJSON))
+		}
+	}
+
+	return json.Marshal(query)
+}
+
+// generateComponentLogsQuery generates the OpenObserve query for application logs
+func generateComponentLogsQuery(params ComponentLogsParams, stream string, logger *slog.Logger) ([]byte, error) {
+	var conditions []string
+
+	// Add namespace filter
+	if params.Namespace != "" {
+		conditions = append(conditions, "kubernetes_labels_openchoreo_dev_namespace = '"+escapeSQLString(params.Namespace)+"'")
+	}
+
+	// Add project filter
+	if params.ProjectID != "" {
+		conditions = append(conditions, "kubernetes_labels_openchoreo_dev_project_uid = '"+escapeSQLString(params.ProjectID)+"'")
+	}
+
+	// Add environment filter
+	if params.EnvironmentID != "" {
+		conditions = append(conditions, "kubernetes_labels_openchoreo_dev_environment_uid = '"+escapeSQLString(params.EnvironmentID)+"'")
+	}
+
+	// Add optional component IDs filter
 	if len(params.ComponentIDs) > 0 {
 		componentConditions := make([]string, len(params.ComponentIDs))
 		for i, id := range params.ComponentIDs {
@@ -87,7 +189,10 @@ func generateComponentLogsQuery(params ComponentLogsParams, stream string, logge
 	}
 
 	// Build SQL
-	sql := "SELECT * FROM " + stream + " WHERE " + strings.Join(conditions, " AND ")
+	sql := "SELECT * FROM " + stream
+	if len(conditions) > 0 {
+		sql += " WHERE " + strings.Join(conditions, " AND ")
+	}
 
 	// Add sort order (whitelist to prevent injection since this is not inside quotes)
 	if params.SortOrder == "ASC" || params.SortOrder == "asc" {

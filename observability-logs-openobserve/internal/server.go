@@ -9,6 +9,8 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/openchoreo/community-modules/observability-logs-openobserve/internal/api/gen"
 )
 
 type Server struct {
@@ -18,17 +20,14 @@ type Server struct {
 }
 
 func NewServer(port string, logsHandler *LogsHandler, logger *slog.Logger) *Server {
+	strictHandler := gen.NewStrictHandler(logsHandler, nil)
+
 	mux := http.NewServeMux()
-
-	// Register routes
-	mux.HandleFunc("POST /api/v1/logs/query", logsHandler.HandleLogsQuery)
-
-	mux.HandleFunc("POST /api/v1/alerts/rules/{ruleName}", logsHandler.HandleCreateAlert)
-	mux.HandleFunc("DELETE /api/v1/alerts/rules/{ruleName}", logsHandler.HandleDeleteAlert)
+	handler := gen.HandlerFromMux(strictHandler, mux)
 
 	httpServer := &http.Server{
 		Addr:         ":" + port,
-		Handler:      mux,
+		Handler:      handler,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,

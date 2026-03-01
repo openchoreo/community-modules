@@ -17,6 +17,7 @@ import (
 
 // ComponentLogsParams holds parameters for component log queries.
 type ComponentLogsParams struct {
+	Namespace     string    `json:"namespace"`
 	ComponentIDs  []string  `json:"componentIds,omitempty"`
 	EnvironmentID string    `json:"environmentId"`
 	ProjectID     string    `json:"projectId"`
@@ -28,34 +29,68 @@ type ComponentLogsParams struct {
 	SortOrder     string    `json:"sortOrder"`
 }
 
-// LogAlertParams holds parameters for creating log alerts
+// WorkflowLogsParams holds parameters for workflow log queries.
+type WorkflowLogsParams struct {
+	Namespace       string    `json:"namespace"`
+	WorkflowRunName string    `json:"workflowRunName"`
+	StartTime       time.Time `json:"startTime"`
+	EndTime         time.Time `json:"endTime"`
+	SearchPhrase    string    `json:"searchPhrase"`
+	LogLevels       []string  `json:"logLevels"`
+	Limit           int       `json:"limit"`
+	SortOrder       string    `json:"sortOrder"`
+}
+
+// LogAlertParams holds parameters for creating log alerts.
 type LogAlertParams struct {
-	Name           string `json:"name"`
-	SearchPattern  string `json:"searchPattern"`
-	ThresholdValue int    `json:"thresholdValue"`
-	Duration       int    `json:"duration"`
-	Frequency      int    `json:"frequency"`
+	Name           *string `json:"name"`
+	Namespace      string  `json:"namespace"`
+	ProjectUID     string  `json:"projectUid"`
+	EnvironmentUID string  `json:"environmentUid"`
+	ComponentUID   string  `json:"componentUid"`
+	SearchPattern  string  `json:"searchPattern"`
+	Operator       string  `json:"operator"`
+	ThresholdValue float32 `json:"thresholdValue"`
+	Window         string  `json:"window"`
+	Interval       string  `json:"interval"`
 }
 
-// ComponentLogsEntry represents a parsed log entry
+// ComponentLogsEntry represents a parsed log entry.
 type ComponentLogsEntry struct {
-	Timestamp     time.Time         `json:"timestamp"`
-	Log           string            `json:"log"`
-	LogLevel      string            `json:"logLevel"`
-	ComponentID   string            `json:"componentId"`
-	EnvironmentID string            `json:"environmentId"`
-	ProjectID     string            `json:"projectId"`
-	Namespace     string            `json:"namespace"`
-	PodID         string            `json:"podId"`
-	ContainerName string            `json:"containerName"`
-	Labels        map[string]string `json:"labels"`
+	Timestamp       time.Time `json:"timestamp"`
+	Log             string    `json:"log"`
+	LogLevel        string    `json:"logLevel"`
+	ComponentUID    string    `json:"componentUid"`
+	ComponentName   string    `json:"componentName"`
+	EnvironmentUID  string    `json:"environmentUid"`
+	EnvironmentName string    `json:"environmentName"`
+	ProjectUID      string    `json:"projectUid"`
+	ProjectName     string    `json:"projectName"`
+	Namespace       string    `json:"namespace"`
+	PodName         string    `json:"podName"`
+	PodNamespace    string    `json:"podNamespace"`
+	ContainerName   string    `json:"containerName"`
 }
 
-// ComponentLogsResult represents the result of a component log query
+// ComponentLogsResult represents the result of a component log query.
 type ComponentLogsResult struct {
 	Logs       []ComponentLogsEntry `json:"logs"`
-	TotalCount int                    `json:"totalCount"`
-	Took       int                    `json:"took"`
+	TotalCount int                  `json:"totalCount"`
+	Took       int                  `json:"took"`
+}
+
+// WorkflowLogsEntry represents a parsed workflow log entry.
+type WorkflowLogsEntry struct {
+	Timestamp time.Time              `json:"timestamp"`
+	Log       string                 `json:"log"`
+	Metadata  map[string]interface{} `json:"metadata,omitempty"`
+}
+
+// WorkflowLogsResult represents the result of a workflow log query.
+type WorkflowLogsResult struct {
+	Logs       []WorkflowLogsEntry `json:"logs"`
+	TotalCount int                 `json:"totalCount"`
+	Took       int                 `json:"took"`
 }
 
 type OpenObserveResponse struct {
@@ -163,13 +198,65 @@ func (c *Client) GetComponentLogs(ctx context.Context, params ComponentLogsParam
 	}, nil
 }
 
-// CreateAlert creates an alert in OpenObserve
-func (c *Client) CreateAlert(ctx context.Context, params LogAlertParams) error {
+// GetWorkflowLogs queries OpenObserve for workflow logs filtered by workflow run name.
+func (c *Client) GetWorkflowLogs(ctx context.Context, params WorkflowLogsParams) (*WorkflowLogsResult, error) {
+	queryJSON, err := generateWorkflowLogsQuery(params, c.stream, c.logger)
+	if err != nil {
+		c.logger.Error("Failed to marshal query", slog.Any("error", err))
+		return nil, fmt.Errorf("failed to marshal query: %w", err)
+	}
+
+	openObserveResp, err := c.executeSearchQuery(ctx, queryJSON)
+	if err != nil {
+		return nil, err
+	}
+
+	logs := make([]WorkflowLogsEntry, 0, len(openObserveResp.Hits))
+	for _, hit := range openObserveResp.Hits {
+		timestamp := int64(0)
+		if ts, ok := hit["_timestamp"].(float64); ok {
+			timestamp = int64(ts)
+		}
+		entry := parseWorkflowLogEntry(timestamp, hit)
+		logs = append(logs, entry)
+	}
+
+	return &WorkflowLogsResult{
+		Logs:       logs,
+		TotalCount: openObserveResp.Total,
+		Took:       openObserveResp.Took,
+	}, nil
+}
+
+// parseWorkflowLogEntry parses a workflow log from OpenObserve response.
+func parseWorkflowLogEntry(timestamp int64, source map[string]interface{}) WorkflowLogsEntry {
+	entry := WorkflowLogsEntry{
+		Timestamp: time.UnixMicro(timestamp),
+		Metadata:  make(map[string]interface{}),
+	}
+
+	if log, ok := source["log"].(string); ok {
+		entry.Log = log
+	}
+
+	// Copy all fields except internal ones into metadata
+	for k, v := range source {
+		if k == "log" || k == "_timestamp" {
+			continue
+		}
+		entry.Metadata[k] = v
+	}
+
+	return entry
+}
+
+// CreateAlert creates an alert in OpenObserve and returns the backend alert ID.
+func (c *Client) CreateAlert(ctx context.Context, params LogAlertParams) (string, error) {
 	// Generate alert configuration JSON
 	alertJSON, err := generateAlertConfig(params, c.stream, c.logger)
 	if err != nil {
 		c.logger.Error("Failed to generate alert config", slog.Any("error", err))
-		return fmt.Errorf("failed to generate alert config: %w", err)
+		return "", fmt.Errorf("failed to generate alert config: %w", err)
 	}
 
 	// Build the API endpoint
@@ -179,7 +266,7 @@ func (c *Client) CreateAlert(ctx context.Context, params LogAlertParams) error {
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(alertJSON))
 	if err != nil {
 		c.logger.Error("Failed to create request", slog.Any("error", err))
-		return fmt.Errorf("failed to create request: %w", err)
+		return "", fmt.Errorf("failed to create request: %w", err)
 	}
 
 	// Set headers
@@ -190,7 +277,7 @@ func (c *Client) CreateAlert(ctx context.Context, params LogAlertParams) error {
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		c.logger.Error("Failed to execute alert creation request", slog.Any("error", err))
-		return fmt.Errorf("failed to execute request: %w", err)
+		return "", fmt.Errorf("failed to execute request: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -198,7 +285,7 @@ func (c *Client) CreateAlert(ctx context.Context, params LogAlertParams) error {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		c.logger.Error("Failed to read response body", slog.Any("error", err))
-		return fmt.Errorf("failed to read response body: %w", err)
+		return "", fmt.Errorf("failed to read response body: %w", err)
 	}
 
 	// Check status code
@@ -206,19 +293,27 @@ func (c *Client) CreateAlert(ctx context.Context, params LogAlertParams) error {
 		c.logger.Error("OpenObserve returned error",
 			slog.Int("statusCode", resp.StatusCode),
 			slog.String("body", string(body)))
-		return fmt.Errorf("openobserve returned status %d: %s", resp.StatusCode, string(body))
+		return "", fmt.Errorf("openobserve returned status %d: %s", resp.StatusCode, string(body))
 	}
 
-	return nil
+	// Try to extract alert_id from response
+	var createResp struct {
+		AlertID string `json:"alert_id"`
+	}
+	if err := json.Unmarshal(body, &createResp); err == nil && createResp.AlertID != "" {
+		return createResp.AlertID, nil
+	}
+
+	return "", nil
 }
 
-// DeleteAlert deletes an alert from OpenObserve by name.
+// DeleteAlert deletes an alert from OpenObserve by name and returns the backend alert ID.
 // It first looks up the alert ID by name using the list API, then deletes by ID.
-func (c *Client) DeleteAlert(ctx context.Context, alertName string) error {
+func (c *Client) DeleteAlert(ctx context.Context, alertName string) (string, error) {
 	// Look up the alert ID by name
 	alertID, err := c.getAlertIDByName(ctx, alertName)
 	if err != nil {
-		return fmt.Errorf("failed to find alert %q: %w", alertName, err)
+		return "", fmt.Errorf("failed to find alert %q: %w", alertName, err)
 	}
 
 	// Build the API endpoint
@@ -228,7 +323,7 @@ func (c *Client) DeleteAlert(ctx context.Context, alertName string) error {
 	req, err := http.NewRequestWithContext(ctx, "DELETE", url, nil)
 	if err != nil {
 		c.logger.Error("Failed to create request", slog.Any("error", err))
-		return fmt.Errorf("failed to create request: %w", err)
+		return "", fmt.Errorf("failed to create request: %w", err)
 	}
 
 	// Set headers
@@ -238,7 +333,7 @@ func (c *Client) DeleteAlert(ctx context.Context, alertName string) error {
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		c.logger.Error("Failed to execute alert deletion request", slog.Any("error", err))
-		return fmt.Errorf("failed to execute request: %w", err)
+		return "", fmt.Errorf("failed to execute request: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -246,7 +341,7 @@ func (c *Client) DeleteAlert(ctx context.Context, alertName string) error {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		c.logger.Error("Failed to read response body", slog.Any("error", err))
-		return fmt.Errorf("failed to read response body: %w", err)
+		return "", fmt.Errorf("failed to read response body: %w", err)
 	}
 
 	// Check status code
@@ -254,10 +349,10 @@ func (c *Client) DeleteAlert(ctx context.Context, alertName string) error {
 		c.logger.Error("OpenObserve returned error",
 			slog.Int("statusCode", resp.StatusCode),
 			slog.String("body", string(body)))
-		return fmt.Errorf("openobserve returned status %d: %s", resp.StatusCode, string(body))
+		return "", fmt.Errorf("openobserve returned status %d: %s", resp.StatusCode, string(body))
 	}
 
-	return nil
+	return alertID, nil
 }
 
 // getAlertIDByName looks up an alert's ID by its name using the v2 list alerts API.
@@ -308,7 +403,6 @@ func (c *Client) getAlertIDByName(ctx context.Context, name string) (string, err
 func (c *Client) parseApplicationLogEntry(timestamp int64, source map[string]interface{}) ComponentLogsEntry {
 	entry := ComponentLogsEntry{
 		Timestamp: time.UnixMicro(timestamp),
-		Labels:    make(map[string]string),
 	}
 
 	// Parse fields with type assertions
@@ -318,32 +412,35 @@ func (c *Client) parseApplicationLogEntry(timestamp int64, source map[string]int
 	if logLevel, ok := source["logLevel"].(string); ok {
 		entry.LogLevel = logLevel
 	}
-	if componentID, ok := source["kubernetes_labels_openchoreo_dev_component_uid"].(string); ok {
-		entry.ComponentID = componentID
+	if v, ok := source["kubernetes_labels_openchoreo_dev_component_uid"].(string); ok {
+		entry.ComponentUID = v
 	}
-	if environmentID, ok := source["kubernetes_labels_openchoreo_dev_environment_uid"].(string); ok {
-		entry.EnvironmentID = environmentID
+	if v, ok := source["kubernetes_labels_openchoreo_dev_component_name"].(string); ok {
+		entry.ComponentName = v
 	}
-	if projectID, ok := source["kubernetes_labels_openchoreo_dev_project_uid"].(string); ok {
-		entry.ProjectID = projectID
+	if v, ok := source["kubernetes_labels_openchoreo_dev_environment_uid"].(string); ok {
+		entry.EnvironmentUID = v
 	}
-	if namespace, ok := source["kubernetes_namespace_name"].(string); ok {
-		entry.Namespace = namespace
+	if v, ok := source["kubernetes_labels_openchoreo_dev_environment_name"].(string); ok {
+		entry.EnvironmentName = v
 	}
-	if podID, ok := source["kubernetes_pod_id"].(string); ok {
-		entry.PodID = podID
+	if v, ok := source["kubernetes_labels_openchoreo_dev_project_uid"].(string); ok {
+		entry.ProjectUID = v
 	}
-	if containerName, ok := source["kubernetes_container_name"].(string); ok {
-		entry.ContainerName = containerName
+	if v, ok := source["kubernetes_labels_openchoreo_dev_project_name"].(string); ok {
+		entry.ProjectName = v
 	}
-
-	// Parse labels if present
-	if labels, ok := source["labels"].(map[string]interface{}); ok {
-		for k, v := range labels {
-			if strVal, ok := v.(string); ok {
-				entry.Labels[k] = strVal
-			}
-		}
+	if v, ok := source["kubernetes_labels_openchoreo_dev_namespace"].(string); ok {
+		entry.Namespace = v
+	}
+	if v, ok := source["kubernetes_pod_name"].(string); ok {
+		entry.PodName = v
+	}
+	if v, ok := source["kubernetes_pod_namespace"].(string); ok {
+		entry.PodNamespace = v
+	}
+	if v, ok := source["kubernetes_container_name"].(string); ok {
+		entry.ContainerName = v
 	}
 
 	return entry

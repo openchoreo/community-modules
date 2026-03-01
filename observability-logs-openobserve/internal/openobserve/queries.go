@@ -95,7 +95,7 @@ func generateWorkflowLogsQuery(params WorkflowLogsParams, stream string, logger 
 
 	// Add namespace filter
 	if params.Namespace != "" {
-		conditions = append(conditions, "kubernetes_labels_openchoreo_dev_namespace = '"+escapeSQLString(params.Namespace)+"'")
+		conditions = append(conditions, "kubernetes_namespace_name = 'openchoreo-ci-"+escapeSQLString(params.Namespace)+"'")
 	}
 
 	// Add workflow run name filter
@@ -159,12 +159,14 @@ func generateWorkflowLogsQuery(params WorkflowLogsParams, stream string, logger 
 
 // generateComponentLogsQuery generates the OpenObserve query for application logs
 func generateComponentLogsQuery(params ComponentLogsParams, stream string, logger *slog.Logger) ([]byte, error) {
+	if params.Namespace == "" {
+		return nil, fmt.Errorf("namespace is required for component log queries")
+	}
+
 	var conditions []string
 
 	// Add namespace filter
-	if params.Namespace != "" {
-		conditions = append(conditions, "kubernetes_labels_openchoreo_dev_namespace = '"+escapeSQLString(params.Namespace)+"'")
-	}
+	conditions = append(conditions, "kubernetes_labels_openchoreo_dev_namespace = '"+escapeSQLString(params.Namespace)+"'")
 
 	// Add project filter
 	if params.ProjectID != "" {

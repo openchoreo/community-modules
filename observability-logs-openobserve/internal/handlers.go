@@ -50,7 +50,7 @@ func (h *LogsHandler) QueryLogs(ctx context.Context, request gen.QueryLogsReques
 	// Try to interpret the search scope as a WorkflowSearchScope first
 	// A WorkflowSearchScope is identified by having a workflowRunName field
 	workflowScope, err := request.Body.SearchScope.AsWorkflowSearchScope()
-	if err == nil && workflowScope.WorkflowRunName != nil && strings.TrimSpace(*workflowScope.WorkflowRunName) != "" {
+	if err == nil && workflowScope.WorkflowRunName != nil {
 		if strings.TrimSpace(workflowScope.Namespace) == "" {
 			return gen.QueryLogs400JSONResponse{
 				Title:   ptr(gen.BadRequest),
@@ -61,10 +61,14 @@ func (h *LogsHandler) QueryLogs(ctx context.Context, request gen.QueryLogsReques
 		params := toWorkflowLogsParams(request.Body, &workflowScope)
 		result, err := h.client.GetWorkflowLogs(ctx, params)
 		if err != nil {
-			h.logger.Error("Failed to query workflow logs", slog.Any("error", err))
+			h.logger.Error("Failed to query workflow logs",
+				slog.String("function", "QueryLogs"),
+				slog.String("namespace", workflowScope.Namespace),
+				slog.Any("error", err),
+			)
 			return gen.QueryLogs500JSONResponse{
 				Title:   ptr(gen.InternalServerError),
-				Message: ptr(err.Error()),
+				Message: ptr("internal server error"),
 			}, nil
 		}
 
@@ -84,10 +88,14 @@ func (h *LogsHandler) QueryLogs(ctx context.Context, request gen.QueryLogsReques
 
 	result, err := h.client.GetComponentLogs(ctx, params)
 	if err != nil {
-		h.logger.Error("Failed to query logs", slog.Any("error", err))
+		h.logger.Error("Failed to query component logs",
+			slog.String("function", "QueryLogs"),
+			slog.String("namespace", scope.Namespace),
+			slog.Any("error", err),
+		)
 		return gen.QueryLogs500JSONResponse{
 			Title:   ptr(gen.InternalServerError),
-			Message: ptr(err.Error()),
+			Message: ptr("internal server error"),
 		}, nil
 	}
 
@@ -107,10 +115,14 @@ func (h *LogsHandler) CreateAlertRule(ctx context.Context, request gen.CreateAle
 
 	alertID, err := h.client.CreateAlert(ctx, params)
 	if err != nil {
-		h.logger.Error("Failed to create alert", slog.Any("error", err))
+		h.logger.Error("Failed to create alert",
+			slog.String("function", "CreateAlertRule"),
+			slog.Any("alertName", params.Name),
+			slog.Any("error", err),
+		)
 		return gen.CreateAlertRule500JSONResponse{
 			Title:   ptr(gen.InternalServerError),
-			Message: ptr(err.Error()),
+			Message: ptr("internal server error"),
 		}, nil
 	}
 
@@ -128,10 +140,14 @@ func (h *LogsHandler) CreateAlertRule(ctx context.Context, request gen.CreateAle
 func (h *LogsHandler) DeleteAlertRule(ctx context.Context, request gen.DeleteAlertRuleRequestObject) (gen.DeleteAlertRuleResponseObject, error) {
 	alertID, err := h.client.DeleteAlert(ctx, request.RuleName)
 	if err != nil {
-		h.logger.Error("Failed to delete alert", slog.Any("error", err))
+		h.logger.Error("Failed to delete alert",
+			slog.String("function", "DeleteAlertRule"),
+			slog.String("ruleName", request.RuleName),
+			slog.Any("error", err),
+		)
 		return gen.DeleteAlertRule500JSONResponse{
 			Title:   ptr(gen.InternalServerError),
-			Message: ptr(err.Error()),
+			Message: ptr("internal server error"),
 		}, nil
 	}
 
@@ -321,24 +337,30 @@ func toComponentLogEntry(l *openobserve.ComponentLogsEntry) gen.ComponentLogEntr
 	}
 
 	if l.ComponentUID != "" {
-		uid := parseUUID(l.ComponentUID)
-		entry.Metadata.ComponentUid = &uid
+		if uid, ok := parseUUID(l.ComponentUID); ok {
+			entry.Metadata.ComponentUid = &uid
+		}
 	}
 	if l.ProjectUID != "" {
-		uid := parseUUID(l.ProjectUID)
-		entry.Metadata.ProjectUid = &uid
+		if uid, ok := parseUUID(l.ProjectUID); ok {
+			entry.Metadata.ProjectUid = &uid
+		}
 	}
 	if l.EnvironmentUID != "" {
-		uid := parseUUID(l.EnvironmentUID)
-		entry.Metadata.EnvironmentUid = &uid
+		if uid, ok := parseUUID(l.EnvironmentUID); ok {
+			entry.Metadata.EnvironmentUid = &uid
+		}
 	}
 
 	return entry
 }
 
-func parseUUID(s string) openapi_types.UUID {
-	parsed, _ := uuid.Parse(s)
-	return openapi_types.UUID(parsed)
+func parseUUID(s string) (openapi_types.UUID, bool) {
+	parsed, err := uuid.Parse(s)
+	if err != nil {
+		return openapi_types.UUID{}, false
+	}
+	return openapi_types.UUID(parsed), true
 }
 
 func ptr[T any](v T) *T {

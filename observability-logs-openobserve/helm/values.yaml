@@ -3,7 +3,7 @@
 
 common:
   openObserveOrg: "default"
-  openObserveStream: "container-logs"
+  openObserveStream: "default"
 
 
 fluent-bit:

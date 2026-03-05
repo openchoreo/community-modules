@@ -15,6 +15,23 @@ import (
 	"time"
 )
 
+// extractLogLevel extracts log level from log content using common patterns.
+func extractLogLevel(log string) string {
+	upper := strings.ToUpper(log)
+
+	levels := []string{"ERROR", "FATAL", "SEVERE", "WARN", "WARNING", "INFO", "DEBUG", "UNDEFINED"}
+	for _, level := range levels {
+		if strings.Contains(upper, level) {
+			if level == "WARNING" {
+				return "WARN"
+			}
+			return level
+		}
+	}
+
+	return "INFO"
+}
+
 // ComponentLogsParams holds parameters for component log queries.
 type ComponentLogsParams struct {
 	Namespace     string    `json:"namespace"`
@@ -409,25 +426,27 @@ func (c *Client) parseApplicationLogEntry(timestamp int64, source map[string]int
 	if log, ok := source["log"].(string); ok {
 		entry.Log = log
 	}
-	if logLevel, ok := source["logLevel"].(string); ok {
-		entry.LogLevel = logLevel
+	if logLevel, ok := source["logLevel"].(string); ok && strings.TrimSpace(logLevel) != "" {
+		entry.LogLevel = strings.TrimSpace(logLevel)
+	} else {
+		entry.LogLevel = extractLogLevel(entry.Log)
 	}
 	if v, ok := source["kubernetes_labels_openchoreo_dev_component_uid"].(string); ok {
 		entry.ComponentUID = v
 	}
-	if v, ok := source["kubernetes_labels_openchoreo_dev_component_name"].(string); ok {
+	if v, ok := source["kubernetes_labels_openchoreo_dev_component"].(string); ok {
 		entry.ComponentName = v
 	}
 	if v, ok := source["kubernetes_labels_openchoreo_dev_environment_uid"].(string); ok {
 		entry.EnvironmentUID = v
 	}
-	if v, ok := source["kubernetes_labels_openchoreo_dev_environment_name"].(string); ok {
+	if v, ok := source["kubernetes_labels_openchoreo_dev_environment"].(string); ok {
 		entry.EnvironmentName = v
 	}
 	if v, ok := source["kubernetes_labels_openchoreo_dev_project_uid"].(string); ok {
 		entry.ProjectUID = v
 	}
-	if v, ok := source["kubernetes_labels_openchoreo_dev_project_name"].(string); ok {
+	if v, ok := source["kubernetes_labels_openchoreo_dev_project"].(string); ok {
 		entry.ProjectName = v
 	}
 	if v, ok := source["kubernetes_labels_openchoreo_dev_namespace"].(string); ok {
@@ -436,7 +455,7 @@ func (c *Client) parseApplicationLogEntry(timestamp int64, source map[string]int
 	if v, ok := source["kubernetes_pod_name"].(string); ok {
 		entry.PodName = v
 	}
-	if v, ok := source["kubernetes_pod_namespace"].(string); ok {
+	if v, ok := source["kubernetes_namespace_name"].(string); ok {
 		entry.PodNamespace = v
 	}
 	if v, ok := source["kubernetes_container_name"].(string); ok {

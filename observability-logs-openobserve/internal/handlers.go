@@ -197,7 +197,6 @@ func toWorkflowLogsQueryResponse(result *openobserve.WorkflowLogsResult) gen.Log
 		entry := gen.WorkflowLogEntry{
 			Timestamp: &l.Timestamp,
 			Log:       &l.Log,
-			Metadata:  &l.Metadata,
 		}
 		entries = append(entries, entry)
 	}

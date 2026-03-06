@@ -212,7 +212,7 @@ openSearchSetup:
     repository: "ghcr.io/openchoreo/observability-logs-opensearch-setup"
   openSearchSecretName: ""
 
-  alertingWebhookUrl: "http://observer.openchoreo-observability-plane:8080/api/alerting/webhook/opensearch"
+  alertingWebhookUrl: "http://observer-internal.openchoreo-observability-plane:8081/api/v1alpha1/alerts/webhook"
 
   dataRetentionTime:
     containerLogs: "30d"

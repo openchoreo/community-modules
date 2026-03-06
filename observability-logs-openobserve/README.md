@@ -4,7 +4,8 @@ This module collects container logs using Fluent Bit and stores them in OpenObse
 
 ## Prerequisites
 
-- [OpenChoreo](https://github.com/openchoreo/openchoreo) must be installed with the **observability plane** enabled for this module to work.
+- [OpenChoreo](https://github.com/openchoreo/openchoreo) must be installed with the **observability plane** enabled for this module to work. Deploy the `openchoreo-observability-plane` helm chart with the helm value `observer.logsAdapter.enabled="true"` to enable the observer to fetch data from this logs module.
+
 
 ## Installation
 

@@ -1,0 +1,165 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+
+## -----------------------------------------------------------
+## Values for fluent-bit configuration
+## -----------------------------------------------------------
+fluent-bit:
+  enabled: true
+
+  config:
+    inputs: |
+      [INPUT]
+          Name                tail
+          Tag                 kube.*
+          Path                /var/log/containers/*.log
+          Exclude_Path        /var/log/containers/fluent-bit-*.log
+          DB                  /var/lib/fluent-bit/db/tail-container-logs.db
+          multiline.parser    docker, cri
+          Read_from_Head      On
+          Refresh_Interval    5
+          Skip_Long_Lines     On
+          Buffer_Chunk_Size   32KB
+          Buffer_Max_Size     2MB
+          Mem_Buf_Limit       256MB
+          Inotify_Watcher     false
+
+    filters: |
+      [FILTER]
+          Name                kubernetes
+          Match               kube.*
+          Kube_Tag_Prefix     kube.var.log.containers.
+          Merge_Log           On
+          Keep_Log            Off
+          Labels              On
+          Annotations         Off
+      
+      [FILTER]
+          Name                nest
+          Match               kube.*
+          Operation           lift
+          Nested_under        kubernetes
+          Add_prefix          k8s_
+      
+      [FILTER]
+          Name                modify
+          Match               kube.*
+          RENAME              k8s_labels attributes
+      
+      [FILTER]
+          Name                nest
+          Match               kube.*
+          Operation           nest
+          Wildcard            attributes
+          Nest_under          resource
+
+    outputs: |
+      [OUTPUT]
+          Name                           opentelemetry
+          Match                          kube.*
+          Host                           opentelemetry-collector
+          Port                           4318
+          TLS                            Off
+          TLS.Verify                     Off
+          logs_uri                       /v1/logs
+          Log_response_payload           True
+          logs_resource_metadata_key     resource
+
+  dnsPolicy: ClusterFirstWithHostNet
+  fullnameOverride: "fluent-bit"
+  hostNetwork: true
+
+  extraVolumeMounts:
+    - name: db
+      mountPath: "/var/lib/fluent-bit/db"
+      readOnly: false
+
+  extraVolumes:
+    - name: db
+      hostPath:
+        path: /var/lib/fluent-bit/db
+        type: DirectoryOrCreate
+
+  rbac:
+    nodeAccess: true
+
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    runAsUser: 10000
+
+  testFramework:
+    enabled: false
+
+  initContainers:
+    - name: set-volume-ownership
+      image: busybox
+      command: ["sh", "-c", "chown -R 10000:10000 /var/lib/fluent-bit/db"]
+      resources:
+        limits:
+          cpu: 15m
+          memory: "32Mi"
+        requests:
+          cpu: 10m
+          memory: "24Mi"
+      securityContext:
+        capabilities:
+          drop:
+            - ALL
+        privileged: true
+        readOnlyRootFilesystem: true
+        runAsUser: 0
+      volumeMounts:
+        - name: db
+          mountPath: /var/lib/fluent-bit/db
+
+## -----------------------------------------------------------
+## Values for OpenTelemetry Collector configuration
+## -----------------------------------------------------------
+opentelemetry-collector:
+  enabled: true
+
+  clusterRole:
+    create: true
+    rules:
+      - apiGroups: [""]
+        resources: ["pods"]
+        verbs: ["list", "watch"]
+      - apiGroups: ["apps"]
+        resources: ["replicasets"]
+        verbs: ["list", "watch"]
+
+  configMap:
+    create: false
+    existingName: "opentelemetry-collector-config"
+
+  fullnameOverride: "opentelemetry-collector"
+
+  image:
+    repository: otel/opentelemetry-collector-contrib
+
+  mode: deployment
+
+  resources:
+    limits:
+      cpu: 100m
+      memory: 200Mi
+    requests:
+      cpu: 50m
+      memory: 100Mi
+
+  service:
+    type: LoadBalancer

@@ -1,0 +1,64 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opentelemetry-collector-config
+  namespace: {{ .Release.Namespace }}
+data:
+  relay: |
+    extensions:
+      health_check:
+        endpoint: ${env:MY_POD_IP}:13133
+
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+    exporters:
+      {{- range .Values.moesif.apps }}
+      otlphttp/{{ index . "env-name" }}:
+        endpoint: {{ .endpoint | default "https://api.moesif.net" | quote }}
+        headers:
+          {{- if (index . "api-key") }}
+          X-Api-Token: {{ (index . "api-key") | quote }}
+          {{- end }}
+          {{- if (index . "collector-application-id") }}
+          X-Moesif-Application-Id: {{ (index . "collector-application-id") | quote }}
+          {{- end }}
+      {{- end }}
+
+    connectors:
+      routing:
+        table:
+          {{- range .Values.moesif.apps }}
+          - context: resource
+            statement: route() where resource.attributes["openchoreo.dev/environment"] == {{ index . "env-name" | quote }}
+            pipelines: [ logs/{{ index . "env-name" }} ]
+          {{- end }}
+
+    processors:
+      transform:
+        log_statements:
+          - context: resource
+            statements:
+              - set(attributes["service.name"], attributes["openchoreo.dev/component"])
+
+    service:
+      extensions: [health_check]
+      pipelines:
+        logs/in:
+          receivers: [ otlp ]
+          processors: [ transform ]
+          exporters: [ routing ]
+
+        {{- range .Values.moesif.apps }}
+        logs/{{ index . "env-name" }}:
+          receivers: [ routing ]
+          exporters: [ otlphttp/{{ index . "env-name" }} ]
+        {{- end }}

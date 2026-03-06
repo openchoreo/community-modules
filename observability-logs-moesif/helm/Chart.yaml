@@ -1,0 +1,25 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v2
+name: observability-logs-moesif
+description: A Helm chart for OpenChoreo Moesif Logs module
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - moesif
+  - observability
+  - logs
+home: https://github.com/openchoreo/community-modules
+maintainers:
+  - name: Moesif Team
+dependencies:
+  - name: opentelemetry-collector
+    repository: https://open-telemetry.github.io/opentelemetry-helm-charts
+    version: 0.140.0
+    condition: opentelemetry-collector.enabled
+  - name: fluent-bit
+    repository: https://fluent.github.io/helm-charts
+    version: 0.54.0
+    condition: fluent-bit.enabled

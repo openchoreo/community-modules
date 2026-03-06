@@ -77,6 +77,7 @@ adapter:
   image:
     repository: "ghcr.io/openchoreo/observability-tracing-openobserve-adapter"
     tag: ""  # Defaults to Chart.AppVersion via the template
+  openObserveUrl: "http://openobserve:5080"
   resources:
     limits:
       cpu: 200m
@@ -84,6 +85,7 @@ adapter:
     requests:
       cpu: 50m
       memory: 128Mi
+  serverPort: 9100
 
 
 opentelemetryCollectorCustomizations:

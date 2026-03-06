@@ -30,9 +30,9 @@ spec:
         - containerPort: 9100
         env:
         - name: SERVER_PORT
-          value: "9100"
+          value: {{ .Values.adapter.serverPort | quote }}
         - name: OPENOBSERVE_URL
-          value: "http://openobserve:5080"
+          value: {{ .Values.adapter.openObserveUrl | quote }}
         - name: OPENOBSERVE_ORG
           value: {{ .Values.common.openObserveOrg | quote }}
         - name: OPENOBSERVE_STREAM

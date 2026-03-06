@@ -23,7 +23,7 @@ type Config struct {
 
 // LoadConfig loads configuration from environment variables
 func LoadConfig() (*Config, error) {
-	serverPort := getEnv("SERVER_PORT", "9099")
+	serverPort := getEnv("SERVER_PORT", "9100")
 	openObserveURL := getEnv("OPENOBSERVE_URL", "")
 	openObserveOrg := getEnv("OPENOBSERVE_ORG", "default")
 	openObserveStream := getEnv("OPENOBSERVE_STREAM", "default")

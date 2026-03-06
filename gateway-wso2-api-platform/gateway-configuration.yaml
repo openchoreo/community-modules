@@ -1,0 +1,349 @@
+apiVersion: v1
+data:
+  values.yaml: |
+    commonAnnotations: {}
+    commonLabels: {}
+    fullnameOverride: ""
+    gateway:
+      config:
+        gateway_controller:
+          auth:
+            basic:
+              enabled: true
+              users:
+              - password: admin
+                password_hashed: false
+                roles:
+                - admin
+                username: admin
+          logging:
+            format: json
+            level: debug
+          policies:
+            definitions_path: ./default-policies
+          policyserver:
+            enabled: true
+            port: 18001
+            tls:
+              cert_file: ./certs/server.crt
+              enabled: false
+              key_file: ./certs/server.key
+          router:
+            access_logs:
+              enabled: true
+              format: json
+              json_fields:
+                authority: '%REQ(:AUTHORITY)%'
+                bytes_received: '%BYTES_RECEIVED%'
+                bytes_sent: '%BYTES_SENT%'
+                duration: '%DURATION%'
+                method: '%REQ(:METHOD)%'
+                path: '%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%'
+                protocol: '%PROTOCOL%'
+                request_id: '%REQ(X-REQUEST-ID)%'
+                response_code: '%RESPONSE_CODE%'
+                response_flags: '%RESPONSE_FLAGS%'
+                response_flags_long: '%RESPONSE_FLAGS_LONG%'
+                start_time: '%START_TIME%'
+                upstream_cluster: '%UPSTREAM_CLUSTER%'
+                upstream_host: '%UPSTREAM_HOST%'
+                upstream_service_time: '%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%'
+                user_agent: '%REQ(USER-AGENT)%'
+                x_forwarded_for: '%REQ(X-FORWARDED-FOR)%'
+              text_format: |
+                [%START_TIME%] "%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%" %RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% "%REQ(X-FORWARDED-FOR)%" "%REQ(USER-AGENT)%" "%REQ(X-REQUEST-ID)%" "%REQ(:AUTHORITY)%" "%UPSTREAM_HOST%"
+            downstream_tls:
+              cert_path: ./listener-certs/default-listener.crt
+              ciphers: ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES128-SHA,ECDHE-RSA-AES128-SHA,AES128-GCM-SHA256,AES128-SHA,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-ECDSA-AES256-SHA,ECDHE-RSA-AES256-SHA,AES256-GCM-SHA384,AES256-SHA
+              key_path: ./listener-certs/default-listener.key
+              maximum_protocol_version: TLS1_3
+              minimum_protocol_version: TLS1_2
+            envoy_upstream:
+              timeouts:
+                max_route_timeout_in_seconds: 60
+                route_idle_timeout_in_seconds: 300
+                route_timeout_in_seconds: 60
+              tls:
+                ciphers: ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES128-SHA,ECDHE-RSA-AES128-SHA,AES128-GCM-SHA256,AES128-SHA,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-ECDSA-AES256-SHA,ECDHE-RSA-AES256-SHA,AES256-GCM-SHA384,AES256-SHA
+                custom_certs_path: ./certificates
+                disable_ssl_verification: false
+                maximum_protocol_version: TLS1_3
+                minimum_protocol_version: TLS1_2
+                trusted_cert_path: /etc/ssl/certs/ca-certificates.crt
+                verify_host_name: true
+            gateway_host: '*'
+            https_enabled: true
+            https_port: 8443
+            listener_port: 8080
+            policy_engine:
+              allow_mode_override: true
+              enabled: true
+              failure_mode_allow: false
+              host: policy-engine
+              message_timeout_ms: 60000
+              port: 9001
+              request_header_mode: SEND
+              route_cache_action: RETAIN
+              timeout_ms: 60000
+              tls:
+                ca_path: ""
+                cert_path: ""
+                enabled: false
+                key_path: ""
+                server_name: ""
+                skip_verify: false
+          server:
+            api_port: 9090
+            shutdown_timeout: 15s
+            xds_port: 18000
+          storage:
+            sqlite:
+              path: ./data/gateway.db
+            type: sqlite
+        policy_configurations:
+          jwtauth_v0:
+            keymanagers:
+            - name: ThunderKeyManager
+              issuer: http://thunder.openchoreo.localhost:8080
+              jwks:
+                remote:
+                  uri: http://thunder-service.thunder:8090/oauth2/jwks
+                  skipTlsVerify: true
+            jwkscachettl: "5m"
+            jwksfetchtimeout: "5s"
+            jwksfetchretrycount: 3
+            jwksfetchretryinterval: "2s"
+            allowedalgorithms:
+              - RS256
+              - ES256
+            leeway: "30s"
+            authheaderscheme: Bearer
+            headername: Authorization
+            onfailurestatuscode: 401
+            errormessageformat: json
+            errormessage: "Authentication failed."
+            validateissuer: true
+        policy_engine:
+          admin:
+            allowed_ips:
+            - '*'
+            - 127.0.0.1
+            enabled: true
+            port: 9002
+          config_mode:
+            mode: xds
+          file_config:
+            path: ""
+          logging:
+            format: json
+            level: debug
+          server:
+            extproc_port: 9001
+          xds:
+            cluster: policy-engine-cluster
+            connect_timeout: 10s
+            enabled: true
+            initial_reconnect_delay: 1s
+            max_reconnect_delay: 60s
+            node_id: policy-engine-1
+            request_timeout: 5s
+            server_address: gateway-controller:18001
+            tls:
+              enabled: false
+      configMap:
+        annotations: {}
+        labels: {}
+      controller:
+        controlPlane:
+          host: host.docker.internal
+          port: 8443
+          token:
+            key: token
+            secretName: ""
+            value: ""
+        deployment:
+          affinity: {}
+          annotations: {}
+          enabled: true
+          env:
+            xdsServerAddress: ""
+          extraEnv: []
+          extraVolumeMounts: []
+          extraVolumes: []
+          labels: {}
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /health
+              port: rest
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+          nodeSelector: {}
+          podAnnotations: {}
+          podLabels: {}
+          podSecurityContext: {}
+          priorityClassName: ""
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /health
+              port: rest
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+          replicaCount: 1
+          resources: {}
+          securityContext: {}
+          tolerations: []
+          volumeMountPath: /app/data
+        image:
+          pullPolicy: Always
+          repository: ghcr.io/wso2/api-platform/gateway-controller
+          tag: 0.9.0
+        imagePullSecrets: []
+        logging:
+          level: info
+        persistence:
+          accessModes:
+          - ReadWriteOnce
+          enabled: true
+          existingClaim: ""
+          size: 100Mi
+          storageClass: ""
+        service:
+          annotations: {}
+          labels: {}
+          ports:
+            policy: 18001
+            rest: 9090
+            xds: 18000
+          type: ClusterIP
+        storage:
+          sqlitePath: ./data/gateway.db
+          type: sqlite
+        tls:
+          certManager:
+            commonName: localhost
+            create: true
+            createIssuer: true
+            dnsNames:
+            - localhost
+            - '*.localhost'
+            duration: 2160h
+            issuerRef:
+              kind: Issuer
+              name: selfsigned-issuer
+            renewBefore: 720h
+          certificateProvider: cert-manager
+          enabled: true
+          secret:
+            certKey: tls.crt
+            keyKey: tls.key
+            name: gateway-tls
+        upstreamCerts:
+          configMapName: ""
+          enabled: false
+          secretName: ""
+      policyEngine:
+        deployment:
+          affinity: {}
+          annotations: {}
+          enabled: true
+          env:
+            xdsServerAddress: ""
+          extraEnv: []
+          labels: {}
+          livenessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            tcpSocket:
+              port: ext
+            timeoutSeconds: 5
+          nodeSelector: {}
+          podAnnotations: {}
+          podLabels: {}
+          podSecurityContext: {}
+          priorityClassName: ""
+          readinessProbe:
+            failureThreshold: 3
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            tcpSocket:
+              port: ext
+            timeoutSeconds: 3
+          replicaCount: 1
+          resources: {}
+          securityContext: {}
+          tolerations: []
+        image:
+          pullPolicy: Always
+          repository: ghcr.io/wso2/api-platform/policy-engine
+          tag: 0.9.0
+        imagePullSecrets: []
+        service:
+          annotations: {}
+          labels: {}
+          ports:
+            admin: 9002
+            ext: 9001
+          type: ClusterIP
+      router:
+        deployment:
+          affinity: {}
+          annotations: {}
+          enabled: true
+          env:
+            xdsServerHost: ""
+            xdsServerPort: ""
+          extraEnv: []
+          labels: {}
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /server_info
+              port: admin
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+          nodeSelector: {}
+          podAnnotations: {}
+          podLabels: {}
+          podSecurityContext: {}
+          priorityClassName: ""
+          readinessProbe:
+            failureThreshold: 6
+            httpGet:
+              path: /server_info
+              port: admin
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+          replicaCount: 1
+          resources: {}
+          securityContext: {}
+          tolerations: []
+        image:
+          pullPolicy: Always
+          repository: ghcr.io/wso2/api-platform/gateway-router
+          tag: 0.9.0
+        imagePullSecrets: []
+        service:
+          annotations: {}
+          labels: {}
+          ports:
+            admin: 9901
+            http: 8080
+            https: 8443
+          type: ClusterIP
+    imagePullSecrets: []
+    nameOverride: ""
+    serviceAccount:
+      annotations: {}
+      create: true
+      name: ""
+kind: ConfigMap
+metadata:
+  name: api-platform-operator-gateway-values
+  namespace: openchoreo-data-plane

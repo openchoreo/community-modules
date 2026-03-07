@@ -28,7 +28,7 @@ type TracesQueryParams struct {
 	StartTime time.Time `json:"startTime"`
 	EndTime   time.Time `json:"endTime"`
 	Limit     int       `json:"limit"`
-	Sort      string    `json:"sort"`
+	SortOrder string    `json:"sortOrder"`
 	Scope     Scope     `json:"scope"`
 	TraceID   string    `json:"-"`
 	SpanID    string    `json:"-"`

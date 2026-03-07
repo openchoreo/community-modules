@@ -60,7 +60,7 @@ func generateTracesListQuery(params TracesQueryParams, stream string, logger *sl
 	}
 
 	// Add sort order
-	if params.Sort == "asc" || params.Sort == "ASC" {
+	if params.SortOrder == "asc" || params.SortOrder == "ASC" {
 		sql += " ORDER BY start_time ASC"
 	} else {
 		sql += " ORDER BY start_time DESC"
@@ -112,7 +112,7 @@ func generateSpansListQuery(params TracesQueryParams, stream string, logger *slo
 	)
 
 	// Add sort order
-	if params.Sort == "asc" || params.Sort == "ASC" {
+	if params.SortOrder == "asc" || params.SortOrder == "ASC" {
 		sql += " ORDER BY start_time ASC"
 	} else {
 		sql += " ORDER BY start_time DESC"

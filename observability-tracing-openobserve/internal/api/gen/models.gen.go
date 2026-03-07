@@ -19,10 +19,10 @@ const (
 	Unauthorized        ErrorResponseTitle = "unauthorized"
 )
 
-// Defines values for TracesQueryRequestSort.
+// Defines values for TracesQueryRequestSortOrder.
 const (
-	Asc  TracesQueryRequestSort = "asc"
-	Desc TracesQueryRequestSort = "desc"
+	Asc  TracesQueryRequestSortOrder = "asc"
+	Desc TracesQueryRequestSortOrder = "desc"
 )
 
 // ComponentSearchScope defines model for ComponentSearchScope.
@@ -162,15 +162,15 @@ type TracesQueryRequest struct {
 	Limit       *int                 `json:"limit,omitempty"`
 	SearchScope ComponentSearchScope `json:"searchScope"`
 
-	// Sort The sort order of the query
-	Sort *TracesQueryRequestSort `json:"sort,omitempty"`
+	// SortOrder The sort order of the query
+	SortOrder *TracesQueryRequestSortOrder `json:"sortOrder,omitempty"`
 
 	// StartTime The start time of the query
 	StartTime time.Time `json:"startTime"`
 }
 
-// TracesQueryRequestSort The sort order of the query
-type TracesQueryRequestSort string
+// TracesQueryRequestSortOrder The sort order of the query
+type TracesQueryRequestSortOrder string
 
 // QueryTracesJSONRequestBody defines body for QueryTraces for application/json ContentType.
 type QueryTracesJSONRequestBody = TracesQueryRequest

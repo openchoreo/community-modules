@@ -138,8 +138,8 @@ func toTracesQueryParams(req *gen.TracesQueryRequest) openobserve.TracesQueryPar
 	if req.Limit != nil {
 		params.Limit = *req.Limit
 	}
-	if req.Sort != nil {
-		params.Sort = string(*req.Sort)
+	if req.SortOrder != nil {
+		params.SortOrder = string(*req.SortOrder)
 	}
 	if req.SearchScope.Project != nil {
 		params.Scope.ProjectID = *req.SearchScope.Project

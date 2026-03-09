@@ -34,6 +34,54 @@ metadata:
   namespace: default
 spec:
   schema:
+    types:
+      # --- jwt-auth policy ---
+      # Validates JWT access tokens in API requests.
+      # System-level key manager configuration is set in the gateway-configuration ConfigMap.
+      JwtAuthParameters:
+        issuers: "array<string> | default=[]"
+        audiences: "array<string> | default=[]"
+        requiredScopes: "array<string> | default=[]"
+        requiredClaims: "map<string> | default={}"
+        claimMappings: "map<string> | default={}"
+        authHeaderPrefix: "string | default=Bearer"
+        userIdClaim: "string | default=sub"
+
+      JwtAuthPolicy:
+        name: "string | default=jwt-auth"
+        version: "string | default=v0"
+        params: "JwtAuthParameters | default={}"
+
+      # --- basic-ratelimit policy ---
+      # Restricts request rates using one or more time windows.
+      # duration uses Go duration format (e.g., "1s", "1m", "1h", "24h").
+      RateLimitEntry:
+        requests: "integer"
+        duration: "string"
+
+      BasicRateLimitParameters:
+        limits: "array<RateLimitEntry> | default=[]"
+
+      BasicRateLimitPolicy:
+        name: "string | default=basic-ratelimit"
+        version: "string | default=v0"
+        params: "BasicRateLimitParameters | default={}"
+
+      # --- add-headers policy ---
+      # Adds arbitrary headers to the request or response.
+      HeaderEntry:
+        name: "string"
+        value: "string"
+
+      AddHeadersParameters:
+        requestHeaders: "array<HeaderEntry> | default=[]"
+        responseHeaders: "array<HeaderEntry> | default=[]"
+
+      AddHeadersPolicy:
+        name: "string | default=add-headers"
+        version: "string | default=v0"
+        params: "AddHeadersParameters | default={}"
+
     parameters:
       apiName: "string"
       apiVersion: "string | default=v1.0"
@@ -41,8 +89,9 @@ spec:
       upstreamPort: "integer | default=80"
       operations:
         'array<map<string>> | default=[{"method": "GET", "path": "/*"}, {"method": "POST", "path": "/*"}, {"method": "PUT", "path": "/*"}, {"method": "DELETE", "path": "/*"}, {"method": "PATCH", "path": "/*"}, {"method": "OPTIONS", "path": "/*"}]'
-      policies:
-        "array<map<string>> | default=[]"
+      jwtAuth: "JwtAuthPolicy | default={}"
+      rateLimit: "BasicRateLimitPolicy | default={}"
+      addHeaders: "AddHeadersPolicy | default={}"
 
   creates:
     # --- Backend: kgateway static backend pointing to WSO2 API Platform router ---
@@ -82,7 +131,10 @@ spec:
           upstream:
             main:
               url: http://${metadata.componentName}.${metadata.namespace}:${parameters.upstreamPort}
-          policies: ${parameters.policies}
+          policies:
+            - ${parameters.jwtAuth}
+            - ${parameters.rateLimit}
+            - ${parameters.addHeaders}
           operations: ${parameters.operations}
 
   patches:
@@ -129,7 +181,7 @@ spec:
 apiVersion: openchoreo.dev/v1alpha1
 kind: Component
 metadata:
-  name: greeter-service
+  name: greeting-service
   namespace: default
 spec:
   owner:
@@ -152,18 +204,32 @@ spec:
             path: "/*"
           - method: POST
             path: "/*"
+        jwtAuth: {}
+        rateLimit:
+          params:
+            limits:
+              - requests: 5
+                duration: "1m"
+        addHeaders:
+          params:
+            requestHeaders:
+              - name: X-Gateway
+                value: wso2-api-platform
+            responseHeaders:
+              - name: X-Powered-By
+                value: wso2-api-platform
 
 ---
 # --- Workload ---
 apiVersion: openchoreo.dev/v1alpha1
 kind: Workload
 metadata:
-  name: greeter-service-workload
+  name: greeting-service-workload
   namespace: default
 spec:
   owner:
     projectName: default
-    componentName: greeter-service
+    componentName: greeting-service
 
   endpoints:
     http:
@@ -182,12 +248,12 @@ spec:
 apiVersion: openchoreo.dev/v1alpha1
 kind: ReleaseBinding
 metadata:
-  name: greeter-service-development
+  name: greeting-service-development
   namespace: default
 spec:
   owner:
     projectName: default
-    componentName: greeter-service
+    componentName: greeting-service
 
   environment: development
 
@@ -207,12 +273,12 @@ spec:
 apiVersion: openchoreo.dev/v1alpha1
 kind: ReleaseBinding
 metadata:
-  name: greeter-service-production
+  name: greeting-service-production
   namespace: default
 spec:
   owner:
     projectName: default
-    componentName: greeter-service
+    componentName: greeting-service
 
   environment: production
 
@@ -239,7 +305,7 @@ spec:
 #    apiVersion: gateway.kgateway.dev/v1alpha1
 #    kind: Backend
 #    metadata:
-#      name: greeter-service-api-gw-backend
+#      name: greeting-service-api-gw-backend
 #    spec:
 #      type: Static
 #      static:
@@ -259,7 +325,7 @@ spec:
 #      context: /greeter
 #      upstream:
 #        main:
-#          url: http://greeter-service.<namespace>:9090
+#          url: http://greeting-service.<namespace>:9090
 #      policies: []
 #      operations:
 #        - method: GET
@@ -282,7 +348,7 @@ spec:
 #          backendRefs:
 #            - group: gateway.kgateway.dev           # Replaced: was core/v1 Service
 #              kind: Backend
-#              name: greeter-service-api-gw-backend  # Points to WSO2 router
+#              name: greeting-service-api-gw-backend  # Points to WSO2 router
 #
 # =============================================================================
 # NOTES
@@ -304,15 +370,17 @@ spec:
 #    Policies are defined in the RestApi's policies field. Common examples:
 #
 #    policies:
-#      - policyName: BackendRateLimiting
+#      - policyName: basic-ratelimit
 #        parameters:
-#          limit: "100"
-#          timeUnit: minute
-#      - policyName: CORSPolicy
+#          limits:
+#            - requests: 100
+#              duration: "1m"
+#      - policyName: cors
 #        parameters:
 #          accessControlAllowOrigins: "*"
 #
-#    Refer to WSO2 API Platform documentation for the full list of supported policies.
+#    Refer to https://github.com/wso2/gateway-controllers/tree/main/policies
+#    for the full list of supported policies and their schemas.
 #
 # 4. Context Path:
 #    The context parameter defines the API's base path in the WSO2 router. The trait
@@ -333,10 +401,11 @@ spec:
 #          context: /public
 #          upstreamPort: 8080
 #          policies:
-#            - policyName: BackendRateLimiting
+#            - policyName: basic-ratelimit
 #              parameters:
-#                limit: "100"
-#                timeUnit: minute
+#                limits:
+#                  - requests: 100
+#                    duration: "1m"
 #      - name: api-configuration
 #        instanceName: admin-api
 #        parameters:
@@ -344,7 +413,8 @@ spec:
 #          context: /admin
 #          upstreamPort: 8080
 #          policies:
-#            - policyName: BackendRateLimiting
+#            - policyName: basic-ratelimit
 #              parameters:
-#                limit: "10"
-#                timeUnit: minute
+#                limits:
+#                  - requests: 10
+#                    duration: "1m"

@@ -200,12 +200,18 @@ kubectl wait --for=condition=ready pod \
   --timeout=300s
 ```
 
-### Step 2: Create the WSO2 APIGateway CR
+### Step 2: Apply the Gateway Configuration and Create the WSO2 APIGateway CR
 
-The operator is now running but no gateway instance exists yet. Create an `APIGateway` CR (WSO2's CRD — `apigateways.gateway.api-platform.wso2.com`, not the Kubernetes Gateway API `Gateway`) to instruct the operator to deploy the gateway components (router, policy engine):
+The operator is now running but no gateway instance exists yet. First, apply the gateway configuration ConfigMap that defines the gateway's runtime settings (router, policy engine, TLS, logging, etc.):
 
 ```bash
-kubectl apply -n dp-default-default-development-f8e58905 -f - <<EOF
+kubectl apply -f gateway-configuration.yaml
+```
+
+Then, create an `APIGateway` CR (WSO2's CRD — `apigateways.gateway.api-platform.wso2.com`, not the Kubernetes Gateway API `Gateway`) to instruct the operator to deploy the gateway components (router, policy engine). The CR references the ConfigMap created above via `configRef`:
+
+```bash
+kubectl apply -n openchoreo-data-plane -f - <<EOF
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: APIGateway
 metadata:
@@ -270,29 +276,42 @@ Expected pods:
 
 ### Step 4: Grant RBAC for WSO2 API Platform CRDs
 
-The data plane service account needs permissions to manage WSO2 API Platform resources. Patch the ClusterRole:
+The data plane service account needs permissions to manage WSO2 API Platform and kgateway Backend resources. Create a dedicated ClusterRole and bind it to the data plane service account:
 
 ```bash
-kubectl patch clusterrole cluster-agent-dataplane-openchoreo-data-plane --type=json \
-  -p '[{"op":"add","path":"/rules/-","value":{
-    "apiGroups":["gateway.api-platform.wso2.com"],
-    "resources":["restapis","apigateways"],
-    "verbs":["*"]
-  }}]'
+kubectl apply -f - <<EOF
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: wso2-api-platform-gateway-module
+rules:
+  - apiGroups: ["gateway.api-platform.wso2.com"]
+    resources: ["restapis", "apigateways"]
+    verbs: ["*"]
+  - apiGroups: ["gateway.kgateway.dev"]
+    resources: ["backends"]
+    verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: wso2-api-platform-gateway-module
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: wso2-api-platform-gateway-module
+subjects:
+  - kind: ServiceAccount
+    name: cluster-agent-dataplane
+    namespace: openchoreo-data-plane
+EOF
 ```
 
-Also grant permissions for kgateway Backend resources if not already present:
-
-```bash
-kubectl patch clusterrole cluster-agent-dataplane-openchoreo-data-plane --type=json \
-  -p '[{"op":"add","path":"/rules/-","value":{
-    "apiGroups":["gateway.kgateway.dev"],
-    "resources":["backends"],
-    "verbs":["*"]
-  }}]'
-```
-
-> **Note:** Without these, the Release controller will fail to apply RestApi and Backend resources to the data plane with a "forbidden" error.
+> **Note:** Without these permissions, the Release controller will fail to apply RestApi and Backend resources to the data plane with a "forbidden" error. To remove these permissions later, simply delete the ClusterRole and ClusterRoleBinding:
+> ```bash
+> kubectl delete clusterrole wso2-api-platform-gateway-module
+> kubectl delete clusterrolebinding wso2-api-platform-gateway-module
+> ```
 
 ### Step 5: Deploy and Invoke the Greeter Service
 
@@ -412,10 +431,11 @@ spec:
           - method: POST
             path: "/*"
         policies:
-          - policyName: BackendRateLimiting
+          - policyName: basic-ratelimit
             parameters:
-              limit: "100"
-              timeUnit: minute
+              limits:
+                - requests: 100
+                  duration: "1m"
 ```
 
 ---
@@ -502,17 +522,26 @@ Policies are configured in the `RestApi` resource's `policies` field. Common pol
 
 ```yaml
 policies:
-  - policyName: BackendRateLimiting
+  - policyName: basic-ratelimit
     parameters:
-      limit: "100"
-      timeUnit: minute
-  - policyName: CORSPolicy
+      limits:
+        - requests: 100
+          duration: "1m"
+        - requests: 1000
+          duration: "1h"
+  - policyName: cors
     parameters:
-      accessControlAllowOrigins: "*"
-      accessControlAllowMethods: "GET,POST,PUT,DELETE"
+      allowedOrigins:
+        - "*"
+      allowedMethods:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+        - OPTIONS
 ```
 
-Refer to the [WSO2 API Platform documentation](https://wso2.com/api-platform-for-k8s/) for the full list of supported policies.
+Refer to the [WSO2 API Platform policy definitions](https://github.com/wso2/gateway-controllers/tree/main/policies) for the full list of supported policies and their schemas.
 
 ---
 
@@ -691,15 +720,24 @@ traits:
       apiName: My Service API
       context: /my-service
       policies:
-        - policyName: BackendRateLimiting
+        - policyName: basic-ratelimit
           parameters:
-            limit: "100"
-            timeUnit: minute
-        - policyName: CORSPolicy
+            limits:
+              - requests: 100
+                duration: "1m"
+              - requests: 1000
+                duration: "1h"
+        - policyName: cors
           parameters:
-            accessControlAllowOrigins: "https://app.example.com"
-            accessControlAllowMethods: "GET,POST"
-            accessControlAllowHeaders: "Authorization,Content-Type"
+            allowedOrigins:
+              - "https://app.example.com"
+            allowedMethods:
+              - GET
+              - POST
+            allowedHeaders:
+              - Authorization
+              - Content-Type
+            allowCredentials: true
 ```
 
 ### Cloud Provider Load Balancer Configuration

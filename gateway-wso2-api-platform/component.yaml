@@ -1,0 +1,253 @@
+# =============================================================================
+# USAGE EXAMPLE
+# =============================================================================
+#
+# The following resources demonstrate how to use the api-configuration trait
+# with the standard OpenChoreo service ComponentType. The ComponentType at
+# samples/getting-started/component-types/service.yaml already includes
+# "api-configuration" in its allowedTraits.
+
+# --- Component: Using WSO2 API Platform for API management ---
+---
+apiVersion: openchoreo.dev/v1alpha1
+kind: Component
+metadata:
+  name: greeting-service
+  namespace: default
+spec:
+  owner:
+    projectName: default
+  autoDeploy: true
+  componentType:
+    kind: ComponentType
+    name: deployment/service
+
+  traits:
+    - name: api-configuration
+      instanceName: greeter-api
+      parameters:
+        apiName: Greeter Service API
+        apiVersion: v1.0
+        context: /greeter
+        upstreamPort: 9090
+        operations:
+          - method: GET
+            path: "/*"
+          - method: POST
+            path: "/*"
+        jwtAuth:
+          name: jwt-auth
+          version: v0
+        rateLimit:
+          params:
+            limits:
+              - requests: 5
+                duration: "1m"
+        addHeaders:
+          params:
+            requestHeaders:
+              - name: X-Gateway
+                value: wso2-api-platform
+            responseHeaders:
+              - name: X-Powered-By
+                value: wso2-api-platform
+
+---
+# --- Workload ---
+apiVersion: openchoreo.dev/v1alpha1
+kind: Workload
+metadata:
+  name: greeting-service-workload
+  namespace: default
+spec:
+  owner:
+    projectName: default
+    componentName: greeting-service
+
+  endpoints:
+    http:
+      type: HTTP
+      port: 9090
+      visibility: [external]
+
+  container:
+    image: "ghcr.io/openchoreo/samples/greeter-service:latest"
+    args:
+      - --port
+      - "9090"
+
+---
+# --- ReleaseBinding: Development environment ---
+apiVersion: openchoreo.dev/v1alpha1
+kind: ReleaseBinding
+metadata:
+  name: greeting-service-development
+  namespace: default
+spec:
+  owner:
+    projectName: default
+    componentName: greeting-service
+
+  environment: development
+
+  componentTypeEnvOverrides:
+    replicas: 1
+    imagePullPolicy: IfNotPresent
+    resources:
+      requests:
+        cpu: "50m"
+        memory: "128Mi"
+      limits:
+        cpu: "200m"
+        memory: "256Mi"
+
+---
+# --- ReleaseBinding: Production environment ---
+apiVersion: openchoreo.dev/v1alpha1
+kind: ReleaseBinding
+metadata:
+  name: greeting-service-production
+  namespace: default
+spec:
+  owner:
+    projectName: default
+    componentName: greeting-service
+
+  environment: production
+
+  componentTypeEnvOverrides:
+    replicas: 3
+    imagePullPolicy: IfNotPresent
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "512Mi"
+      limits:
+        cpu: "2000m"
+        memory: "2Gi"
+
+# =============================================================================
+# RENDERED OUTPUT (what gets applied to the data plane)
+# =============================================================================
+#
+# With the api-configuration trait applied, the following resources are created
+# or patched:
+#
+# 1. Backend: kgateway static backend → WSO2 router
+#    ---
+#    apiVersion: gateway.kgateway.dev/v1alpha1
+#    kind: Backend
+#    metadata:
+#      name: greeting-service-api-gw-backend
+#    spec:
+#      type: Static
+#      static:
+#        hosts:
+#          - host: api-platform-default-gateway-router.openchoreo-data-plane
+#            port: 8080
+#
+# 2. RestApi: WSO2 API Platform API definition
+#    ---
+#    apiVersion: gateway.api-platform.wso2.com/v1alpha1
+#    kind: RestApi
+#    metadata:
+#      name: <release-name>
+#    spec:
+#      displayName: Greeter Service API
+#      version: v1.0
+#      context: /greeter
+#      upstream:
+#        main:
+#          url: http://greeting-service.<namespace>:9090
+#      policies: []
+#      operations:
+#        - method: GET
+#          path: "/*"
+#        - method: POST
+#          path: "/*"
+#
+# 3. Patched HTTPRoute (backendRef replaced, URL rewrite updated):
+#    ---
+#    apiVersion: gateway.networking.k8s.io/v1
+#    kind: HTTPRoute
+#    spec:
+#      rules:
+#        - filters:
+#            - type: URLRewrite
+#              urlRewrite:
+#                path:
+#                  type: ReplacePrefixMatch
+#                  replacePrefixMatch: /greeter      # Updated to API context
+#          backendRefs:
+#            - group: gateway.kgateway.dev           # Replaced: was core/v1 Service
+#              kind: Backend
+#              name: greeting-service-api-gw-backend  # Points to WSO2 router
+#
+# =============================================================================
+# NOTES
+# =============================================================================
+#
+# 1. WSO2 API Platform Does Not Support Gateway API:
+#    Unlike Kong, Traefik, and Envoy Gateway, WSO2 API Platform has its own CRDs
+#    (RestApi, Gateway) and does not implement the Kubernetes Gateway API. This
+#    module keeps kgateway as the Gateway API controller and routes traffic through
+#    the WSO2 router via a kgateway Backend resource.
+#
+# 2. Traffic Path:
+#    Client → kgateway (TLS, hostname routing) → WSO2 Router (policies) → Service → Pod
+#    The WSO2 router applies API management policies before forwarding to the
+#    upstream service. The RestApi's upstream.main.url points to the component's
+#    Kubernetes Service directly.
+#
+# 3. WSO2 Policies:
+#    Policies are defined in the RestApi's policies field. Common examples:
+#
+#    policies:
+#      - policyName: basic-ratelimit
+#        parameters:
+#          limits:
+#            - requests: 100
+#              duration: "1m"
+#      - policyName: cors
+#        parameters:
+#          accessControlAllowOrigins: "*"
+#
+#    Refer to https://github.com/wso2/gateway-controllers/tree/main/policies
+#    for the full list of supported policies and their schemas.
+#
+# 4. Context Path:
+#    The context parameter defines the API's base path in the WSO2 router. The trait
+#    patches the HTTPRoute's URLRewrite filter to use this context path, ensuring
+#    kgateway rewrites the request path before forwarding to the WSO2 router.
+#    The WSO2 router then matches the context path to the RestApi and forwards
+#    to the upstream service.
+#
+# 5. Multiple APIs per Component:
+#    You can attach multiple api-configuration trait instances to a single component
+#    for different endpoints, each with its own context path and policies:
+#
+#    traits:
+#      - name: api-configuration
+#        instanceName: public-api
+#        parameters:
+#          apiName: Public API
+#          context: /public
+#          upstreamPort: 8080
+#          policies:
+#            - policyName: basic-ratelimit
+#              parameters:
+#                limits:
+#                  - requests: 100
+#                    duration: "1m"
+#      - name: api-configuration
+#        instanceName: admin-api
+#        parameters:
+#          apiName: Admin API
+#          context: /admin
+#          upstreamPort: 8080
+#          policies:
+#            - policyName: basic-ratelimit
+#              parameters:
+#                limits:
+#                  - requests: 10
+#                    duration: "1m"

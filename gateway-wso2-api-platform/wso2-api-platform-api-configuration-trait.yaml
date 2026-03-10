@@ -1,36 +1,46 @@
 # WSO2 API Platform API Configuration Trait for OpenChoreo
 #
-# This trait enables WSO2 API Platform API management features on components:
-#   - Creates a kgateway Backend pointing to the WSO2 API Platform router
-#   - Creates a WSO2 RestApi resource defining the API (context, version, upstream, operations, policies)
-#   - Patches the HTTPRoute backendRef to route traffic through the WSO2 router
-#   - Patches the HTTPRoute URL rewrite to use the API context path
+# This trait adds WSO2 API Platform API management to components by:
+#   - Creating a kgateway Backend pointing to the WSO2 API Platform router
+#   - Creating a WSO2 RestApi resource that defines the API in the gateway
+#   - Patching the HTTPRoute backendRef to route traffic through the WSO2 router
+#   - Patching the HTTPRoute URL rewrite to use the derived API context path
 #
-# Unlike other gateway modules (Kong, Traefik, Envoy Gateway), WSO2 API Platform does NOT
-# implement the Kubernetes Gateway API. It runs alongside the default kgateway, which handles
-# Gateway/HTTPRoute resources. Traffic is redirected through the WSO2 router via a kgateway
-# Backend resource.
+# WSO2 API Platform does not implement the Kubernetes Gateway API. It runs alongside
+# the default kgateway, which continues to handle Gateway/HTTPRoute resources. Traffic
+# is redirected through the WSO2 router via a kgateway Backend resource.
+#
+# Derived values (not user-configurable):
+#   - displayName: <environment>-<namespace>-<componentName>
+#   - context:     /<environment>-<namespace>-<componentName>
+#   - version:     v1.0
+#   - upstream:    http://<componentName>.<namespace>:<first endpoint port>
+#   - operations:  All methods (GET, POST, PUT, PATCH, DELETE, OPTIONS) on /*
+#
+# Optional policies (disabled by default):
+#   - jwtAuth:    JWT authentication (key manager config in gateway-configuration ConfigMap)
+#   - rateLimit:  Request rate limiting with configurable time windows
+#   - addHeaders: Custom request/response headers
 #
 # Prerequisites:
-#   - WSO2 API Platform enabled in the data plane (see README.md)
-#   - WSO2 API Platform CRDs available (RestApi, Gateway)
+#   - WSO2 API Platform gateway installed in the data plane (see README.md)
+#   - WSO2 API Platform CRDs available (RestApi, APIGateway)
 #   - kgateway installed (default) with Backend CRD support
 #   - ComponentType must have HTTPRoute resources for the patch to target
-#   - "api-configuration" must be listed in the ComponentType's allowedTraits
+#   - "api-management" must be listed in the ComponentType's allowedTraits
+#   - Component must have at least one endpoint defined in its Workload
 #
 # Usage:
-#   1. Enable WSO2 API Platform in the data plane Helm chart (api-platform.enabled=true)
-#   2. Add "api-configuration" to the ComponentType's allowedTraits
-#   3. Reference it in the Component's traits with desired parameters
-#
-# See the end of this file for a complete usage example with Component, Workload,
-# and ReleaseBinding.
+#   1. Apply this trait to the control plane
+#   2. Add "api-management" to the ComponentType's allowedTraits
+#   3. Reference the trait in the Component's traits with desired policy parameters
+#   See component.yaml for a complete usage example.
 
 ---
 apiVersion: openchoreo.dev/v1alpha1
 kind: Trait
 metadata:
-  name: api-configuration
+  name: api-management
   namespace: default
 spec:
   schema:
@@ -38,19 +48,8 @@ spec:
       # --- jwt-auth policy ---
       # Validates JWT access tokens in API requests.
       # System-level key manager configuration is set in the gateway-configuration ConfigMap.
-      JwtAuthParameters:
-        issuers: "array<string> | default=[]"
-        audiences: "array<string> | default=[]"
-        requiredScopes: "array<string> | default=[]"
-        requiredClaims: "map<string> | default={}"
-        claimMappings: "map<string> | default={}"
-        authHeaderPrefix: "string | default=Bearer"
-        userIdClaim: "string | default=sub"
-
-      JwtAuthPolicy:
-        name: "string | default=jwt-auth"
-        version: "string | default=v0"
-        params: "JwtAuthParameters | default={}"
+      JwtAuthConfig:
+        enabled: "boolean | default=false"
 
       # --- basic-ratelimit policy ---
       # Restricts request rates using one or more time windows.
@@ -59,13 +58,9 @@ spec:
         requests: "integer"
         duration: "string"
 
-      BasicRateLimitParameters:
+      RateLimitConfig:
+        enabled: "boolean | default=false"
         limits: "array<RateLimitEntry> | default=[]"
-
-      BasicRateLimitPolicy:
-        name: "string | default=basic-ratelimit"
-        version: "string | default=v0"
-        params: "BasicRateLimitParameters | default={}"
 
       # --- add-headers policy ---
       # Adds arbitrary headers to the request or response.
@@ -73,25 +68,15 @@ spec:
         name: "string"
         value: "string"
 
-      AddHeadersParameters:
+      AddHeadersConfig:
+        enabled: "boolean | default=false"
         requestHeaders: "array<HeaderEntry> | default=[]"
         responseHeaders: "array<HeaderEntry> | default=[]"
 
-      AddHeadersPolicy:
-        name: "string | default=add-headers"
-        version: "string | default=v0"
-        params: "AddHeadersParameters | default={}"
-
     parameters:
-      apiName: "string"
-      apiVersion: "string | default=v1.0"
-      context: "string"
-      upstreamPort: "integer | default=80"
-      operations:
-        'array<map<string>> | default=[{"method": "GET", "path": "/*"}, {"method": "POST", "path": "/*"}, {"method": "PUT", "path": "/*"}, {"method": "DELETE", "path": "/*"}, {"method": "PATCH", "path": "/*"}, {"method": "OPTIONS", "path": "/*"}]'
-      jwtAuth: "JwtAuthPolicy | default={}"
-      rateLimit: "BasicRateLimitPolicy | default={}"
-      addHeaders: "AddHeadersPolicy | default={}"
+      jwtAuth: "JwtAuthConfig | default={}"
+      rateLimit: "RateLimitConfig | default={}"
+      addHeaders: "AddHeadersConfig | default={}"
 
   creates:
     # --- Backend: kgateway static backend pointing to WSO2 API Platform router ---
@@ -112,12 +97,10 @@ spec:
                 port: 8080
 
     # --- RestApi: WSO2 API Platform API definition ---
-    # This resource defines the API in WSO2 API Platform. The operator reconciles it
-    # into the WSO2 router's configuration, enabling policy enforcement (rate limiting,
-    # auth, etc.) on traffic matching the context path.
-    #
-    # The upstream.main.url points to the component's Kubernetes Service, which is where
-    # the WSO2 router forwards traffic after applying policies.
+    # Registers the API in the WSO2 gateway. The displayName, context, and version are
+    # derived from the component metadata. The upstream URL points to the component's
+    # Service using the first endpoint port. Policies are conditionally included based
+    # on the enabled flags in the trait parameters.
     - template:
         apiVersion: gateway.api-platform.wso2.com/v1alpha1
         kind: RestApi
@@ -125,17 +108,30 @@ spec:
           name: ${metadata.name}
           namespace: ${metadata.namespace}
         spec:
-          displayName: ${parameters.apiName}
-          version: ${parameters.apiVersion}
-          context: ${parameters.context}
+          displayName: ${metadata.environmentName}-${metadata.componentNamespace}-${metadata.componentName}
+          version: v1.0
+          context: /${metadata.environmentName}-${metadata.componentNamespace}-${metadata.componentName}
           upstream:
             main:
-              url: http://${metadata.componentName}.${metadata.namespace}:${parameters.upstreamPort}
-          policies:
-            - ${parameters.jwtAuth}
-            - ${parameters.rateLimit}
-            - ${parameters.addHeaders}
-          operations: ${parameters.operations}
+              url: http://${metadata.componentName}.${metadata.namespace}:${workload.toServicePorts()[0].port}
+          policies: >-
+            ${[]
+              + (parameters.jwtAuth.enabled ? [{"name": "jwt-auth", "version": "v0"}] : [])
+              + (parameters.rateLimit.enabled ? [{"name": "basic-ratelimit", "version": "v0", "params": {"limits": parameters.rateLimit.limits}}] : [])
+              + (parameters.addHeaders.enabled ? [{"name": "add-headers", "version": "v0", "params": {"requestHeaders": parameters.addHeaders.requestHeaders, "responseHeaders": parameters.addHeaders.responseHeaders}}] : [])}
+          operations:
+            - method: GET
+              path: "/*"
+            - method: POST
+              path: "/*"
+            - method: PUT
+              path: "/*"
+            - method: PATCH
+              path: "/*"
+            - method: DELETE
+              path: "/*"
+            - method: OPTIONS
+              path: "/*"
 
   patches:
     # --- Patch HTTPRoute: Replace backendRef with WSO2 router Backend ---
@@ -157,14 +153,13 @@ spec:
             kind: Backend
             name: ${metadata.componentName}-api-gw-backend
 
-    # --- Patch HTTPRoute: Update URL rewrite to API context path ---
-    # Updates the URLRewrite filter's replacePrefixMatch to the API's context path.
-    # This ensures the WSO2 router receives the correct path prefix to match the
-    # RestApi's context configuration.
+    # --- Patch HTTPRoute: Update URL rewrite to derived API context path ---
+    # Sets the replacePrefixMatch to /<environment>-<namespace>-<componentName>,
+    # matching the RestApi context so the WSO2 router can route correctly.
         - op: replace
           path: /spec/rules/0/filters/0/urlRewrite/path
           value:
             type: ReplacePrefixMatch
-            replacePrefixMatch: ${parameters.context}
+            replacePrefixMatch: /${metadata.environmentName}-${metadata.componentNamespace}-${metadata.componentName}
 
 ---

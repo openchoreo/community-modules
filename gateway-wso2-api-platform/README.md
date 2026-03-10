@@ -308,6 +308,7 @@ EOF
 ```
 
 > **Note:** Without these permissions, the Release controller will fail to apply RestApi and Backend resources to the data plane with a "forbidden" error. To remove these permissions later, simply delete the ClusterRole and ClusterRoleBinding:
+>
 > ```bash
 > kubectl delete clusterrole wso2-api-platform-gateway-module
 > kubectl delete clusterrolebinding wso2-api-platform-gateway-module

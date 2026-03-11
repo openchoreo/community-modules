@@ -10,6 +10,10 @@ on:
       - "**/init/**"
       - "**/helm/**"
       - "**/module.yaml"
+      - "**/*.go"
+      - "**/go.mod"
+      - "**/go.sum"
+      - "**/Dockerfile"
 
 permissions:
   contents: read
@@ -77,3 +81,74 @@ jobs:
 
           echo ""
           echo "All changed modules have version bumps. ✓"
+
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install yq
+        uses: mikefarah/yq@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker images for changed modules
+        run: |
+          set -euo pipefail
+
+          # Get the list of changed files compared to the base branch
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+          echo ""
+
+          BUILD_COUNT=0
+
+          for module_dir in */; do
+            module="${module_dir%/}"
+
+            # Skip if this module has no module.yaml
+            if [ ! -f "${module}/module.yaml" ]; then
+              continue
+            fi
+
+            # Check if any files in this module were changed
+            if ! echo "$CHANGED_FILES" | grep -q "^${module}/"; then
+              continue
+            fi
+
+            image_count=$(yq '.images | length' "${module}/module.yaml")
+            if [ "$image_count" = "0" ] || [ "$image_count" = "null" ]; then
+              echo "Skipping ${module}: no images defined"
+              continue
+            fi
+
+            for i in $(seq 0 $((image_count - 1))); do
+              image_name=$(yq ".images[${i}].name" "${module}/module.yaml")
+              context=$(yq ".images[${i}].context" "${module}/module.yaml")
+              dockerfile=$(yq ".images[${i}].dockerfile" "${module}/module.yaml")
+
+              echo "::group::Building ${image_name} (${module})"
+              docker buildx build \
+                --platform linux/amd64 \
+                --load \
+                -t "${image_name}:pr-validation" \
+                -f "${module}/${dockerfile}" \
+                "${module}/${context}"
+              echo "::endgroup::"
+
+              BUILD_COUNT=$((BUILD_COUNT + 1))
+            done
+          done
+
+          echo ""
+          if [ "$BUILD_COUNT" -eq 0 ]; then
+            echo "No Docker images to build for changed modules."
+          else
+            echo "Successfully built ${BUILD_COUNT} image(s). ✓"
+          fi

@@ -38,45 +38,84 @@
 
 ---
 apiVersion: openchoreo.dev/v1alpha1
-kind: Trait
+kind: ClusterTrait
 metadata:
   name: api-management
-  namespace: default
 spec:
-  schema:
-    types:
-      # --- jwt-auth policy ---
-      # Validates JWT access tokens in API requests.
-      # System-level key manager configuration is set in the gateway-configuration ConfigMap.
-      JwtAuthConfig:
-        enabled: "boolean | default=false"
+  parameters:
+    openAPIV3Schema:
+      type: object
+      $defs:
+        # --- jwt-auth policy ---
+        # Validates JWT access tokens in API requests.
+        # System-level key manager configuration is set in the gateway-configuration ConfigMap.
+        JwtAuthConfig:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+              default: false
 
-      # --- basic-ratelimit policy ---
-      # Restricts request rates using one or more time windows.
-      # duration uses Go duration format (e.g., "1s", "1m", "1h", "24h").
-      RateLimitEntry:
-        requests: "integer"
-        duration: "string"
+        # --- basic-ratelimit policy ---
+        # Restricts request rates using one or more time windows.
+        # duration uses Go duration format (e.g., "1s", "1m", "1h", "24h").
+        RateLimitEntry:
+          type: object
+          properties:
+            requests:
+              type: integer
+            duration:
+              type: string
 
-      RateLimitConfig:
-        enabled: "boolean | default=false"
-        limits: "array<RateLimitEntry> | default=[]"
+        RateLimitConfig:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+              default: false
+            limits:
+              type: array
+              items:
+                $ref: "#/$defs/RateLimitEntry"
+              default: []
 
-      # --- add-headers policy ---
-      # Adds arbitrary headers to the request or response.
-      HeaderEntry:
-        name: "string"
-        value: "string"
+        # --- add-headers policy ---
+        # Adds arbitrary headers to the request or response.
+        HeaderEntry:
+          type: object
+          properties:
+            name:
+              type: string
+            value:
+              type: string
 
-      AddHeadersConfig:
-        enabled: "boolean | default=false"
-        requestHeaders: "array<HeaderEntry> | default=[]"
-        responseHeaders: "array<HeaderEntry> | default=[]"
+        AddHeadersConfig:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+              default: false
+            requestHeaders:
+              type: array
+              items:
+                $ref: "#/$defs/HeaderEntry"
+              default: []
+            responseHeaders:
+              type: array
+              items:
+                $ref: "#/$defs/HeaderEntry"
+              default: []
 
-    parameters:
-      jwtAuth: "JwtAuthConfig | default={}"
-      rateLimit: "RateLimitConfig | default={}"
-      addHeaders: "AddHeadersConfig | default={}"
+      properties:
+        jwtAuth:
+          $ref: "#/$defs/JwtAuthConfig"
+          default: {}
+        rateLimit:
+          $ref: "#/$defs/RateLimitConfig"
+          default: {}
+        addHeaders:
+          $ref: "#/$defs/AddHeadersConfig"
+          default: {}
 
   creates:
     # --- Backend: kgateway static backend pointing to WSO2 API Platform router ---
@@ -115,7 +154,7 @@ spec:
             main:
               url: http://${metadata.componentName}.${metadata.namespace}:${workload.toServicePorts()[0].port}
           policies: >-
-            ${[]
+            ${[{"name": "cors", "version": "v0", "params": {"allowedOrigins": ["*"], "allowedMethods": ["*"], "allowedHeaders": ["*"]}}]
               + (parameters.jwtAuth.enabled ? [{"name": "jwt-auth", "version": "v0"}] : [])
               + (parameters.rateLimit.enabled ? [{"name": "basic-ratelimit", "version": "v0", "params": {"limits": parameters.rateLimit.limits}}] : [])
               + (parameters.addHeaders.enabled ? [{"name": "add-headers", "version": "v0", "params": {"requestHeaders": parameters.addHeaders.requestHeaders, "responseHeaders": parameters.addHeaders.responseHeaders}}] : [])}

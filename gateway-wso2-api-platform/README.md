@@ -24,7 +24,7 @@ Unlike Kong, Traefik, or Envoy Gateway, **WSO2 API Platform does not implement t
 - **kgateway remains the Gateway API controller**: The default kgateway handles all `Gateway` and `HTTPRoute` resources. WSO2 API Platform does not replace kgateway — it sits behind it as an API management layer.
 - **Traffic routing via kgateway Backend**: The trait creates a kgateway `Backend` (static type) pointing to the WSO2 API Platform router, and patches the HTTPRoute's `backendRef` to route through the WSO2 router instead of directly to the component's Service.
 - **WSO2 RestApi CRD for API management**: The trait creates a `RestApi` resource that defines the API's context path, version, upstream, operations, and policies. WSO2's operator reconciles this into its internal gateway configuration.
-- **No control plane changes required**: The rendering pipeline, endpoint resolution, and release controllers work unchanged. Only a trait is added to inject the WSO2 resources.
+- **No control plane changes required**: The rendering pipeline, endpoint resolution, and release controllers work unchanged. Only a ClusterTrait is added to inject the WSO2 resources.
 - **Separate Helm installation**: The WSO2 API Platform operator and gateway are installed via their own Helm charts, independent of the OpenChoreo data plane chart.
 
 ---
@@ -66,26 +66,26 @@ Unlike Kong, Traefik, or Envoy Gateway, **WSO2 API Platform does not implement t
 │              │                              │       │       │
 │              │   ┌────────────┐             │       │       │
 │              │   │  Backend   │─────────┐   │       │       │
-│              │   │ (kgateway) │         │   │       │       │
+│              │   │(kgateway)  │         │   │       │       │
 │              │   └────────────┘         │   │       │       │
 │              │         ▲                │   │       │       │
 │              │         │ backendRef     │   │       │       │
-│              │   ┌─────┴──────┐        │   │       │       │
-│              │   │ HTTPRoute  │        │   │       │       │
-│              │   │ (patched)  │        │   │       │       │
-│              │   │ parentRef ─┼────┐   │   │       │       │
-│              │   └────────────┘    │   │   │       │       │
-│              └────────────────────┼───┼───┘       │       │
-│                                    │   │           │       │
-│              ┌─────────────────────┴───┴─────────┐ │       │
-│              │   Gateway CR                      │ │       │
-│              │   name: gateway-default           │ │       │
+│              │   ┌─────┴──────┐         │   │       │       │
+│              │   │ HTTPRoute  │         │   │       │       │
+│              │   │ (patched)  │         │   │       │       │
+│              │   │ parentRef ─┼────┐    │   │       │       │
+│              │   └────────────┘    │    │   │       │       │
+│              └──────────────────── ┼─── ┼───┘       │       │
+│                                    │    │           │       │
+│              ┌─────────────────────┴─── ┴─────────┐ │       │
+│              │   Gateway CR                       │ │       │
+│              │   name: gateway-default            │ │       │
 │              │   gatewayClassName: kgateway       │ │       │
-│              │                                   │ │       │
-│              │   listeners:                      │ │       │
-│              │     - http  (port 19080)          │ │       │
-│              │     - https (port 19443, TLS)     │ │       │
-│              └───────────────┬───────────────────┘ │       │
+│              │                                    │ │       │
+│              │   listeners:                       │ │       │
+│              │     - http  (port 19080)           │ │       │
+│              │     - https (port 19443, TLS)      │ │       │
+│              └───────────────┬─────────────────── ┘ │       │
 │                              │ watches              │       │
 │              ┌───────────────┴───────────────────┐  │       │
 │              │   kgateway Controller             │  │       │
@@ -94,15 +94,15 @@ Unlike Kong, Traefik, or Envoy Gateway, **WSO2 API Platform does not implement t
 │              │   - Resolves Backend refs         │  │       │
 │              │   - Routes to WSO2 router         │  │       │
 │              └───────────────┬───────────────────┘  │       │
-│                              │                       │       │
-│                              ▼                       │       │
-│              ┌───────────────────────────────────┐   │       │
-│              │   WSO2 API Platform Router        │◄──┘       │
-│              │                                   │           │
-│              │   - Applies API policies          │           │
-│              │   - Rate limiting                 │           │
-│              │   - Authentication                │           │
-│              │   - Routes to upstream Service    │◄──────────┘
+│                              │                      │       │
+│                              ▼                      │       │
+│              ┌───────────────────────────────────┐  │       │
+│              │   WSO2 API Platform Router        │◄─┘       │
+│              │                                   │          │
+│              │   - Applies API policies          │          │
+│              │   - Rate limiting                 │          │
+│              │   - Authentication                │          │
+│              │   - Routes to upstream Service    │◄─────────┘
 │              └───────────────┬───────────────────┘
 │                              │
 │                         LoadBalancer
@@ -314,17 +314,23 @@ EOF
 > kubectl delete clusterrolebinding wso2-api-platform-gateway-module
 > ```
 
-### Step 5: Deploy and Invoke the Greeter Service
+### Step 5: Deploy and Invoke the Greeting Service
 
-Deploy the sample greeter service to verify end-to-end traffic flow through WSO2 API Platform, including the `api-configuration` trait.
+Deploy the sample greeting service to verify end-to-end traffic flow through WSO2 API Platform, including the `api-management` ClusterTrait.
 
-**Apply the Trait, Component, and Workload:**
+**Apply the ClusterTrait:**
 
 ```bash
 kubectl apply -f wso2-api-platform-api-configuration-trait.yaml
 ```
 
-> **Note:** The greeter service Component uses `componentType: deployment/service` and attaches the `api-configuration` trait. The trait creates a WSO2 `RestApi` resource and a kgateway `Backend` pointing to the WSO2 router, and patches the HTTPRoute to route through the WSO2 router.
+**Apply the Component and Workload:**
+
+```bash
+kubectl apply -f component.yaml
+```
+
+> **Note:** The greeting service Component uses `componentType: ClusterComponentType/deployment/service` and attaches the `api-management` ClusterTrait. The trait automatically derives all API values (displayName, context, version, upstream URL, operations) from the component metadata and workload endpoints. Optional policies (JWT auth, rate limiting, custom headers) can be enabled via trait parameters.
 
 **Wait for the deployment to roll out:**
 
@@ -335,7 +341,7 @@ kubectl get componentrelease
 # Check the release status
 kubectl get release
 
-# Wait for the greeter pod to be ready
+# Wait for the greeting pod to be ready
 kubectl get pods -A
 
 # Verify RestApi resources are created
@@ -345,10 +351,10 @@ kubectl get restapi -A
 kubectl get backend.gateway.kgateway.dev -A
 ```
 
-**Invoke the greeter service through the WSO2 API Platform:**
+**Invoke the greeting service through the WSO2 API Platform:**
 
 ```bash
-curl http://development-default.openchoreoapis.localhost:19080/greeter-service-http/greet?name=OpenChoreo -v
+curl http://development-default.openchoreoapis.localhost:19080/greeting-service-http/greet?name=OpenChoreo -v
 ```
 
 Expected response:
@@ -360,38 +366,49 @@ Hello, OpenChoreo!
 **Cleanup:**
 
 ```bash
-kubectl delete component greeter-service -n default
-kubectl delete workload greeter-service-workload -n default
+kubectl delete component greeting-service -n default
+kubectl delete workload greeting-service-workload -n default
 ```
 
-### API Configuration Trait
+### API Management ClusterTrait
 
-The `api-configuration` trait provides declarative API management for components routed through WSO2 API Platform. It creates a kgateway `Backend` (static) pointing to the WSO2 router, a WSO2 `RestApi` resource defining the API, and patches the HTTPRoute to route traffic through the WSO2 router.
+The `api-management` ClusterTrait provides declarative API management for components routed through WSO2 API Platform. It creates a kgateway `Backend` (static) pointing to the WSO2 router, a WSO2 `RestApi` resource defining the API, and patches the HTTPRoute to route traffic through the WSO2 router.
 
-#### Trait Schema
+#### Derived Values (automatic)
 
-**Parameters (static across environments):**
+The following values are automatically derived from component metadata and workload endpoints — they are not user-configurable:
 
-| Parameter      | Type                   | Default                                                                                                                                                                                     | Description                                            |
-| -------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| `apiName`      | string                 | _(required)_                                                                                                                                                                                | Display name for the API in WSO2 API Platform          |
-| `apiVersion`   | string                 | `"v1.0"`                                                                                                                                                                                    | API version string                                     |
-| `context`      | string                 | _(required)_                                                                                                                                                                                | API context path (e.g., `/greeter`)                    |
-| `upstreamPort` | integer                | `80`                                                                                                                                                                                        | Port of the upstream component Service                 |
-| `operations`   | array\<map\<string\>\> | `[{"method":"GET","path":"/*"},{"method":"POST","path":"/*"},{"method":"PUT","path":"/*"},{"method":"DELETE","path":"/*"},{"method":"PATCH","path":"/*"},{"method":"OPTIONS","path":"/*"}]` | API operations (HTTP methods and paths)                |
-| `policies`     | array\<map\<string\>\> | `[]`                                                                                                                                                                                        | WSO2 API policies to apply (rate limiting, auth, etc.) |
+| Value         | Pattern                                                      | Example                                 |
+| ------------- | ------------------------------------------------------------ | --------------------------------------- |
+| `displayName` | `<environment>-<namespace>-<componentName>`                  | `development-default-greeting-service`  |
+| `context`     | `/<environment>-<namespace>-<componentName>`                 | `/development-default-greeting-service` |
+| `version`     | `v1.0`                                                       | `v1.0`                                  |
+| `upstream`    | `http://<componentName>.<namespace>:<first endpoint port>`   | `http://greeting-service.default:9090`  |
+| `operations`  | All methods (GET, POST, PUT, PATCH, DELETE, OPTIONS) on `/*` | —                                       |
+
+#### Trait Parameters
+
+Optional policies that can be enabled via trait parameters (all disabled by default):
+
+| Parameter    | Type   | Description                                                                                                                                                                                                                                 |
+| ------------ | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `jwtAuth`    | object | JWT authentication. Properties: `enabled` (boolean, default: `false`)                                                                                                                                                                       |
+| `rateLimit`  | object | Request rate limiting. Properties: `enabled` (boolean, default: `false`), `limits` (array of `{requests: integer, duration: string}`, default: `[]`)                                                                                        |
+| `addHeaders` | object | Custom request/response headers. Properties: `enabled` (boolean, default: `false`), `requestHeaders` (array of `{name: string, value: string}`, default: `[]`), `responseHeaders` (array of `{name: string, value: string}`, default: `[]`) |
+
+> **Note:** A default CORS policy (`allowedOrigins: ["*"], allowedMethods: ["*"], allowedHeaders: ["*"]`) is always included in the RestApi regardless of trait parameters. JWT auth key manager configuration is set in the `gateway-configuration.yaml` ConfigMap.
 
 #### How It Works
 
 The trait uses OpenChoreo's template rendering pipeline to:
 
-1. **Create a kgateway Backend** — A `Backend` resource of type `Static` pointing to the WSO2 API Platform router (`api-platform-default-gateway-router.openchoreo-data-plane:8080`). This allows the HTTPRoute to reference the WSO2 router as a backend.
+1. **Create a kgateway Backend** — A `Backend` resource of type `Static` pointing to the WSO2 API Platform router (`api-platform-default-gateway-gateway-runtime.openchoreo-data-plane:8080`). This allows the HTTPRoute to reference the WSO2 router as a backend.
 
-2. **Create a WSO2 RestApi** — A `RestApi` resource defining the API's display name, version, context path, upstream service URL, operations, and policies. WSO2's operator reconciles this into the router's configuration.
+2. **Create a WSO2 RestApi** — A `RestApi` resource with automatically derived displayName, context, version, upstream URL, and operations. Policies include a default CORS policy plus any enabled optional policies (JWT auth, rate limiting, custom headers). WSO2's operator reconciles this into the router's configuration.
 
 3. **Patch the HTTPRoute backendRef** — Replaces the component's Service in the HTTPRoute `backendRef` with the kgateway `Backend` pointing to the WSO2 router. This redirects all traffic through the WSO2 API Platform for policy enforcement.
 
-4. **Patch the HTTPRoute URL rewrite** — Updates the `URLRewrite` filter's `replacePrefixMatch` to use the API's context path, ensuring the WSO2 router receives the correct path prefix to match the `RestApi` configuration.
+4. **Patch the HTTPRoute URL rewrite** — Updates the `URLRewrite` filter's `replacePrefixMatch` to use the derived API context path (`/<environment>-<namespace>-<componentName>`), ensuring the WSO2 router receives the correct path prefix to match the `RestApi` configuration.
 
 #### Key Differences from Other Gateway Modules
 
@@ -416,27 +433,28 @@ spec:
     projectName: default
   autoDeploy: true
   componentType:
-    kind: ComponentType
+    kind: ClusterComponentType
     name: deployment/service
   traits:
-    - instanceName: my-api
-      name: api-configuration
+    - name: api-management
+      instanceName: my-api
+      kind: ClusterTrait
       parameters:
-        apiName: My Service API
-        apiVersion: v1.0
-        context: /my-service
-        upstreamPort: 8080
-        operations:
-          - method: GET
-            path: "/*"
-          - method: POST
-            path: "/*"
-        policies:
-          - policyName: basic-ratelimit
-            parameters:
-              limits:
-                - requests: 100
-                  duration: "1m"
+        jwtAuth:
+          enabled: true
+        rateLimit:
+          enabled: true
+          limits:
+            - requests: 100
+              duration: "1m"
+        addHeaders:
+          enabled: true
+          requestHeaders:
+            - name: X-Gateway
+              value: wso2-api-platform
+          responseHeaders:
+            - name: X-Powered-By
+              value: OpenChoreo
 ```
 
 ---
@@ -512,35 +530,45 @@ If `publicVirtualHost` is set on the Environment, its gateway config takes full 
 The WSO2 API Platform router listens on port 8080 by default within the cluster. The kgateway `Backend` resource created by the trait points to:
 
 ```
-api-platform-default-gateway-router.openchoreo-data-plane:8080
+api-platform-default-gateway-gateway-runtime.openchoreo-data-plane:8080
 ```
 
 This is an internal cluster address. External traffic reaches the WSO2 router via kgateway, which handles TLS termination and hostname-based routing.
 
 ### WSO2 RestApi Policies
 
-Policies are configured in the `RestApi` resource's `policies` field. Common policies include:
+Policies are configured via the `api-management` ClusterTrait parameters and rendered into the `RestApi` resource's `policies` field. The trait always includes a default CORS policy and conditionally adds other policies based on the enabled flags.
+
+**Rendered policies example** (with all policies enabled):
 
 ```yaml
 policies:
-  - policyName: basic-ratelimit
-    parameters:
+  - name: cors
+    version: v0
+    params:
+      allowedOrigins: ["*"]
+      allowedMethods: ["*"]
+      allowedHeaders: ["*"]
+  - name: jwt-auth
+    version: v0
+  - name: basic-ratelimit
+    version: v0
+    params:
       limits:
-        - requests: 100
+        - requests: 5
           duration: "1m"
-        - requests: 1000
-          duration: "1h"
-  - policyName: cors
-    parameters:
-      allowedOrigins:
-        - "*"
-      allowedMethods:
-        - GET
-        - POST
-        - PUT
-        - DELETE
-        - OPTIONS
+  - name: add-headers
+    version: v0
+    params:
+      requestHeaders:
+        - name: X-Gateway
+          value: wso2-api-platform
+      responseHeaders:
+        - name: X-Powered-By
+          value: OpenChoreo
 ```
+
+> **Note:** JWT auth key manager configuration (issuer, JWKS URI, allowed algorithms, etc.) is set in the `gateway-configuration.yaml` ConfigMap under `policy_configurations.jwtauth_v0`, not in the trait parameters.
 
 Refer to the [WSO2 API Platform policy definitions](https://github.com/wso2/gateway-controllers/tree/main/policies) for the full list of supported policies and their schemas.
 
@@ -679,66 +707,63 @@ To remove the WSO2 API Platform module, uninstall the operator Helm release (whi
 helm uninstall api-platform-operator -n openchoreo-data-plane
 ```
 
-> **Note:** Existing `RestApi` and `Backend` resources created by traits will remain. Components using the `api-configuration` trait should be updated to remove the trait before uninstalling the module. To clean up CRDs manually:
+> **Note:** Existing `RestApi` and `Backend` resources created by traits will remain. Components using the `api-management` trait should be updated to remove the trait before uninstalling the module. To clean up CRDs manually:
 >
 > ```bash
 > kubectl delete crd restapis.gateway.api-platform.wso2.com apigateways.gateway.api-platform.wso2.com
 > ```
 
-### Custom Operations
+### Enabling Rate Limiting
 
-Define specific API operations instead of the default wildcard:
+Enable request rate limiting with configurable time windows:
 
 ```yaml
 traits:
-  - name: api-configuration
+  - name: api-management
     instanceName: my-api
+    kind: ClusterTrait
     parameters:
-      apiName: My Service API
-      context: /my-service
-      operations:
-        - method: GET
-          path: /users
-        - method: GET
-          path: /users/{id}
-        - method: POST
-          path: /users
-        - method: PUT
-          path: /users/{id}
-        - method: DELETE
-          path: /users/{id}
+      rateLimit:
+        enabled: true
+        limits:
+          - requests: 100
+            duration: "1m"
+          - requests: 1000
+            duration: "1h"
 ```
 
-### Custom WSO2 Policies
+### Enabling JWT Authentication
 
-Apply WSO2-specific policies for rate limiting, CORS, or other API management features:
+Enable JWT authentication (key manager configuration is set in the `gateway-configuration.yaml` ConfigMap):
 
 ```yaml
 traits:
-  - name: api-configuration
+  - name: api-management
     instanceName: my-api
+    kind: ClusterTrait
     parameters:
-      apiName: My Service API
-      context: /my-service
-      policies:
-        - policyName: basic-ratelimit
-          parameters:
-            limits:
-              - requests: 100
-                duration: "1m"
-              - requests: 1000
-                duration: "1h"
-        - policyName: cors
-          parameters:
-            allowedOrigins:
-              - "https://app.example.com"
-            allowedMethods:
-              - GET
-              - POST
-            allowedHeaders:
-              - Authorization
-              - Content-Type
-            allowCredentials: true
+      jwtAuth:
+        enabled: true
+```
+
+### Adding Custom Headers
+
+Add custom headers to requests and/or responses:
+
+```yaml
+traits:
+  - name: api-management
+    instanceName: my-api
+    kind: ClusterTrait
+    parameters:
+      addHeaders:
+        enabled: true
+        requestHeaders:
+          - name: X-Gateway
+            value: wso2-api-platform
+        responseHeaders:
+          - name: X-Powered-By
+            value: OpenChoreo
 ```
 
 ### Cloud Provider Load Balancer Configuration

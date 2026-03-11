@@ -19,12 +19,13 @@ spec:
     projectName: default
   autoDeploy: true
   componentType:
-    kind: ComponentType
+    kind: ClusterComponentType
     name: deployment/service
 
   traits:
     - name: api-management
       instanceName: greeter-api
+      kind: ClusterTrait
       parameters:
         jwtAuth:
           enabled: true
@@ -67,55 +68,6 @@ spec:
       - "9090"
 
 ---
-# --- ReleaseBinding: Development environment ---
-apiVersion: openchoreo.dev/v1alpha1
-kind: ReleaseBinding
-metadata:
-  name: greeting-service-development
-  namespace: default
-spec:
-  owner:
-    projectName: default
-    componentName: greeting-service
-
-  environment: development
-
-  componentTypeEnvOverrides:
-    replicas: 1
-    imagePullPolicy: IfNotPresent
-    resources:
-      requests:
-        cpu: "50m"
-        memory: "128Mi"
-      limits:
-        cpu: "200m"
-        memory: "256Mi"
-
----
-# --- ReleaseBinding: Production environment ---
-apiVersion: openchoreo.dev/v1alpha1
-kind: ReleaseBinding
-metadata:
-  name: greeting-service-production
-  namespace: default
-spec:
-  owner:
-    projectName: default
-    componentName: greeting-service
-
-  environment: production
-
-  componentTypeEnvOverrides:
-    replicas: 3
-    imagePullPolicy: IfNotPresent
-    resources:
-      requests:
-        cpu: "500m"
-        memory: "512Mi"
-      limits:
-        cpu: "2000m"
-        memory: "2Gi"
-
 # =============================================================================
 # RENDERED OUTPUT (what gets applied to the data plane)
 # =============================================================================

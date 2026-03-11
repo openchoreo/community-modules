@@ -98,7 +98,7 @@ data:
             xds_port: 18000
           storage:
             sqlite:
-              path: ./data/gateway.db
+              path: /app/data/gateway.db
             type: sqlite
         policy_configurations:
           jwtauth_v0:
@@ -182,7 +182,8 @@ data:
           nodeSelector: {}
           podAnnotations: {}
           podLabels: {}
-          podSecurityContext: {}
+          podSecurityContext:
+            fsGroup: 10001
           priorityClassName: ""
           readinessProbe:
             failureThreshold: 3
@@ -220,7 +221,7 @@ data:
             xds: 18000
           type: ClusterIP
         storage:
-          sqlitePath: ./data/gateway.db
+          sqlitePath: /app/data/gateway.db
           type: sqlite
         tls:
           certManager:

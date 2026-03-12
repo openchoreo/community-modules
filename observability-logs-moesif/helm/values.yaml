@@ -153,6 +153,10 @@ opentelemetry-collector:
 
   mode: deployment
 
+  extraEnvsFrom:
+    - secretRef:
+        name: moesif-app-secret
+
   resources:
     limits:
       cpu: 100m

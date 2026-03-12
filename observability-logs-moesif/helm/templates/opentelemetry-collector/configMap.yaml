@@ -21,25 +21,24 @@ data:
             endpoint: 0.0.0.0:4318
 
     exporters:
-      {{- range .Values.moesif.apps }}
-      otlphttp/{{ index . "env-name" }}:
-        endpoint: {{ .endpoint | default "https://api.moesif.net" | quote }}
+      {{- range .Values.moesif.environments }}
+      otlphttp/{{ . }}:
+        endpoint: {{ $.Values.moesif.endpoint | default "https://api.moesif.net" | quote }}
         headers:
-          {{- if (index . "api-key") }}
-          X-Api-Token: {{ (index . "api-key") | quote }}
-          {{- end }}
-          {{- if (index . "collector-application-id") }}
-          X-Moesif-Application-Id: {{ (index . "collector-application-id") | quote }}
+          {{- if eq $.Values.moesif.auth_mode "api-key" }}
+          X-Api-Token: ${env:api_key}
+          {{- else }}
+          X-Moesif-Application-Id: ${env:{{ . | replace "-" "_" }}}
           {{- end }}
       {{- end }}
 
     connectors:
       routing:
         table:
-          {{- range .Values.moesif.apps }}
+          {{- range .Values.moesif.environments }}
           - context: resource
-            statement: route() where resource.attributes["openchoreo.dev/environment"] == {{ index . "env-name" | quote }}
-            pipelines: [ logs/{{ index . "env-name" }} ]
+            statement: route() where resource.attributes["openchoreo.dev/environment"] == {{ . | quote }}
+            pipelines: [ logs/{{ . }} ]
           {{- end }}
 
     processors:
@@ -57,8 +56,8 @@ data:
           processors: [ transform ]
           exporters: [ routing ]
 
-        {{- range .Values.moesif.apps }}
-        logs/{{ index . "env-name" }}:
+        {{- range .Values.moesif.environments }}
+        logs/{{ . }}:
           receivers: [ routing ]
-          exporters: [ otlphttp/{{ index . "env-name" }} ]
+          exporters: [ otlphttp/{{ . }} ]
         {{- end }}

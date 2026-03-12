@@ -9,48 +9,38 @@ This module collects container logs using Fluent Bit and exports them to Moesif 
 
 ## Installation
 
-Install this module in your OpenChoreo cluster using:
+### Create a Kubernetes Secret (Optional)
+
+If you want to store your Moesif Application IDs in a Kubernetes Secret, create one with your credentials for each environment:
+
+```bash
+kubectl create secret generic moesif-app-secret \
+  --from-literal=development="YOUR_DEV_APP_ID" \
+  --from-literal=production="YOUR_PROD_APP_ID" \
+  --namespace openchoreo-observability-plane
+```
+
+> **Note:** 
+> - Create separate keys for each environment (e.g., `development`, `production`)
+> - For environment names with hyphens (e.g., "my-env"), replace hyphens with underscores in the secret key name (e.g., "my_env")
+
+### Install the Helm Chart
+
+Install this module in your OpenChoreo cluster:
 
 ```bash
 helm upgrade --install observability-logs-moesif \
   oci://ghcr.io/openchoreo/charts/observability-logs-moesif \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.1.0 \
-  --set moesif.apps[0].env-name=default \
-  --set moesif.apps[0].collector-application-id=YOUR_MOESIF_APPLICATION_ID
+  --version 0.1.0
 ```
-
-> **Note:** Replace `YOUR_MOESIF_APPLICATION_ID` with your actual Moesif Application ID. Alternatively, you can use `api-key` instead of `collector-application-id`.
 
 ### Configuration Options
 
-You can configure multiple environments with different Moesif applications:
+You can configure multiple environments and customize the Moesif endpoint:
 
-```bash
-helm upgrade --install observability-logs-moesif \
-  oci://ghcr.io/openchoreo/charts/observability-logs-moesif \
-  --create-namespace \
-  --namespace openchoreo-observability-plane \
-  --version 0.1.0 \
-  --set moesif.apps[0].env-name=development \
-  --set moesif.apps[0].collector-application-id=YOUR_DEV_APP_ID \
-  --set moesif.apps[1].env-name=production \
-  --set moesif.apps[1].collector-application-id=YOUR_PROD_APP_ID
-```
-
-> **Important:** If multiple environments need to send logs to the same Moesif application, you must still define separate entries in `moesif.apps` for each environment, using the same `collector-application-id` or `api-key`:
->
-> ```bash
-> --set moesif.apps[0].env-name=development \
-> --set moesif.apps[0].collector-application-id=YOUR_MOESIF_APP_ID \
-> --set moesif.apps[1].env-name=staging \
-> --set moesif.apps[1].collector-application-id=YOUR_MOESIF_APP_ID \
-> --set moesif.apps[2].env-name=production \
-> --set moesif.apps[2].collector-application-id=YOUR_MOESIF_APP_ID
-> ```
-
-### Using a values.yaml file
+#### Using a values.yaml file
 
 For easier configuration management, create a `moesif-values.yaml` file:
 
@@ -59,27 +49,24 @@ For easier configuration management, create a `moesif-values.yaml` file:
 # Configuration for Moesif log collection
 
 moesif:
-  apps:
-    # First Moesif application (e.g., development environment)
-    - env-name: development                              # Environment name that matches openchoreo.dev/environment label
-      collector-application-id: "YOUR_DEV_APP_ID"        # Moesif Application ID (use either this OR api-key)
-      # api-key: "YOUR_DEV_API_KEY"                      # Alternative: Moesif API Key (use either this OR collector-application-id)
-    
-    # Second Moesif application (e.g., production environment)
-    - env-name: production
-      collector-application-id: "YOUR_PROD_APP_ID"
-      # api-key: "YOUR_PROD_API_KEY"
+  # List of environment names to collect logs from
+  # These must match the openchoreo.dev/environment label on your resources
+  environments:
+    - development
+    - production
+    - staging
+  
+  # (Optional) Moesif API endpoint
+  # Uncomment to override the default endpoint
+  # endpoint: "https://api.moesif.net"
 
-    # Example: Multiple environments using the same Moesif application
-    # Even if using the same Moesif app, you must define separate entries for each environment
-    # - env-name: staging
-    #   collector-application-id: "YOUR_DEV_APP_ID"      # Same as development
+# (Optional) Reference a pre-existing secret containing Moesif Application IDs
+# Uncomment if you created the moesif-app-secret
+# opentelemetry-collector:
+#   extraEnvsFrom:
+#     - secretRef:
+#         name: moesif-app-secret
 ```
-
-> **Note:** 
-> - The `env-name` field should match the `openchoreo.dev/environment` label on your resources
-> - Use either `collector-application-id` OR `api-key` (not both) - collector-application-id can be found in your Moesif `Apps and Team` settings
-> - If multiple environments send logs to the same Moesif application, define separate entries for each environment with the same credentials
 
 Then install with:
 
@@ -90,4 +77,56 @@ helm upgrade --install observability-logs-moesif \
   --namespace openchoreo-observability-plane \
   --version 0.1.0 \
   -f moesif-values.yaml
+```
+
+#### Configuration Parameters
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `moesif.environments` | List of environment names to collect logs from | `[]` |
+| `moesif.endpoint` | (Optional) Moesif API endpoint URL | `https://api.moesif.net` |
+
+## How It Works
+
+This module deploys two main components:
+
+1. **Fluent Bit**: Collects logs from all containers in the cluster
+2. **OpenTelemetry Collector**: Receives logs from Fluent Bit, processes them, and routes them to the appropriate Moesif application based on environment labels
+
+The module uses the `openchoreo.dev/environment` label on your resources to route logs to the correct Moesif application.
+
+## Troubleshooting
+
+### Check OpenTelemetry Collector logs
+
+```bash
+kubectl -n openchoreo-observability-plane logs -f deploy/opentelemetry-collector
+```
+
+### Check Fluent Bit logs
+
+```bash
+kubectl -n openchoreo-observability-plane logs -f ds/fluent-bit
+```
+
+### Verify Secret Configuration
+
+```bash
+kubectl -n openchoreo-observability-plane get secret moesif-app-secret -o yaml
+```
+
+## Uninstalling
+
+To remove this module:
+
+```bash
+helm uninstall observability-logs-moesif \
+  --namespace openchoreo-observability-plane
+```
+
+To also remove the secret:
+
+```bash
+kubectl delete secret moesif-app-secret \
+  --namespace openchoreo-observability-plane
 ```

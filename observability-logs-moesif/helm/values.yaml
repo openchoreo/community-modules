@@ -22,7 +22,7 @@ fluent-bit:
           Skip_Long_Lines     On
           Buffer_Chunk_Size   32KB
           Buffer_Max_Size     2MB
-          Mem_Buf_Limit       256MB
+          Mem_Buf_Limit       128MB
           Inotify_Watcher     false
 
     filters: |
@@ -133,14 +133,7 @@ opentelemetry-collector:
   enabled: true
 
   clusterRole:
-    create: true
-    rules:
-      - apiGroups: [""]
-        resources: ["pods"]
-        verbs: ["list", "watch"]
-      - apiGroups: ["apps"]
-        resources: ["replicasets"]
-        verbs: ["list", "watch"]
+    create: false
 
   configMap:
     create: false
@@ -166,4 +159,4 @@ opentelemetry-collector:
       memory: 100Mi
 
   service:
-    type: LoadBalancer
+    type: ClusterIP

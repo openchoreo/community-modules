@@ -1,0 +1,162 @@
+# Kong API Configuration Trait for OpenChoreo
+#
+# This trait enables Kong API management features on HTTPRoutes:
+#   - Rate Limiting: Configurable request rate limits via Kong's rate-limiting plugin
+#   - Security: Authentication enforcement via Kong auth plugins (key-auth, basic-auth, jwt, etc.)
+#   - Response Headers: Add custom headers to responses via Kong's response-transformer plugin
+#
+# Each feature is independently toggleable. The trait conditionally creates KongPlugin CRDs
+# and patches the HTTPRoute with the appropriate `konghq.com/plugins` annotation.
+#
+# Prerequisites:
+#   - Kong Gateway installed in the data plane (see kong-gateway-module.md)
+#   - Kong CRDs available (KongPlugin, KongClusterPlugin)
+#   - ComponentType must have an HTTPRoute resource for the patch to target
+#
+# Usage:
+#   1. Add "kong-api-management" to the ComponentType's allowedTraits
+#   2. Reference it in the Component's traits with desired parameters
+#
+# See the end of this file for a complete usage example with ComponentType, Component,
+# Workload, and ReleaseBinding.
+
+---
+apiVersion: openchoreo.dev/v1alpha1
+kind: ClusterTrait
+metadata:
+  name: kong-api-management
+spec:
+  parameters:
+    openAPIV3Schema:
+      type: object
+      $defs:
+        # --- rate-limiting policy ---
+        # Controls Kong's rate-limiting plugin.
+        # When enabled, creates a KongPlugin that limits requests per minute.
+        RateLimitingConfig:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+              default: true
+            # Rate limiting policy: "local" (per-node) or "redis" (shared across nodes).
+            policy:
+              type: string
+              default: local
+            requestsPerMinute:
+              type: integer
+              default: 60
+
+        # --- security (authentication) policy ---
+        # Controls Kong's authentication plugin.
+        # When enabled, creates a KongPlugin that enforces the selected auth method.
+        # Supported authType values: key-auth, basic-auth, jwt, hmac-auth, oauth2
+        SecurityConfig:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+              default: false
+            authType:
+              type: string
+              default: key-auth
+
+        # --- add-response-headers policy ---
+        # Controls Kong's response-transformer plugin to add headers to client responses.
+        # Headers use Kong's format: "Header-Name:value"
+        # Example: ["X-Gateway:Kong", "X-Managed-By:OpenChoreo"]
+        AddResponseHeadersConfig:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+              default: false
+            headers:
+              type: array
+              items:
+                type: string
+              default: []
+
+      properties:
+        rateLimiting:
+          $ref: "#/$defs/RateLimitingConfig"
+          default: {}
+        security:
+          $ref: "#/$defs/SecurityConfig"
+          default: {}
+        addResponseHeaders:
+          $ref: "#/$defs/AddResponseHeadersConfig"
+          default: {}
+
+  creates:
+    # --- KongPlugin: Rate Limiting ---
+    # Created when parameters.rateLimiting.enabled is true.
+    # Uses parameters.rateLimiting.requestsPerMinute to set the rate limit.
+    - includeWhen: ${parameters.rateLimiting.enabled}
+      template:
+        apiVersion: configuration.konghq.com/v1
+        kind: KongPlugin
+        metadata:
+          name: ${metadata.name}-${trait.instanceName}-rate-limiting
+          namespace: ${metadata.namespace}
+          labels: ${metadata.labels}
+        config:
+          minute: ${parameters.rateLimiting.requestsPerMinute}
+          policy: ${parameters.rateLimiting.policy}
+        plugin: rate-limiting
+
+    # --- KongPlugin: Security (Authentication) ---
+    # Created when parameters.security.enabled is true.
+    # The plugin type is determined by parameters.security.authType.
+    # For key-auth: Requires a KongConsumer + Secret with credentials (created separately).
+    # For jwt: Requires a KongConsumer with JWT credentials.
+    # For basic-auth: Requires a KongConsumer with basic-auth credentials.
+    - includeWhen: ${parameters.security.enabled}
+      template:
+        apiVersion: configuration.konghq.com/v1
+        kind: KongPlugin
+        metadata:
+          name: ${metadata.name}-${trait.instanceName}-security
+          namespace: ${metadata.namespace}
+          labels: ${metadata.labels}
+        plugin: ${parameters.security.authType}
+
+    # --- KongPlugin: Response Header Injection ---
+    # Created when parameters.addResponseHeaders.enabled is true.
+    # Adds the specified headers to every response sent back to the client.
+    # Uses response-transformer instead of request-transformer to avoid conflicts
+    # with KIC's internal request-transformer used for Gateway API URLRewrite filters.
+    - includeWhen: ${parameters.addResponseHeaders.enabled}
+      template:
+        apiVersion: configuration.konghq.com/v1
+        kind: KongPlugin
+        metadata:
+          name: ${metadata.name}-${trait.instanceName}-response-headers
+          namespace: ${metadata.namespace}
+          labels: ${metadata.labels}
+        config:
+          add:
+            headers: ${parameters.addResponseHeaders.headers}
+        plugin: response-transformer
+
+  patches:
+    # --- Patch HTTPRoute: Add Kong Plugin Annotation ---
+    # Adds the `konghq.com/plugins` annotation to the HTTPRoute with a comma-separated
+    # list of only the enabled plugin names. Uses CEL list comprehension to dynamically
+    # build the annotation value based on which features are enabled.
+    - target:
+        group: gateway.networking.k8s.io
+        version: v1
+        kind: HTTPRoute
+      operations:
+        - op: add
+          path: /metadata/annotations
+          value:
+            konghq.com/plugins: >-
+              ${[
+                parameters.rateLimiting.enabled ? (metadata.name + "-" + trait.instanceName + "-rate-limiting") : "",
+                parameters.security.enabled ? (metadata.name + "-" + trait.instanceName + "-security") : "",
+                parameters.addResponseHeaders.enabled ? (metadata.name + "-" + trait.instanceName + "-response-headers") : ""
+              ].filter(s, s != "").join(",")}
+
+---

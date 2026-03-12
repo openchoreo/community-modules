@@ -19,6 +19,8 @@ OpenChoreo uses the [Kubernetes Gateway API](https://gateway-api.sigs.k8s.io/) a
 
 The Kong Gateway module replaces the default kgateway (Envoy) with [Kong Gateway](https://konghq.com/) and the [Kong Kubernetes Ingress Controller (KIC)](https://docs.konghq.com/kubernetes-ingress-controller/latest/), providing advanced API management capabilities such as rate limiting, authentication, request/response transformation, and observability - all through Kubernetes-native CRDs.
 
+![Gateway Swap](gateway-kong.svg)
+
 ### Key Design Decisions
 
 - **Standard Gateway API as the contract**: OpenChoreo components create `HTTPRoute` resources that reference a `Gateway` by name. The gateway implementation is transparent to the control plane.
@@ -259,30 +261,52 @@ Expected pods:
 
 ### Step 6: Grant RBAC for Kong CRDs
 
-The data plane service account needs permissions to manage Kong plugin resources. Patch the ClusterRole:
+The data plane service account needs permissions to manage Kong plugin resources. Create a dedicated ClusterRole and bind it to the data plane service account:
 
 ```bash
-kubectl patch clusterrole cluster-agent-dataplane-openchoreo-data-plane --type=json \
-  -p '[{"op":"add","path":"/rules/-","value":{
-    "apiGroups":["configuration.konghq.com"],
-    "resources":["kongplugins","kongclusterplugins","kongconsumers","kongcredentials","tcpingresses","udpingresses","kongingresses"],
-    "verbs":["*"]
-  }}]'
+kubectl apply -f - <<EOF
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kong-gateway-module
+rules:
+  - apiGroups: ["configuration.konghq.com"]
+    resources: ["kongplugins", "kongclusterplugins", "kongconsumers", "kongcredentials", "tcpingresses", "udpingresses", "kongingresses"]
+    verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kong-gateway-module
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kong-gateway-module
+subjects:
+  - kind: ServiceAccount
+    name: cluster-agent-dataplane
+    namespace: openchoreo-data-plane
+EOF
 ```
 
-> **Note:** Without this, the Release controller will fail to apply KongPlugin resources to the data plane with a "forbidden" error.
+> **Note:** Without these permissions, the Release controller will fail to apply KongPlugin resources to the data plane with a "forbidden" error. To remove these permissions later, simply delete the ClusterRole and ClusterRoleBinding:
+>
+> ```bash
+> kubectl delete clusterrole kong-gateway-module
+> kubectl delete clusterrolebinding kong-gateway-module
+> ```
 
 ### Step 7: Deploy and Invoke the Greeter Service
 
-Deploy the sample greeter service to verify end-to-end traffic flow through Kong, including the `kong-api-configuration` trait for API management plugins.
+Deploy the sample greeter service to verify end-to-end traffic flow through Kong, including the `kong-api-management` trait for API management plugins.
 
 **Apply the ComponentType, Trait, Component, and Workload:**
 
 ```bash
-kubectl apply -f kong-api-configuration-trait.yaml
+kubectl apply -f kong-api-management-trait.yaml
 ```
 
-> **Note:** The greeter service Component uses `componentType: deployment/http-service-with-kong` and attaches the `kong-api-configuration` trait. See [Kong API Configuration Trait](#kong-api-configuration-trait) below for details on available plugins.
+> **Note:** The greeter service Component uses `componentType: deployment/http-service-with-kong` and attaches the `kong-api-management` trait. See [Kong API Configuration Trait](#kong-api-management-trait) below for details on available plugins.
 
 **Wait for the deployment to roll out:**
 
@@ -299,7 +323,7 @@ kubectl get pods -A
 
 **Create a test API key (required when key-auth plugin is enabled):**
 
-The `kong-api-configuration` trait can enable key-auth on routes. To test, create a KongConsumer with an API key credential in the data plane namespace:
+The `kong-api-management` trait can enable key-auth on routes. To test, create a KongConsumer with an API key credential in the data plane namespace:
 
 ```bash
 # Find the data plane namespace for the component
@@ -382,7 +406,7 @@ Expected response:
 Hello, OpenChoreo!
 ```
 
-The response headers will include Kong proxy metadata (`server: kong/3.9.1`, `x-kong-upstream-latency`, etc.) and any custom headers added by the `request-transformer` plugin.
+The response headers will include Kong proxy metadata (`server: kong/3.9.1`, `x-kong-upstream-latency`, etc.) and any custom headers added by the `response-transformer` plugin.
 
 **Cleanup:**
 
@@ -393,20 +417,20 @@ kubectl delete workload greeter-service-workload -n default
 
 ### Kong API Configuration Trait
 
-The `kong-api-configuration` trait provides declarative API management for components routed through Kong. It creates KongPlugin CRDs and patches the HTTPRoute annotations automatically.
+The `kong-api-management` trait provides declarative API management for components routed through Kong. It creates KongPlugin CRDs and patches the HTTPRoute annotations automatically.
 
 #### Trait Schema
 
 **Parameters (static across environments):**
 
-| Parameter              | Type            | Default      | Description                                                   |
-| ---------------------- | --------------- | ------------ | ------------------------------------------------------------- |
-| `rateLimiting.enabled` | boolean         | `true`       | Enable rate limiting plugin                                   |
-| `rateLimiting.policy`  | string          | `"local"`    | Rate limiting policy (`local` or `redis`)                     |
-| `security.enabled`     | boolean         | `false`      | Enable authentication plugin                                  |
-| `security.authType`    | string          | `"key-auth"` | Kong auth plugin name (`key-auth`, `basic-auth`, `jwt`, etc.) |
-| `addHeaders.enabled`   | boolean         | `false`      | Enable request header injection                               |
-| `addHeaders.headers`   | array\<string\> | `[]`         | Headers to add (format: `"Header-Name:value"`)                |
+| Parameter                    | Type            | Default      | Description                                                   |
+| ---------------------------- | --------------- | ------------ | ------------------------------------------------------------- |
+| `rateLimiting.enabled`       | boolean         | `true`       | Enable rate limiting plugin                                   |
+| `rateLimiting.policy`        | string          | `"local"`    | Rate limiting policy (`local` or `redis`)                     |
+| `security.enabled`           | boolean         | `false`      | Enable authentication plugin                                  |
+| `security.authType`          | string          | `"key-auth"` | Kong auth plugin name (`key-auth`, `basic-auth`, `jwt`, etc.) |
+| `addResponseHeaders.enabled` | boolean         | `false`      | Enable response header injection                              |
+| `addResponseHeaders.headers` | array\<string\> | `[]`         | Headers to add to responses (format: `"Header-Name:value"`)   |
 
 **Environment Overrides (configurable per environment):**
 
@@ -418,7 +442,7 @@ The `kong-api-configuration` trait provides declarative API management for compo
 
 The trait uses OpenChoreo's template rendering pipeline to:
 
-1. **Create KongPlugin CRDs** — one for each enabled plugin (rate-limiting, auth, request-transformer). Each plugin is conditionally created based on its `enabled` flag.
+1. **Create KongPlugin CRDs** — one for each enabled plugin (rate-limiting, auth, response-transformer). Each plugin is conditionally created based on its `enabled` flag.
 
 2. **Patch the HTTPRoute** — adds a `konghq.com/plugins` annotation listing the enabled plugin names, which Kong's Ingress Controller uses to bind plugins to the route.
 
@@ -440,7 +464,7 @@ spec:
     replicas: 1
   traits:
     - instanceName: my-api
-      name: kong-api-configuration
+      name: kong-api-management
       parameters:
         rateLimiting:
           enabled: true
@@ -448,7 +472,7 @@ spec:
         security:
           enabled: true
           authType: key-auth
-        addHeaders:
+        addResponseHeaders:
           enabled: true
           headers:
             - "X-Gateway:Kong"

@@ -1,0 +1,194 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 530" font-family="'Segoe UI', system-ui, -apple-system, sans-serif">
+  <defs>
+    <linearGradient id="controlPlane" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#e8eaf6"/>
+      <stop offset="100%" stop-color="#c5cae9"/>
+    </linearGradient>
+    <linearGradient id="dataPlaneDefault" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#e3f2fd"/>
+      <stop offset="100%" stop-color="#bbdefb"/>
+    </linearGradient>
+    <linearGradient id="dataPlaneKong" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#e8f5e9"/>
+      <stop offset="100%" stop-color="#c8e6c9"/>
+    </linearGradient>
+    <linearGradient id="kgatewayGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#7e57c2"/>
+      <stop offset="100%" stop-color="#5e35b1"/>
+    </linearGradient>
+    <linearGradient id="kgatewayCtrlGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#9575cd"/>
+      <stop offset="100%" stop-color="#7e57c2"/>
+    </linearGradient>
+    <linearGradient id="kongGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#00897b"/>
+      <stop offset="100%" stop-color="#00695c"/>
+    </linearGradient>
+    <linearGradient id="componentGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#42a5f5"/>
+      <stop offset="100%" stop-color="#1e88e5"/>
+    </linearGradient>
+    <linearGradient id="controllerGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#5c6bc0"/>
+      <stop offset="100%" stop-color="#3949ab"/>
+    </linearGradient>
+    <filter id="shadow" x="-2%" y="-2%" width="104%" height="108%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.12"/>
+    </filter>
+    <filter id="shadowSm" x="-2%" y="-2%" width="104%" height="108%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-opacity="0.1"/>
+    </filter>
+    <marker id="arrowHead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#546e7a"/>
+    </marker>
+    <marker id="arrowHeadSwap" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <path d="M0,0 L10,3.5 L0,7 Z" fill="#546e7a"/>
+    </marker>
+    <marker id="arrowHeadWhite" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#90a4ae"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1000" height="530" rx="12" fill="#fafafa"/>
+
+  <!-- Title -->
+  <text x="500" y="36" text-anchor="middle" font-size="18" font-weight="700" fill="#263238">Replacing the Default Gateway in OpenChoreo Data Plane</text>
+
+  <!-- ==================== LEFT SIDE: BEFORE ==================== -->
+  <text x="232" y="68" text-anchor="middle" font-size="14" font-weight="600" fill="#546e7a">BEFORE</text>
+  <text x="232" y="86" text-anchor="middle" font-size="11" fill="#78909c">Default kgateway (Envoy)</text>
+
+  <!-- Left: Control Plane -->
+  <rect x="32" y="100" width="400" height="64" rx="8" fill="url(#controlPlane)" filter="url(#shadow)" stroke="#9fa8da" stroke-width="1"/>
+  <text x="42" y="118" font-size="9" font-weight="600" fill="#3949ab" letter-spacing="1">CONTROL PLANE</text>
+  <rect x="42" y="126" width="380" height="28" rx="5" fill="url(#controllerGrad)" filter="url(#shadowSm)"/>
+  <text x="232" y="145" text-anchor="middle" font-size="11" font-weight="500" fill="#fff">OpenChoreo Controllers</text>
+
+  <!-- Arrow: Control → Data -->
+  <line x1="232" y1="164" x2="232" y2="192" stroke="#546e7a" stroke-width="1.5" marker-end="url(#arrowHead)"/>
+  <text x="245" y="182" font-size="8" fill="#78909c">applies</text>
+
+  <!-- Left: Data Plane -->
+  <rect x="32" y="196" width="400" height="310" rx="8" fill="url(#dataPlaneDefault)" filter="url(#shadow)" stroke="#90caf9" stroke-width="1"/>
+  <text x="42" y="214" font-size="9" font-weight="600" fill="#1565c0" letter-spacing="1">DATA PLANE</text>
+
+  <!-- Left: Gateway CR -->
+  <rect x="52" y="224" width="170" height="56" rx="6" fill="#fff" filter="url(#shadowSm)" stroke="#90caf9" stroke-width="1"/>
+  <text x="62" y="242" font-size="9" font-weight="600" fill="#1565c0">Gateway CR</text>
+  <text x="62" y="256" font-size="9" fill="#546e7a">name: gateway-default</text>
+  <text x="62" y="269" font-size="9" fill="#7e57c2" font-weight="500">class: kgateway</text>
+
+  <!-- Left: HTTPRoute -->
+  <rect x="242" y="224" width="170" height="56" rx="6" fill="#fff" filter="url(#shadowSm)" stroke="#90caf9" stroke-width="1"/>
+  <text x="252" y="242" font-size="9" font-weight="600" fill="#1565c0">HTTPRoute</text>
+  <text x="252" y="256" font-size="9" fill="#546e7a">parentRef: gateway-default</text>
+  <text x="252" y="269" font-size="9" fill="#546e7a">path: /greeter-service</text>
+
+  <!-- Arrow: HTTPRoute → Gateway CR -->
+  <line x1="242" y1="252" x2="225" y2="252" stroke="#546e7a" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrowHead)"/>
+
+  <!-- Left: kgateway controller box -->
+  <rect x="242" y="302" width="170" height="56" rx="8" fill="url(#kgatewayCtrlGrad)" filter="url(#shadow)"/>
+  <text x="327" y="324" text-anchor="middle" font-size="11" font-weight="600" fill="#fff">kgateway Controller</text>
+  <text x="327" y="342" text-anchor="middle" font-size="9" fill="#e8eaf6">Watches Gateway API</text>
+
+  <!-- Left: kgateway proxy box -->
+  <rect x="52" y="302" width="170" height="56" rx="8" fill="url(#kgatewayGrad)" filter="url(#shadow)"/>
+  <text x="137" y="322" text-anchor="middle" font-size="11" font-weight="600" fill="#fff">kgateway Proxy</text>
+  <text x="137" y="338" text-anchor="middle" font-size="9" fill="#e8eaf6">Envoy-based</text>
+  <text x="137" y="352" text-anchor="middle" font-size="9" fill="#e8eaf6">:9080 · :9443</text>
+
+  <!-- Arrow: kgateway controller → kgateway proxy -->
+  <line x1="242" y1="330" x2="225" y2="330" stroke="#d1c4e9" stroke-width="1.5" marker-end="url(#arrowHead)"/>
+
+  <!-- Arrow: Gateway CR → kgateway proxy -->
+  <line x1="137" y1="280" x2="137" y2="299" stroke="#546e7a" stroke-width="1.5" marker-end="url(#arrowHead)"/>
+
+  <!-- Left: Component Pod -->
+  <rect x="102" y="382" width="200" height="42" rx="6" fill="url(#componentGrad)" filter="url(#shadowSm)"/>
+  <text x="202" y="402" text-anchor="middle" font-size="10" font-weight="500" fill="#fff">greeter-service Pod</text>
+  <text x="202" y="416" text-anchor="middle" font-size="9" fill="#e3f2fd">:9090</text>
+
+  <!-- Arrow: kgateway proxy → Pod -->
+  <line x1="137" y1="358" x2="137" y2="379" stroke="#546e7a" stroke-width="1.5" marker-end="url(#arrowHead)"/>
+
+
+  <!-- ==================== CENTER ARROW ==================== -->
+  <line x1="452" y1="350" x2="535" y2="350" stroke="#546e7a" stroke-width="2.5" marker-end="url(#arrowHeadSwap)"/>
+
+  <!-- ==================== RIGHT SIDE: AFTER ==================== -->
+  <text x="755" y="68" text-anchor="middle" font-size="14" font-weight="600" fill="#546e7a">AFTER</text>
+  <text x="755" y="86" text-anchor="middle" font-size="11" fill="#78909c">Kong Gateway + KIC</text>
+
+  <!-- Right: Control Plane -->
+  <rect x="550" y="100" width="420" height="64" rx="8" fill="url(#controlPlane)" filter="url(#shadow)" stroke="#9fa8da" stroke-width="1"/>
+  <text x="560" y="118" font-size="9" font-weight="600" fill="#3949ab" letter-spacing="1">CONTROL PLANE</text>
+  <rect x="560" y="126" width="400" height="28" rx="5" fill="url(#controllerGrad)" filter="url(#shadowSm)"/>
+  <text x="760" y="145" text-anchor="middle" font-size="11" font-weight="500" fill="#fff">OpenChoreo Controllers (no changes)</text>
+
+  <!-- Arrow: Control → Data -->
+  <line x1="755" y1="164" x2="755" y2="192" stroke="#546e7a" stroke-width="1.5" marker-end="url(#arrowHead)"/>
+  <text x="768" y="182" font-size="8" fill="#78909c">applies</text>
+
+  <!-- Right: Data Plane -->
+  <rect x="550" y="196" width="420" height="310" rx="8" fill="url(#dataPlaneKong)" filter="url(#shadow)" stroke="#a5d6a7" stroke-width="1"/>
+  <text x="560" y="214" font-size="9" font-weight="600" fill="#2e7d32" letter-spacing="1">DATA PLANE</text>
+
+  <!-- Right: Gateway CR -->
+  <rect x="570" y="224" width="170" height="56" rx="6" fill="#fff" filter="url(#shadowSm)" stroke="#a5d6a7" stroke-width="1"/>
+  <text x="580" y="242" font-size="9" font-weight="600" fill="#2e7d32">Gateway CR</text>
+  <text x="580" y="256" font-size="9" fill="#546e7a">name: gateway-default</text>
+  <text x="580" y="269" font-size="9" fill="#00695c" font-weight="500">class: kong</text>
+
+  <!-- Right: HTTPRoute -->
+  <rect x="760" y="224" width="190" height="56" rx="6" fill="#fff" filter="url(#shadowSm)" stroke="#a5d6a7" stroke-width="1"/>
+  <text x="770" y="242" font-size="9" font-weight="600" fill="#2e7d32">HTTPRoute</text>
+  <text x="770" y="256" font-size="9" fill="#546e7a">parentRef: gateway-default</text>
+  <text x="770" y="269" font-size="9" fill="#546e7a">+ konghq.com/plugins &#x2726;</text>
+
+  <!-- Arrow: HTTPRoute → Gateway CR -->
+  <line x1="760" y1="252" x2="743" y2="252" stroke="#546e7a" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrowHead)"/>
+
+  <!-- Right: Kong Gateway proxy box -->
+  <rect x="570" y="302" width="170" height="56" rx="8" fill="url(#kongGrad)" filter="url(#shadow)"/>
+  <text x="655" y="322" text-anchor="middle" font-size="11" font-weight="600" fill="#fff">Kong Gateway</text>
+  <text x="655" y="338" text-anchor="middle" font-size="9" fill="#c8e6c9">Proxy · TLS · Plugins</text>
+  <text x="655" y="352" text-anchor="middle" font-size="9" fill="#c8e6c9">:19080 · :19443</text>
+
+  <!-- Right: KIC box -->
+  <rect x="760" y="302" width="190" height="56" rx="8" fill="#00796b" filter="url(#shadow)"/>
+  <text x="855" y="322" text-anchor="middle" font-size="11" font-weight="600" fill="#fff">Kong Ingress</text>
+  <text x="855" y="338" text-anchor="middle" font-size="11" font-weight="600" fill="#fff">Controller (KIC)</text>
+  <text x="855" y="352" text-anchor="middle" font-size="9" fill="#c8e6c9">Watches Gateway API</text>
+
+  <!-- Arrow: KIC → Kong -->
+  <line x1="760" y1="330" x2="743" y2="330" stroke="#b2dfdb" stroke-width="1.5" marker-end="url(#arrowHead)"/>
+
+  <!-- Arrow: Gateway CR → Kong -->
+  <line x1="655" y1="280" x2="655" y2="299" stroke="#546e7a" stroke-width="1.5" marker-end="url(#arrowHead)"/>
+
+  <!-- Right: Component Pod -->
+  <rect x="600" y="382" width="160" height="42" rx="6" fill="url(#componentGrad)" filter="url(#shadowSm)"/>
+  <text x="680" y="402" text-anchor="middle" font-size="10" font-weight="500" fill="#fff">greeter-service Pod</text>
+  <text x="680" y="416" text-anchor="middle" font-size="9" fill="#e3f2fd">:9090</text>
+
+  <!-- Right: KongPlugin badges -->
+  <rect x="782" y="382" width="84" height="20" rx="4" fill="#e8f5e9" stroke="#66bb6a" stroke-width="1"/>
+  <text x="824" y="396" text-anchor="middle" font-size="8" font-weight="500" fill="#2e7d32">rate-limiting</text>
+
+  <rect x="872" y="382" width="78" height="20" rx="4" fill="#e8f5e9" stroke="#66bb6a" stroke-width="1"/>
+  <text x="911" y="396" text-anchor="middle" font-size="8" font-weight="500" fill="#2e7d32">key-auth</text>
+
+  <rect x="800" y="406" width="130" height="20" rx="4" fill="#e8f5e9" stroke="#66bb6a" stroke-width="1"/>
+  <text x="865" y="420" text-anchor="middle" font-size="8" font-weight="500" fill="#2e7d32">response-transformer</text>
+
+  <text x="770" y="396" font-size="8" fill="#2e7d32" font-weight="600">&#x2726;</text>
+
+  <!-- Arrow: Kong → Pod -->
+  <line x1="655" y1="358" x2="655" y2="379" stroke="#546e7a" stroke-width="1.5" marker-end="url(#arrowHead)"/>
+
+
+  <!-- Footer note -->
+  <text x="500" y="518" text-anchor="middle" font-size="10" fill="#90a4ae">The Gateway CR name stays the same &#x2014; only the gatewayClassName changes. No control plane modifications required.</text>
+</svg>

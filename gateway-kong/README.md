@@ -306,7 +306,7 @@ Deploy the sample greeter service to verify end-to-end traffic flow through Kong
 kubectl apply -f kong-api-management-trait.yaml
 ```
 
-> **Note:** The greeter service Component uses `componentType: deployment/http-service-with-kong` and attaches the `kong-api-management` trait. See [Kong API Configuration Trait](#kong-api-management-trait) below for details on available plugins.
+> **Note:** The greeter service Component uses `componentType: deployment/http-service-with-kong` and attaches the `kong-api-management` trait. See [Kong API Management Trait](#kong-api-management-trait) below for details on available plugins.
 
 **Wait for the deployment to roll out:**
 
@@ -415,7 +415,7 @@ kubectl delete component greeter-service -n default
 kubectl delete workload greeter-service-workload -n default
 ```
 
-### Kong API Configuration Trait
+### Kong API Management Trait
 
 The `kong-api-management` trait provides declarative API management for components routed through Kong. It creates KongPlugin CRDs and patches the HTTPRoute annotations automatically.
 

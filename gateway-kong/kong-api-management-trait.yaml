@@ -1,4 +1,4 @@
-# Kong API Configuration Trait for OpenChoreo
+# Kong API Management Trait for OpenChoreo
 #
 # This trait enables Kong API management features on HTTPRoutes:
 #   - Rate Limiting: Configurable request rate limits via Kong's rate-limiting plugin

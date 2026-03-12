@@ -5,7 +5,9 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 	"time"
 
@@ -291,12 +293,40 @@ func (h *LogsHandler) UpdateAlertRule(ctx context.Context, request gen.UpdateAle
 }
 
 // HandleAlertWebhook implements POST /api/v1alpha1/alerts/webhook.
-func (h *LogsHandler) HandleAlertWebhook(ctx context.Context, _ gen.HandleAlertWebhookRequestObject) (gen.HandleAlertWebhookResponseObject, error) {
+func (h *LogsHandler) HandleAlertWebhook(ctx context.Context, request gen.HandleAlertWebhookRequestObject) (gen.HandleAlertWebhookResponseObject, error) {
+	if request.Body == nil {
+		h.logger.Warn("Alert webhook received with nil body")
+		return gen.HandleAlertWebhook200JSONResponse{
+			Message: ptr("alert webhook received successfully"),
+			Status:  ptr(gen.Success),
+		}, nil
+	}
+	body := *request.Body
+
+	alertName, ruleName, alertCount, alertTimestamp, err := parseAlertWebhookBody(body)
+	if err != nil {
+		h.logger.Error("Failed to parse alert webhook body", slog.Any("error", err))
+		return gen.HandleAlertWebhook200JSONResponse{
+			Message: ptr("alert webhook received successfully"),
+			Status:  ptr(gen.Success),
+		}, nil
+	}
+
 	go func() {
 		forwardCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		if err := h.observerClient.ForwardAlert(forwardCtx, "", "", 0, time.Time{}); err != nil {
+		// Retrieve the alert details from OpenObserve to get the namespace. This is because the webhook body does not contain the namespace, but the observer's webhook API requires it.
+		alertDetail, err := h.client.GetAlert(forwardCtx, alertName)
+		if err != nil {
+			h.logger.Error("Failed to get alert details from OpenObserve",
+				slog.String("alertName", alertName),
+				slog.Any("error", err),
+			)
+			return
+		}
+
+		if err := h.observerClient.ForwardAlert(forwardCtx, ruleName, alertDetail.Namespace, alertCount, alertTimestamp); err != nil {
 			h.logger.Error("Failed to forward alert webhook to observer API",
 				slog.Any("error", err),
 			)
@@ -307,6 +337,51 @@ func (h *LogsHandler) HandleAlertWebhook(ctx context.Context, _ gen.HandleAlertW
 		Message: ptr("alert webhook received successfully"),
 		Status:  ptr(gen.Success),
 	}, nil
+}
+
+// parseAlertWebhookBody extracts alert fields from the incoming OpenObserve webhook body.
+// It returns the alertName, ruleName (same as alertName), alertCount, and alertTimestamp.
+func parseAlertWebhookBody(body map[string]interface{}) (alertName string, ruleName string, alertCount float64, alertTimestamp time.Time, err error) {
+	nameVal, ok := body["alertName"]
+	if !ok {
+		return "", "", 0, time.Time{}, fmt.Errorf("missing alertName in webhook body")
+	}
+	alertName, ok = nameVal.(string)
+	if !ok {
+		return "", "", 0, time.Time{}, fmt.Errorf("alertName is not a string")
+	}
+	ruleName = alertName
+
+	if countVal, ok := body["alertCount"]; ok {
+		switch v := countVal.(type) {
+		case float64:
+			alertCount = v
+		case string:
+			alertCount, err = strconv.ParseFloat(v, 64)
+			if err != nil {
+				return "", "", 0, time.Time{}, fmt.Errorf("failed to parse alertCount %q: %w", v, err)
+			}
+		}
+	}
+
+	if tsVal, ok := body["alertTriggerTimeMicroSeconds"]; ok {
+		switch v := tsVal.(type) {
+		case float64:
+			alertTimestamp = time.UnixMicro(int64(v))
+		case string:
+			usec, parseErr := strconv.ParseInt(v, 10, 64)
+			if parseErr != nil {
+				return "", "", 0, time.Time{}, fmt.Errorf("failed to parse alertTriggerTimeMicroSeconds %q: %w", v, parseErr)
+			}
+			alertTimestamp = time.UnixMicro(usec)
+		default:
+			alertTimestamp = time.Now()
+		}
+	} else {
+		alertTimestamp = time.Now()
+	}
+
+	return alertName, ruleName, alertCount, alertTimestamp, nil
 }
 
 // toWorkflowLogsParams converts the generated request to internal workflow query params.

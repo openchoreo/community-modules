@@ -75,7 +75,7 @@ else
     -H "Content-Type: application/json" \
     -d "{
       \"name\": \"$TEMPLATE_NAME\",
-      \"body\": \"{alert_name} {alert_type} {org_name} {stream_name}\",
+      \"body\": {\"alertName\": \"{alert_name}\", \"alertTriggerTimeMicroSeconds\": \"{alert_trigger_time}\", \"alertCount\": \"{alert_count}\"},
       \"type\": \"http\"
     }")
 

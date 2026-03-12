@@ -25,7 +25,7 @@ fluent-bit:
           DB /var/lib/fluent-bit/db/tail-container-logs.db
           Exclude_Path /var/log/containers/fluent-bit-*_openchoreo-observability-plane_*.log
           Inotify_Watcher false
-          Mem_Buf_Limit 256MB
+          Mem_Buf_Limit 100MB
           Path /var/log/containers/*.log
           multiline.parser docker, cri
           Read_from_Head On
@@ -36,7 +36,7 @@ fluent-bit:
     filters: |
       [FILTER]
           Name kubernetes
-          Buffer_Size 32MB
+          Buffer_Size 15MB
           K8S-Logging.Parser On
           K8S-Logging.Exclude On
           Keep_Log On
@@ -91,11 +91,11 @@ fluent-bit:
 
   resources:
     limits:
-      cpu: 200m
-      memory: 256Mi
-    requests:
       cpu: 100m
-      memory: 128Mi
+      memory: 150Mi
+    requests:
+      cpu: 25m
+      memory: 125Mi
 
   securityContext:
     allowPrivilegeEscalation: false

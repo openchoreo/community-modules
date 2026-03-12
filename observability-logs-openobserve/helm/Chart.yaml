@@ -5,8 +5,8 @@ apiVersion: v2
 name: observability-logs-openobserve
 description: A Helm chart for OpenChoreo Logs Module for OpenObserve
 type: application
-version: 0.3.4
-appVersion: "0.3.4"
+version: 0.3.5
+appVersion: "0.3.5"
 keywords:
   - openobserve
   - openchoreo

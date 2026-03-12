@@ -27,12 +27,12 @@ for i in $(seq 1 $MAX_RETRIES); do
   # Make health check request
   RESPONSE=$(curl -s -w "\n%{http_code}" "$OPENOBSERVE_URL/healthz" 2>/dev/null)
   HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
-  BODY=$(echo "$RESPONSE" | head -n-1)
+  BODY=$(echo "$RESPONSE" | sed '$d')
 
   if [ "$HTTP_CODE" = "200" ]; then
     # Check if response contains expected status
     if echo "$BODY" | grep -q '"status"[[:space:]]*:[[:space:]]*"ok"'; then
-      echo "OpenObserve is healthy and ready!"
+      echo -e "OpenObserve is healthy and ready!\n"
       HEALTHY=true
       break
     else
@@ -55,8 +55,7 @@ fi
 ## 2. Create an alert template in OpenObserve (required before creating a destination)
 
 OPENOBSERVE_ORG="default"
-
-TEMPLATE_NAME="openchoreo_alerts_template"
+TEMPLATE_NAME="openchoreo"
 
 echo "Configuring alert template..."
 
@@ -66,7 +65,7 @@ EXISTING_TEMPLATES=$(curl -s -u "$OPENOBSERVE_USERNAME:$OPENOBSERVE_PASSWORD" \
   "$OPENOBSERVE_URL/api/$OPENOBSERVE_ORG/alerts/templates")
 
 if echo "$EXISTING_TEMPLATES" | grep -q "\"name\"[[:space:]]*:[[:space:]]*\"$TEMPLATE_NAME\""; then
-  echo "Template '$TEMPLATE_NAME' already exists. Skipping creation."
+  echo -e "Template '$TEMPLATE_NAME' already exists. Skipping creation.\n"
 else
   echo "Creating alert template '$TEMPLATE_NAME'..."
 
@@ -75,12 +74,12 @@ else
     -H "Content-Type: application/json" \
     -d "{
       \"name\": \"$TEMPLATE_NAME\",
-      \"body\": {\"alertName\": \"{alert_name}\", \"alertTriggerTimeMicroSeconds\": \"{alert_trigger_time}\", \"alertCount\": \"{alert_count}\"},
+      \"body\": \"{\\\"alertName\\\": \\\"{alert_name}\\\", \\\"alertTriggerTimeMicroSeconds\\\": \\\"{alert_trigger_time}\\\", \\\"alertCount\\\": \\\"{alert_count}\\\"}\",
       \"type\": \"http\"
     }")
 
   HTTP_CODE=$(echo "$CREATE_RESPONSE" | tail -n1)
-  BODY=$(echo "$CREATE_RESPONSE" | head -n-1)
+  BODY=$(echo "$CREATE_RESPONSE" | sed '$d')
 
   if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "201" ]; then
     echo "Alert template created successfully!"
@@ -93,7 +92,7 @@ fi
 
 ## 3. Create a webhook based alert destination in OpenObserve
 
-DESTINATION_NAME="openchoreo_alerts"
+DESTINATION_NAME="openchoreo"
 WEBHOOK_URL="http://logs-adapter:9098/api/v1alpha1/alerts/webhook"
 
 echo "Configuring webhook based alert destination..."
@@ -105,7 +104,7 @@ EXISTING_DESTINATIONS=$(curl -s -u "$OPENOBSERVE_USERNAME:$OPENOBSERVE_PASSWORD"
 
 # Extract the existing destination's URL if it exists using jq for reliable JSON parsing
 EXISTING_URL=$(echo "$EXISTING_DESTINATIONS" | jq -r --arg dest_name "$DESTINATION_NAME" \
-  'try (.destinations[] // .[]) catch .[] | select(.name == $dest_name) | .url // empty' 2>/dev/null)
+  '.[] | select(.name == $dest_name) | .url // empty' 2>/dev/null)
 
 if [ -n "$EXISTING_URL" ]; then
   echo "Destination '$DESTINATION_NAME' already exists with URL: $EXISTING_URL"
@@ -115,25 +114,8 @@ if [ -n "$EXISTING_URL" ]; then
   else
     echo "Webhook URL differs from the stored URL. Updating destination..."
 
-    # Delete existing destination
-    DELETE_RESPONSE=$(curl -s -w "\n%{http_code}" -u "$OPENOBSERVE_USERNAME:$OPENOBSERVE_PASSWORD" \
-      -X DELETE "$OPENOBSERVE_URL/api/$OPENOBSERVE_ORG/alerts/destinations/$DESTINATION_NAME")
-
-    DELETE_HTTP_CODE=$(echo "$DELETE_RESPONSE" | tail -n1)
-    DELETE_BODY=$(echo "$DELETE_RESPONSE" | head -n-1)
-
-    if [ "$DELETE_HTTP_CODE" = "200" ] || [ "$DELETE_HTTP_CODE" = "204" ]; then
-      echo "Existing destination deleted successfully."
-    else
-      echo "ERROR: Failed to delete existing destination (HTTP $DELETE_HTTP_CODE). Response: $DELETE_BODY"
-      exit 1
-    fi
-
-    # Recreate with new URL
-    echo "Creating webhook based alert destination '$DESTINATION_NAME' with new URL..."
-
-    CREATE_RESPONSE=$(curl -s -w "\n%{http_code}" -u "$OPENOBSERVE_USERNAME:$OPENOBSERVE_PASSWORD" \
-      -X POST "$OPENOBSERVE_URL/api/$OPENOBSERVE_ORG/alerts/destinations" \
+    UPDATE_RESPONSE=$(curl -s -w "\n%{http_code}" -u "$OPENOBSERVE_USERNAME:$OPENOBSERVE_PASSWORD" \
+      -X PUT "$OPENOBSERVE_URL/api/$OPENOBSERVE_ORG/alerts/destinations/$DESTINATION_NAME" \
       -H "Content-Type: application/json" \
       -d "{
         \"name\": \"$DESTINATION_NAME\",
@@ -147,10 +129,10 @@ if [ -n "$EXISTING_URL" ]; then
         }
       }")
 
-    HTTP_CODE=$(echo "$CREATE_RESPONSE" | tail -n1)
-    BODY=$(echo "$CREATE_RESPONSE" | head -n-1)
+    HTTP_CODE=$(echo "$UPDATE_RESPONSE" | tail -n1)
+    BODY=$(echo "$UPDATE_RESPONSE" | sed '$d')
 
-    if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "201" ]; then
+    if [ "$HTTP_CODE" = "200" ]; then
       echo "Webhook based alert destination updated successfully!"
     else
       echo "ERROR: Failed to update webhook based alert destination (HTTP $HTTP_CODE). Response: $BODY"
@@ -176,7 +158,7 @@ else
     }")
 
   HTTP_CODE=$(echo "$CREATE_RESPONSE" | tail -n1)
-  BODY=$(echo "$CREATE_RESPONSE" | head -n-1)
+  BODY=$(echo "$CREATE_RESPONSE" | sed '$d')
 
   if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "201" ]; then
     echo "Webhook based alert destination created successfully!"
@@ -186,4 +168,4 @@ else
   fi
 fi
 
-echo "OpenObserve configuration completed successfully!"
+echo -e "OpenObserve configuration completed successfully!\n"

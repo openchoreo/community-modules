@@ -166,7 +166,7 @@ func generateAlertConfig(params LogAlertParams, streamName string, logger *slog.
 			"operator":  sqlOperator,
 			"silence":   0,
 		},
-		"destinations": []string{"openchoreo_alerts"},
+		"destinations": []string{"openchoreo"},
 		"context_attributes": map[string]interface{}{
 			"namespace":      params.Namespace,
 			"projectUid":     params.ProjectUID,

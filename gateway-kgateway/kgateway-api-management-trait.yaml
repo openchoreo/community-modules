@@ -1,0 +1,257 @@
+# kgateway API Management Trait for OpenChoreo
+#
+# This trait enables kgateway API management features on HTTPRoutes:
+#   - JWT Authentication: JWT validation via GatewayExtension + Backend + TrafficPolicy
+#   - Rate Limiting: Local token-bucket rate limiting via TrafficPolicy
+#   - Response Headers: Add custom headers to responses via TrafficPolicy
+#
+# Each feature is independently toggleable. The trait conditionally creates kgateway CRDs
+# and patches the HTTPRoute with the appropriate ExtensionRef filters.
+#
+# JWT Identity Provider Configuration:
+#   The JWT provider details (issuer, JWKS URL, audiences, etc.) are configured once
+#   in this trait file before applying it to the cluster. When any component enables JWT,
+#   the trait creates a shared GatewayExtension ("jwt-idp-providers") and Backend
+#   ("jwt-idp-jwks") in the component's data plane namespace. All JWT-enabled components
+#   in the same namespace share these resources.
+#
+#   Update the GatewayExtension and Backend templates below with your identity provider
+#   details before applying this trait. See README.md for configuration guidance.
+#
+# Prerequisites:
+#   - kgateway installed in the data plane
+#   - kgateway CRDs available (TrafficPolicy, GatewayExtension, Backend)
+#   - ComponentType must have an HTTPRoute resource for the patch to target
+#
+# Usage:
+#   1. Update the JWT provider configuration in this file (issuer, JWKS URL, audiences)
+#   2. Apply this trait to the control plane
+#   3. Add "kgateway-api-management" to the ComponentType's allowedTraits
+#   4. Reference it in the Component's traits with desired parameters
+
+---
+apiVersion: openchoreo.dev/v1alpha1
+kind: ClusterTrait
+metadata:
+  name: kgateway-api-management
+spec:
+  parameters:
+    openAPIV3Schema:
+      type: object
+      $defs:
+        # --- JWT authentication configuration ---
+        # Controls JWT validation via kgateway's GatewayExtension and TrafficPolicy.
+        # When enabled, creates a shared GatewayExtension and Backend for the JWT
+        # identity provider, plus a per-route TrafficPolicy for JWT enforcement.
+        # The identity provider details (issuer, JWKS, audiences) are configured
+        # in the trait template below — not as component parameters.
+        JwtConfig:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+              default: false
+
+        # --- local rate-limiting configuration ---
+        # Controls kgateway's local token-bucket rate limiting via TrafficPolicy.
+        # When enabled, creates a TrafficPolicy with a local rate limit.
+        RateLimitConfig:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+              default: true
+            # Maximum number of tokens available in the bucket
+            maxTokens:
+              type: integer
+              default: 60
+            # Number of tokens added per refill
+            tokensPerFill:
+              type: integer
+              default: 60
+            # Interval between refills (e.g., "60s", "1m")
+            fillInterval:
+              type: string
+              default: "60s"
+
+        # --- response header modification configuration ---
+        # Controls adding custom headers to responses via TrafficPolicy.
+        # When enabled, creates a TrafficPolicy with headerModifiers.
+        # Each header entry has "name" and "value" fields.
+        AddResponseHeadersConfig:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+              default: false
+            headers:
+              type: array
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  value:
+                    type: string
+              default: []
+
+      properties:
+        # Name of the workload endpoint this trait targets.
+        # Must match an endpoint key defined in the Workload spec.
+        # Used to resolve the HTTPRoute name via oc_generate_name.
+        endpointName:
+          type: string
+        jwt:
+          $ref: "#/$defs/JwtConfig"
+          default: {}
+        rateLimiting:
+          $ref: "#/$defs/RateLimitConfig"
+          default: {}
+        addResponseHeaders:
+          $ref: "#/$defs/AddResponseHeadersConfig"
+          default: {}
+      required:
+        - endpointName
+
+  creates:
+    # --- Backend: JWKS endpoint for JWT validation ---
+    # Created when jwt.enabled is true.
+    # Points to the external JWKS host so kgateway can fetch signing keys.
+    # Each component gets its own Backend (named per component) so deleting
+    # one component does not affect others in the same namespace.
+    #
+    # >>> UPDATE: Replace host and port with your identity provider's JWKS endpoint.
+    - includeWhen: ${parameters.jwt.enabled}
+      template:
+        apiVersion: gateway.kgateway.dev/v1alpha1
+        kind: Backend
+        metadata:
+          name: ${metadata.name}-${trait.instanceName}-jwks
+          namespace: ${metadata.namespace}
+          labels: ${metadata.labels}
+        spec:
+          type: Static
+          static:
+            hosts:
+              - host: api.asgardeo.io    # Replace with your IdP's JWKS host
+                port: 443                 # Replace with the JWKS endpoint port
+
+    # --- BackendTLSPolicy: TLS configuration for the JWKS Backend ---
+    # Created when jwt.enabled is true.
+    # Sets the SNI hostname for the TLS connection to the JWKS endpoint.
+    # Without this, Envoy connects to the static IP without SNI, causing
+    # CDN/WAF fronting the IdP to reject the request.
+    #
+    # >>> UPDATE: Replace hostname with your identity provider's JWKS host.
+    - includeWhen: ${parameters.jwt.enabled}
+      template:
+        apiVersion: gateway.networking.k8s.io/v1alpha3
+        kind: BackendTLSPolicy
+        metadata:
+          name: ${metadata.name}-${trait.instanceName}-jwks-tls
+          namespace: ${metadata.namespace}
+          labels: ${metadata.labels}
+        spec:
+          targetRefs:
+            - group: gateway.kgateway.dev
+              kind: Backend
+              name: ${metadata.name}-${trait.instanceName}-jwks
+          validation:
+            hostname: api.asgardeo.io    # Replace with your IdP's JWKS host (must match Backend host)
+            wellKnownCACertificates: System
+
+    # --- GatewayExtension: JWT provider configuration ---
+    # Created when jwt.enabled is true.
+    # Defines the JWT provider with issuer, audiences, JWKS source, and claim mapping.
+    # Each component gets its own GatewayExtension (named per component) so deleting
+    # one component does not affect others in the same namespace.
+    #
+    # >>> UPDATE: Replace issuer, audiences, jwks URL, and claimsToHeaders
+    # >>> with your identity provider's configuration.
+    - includeWhen: ${parameters.jwt.enabled}
+      template:
+        apiVersion: gateway.kgateway.dev/v1alpha1
+        kind: GatewayExtension
+        metadata:
+          name: ${metadata.name}-${trait.instanceName}-jwt
+          namespace: ${metadata.namespace}
+          labels: ${metadata.labels}
+        spec:
+          jwt:
+            providers:
+              - name: default
+                issuer: "https://api.asgardeo.io/t/lahirude/oauth2/token"          # Replace with your IdP issuer URL
+                jwks:
+                  remote:
+                    url: "https://api.asgardeo.io/t/lahirude/oauth2/jwks"           # Replace with your JWKS URL
+                    backendRef:
+                      group: gateway.kgateway.dev
+                      kind: Backend
+                      name: ${metadata.name}-${trait.instanceName}-jwks
+                    cacheDuration: "5m"
+
+    # --- TrafficPolicy: JWT authentication enforcement ---
+    # Created when jwt.enabled is true.
+    # Attaches JWT validation to the HTTPRoute via targetRefs.
+    # References the per-component GatewayExtension.
+    - includeWhen: ${parameters.jwt.enabled}
+      template:
+        apiVersion: gateway.kgateway.dev/v1alpha1
+        kind: TrafficPolicy
+        metadata:
+          name: ${metadata.name}-${trait.instanceName}-jwt-auth
+          namespace: ${metadata.namespace}
+          labels: ${metadata.labels}
+        spec:
+          targetRefs:
+            - group: gateway.networking.k8s.io
+              kind: HTTPRoute
+              name: ${oc_generate_name(metadata.componentName, parameters.endpointName)}
+          jwtAuth:
+            extensionRef:
+              name: ${metadata.name}-${trait.instanceName}-jwt
+
+    # --- TrafficPolicy: Local Rate Limiting ---
+    # Created when rateLimiting.enabled is true.
+    # Uses token-bucket algorithm for per-route local rate limiting.
+    - includeWhen: ${parameters.rateLimiting.enabled}
+      template:
+        apiVersion: gateway.kgateway.dev/v1alpha1
+        kind: TrafficPolicy
+        metadata:
+          name: ${metadata.name}-${trait.instanceName}-rate-limit
+          namespace: ${metadata.namespace}
+          labels: ${metadata.labels}
+        spec:
+          targetRefs:
+            - group: gateway.networking.k8s.io
+              kind: HTTPRoute
+              name: ${oc_generate_name(metadata.componentName, parameters.endpointName)}
+          rateLimit:
+            local:
+              tokenBucket:
+                maxTokens: ${parameters.rateLimiting.maxTokens}
+                tokensPerFill: ${parameters.rateLimiting.tokensPerFill}
+                fillInterval: ${parameters.rateLimiting.fillInterval}
+
+    # --- TrafficPolicy: Response Header Modification ---
+    # Created when addResponseHeaders.enabled is true.
+    # Adds custom headers to every response sent back to the client.
+    - includeWhen: ${parameters.addResponseHeaders.enabled}
+      template:
+        apiVersion: gateway.kgateway.dev/v1alpha1
+        kind: TrafficPolicy
+        metadata:
+          name: ${metadata.name}-${trait.instanceName}-response-headers
+          namespace: ${metadata.namespace}
+          labels: ${metadata.labels}
+        spec:
+          targetRefs:
+            - group: gateway.networking.k8s.io
+              kind: HTTPRoute
+              name: ${oc_generate_name(metadata.componentName, parameters.endpointName)}
+          headerModifiers:
+            response:
+              add: ${parameters.addResponseHeaders.headers}
+
+---

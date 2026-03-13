@@ -53,6 +53,7 @@ otelTracesIndexTemplate='
       "number_of_replicas": 1
     },
     "mappings": {
+      "dynamic": "false",
       "properties": {
         "endTime": {
           "type": "date_nanos"

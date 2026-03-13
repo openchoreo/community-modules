@@ -191,7 +191,7 @@ func generateWorkflowLogsQuery(params WorkflowLogsParams, stream string, logger 
 
 	// Add namespace filter
 	if params.Namespace != "" {
-		conditions = append(conditions, "kubernetes_namespace_name = 'openchoreo-ci-"+escapeSQLString(params.Namespace)+"'")
+		conditions = append(conditions, "kubernetes_namespace_name = 'workflows-"+escapeSQLString(params.Namespace)+"'")
 	}
 
 	// Add workflow run name filter

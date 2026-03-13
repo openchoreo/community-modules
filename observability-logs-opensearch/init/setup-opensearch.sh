@@ -65,9 +65,70 @@ containerLogsIndexTemplate='
       "number_of_replicas": 1
     },
     "mappings": {
+      "dynamic": "false",
       "properties": {
-        "timestamp": {
+        "@timestamp": {
           "type": "date"
+        },
+        "kubernetes": {
+          "properties": {
+            "annotations": {
+              "properties": {
+                "workflows_argoproj_io/node-name": {
+                  "type": "keyword"
+                }
+              }
+            },
+            "container_name": {
+              "type": "keyword"
+            },
+            "labels": {
+              "properties": {
+                "build-name": {
+                  "type": "keyword"
+                },
+                "openchoreo_dev/component": {
+                  "type": "keyword"
+                },
+                "openchoreo_dev/component-uid": {
+                  "type": "keyword"
+                },
+                "openchoreo_dev/environment": {
+                  "type": "keyword"
+                },
+                "openchoreo_dev/environment-uid": {
+                  "type": "keyword"
+                },
+                "openchoreo_dev/namespace": {
+                  "type": "keyword"
+                },
+                "openchoreo_dev/project": {
+                  "type": "keyword"
+                },
+                "openchoreo_dev/project-uid": {
+                  "type": "keyword"
+                },
+                "target": {
+                  "type": "keyword"
+                },
+                "uuid": {
+                  "type": "keyword"
+                },
+                "version": {
+                  "type": "keyword"
+                },
+                "version_id": {
+                  "type": "keyword"
+                }
+              }
+            },
+            "namespace_name": {
+              "type": "keyword"
+            },
+            "pod_name": {
+              "type": "keyword"
+            }
+          }
         },
         "log": {
           "type": "wildcard"
@@ -89,6 +150,7 @@ rcaReportsIndexTemplate='
       "number_of_replicas": 1
     },
     "mappings": {
+      "dynamic": "false",
       "properties": {
         "@timestamp": {
           "type": "date"

@@ -1,0 +1,172 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 620" font-family="'Segoe UI', system-ui, -apple-system, sans-serif">
+  <defs>
+    <linearGradient id="controlPlane" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#e8eaf6"/>
+      <stop offset="100%" stop-color="#c5cae9"/>
+    </linearGradient>
+    <linearGradient id="dataPlane" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#e0f2f1"/>
+      <stop offset="100%" stop-color="#b2dfdb"/>
+    </linearGradient>
+    <linearGradient id="envoyGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#00897b"/>
+      <stop offset="100%" stop-color="#00695c"/>
+    </linearGradient>
+    <linearGradient id="envoyCtrlGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#26a69a"/>
+      <stop offset="100%" stop-color="#00897b"/>
+    </linearGradient>
+    <linearGradient id="componentGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#42a5f5"/>
+      <stop offset="100%" stop-color="#1e88e5"/>
+    </linearGradient>
+    <linearGradient id="controllerGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#5c6bc0"/>
+      <stop offset="100%" stop-color="#3949ab"/>
+    </linearGradient>
+    <linearGradient id="idpGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ef6c00"/>
+      <stop offset="100%" stop-color="#e65100"/>
+    </linearGradient>
+    <filter id="shadow" x="-2%" y="-2%" width="104%" height="108%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.12"/>
+    </filter>
+    <filter id="shadowSm" x="-2%" y="-2%" width="104%" height="108%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-opacity="0.1"/>
+    </filter>
+    <marker id="arrowHead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#546e7a"/>
+    </marker>
+    <marker id="arrowHeadTeal" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#00897b"/>
+    </marker>
+    <marker id="arrowHeadOrange" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#ef6c00"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="780" height="620" rx="12" fill="#fafafa"/>
+
+  <!-- Title -->
+  <text x="390" y="36" text-anchor="middle" font-size="18" font-weight="700" fill="#263238">Envoy Gateway API Management Module &#x2014; Architecture</text>
+  <text x="390" y="56" text-anchor="middle" font-size="11" fill="#78909c">JWT Authentication &#x00B7; Rate Limiting &#x00B7; Response Headers via Envoy Gateway CRDs</text>
+
+  <!-- ==================== CONTROL PLANE ==================== -->
+  <rect x="40" y="76" width="700" height="74" rx="8" fill="url(#controlPlane)" filter="url(#shadow)" stroke="#9fa8da" stroke-width="1"/>
+  <text x="52" y="94" font-size="9" font-weight="600" fill="#3949ab" letter-spacing="1">CONTROL PLANE</text>
+
+  <!-- OpenChoreo Controllers -->
+  <rect x="52" y="102" width="290" height="36" rx="5" fill="url(#controllerGrad)" filter="url(#shadowSm)"/>
+  <text x="197" y="122" text-anchor="middle" font-size="11" font-weight="500" fill="#fff">OpenChoreo Controllers</text>
+  <text x="197" y="134" text-anchor="middle" font-size="8" fill="#c5cae9">Renders ClusterTrait templates into Envoy Gateway CRDs</text>
+
+  <!-- ClusterTrait badge -->
+  <rect x="370" y="102" width="356" height="36" rx="5" fill="#fff" filter="url(#shadowSm)" stroke="#9fa8da" stroke-width="1"/>
+  <text x="382" y="118" font-size="9" font-weight="600" fill="#3949ab">ClusterTrait</text>
+  <text x="467" y="118" font-size="9" fill="#546e7a">envoy-gateway-api-configuration</text>
+  <text x="382" y="132" font-size="8" fill="#78909c">Defines JWT, RateLimit, ResponseHeader templates</text>
+
+  <!-- Arrow: Control Plane → Data Plane -->
+  <line x1="197" y1="150" x2="197" y2="182" stroke="#546e7a" stroke-width="1.5" marker-end="url(#arrowHead)"/>
+  <text x="210" y="170" font-size="8" fill="#78909c">applies</text>
+
+  <!-- ==================== DATA PLANE ==================== -->
+  <rect x="40" y="186" width="700" height="400" rx="8" fill="url(#dataPlane)" filter="url(#shadow)" stroke="#80cbc4" stroke-width="1"/>
+  <text x="52" y="204" font-size="9" font-weight="600" fill="#00695c" letter-spacing="1">DATA PLANE</text>
+
+  <!-- Gateway CR -->
+  <rect x="60" y="216" width="180" height="52" rx="6" fill="#fff" filter="url(#shadowSm)" stroke="#80cbc4" stroke-width="1"/>
+  <text x="72" y="234" font-size="9" font-weight="600" fill="#00695c">Gateway CR</text>
+  <text x="72" y="248" font-size="9" fill="#546e7a">name: gateway-default</text>
+  <text x="72" y="260" font-size="9" fill="#00897b" font-weight="500">class: envoy-gateway</text>
+
+  <!-- HTTPRoute -->
+  <rect x="270" y="216" width="180" height="52" rx="6" fill="#fff" filter="url(#shadowSm)" stroke="#80cbc4" stroke-width="1"/>
+  <text x="282" y="234" font-size="9" font-weight="600" fill="#00695c">HTTPRoute</text>
+  <text x="282" y="248" font-size="9" fill="#546e7a">parentRef: gateway-default</text>
+  <text x="282" y="260" font-size="9" fill="#546e7a">path: /my-service</text>
+
+  <!-- Arrow: HTTPRoute → Gateway CR -->
+  <line x1="270" y1="242" x2="243" y2="242" stroke="#546e7a" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrowHead)"/>
+
+  <!-- Envoy Gateway Controller -->
+  <rect x="270" y="290" width="180" height="50" rx="8" fill="url(#envoyCtrlGrad)" filter="url(#shadow)"/>
+  <text x="360" y="312" text-anchor="middle" font-size="11" font-weight="600" fill="#fff">Envoy Gateway Controller</text>
+  <text x="360" y="328" text-anchor="middle" font-size="9" fill="#e0f2f1">Watches Gateway API + EG CRDs</text>
+
+  <!-- Envoy Proxy -->
+  <rect x="60" y="290" width="180" height="50" rx="8" fill="url(#envoyGrad)" filter="url(#shadow)"/>
+  <text x="150" y="310" text-anchor="middle" font-size="11" font-weight="600" fill="#fff">Envoy Proxy</text>
+  <text x="150" y="324" text-anchor="middle" font-size="9" fill="#e0f2f1">Managed by EG &#x00B7; :19080 &#x00B7; :19443</text>
+
+  <!-- Arrow: Envoy Gateway controller → Envoy proxy (xDS) -->
+  <line x1="270" y1="315" x2="243" y2="315" stroke="#b2dfdb" stroke-width="1.5" marker-end="url(#arrowHead)"/>
+  <text x="248" y="308" font-size="7" fill="#00695c">xDS</text>
+
+  <!-- Arrow: Gateway CR → Envoy proxy -->
+  <line x1="150" y1="268" x2="150" y2="287" stroke="#546e7a" stroke-width="1.5" marker-end="url(#arrowHead)"/>
+
+  <!-- Component Pod -->
+  <rect x="80" y="380" width="160" height="42" rx="6" fill="url(#componentGrad)" filter="url(#shadowSm)"/>
+  <text x="160" y="400" text-anchor="middle" font-size="10" font-weight="500" fill="#fff">Component Pod</text>
+  <text x="160" y="414" text-anchor="middle" font-size="9" fill="#e3f2fd">:9090</text>
+
+  <!-- Arrow: Envoy proxy → Pod -->
+  <line x1="150" y1="340" x2="150" y2="377" stroke="#546e7a" stroke-width="1.5" marker-end="url(#arrowHead)"/>
+
+  <!-- ==================== TRAIT RESOURCES (right side) ==================== -->
+  <text x="510" y="210" font-size="9" font-weight="600" fill="#00695c" letter-spacing="0.5">TRAIT-GENERATED RESOURCES</text>
+
+  <!-- Backend -->
+  <rect x="500" y="220" width="220" height="42" rx="5" fill="#fff" filter="url(#shadowSm)" stroke="#00897b" stroke-width="1"/>
+  <text x="514" y="237" font-size="9" font-weight="600" fill="#00897b">Backend</text>
+  <text x="514" y="252" font-size="8" fill="#546e7a">Static host &#x2192; IdP JWKS endpoint</text>
+  <!-- includeWhen badge top-right -->
+  <rect x="654" y="222" width="62" height="14" rx="3" fill="#e8f5e9" stroke="#a5d6a7" stroke-width="0.5"/>
+  <text x="685" y="232" text-anchor="middle" font-size="7" fill="#2e7d32">jwt.enabled</text>
+
+  <!-- BackendTLSPolicy -->
+  <rect x="500" y="272" width="220" height="42" rx="5" fill="#fff" filter="url(#shadowSm)" stroke="#00897b" stroke-width="1"/>
+  <text x="514" y="289" font-size="9" font-weight="600" fill="#00897b">BackendTLSPolicy</text>
+  <text x="514" y="304" font-size="8" fill="#546e7a">SNI hostname for JWKS TLS</text>
+  <!-- includeWhen badge top-right -->
+  <rect x="654" y="274" width="62" height="14" rx="3" fill="#e8f5e9" stroke="#a5d6a7" stroke-width="0.5"/>
+  <text x="685" y="284" text-anchor="middle" font-size="7" fill="#2e7d32">jwt.enabled</text>
+
+  <!-- SecurityPolicy -->
+  <rect x="500" y="324" width="220" height="42" rx="5" fill="#fff" filter="url(#shadowSm)" stroke="#00897b" stroke-width="1"/>
+  <text x="514" y="341" font-size="9" font-weight="600" fill="#00897b">SecurityPolicy</text>
+  <text x="514" y="356" font-size="8" fill="#546e7a">JWT auth via backendRefs &#x2192; JWKS</text>
+  <!-- includeWhen badge top-right -->
+  <rect x="654" y="326" width="62" height="14" rx="3" fill="#e8f5e9" stroke="#a5d6a7" stroke-width="0.5"/>
+  <text x="685" y="336" text-anchor="middle" font-size="7" fill="#2e7d32">jwt.enabled</text>
+
+  <!-- Policy badges -->
+  <rect x="500" y="382" width="220" height="28" rx="5" fill="#e0f2f1" stroke="#00897b" stroke-width="1"/>
+  <text x="610" y="401" text-anchor="middle" font-size="9" font-weight="600" fill="#00695c">BackendTrafficPolicy: Rate Limit</text>
+
+  <rect x="500" y="420" width="220" height="28" rx="5" fill="#e0f2f1" stroke="#00897b" stroke-width="1"/>
+  <text x="610" y="439" text-anchor="middle" font-size="9" font-weight="600" fill="#00695c">HTTPRoute Patch: Resp Headers</text>
+
+  <!-- Combined arrow: Policies → HTTPRoute (targetRef) -->
+  <path d="M500,396 L472,396 L472,250 L453,250" stroke="#00897b" stroke-width="1.2" fill="none" stroke-dasharray="4,3" marker-end="url(#arrowHeadTeal)"/>
+  <line x1="500" y1="434" x2="472" y2="434" stroke="#00897b" stroke-width="1.2" stroke-dasharray="4,3"/>
+  <!-- SecurityPolicy targetRef -->
+  <line x1="500" y1="345" x2="472" y2="345" stroke="#00897b" stroke-width="1.2" stroke-dasharray="4,3"/>
+  <!-- Vertical connector joining all to single line -->
+  <line x1="472" y1="345" x2="472" y2="434" stroke="#00897b" stroke-width="1.2" stroke-dasharray="4,3"/>
+  <text x="478" y="420" font-size="7" fill="#00897b">targetRef</text>
+
+  <!-- ==================== EXTERNAL: Identity Provider ==================== -->
+  <rect x="500" y="468" width="220" height="42" rx="8" fill="url(#idpGrad)" filter="url(#shadow)"/>
+  <text x="610" y="488" text-anchor="middle" font-size="10" font-weight="600" fill="#fff">Identity Provider</text>
+  <text x="610" y="502" text-anchor="middle" font-size="8" fill="#ffe0b2">JWKS endpoint (external)</text>
+
+  <!-- Arrow: Backend → IdP (routed to the right to avoid overlapping boxes) -->
+  <path d="M720,241 L738,241 L738,489 L723,489" stroke="#ef6c00" stroke-width="1.5" fill="none" stroke-dasharray="5,3" marker-end="url(#arrowHeadOrange)"/>
+  <text x="742" y="380" font-size="7" fill="#ef6c00" transform="rotate(90,742,380)">fetches JWKS keys</text>
+
+  <!-- Footer -->
+  <text x="390" y="604" text-anchor="middle" font-size="10" fill="#90a4ae">Each feature is independently toggleable. Resources are created per-component for isolation.</text>
+</svg>

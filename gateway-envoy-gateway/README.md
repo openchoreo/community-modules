@@ -17,7 +17,7 @@ This document provides comprehensive documentation for integrating Envoy Gateway
 
 OpenChoreo uses the [Kubernetes Gateway API](https://gateway-api.sigs.k8s.io/) as the standard API for exposing component endpoints to public or internal networks. Because the Gateway API is a vendor-neutral Kubernetes standard, the gateway layer is easily pluggable and extensible across vendors — any Gateway API-compliant controller can serve as the ingress layer without changes to the control plane or the OpenChoreo ComponentTypes.
 
-The Envoy Gateway module replaces the default kgateway with [Envoy Gateway](https://gateway.envoyproxy.io/), an open-source implementation of the Kubernetes Gateway API built on top of [Envoy Proxy](https://www.envoyproxy.io/). It provides advanced API management capabilities such as rate limiting, JWT authentication, request/response transformation, and observability — all through Kubernetes-native CRDs that extend the standard Gateway API.
+The Envoy Gateway module replaces the default kgateway with [Envoy Gateway](https://gateway.envoyproxy.io/), an open-source implementation of the Kubernetes Gateway API built on top of [Envoy Proxy](https://www.envoyproxy.io/). It provides advanced API management capabilities such as rate limiting, JWT authentication, response header injection, and observability — all through Kubernetes-native CRDs that extend the standard Gateway API.
 
 ### Key Design Decisions
 
@@ -125,6 +125,8 @@ The Envoy Gateway module replaces the default kgateway with [Envoy Gateway](http
 | **HTTPRoute**                | Gateway API route resource. Created by OpenChoreo release pipeline per component. References the Gateway CR via `parentRefs`   |
 | **BackendTrafficPolicy**     | Envoy Gateway CRD for traffic management (rate limiting, circuit breaking, health checks). Targets HTTPRoutes via `targetRefs` |
 | **SecurityPolicy**           | Envoy Gateway CRD for authentication/authorization (JWT, OIDC, ExtAuth). Targets HTTPRoutes via `targetRefs`                   |
+| **Backend**                  | Envoy Gateway CRD for defining external backend endpoints (e.g., JWKS endpoint for JWT validation)                             |
+| **BackendTLSPolicy**         | Gateway API resource for configuring TLS settings (SNI, CA certificates) for Backend connections                                |
 
 ### How Endpoint URLs Are Resolved
 
@@ -152,7 +154,7 @@ Envoy Proxy (TLS termination)
   ├─ Validate JWT (via SecurityPolicy)
   ├─ Check rate limit (via BackendTrafficPolicy)
   ├─ Match HTTPRoute rules (hostname + path)
-  ├─ Inject request headers (RequestHeaderModifier)
+  ├─ Inject response headers (ResponseHeaderModifier)
   │
   ▼
 Service (ClusterIP)
@@ -199,13 +201,16 @@ kubectl delete svc -l app.kubernetes.io/name=kgateway -n openchoreo-data-plane
 helm install envoy-gateway oci://docker.io/envoyproxy/gateway-helm \
   --version v1.7.0 \
   --namespace openchoreo-data-plane \
-  --create-namespace
+  --create-namespace \
+  --set config.envoyGateway.extensionApis.enableBackend=true
 
 # Wait for Envoy Gateway to be ready
 kubectl wait --for=condition=available deployment/envoy-gateway \
-  -n envoy-gateway-system \
+  -n openchoreo-data-plane \
   --timeout=300s
 ```
+
+> **Note:** The `enableBackend=true` flag is required to enable the Backend extension API. Without it, SecurityPolicy resources that reference Backend CRDs for JWKS fetching will report "backend not found".
 
 ### Step 3: Create the Envoy Gateway GatewayClass
 
@@ -244,7 +249,7 @@ This creates the `gateway-default` Gateway CR referencing the `envoy-gateway` Ga
 
 ```bash
 # Check Envoy Gateway controller pod
-kubectl get pods -n openchoreo-data-plane
+kubectl get pods -n openchoreo-data-plane -l app.kubernetes.io/instance=envoy-gateway
 
 # Check the Gateway CR status (PROGRAMMED should be True)
 kubectl get gateway gateway-default -n openchoreo-data-plane
@@ -256,44 +261,67 @@ kubectl describe gateway gateway-default -n openchoreo-data-plane
 kubectl get pods -n openchoreo-data-plane -l gateway.envoyproxy.io/owning-gateway-name=gateway-default
 ```
 
-Expected pods in `envoy-gateway-system`:
-
-| Pod               | Role                                                       |
-| ----------------- | ---------------------------------------------------------- |
-| `envoy-gateway-*` | Envoy Gateway controller — watches Gateway API and EG CRDs |
-
 Expected pods in `openchoreo-data-plane`:
 
-| Pod                                             | Role                                          |
-| ----------------------------------------------- | --------------------------------------------- |
-| `envoy-openchoreo-data-plane-gateway-default-*` | Envoy proxy instance managed by Envoy Gateway |
+| Pod                                             | Role                                                       |
+| ----------------------------------------------- | ---------------------------------------------------------- |
+| `envoy-gateway-*`                               | Envoy Gateway controller — watches Gateway API and EG CRDs |
+| `envoy-openchoreo-data-plane-gateway-default-*`  | Envoy proxy instance managed by Envoy Gateway              |
 
 ### Step 6: Grant RBAC for Envoy Gateway CRDs
 
-The data plane service account needs permissions to manage Envoy Gateway policy resources. Patch the ClusterRole:
+The data plane service account needs permissions to manage Envoy Gateway policy resources. Create a dedicated ClusterRole and bind it to the data plane service account:
 
 ```bash
-kubectl patch clusterrole cluster-agent-dataplane-openchoreo-data-plane --type=json \
-  -p '[{"op":"add","path":"/rules/-","value":{
-    "apiGroups":["gateway.envoyproxy.io"],
-    "resources":["backendtrafficpolicies","securitypolicies","clienttrafficpolicies","envoyproxies","backends"],
-    "verbs":["*"]
-  }}]'
+kubectl apply -f - <<EOF
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: envoy-gateway-module
+rules:
+  - apiGroups: ["gateway.envoyproxy.io"]
+    resources: ["backendtrafficpolicies","securitypolicies","clienttrafficpolicies","envoyproxies","backends"]
+    verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: envoy-gateway-module
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: envoy-gateway-module
+subjects:
+  - kind: ServiceAccount
+    name: cluster-agent-dataplane
+    namespace: openchoreo-data-plane
+EOF
 ```
 
-> **Note:** Without this, the Release controller will fail to apply BackendTrafficPolicy and SecurityPolicy resources to the data plane with a "forbidden" error.
+> **Note:** Without these permissions, the Release controller will fail to apply BackendTrafficPolicy and SecurityPolicy resources to the data plane with a "forbidden" error. To remove these permissions later, simply delete the ClusterRole and ClusterRoleBinding:
+>
+> ```bash
+> kubectl delete clusterrole envoy-gateway-module
+> kubectl delete clusterrolebinding envoy-gateway-module
+> ```
 
 ### Step 7: Deploy and Invoke the Greeter Service
 
 Deploy the sample greeter service to verify end-to-end traffic flow through Envoy Gateway, including the `envoy-gateway-api-configuration` trait for API management policies.
 
-**Apply the ComponentType, Trait, Component, and Workload:**
+**Apply the ClusterTrait and example Component:**
 
 ```bash
+# Apply the ClusterTrait (update JWT provider config in the file first if enabling JWT)
 kubectl apply -f envoy-gateway-api-configuration-trait.yaml
-```
 
-> **Note:** The greeter service Component uses `componentType: deployment/http-service-with-envoy-gateway` and attaches the `envoy-gateway-api-configuration` trait. See [Envoy Gateway API Configuration Trait](#envoy-gateway-api-configuration-trait) below for details on available policies.
+# Add the trait to the service ComponentType's allowedTraits
+kubectl patch clustercomponenttype service --type=json \
+  -p '[{"op":"add","path":"/spec/allowedTraits/-","value":{"kind":"ClusterTrait","name":"envoy-gateway-api-configuration"}}]'
+
+# Apply the example Component and Workload
+kubectl apply -f component.yaml
+```
 
 **Wait for the deployment to roll out:**
 
@@ -314,10 +342,10 @@ kubectl get securitypolicy -A
 
 **Invoke the greeter service through Envoy Gateway (no auth):**
 
-If `security.enabled` is `false`:
+If `jwt.enabled` is `false`:
 
 ```bash
-curl http://development-default.openchoreoapis.localhost:19080/greeter-service/greeter/greet?name=OpenChoreo -v
+curl http://development-default.openchoreoapis.localhost:19080/greeter-service-http/greeter/greet?name=OpenChoreo -v
 ```
 
 Expected response:
@@ -326,9 +354,9 @@ Expected response:
 Hello, OpenChoreo!
 ```
 
-The response headers will include Envoy proxy metadata such as `server: envoy` and `x-envoy-upstream-service-time`.
+The response headers will include Envoy proxy metadata such as `server: envoy` and any custom response headers configured via `addResponseHeaders`.
 
-**Invoke with JWT authentication (when `security.enabled: true`):**
+**Invoke with JWT authentication (when `jwt.enabled: true`):**
 
 Obtain a JWT token from your identity provider and pass it in the Authorization header:
 
@@ -337,7 +365,7 @@ TOKEN=$(curl -s -X POST https://your-idp.example.com/token \
   -d "grant_type=client_credentials&client_id=...&client_secret=..." \
   | jq -r '.access_token')
 
-curl http://development-default.openchoreoapis.localhost:19080/greeter-service/greeter/greet?name=OpenChoreo \
+curl http://development-default.openchoreoapis.localhost:19080/greeter-service-http/greeter/greet?name=OpenChoreo \
   -H "Authorization: Bearer $TOKEN" -v
 ```
 
@@ -350,38 +378,57 @@ kubectl delete workload greeter-service-workload -n default
 
 ### Envoy Gateway API Configuration Trait
 
-The `envoy-gateway-api-configuration` trait provides declarative API management for components routed through Envoy Gateway. It creates `BackendTrafficPolicy` and `SecurityPolicy` CRDs targeting the HTTPRoute, and patches the HTTPRoute with request header modification filters.
+The `envoy-gateway-api-configuration` ClusterTrait provides declarative API management for components routed through Envoy Gateway. It creates `BackendTrafficPolicy`, `SecurityPolicy`, `Backend`, and `BackendTLSPolicy` CRDs targeting the component's HTTPRoute, and patches the HTTPRoute with response header modification filters.
+
+#### JWT Identity Provider Configuration
+
+The JWT provider details (issuer, JWKS URL, JWKS host) are configured once in the trait file before applying it to the cluster — not as component parameters. When any component enables JWT, the trait creates:
+
+1. A **Backend** pointing to the IdP's JWKS endpoint
+2. A **BackendTLSPolicy** setting the SNI hostname for TLS connections to the JWKS endpoint
+3. A **SecurityPolicy** enforcing JWT validation on the HTTPRoute
+
+Update the following fields in `envoy-gateway-api-configuration-trait.yaml` with your identity provider's details before applying:
+
+| Resource         | Field to update                          | Example value                                          |
+| ---------------- | ---------------------------------------- | ------------------------------------------------------ |
+| Backend          | `spec.endpoints[0].fqdn.hostname`       | `api.asgardeo.io`                                      |
+| Backend          | `spec.endpoints[0].fqdn.port`           | `443`                                                  |
+| BackendTLSPolicy | `spec.validation.hostname`               | `api.asgardeo.io` (must match Backend host)            |
+| SecurityPolicy   | `spec.jwt.providers[0].issuer`           | `https://api.asgardeo.io/t/myorg/oauth2/token`        |
+| SecurityPolicy   | `spec.jwt.providers[0].remoteJWKS.uri`   | `https://api.asgardeo.io/t/myorg/oauth2/jwks`         |
 
 #### Trait Schema
 
-**Parameters (static across environments):**
+**Parameters:**
 
-| Parameter              | Type            | Default    | Description                                                                    |
-| ---------------------- | --------------- | ---------- | ------------------------------------------------------------------------------ |
-| `rateLimiting.enabled` | boolean         | `true`     | Enable rate limiting via BackendTrafficPolicy                                  |
-| `rateLimiting.unit`    | string          | `"Minute"` | Rate limit time unit (`Second`, `Minute`, `Hour`)                              |
-| `security.enabled`     | boolean         | `false`    | Enable JWT authentication via SecurityPolicy                                   |
-| `security.issuer`      | string          | `""`       | Expected JWT issuer claim (`iss`). Tokens with a different issuer are rejected |
-| `addHeaders.enabled`   | boolean         | `false`    | Enable request header injection                                                |
-| `addHeaders.headers`   | array\<string\> | `[]`       | Headers to add (format: `"Header-Name:value"`)                                 |
-
-> **JWT JWKS backend:** When `security.enabled` is true, the trait automatically creates an Envoy Gateway `Backend` resource in the component's namespace pointing to OpenChoreo's `thunder-service` OIDC provider (`thunder-service.openchoreo-control-plane.svc.cluster.local:8090` over HTTP). The `SecurityPolicy` references this Backend via `remoteJWKS.backendRefs`, bypassing Envoy Gateway's HTTPS-only restriction on `remoteJWKS.uri`. No additional platform setup is required.
+| Parameter                        | Type                          | Default    | Description                                                |
+| -------------------------------- | ----------------------------- | ---------- | ---------------------------------------------------------- |
+| `endpointName`                   | string                        | (required) | Workload endpoint name this trait targets                  |
+| `jwt.enabled`                    | boolean                       | `false`    | Enable JWT authentication via SecurityPolicy               |
+| `rateLimiting.enabled`           | boolean                       | `true`     | Enable rate limiting via BackendTrafficPolicy              |
+| `rateLimiting.unit`              | string                        | `"Minute"` | Rate limit time unit (`Second`, `Minute`, `Hour`)          |
+| `rateLimiting.requestsPerUnit`   | integer                       | `60`       | Rate limit threshold per time unit                         |
+| `addResponseHeaders.enabled`     | boolean                       | `false`    | Enable response header injection                           |
+| `addResponseHeaders.headers`     | array\<{name, value}\>        | `[]`       | Headers to add to responses                                |
 
 **Environment Overrides (configurable per environment):**
 
-| Override                       | Type    | Default | Description                        |
-| ------------------------------ | ------- | ------- | ---------------------------------- |
-| `rateLimiting.requestsPerUnit` | integer | `60`    | Rate limit threshold per time unit |
+The `rateLimiting.requestsPerUnit` parameter can be overridden per environment via ReleaseBinding `traitOverrides`.
 
 #### How It Works
 
 The trait uses OpenChoreo's template rendering pipeline to:
 
-1. **Create BackendTrafficPolicy** — Conditionally created when `rateLimiting.enabled` is true. Targets the component's HTTPRoute via `targetRefs` and applies a global rate limit. No annotations on the HTTPRoute are needed.
+1. **Create Backend** — Conditionally created when `jwt.enabled` is true. Defines the external JWKS endpoint for the identity provider.
 
-2. **Create SecurityPolicy** — Conditionally created when `security.enabled` is true. Targets the component's HTTPRoute via `targetRefs` and validates JWT tokens against the configured JWKS endpoint.
+2. **Create BackendTLSPolicy** — Conditionally created when `jwt.enabled` is true. Sets the SNI hostname for TLS connections to the JWKS Backend. Without this, Envoy connects to the static IP without SNI, causing CDN/WAF-fronted IdPs to reject the request.
 
-3. **Patch the HTTPRoute** — Adds a `RequestHeaderModifier` filter to the HTTPRoute's first rule, injecting custom headers into every upstream request. The patch is skipped when `addHeaders.enabled` is false.
+3. **Create SecurityPolicy** — Conditionally created when `jwt.enabled` is true. Targets the component's HTTPRoute via `targetRefs` and validates JWT tokens against the JWKS endpoint via the Backend resource. The `remoteJWKS.uri` field is required by CRD validation even when using `backendRefs`.
+
+4. **Create BackendTrafficPolicy** — Conditionally created when `rateLimiting.enabled` is true. Targets the component's HTTPRoute via `targetRefs` and applies a local rate limit. No annotations on the HTTPRoute are needed.
+
+5. **Patch the HTTPRoute** — Adds a `ResponseHeaderModifier` filter to the HTTPRoute's first rule, injecting custom headers into every response. The patch is skipped when `addResponseHeaders.enabled` is false.
 
 #### Key Difference from Kong
 
@@ -400,26 +447,27 @@ spec:
     projectName: default
   autoDeploy: true
   componentType:
-    kind: ComponentType
-    name: deployment/http-service-with-envoy-gateway
-  parameters:
-    port: 8080
-    replicas: 1
+    kind: ClusterComponentType
+    name: deployment/service
   traits:
     - instanceName: my-api
       name: envoy-gateway-api-configuration
+      kind: ClusterTrait
       parameters:
+        endpointName: http
+        jwt:
+          enabled: true
         rateLimiting:
           enabled: true
           unit: Minute
-        security:
-          enabled: true
-          issuer: https://accounts.google.com
-        addHeaders:
+          requestsPerUnit: 100
+        addResponseHeaders:
           enabled: true
           headers:
-            - "X-Gateway:Envoy"
-            - "X-Managed-By:OpenChoreo"
+            - name: X-Gateway
+              value: Envoy
+            - name: X-Managed-By
+              value: OpenChoreo
 ```
 
 The rate limit can be overridden per environment via ReleaseBinding `traitOverrides`:
@@ -447,6 +495,14 @@ The following values control gateway behavior in the data plane Helm chart:
 | `gateway.tls.hostname`        | string | `"*.openchoreoapis.localhost"` | Wildcard hostname for TLS certificate                                           |
 | `gateway.tls.certificateRefs` | string | `"openchoreo-gateway-tls"`     | Secret name for the TLS certificate                                             |
 | `gateway.infrastructure`      | object | `{}`                           | Cloud provider load balancer annotations                                        |
+
+### Envoy Gateway Helm Values
+
+The following value must be set when installing Envoy Gateway:
+
+| Value                                                | Type    | Default | Description                                              |
+| ---------------------------------------------------- | ------- | ------- | -------------------------------------------------------- |
+| `config.envoyGateway.extensionApis.enableBackend`    | boolean | `false` | Enable Backend CRD support (required for JWT JWKS fetch) |
 
 ### DataPlane CR Gateway Configuration
 
@@ -501,7 +557,7 @@ Unlike Kong, Envoy Gateway automatically manages the Service and port configurat
 Policies are applied to HTTPRoutes via `targetRefs`. Define policies as separate CRDs in the same namespace as the HTTPRoute:
 
 ```yaml
-# Rate limiting: 100 requests per minute (global)
+# Rate limiting: 100 requests per minute (local)
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: BackendTrafficPolicy
 metadata:
@@ -513,8 +569,8 @@ spec:
       kind: HTTPRoute
       name: <httproute-name>
   rateLimit:
-    type: Global
-    global:
+    type: Local
+    local:
       rules:
         - limit:
             requests: 100
@@ -522,7 +578,7 @@ spec:
 ```
 
 ```yaml
-# JWT authentication
+# JWT authentication with Backend for JWKS
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: SecurityPolicy
 metadata:
@@ -538,7 +594,12 @@ spec:
       - name: my-idp
         issuer: https://idp.example.com
         remoteJWKS:
-          uri: https://idp.example.com/.well-known/openid-configuration
+          uri: https://idp.example.com/.well-known/jwks.json
+          backendRefs:
+            - group: gateway.envoyproxy.io
+              kind: Backend
+              name: my-jwks-backend
+              port: 443
 ```
 
 ---
@@ -549,7 +610,7 @@ spec:
 
 ```bash
 # Check Envoy Gateway controller pod
-kubectl get pods -n envoy-gateway-system
+kubectl get pods -n openchoreo-data-plane -l app.kubernetes.io/instance=envoy-gateway
 
 # Check Gateway CR programmed status
 kubectl get gateway gateway-default -n openchoreo-data-plane
@@ -558,7 +619,7 @@ kubectl get gateway gateway-default -n openchoreo-data-plane
 kubectl get pods -n openchoreo-data-plane -l gateway.envoyproxy.io/owning-gateway-name=gateway-default
 
 # View Envoy Gateway controller logs
-kubectl logs -n envoy-gateway-system deployment/envoy-gateway -f
+kubectl logs -n openchoreo-data-plane deployment/envoy-gateway -f
 
 # View Envoy proxy logs
 kubectl logs -n openchoreo-data-plane \
@@ -603,22 +664,22 @@ kubectl get securitypolicy -A
 
 # Describe a specific security policy
 kubectl describe securitypolicy <name> -n <namespace>
+
+# Check Backend resources
+kubectl get backend -A
 ```
 
 ### Upgrading Envoy Gateway
 
 ```bash
-# Update Helm repo (if using Helm repository)
-helm repo update
-
 # Upgrade Envoy Gateway release
 helm upgrade envoy-gateway oci://docker.io/envoyproxy/gateway-helm \
-  --version v1.3.0 \
-  --namespace envoy-gateway-system \
+  --version v1.7.0 \
+  --namespace openchoreo-data-plane \
   --reuse-values
 
 # Verify controller is restarted
-kubectl rollout status deployment/envoy-gateway -n envoy-gateway-system
+kubectl rollout status deployment/envoy-gateway -n openchoreo-data-plane
 
 # Verify Envoy proxy pods are restarted
 kubectl rollout status deployment \
@@ -728,7 +789,7 @@ kubectl describe gateway gateway-default -n openchoreo-data-plane
 Common causes:
 
 - GatewayClass not found or not accepted. Verify `kubectl get gatewayclass envoy-gateway`.
-- Envoy Gateway controller not running. Check `kubectl get pods -n envoy-gateway-system`.
+- Envoy Gateway controller not running. Check `kubectl get pods -n openchoreo-data-plane -l app.kubernetes.io/instance=envoy-gateway`.
 - Missing permissions for Envoy Gateway controller to create resources in the data plane namespace.
 
 **HTTPRoutes not taking effect**
@@ -747,30 +808,40 @@ Common causes:
 - Cross-namespace routing not allowed (Gateway must have `allowedRoutes.namespaces.from: All`).
 - Backend service not found or port mismatch.
 
-**BackendTrafficPolicy or SecurityPolicy not accepted**
+**BackendTrafficPolicy or SecurityPolicy not processed (no status)**
+
+If policies are created but show no status conditions, the Envoy Gateway controller is not reconciling them. Common causes:
+
+- The policy's `targetRefs` name does not match any HTTPRoute watched by the controller. Verify the HTTPRoute name: `kubectl get httproute -A`.
+- The Backend extension API is not enabled. Ensure `config.envoyGateway.extensionApis.enableBackend=true` was set during Helm installation.
+
+**SecurityPolicy reports "backend not found"**
 
 ```bash
-kubectl describe backendtrafficpolicy <name> -n <namespace>
 kubectl describe securitypolicy <name> -n <namespace>
 ```
 
 Common causes:
 
-- `targetRefs` name does not match the HTTPRoute name.
-- `targetRefs` namespace is different from the policy namespace. Policies must be in the same namespace as their target HTTPRoute.
-- Missing RBAC for the cluster agent to create `gateway.envoyproxy.io` resources (see Step 6).
+- Backend extension API not enabled. Upgrade the Envoy Gateway Helm release with `--set config.envoyGateway.extensionApis.enableBackend=true` and restart the controller: `kubectl rollout restart deployment/envoy-gateway -n openchoreo-data-plane`.
+- Backend resource does not exist in the same namespace as the SecurityPolicy.
+- Missing RBAC for the cluster agent to create `gateway.envoyproxy.io` Backend resources (see Step 6).
 
 **JWT validation failing (401 Unauthorized)**
 
 ```bash
 # Check SecurityPolicy status
 kubectl describe securitypolicy <name> -n <namespace>
+
+# Check Envoy proxy logs for JWKS fetch errors
+kubectl logs -n openchoreo-data-plane \
+  -l gateway.envoyproxy.io/owning-gateway-name=gateway-default --tail=50 | grep -i jwks
 ```
 
 Common causes:
 
-- `thunder-service` is unreachable. Check the `Backend` resource status: `kubectl get backend -A`. Ensure `thunder-service` in `openchoreo-control-plane` is running.
-- `issuer` does not match the `iss` claim in the JWT token.
+- JWKS remote fetch failing. Check that the Backend and BackendTLSPolicy are configured with the correct IdP hostname. Without the BackendTLSPolicy, Envoy connects without SNI and CDN/WAF-fronted IdPs reject the request.
+- `issuer` in the SecurityPolicy does not match the `iss` claim in the JWT token.
 - JWT token has expired (`exp` claim in the past).
 - Authorization header format incorrect. Must be `Authorization: Bearer <token>`.
 
@@ -806,10 +877,10 @@ creates:
         targetRefs:
           - group: gateway.networking.k8s.io
             kind: HTTPRoute
-            name: ${metadata.name}
+            name: ${oc_generate_name(metadata.componentName, parameters.endpointName)}
         rateLimit:
-          type: Global
-          global:
+          type: Local
+          local:
             rules:
               - limit:
                   requests: ${envOverrides.rateLimiting.requestsPerUnit}
@@ -860,7 +931,7 @@ apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: EnvoyProxy
 metadata:
   name: custom-proxy-config
-  namespace: envoy-gateway-system
+  namespace: openchoreo-data-plane
 spec:
   provider:
     type: Kubernetes
@@ -883,7 +954,7 @@ spec:
     group: gateway.envoyproxy.io
     kind: EnvoyProxy
     name: custom-proxy-config
-    namespace: envoy-gateway-system
+    namespace: openchoreo-data-plane
 ```
 
 ### Proxy Log Level
@@ -894,10 +965,10 @@ The `EnvoyProxy` CR also controls the Envoy proxy log verbosity. See [Enabling D
 
 ```bash
 # Scale the Envoy Gateway controller (supports multiple replicas for HA)
-kubectl scale deployment envoy-gateway -n envoy-gateway-system --replicas=2
+kubectl scale deployment envoy-gateway -n openchoreo-data-plane --replicas=2
 
 # Scale the Envoy proxy (managed via EnvoyProxy CRD)
-kubectl patch envoyproxy custom-proxy-config -n envoy-gateway-system \
+kubectl patch envoyproxy custom-proxy-config -n openchoreo-data-plane \
   --type=merge -p '{"spec":{"provider":{"kubernetes":{"envoyDeployment":{"replicas":3}}}}}'
 ```
 

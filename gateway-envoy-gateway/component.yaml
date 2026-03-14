@@ -1,0 +1,206 @@
+# =============================================================================
+# USAGE EXAMPLE
+# =============================================================================
+#
+# The following resources demonstrate how to use the envoy-gateway-api-configuration
+# trait with the standard OpenChoreo service ComponentType. The ComponentType at
+# samples/getting-started/component-types/service.yaml must include
+# "envoy-gateway-api-configuration" in its allowedTraits.
+
+# --- Component: Using all three Envoy Gateway API management features ---
+---
+apiVersion: openchoreo.dev/v1alpha1
+kind: Component
+metadata:
+  name: greeter-service
+  namespace: default
+spec:
+  owner:
+    projectName: default
+  autoDeploy: true
+  componentType:
+    kind: ClusterComponentType
+    name: deployment/service
+
+  traits:
+    - name: envoy-gateway-api-configuration
+      instanceName: greeter-api
+      kind: ClusterTrait
+      parameters:
+        endpointName: http
+        jwt:
+          enabled: true
+        rateLimiting:
+          enabled: true
+          unit: Minute
+          requestsPerUnit: 100
+        addResponseHeaders:
+          enabled: true
+          headers:
+            - name: X-Gateway
+              value: Envoy
+            - name: X-Managed-By
+              value: OpenChoreo
+
+---
+# --- Workload ---
+apiVersion: openchoreo.dev/v1alpha1
+kind: Workload
+metadata:
+  name: greeter-service-workload
+  namespace: default
+spec:
+  owner:
+    projectName: default
+    componentName: greeter-service
+
+  endpoints:
+    http:
+      type: HTTP
+      port: 9090
+      visibility: [external]
+
+  container:
+    image: "ghcr.io/openchoreo/samples/greeter-service:latest"
+    args:
+      - --port
+      - "9090"
+
+---
+# =============================================================================
+# RENDERED OUTPUT (what gets applied to the data plane)
+# =============================================================================
+#
+# With all three features enabled, the trait produces:
+#
+# 1. Backend: JWKS Endpoint
+#    ---
+#    apiVersion: gateway.envoyproxy.io/v1alpha1
+#    kind: Backend
+#    metadata:
+#      name: <release-name>-greeter-api-jwks
+#    spec:
+#      endpoints:
+#        - fqdn:
+#            hostname: api.asgardeo.io
+#            port: 443
+#
+# 2. SecurityPolicy: JWT Authentication
+#    ---
+#    apiVersion: gateway.envoyproxy.io/v1alpha1
+#    kind: SecurityPolicy
+#    metadata:
+#      name: <release-name>-greeter-api-security
+#    spec:
+#      targetRefs:
+#        - group: gateway.networking.k8s.io
+#          kind: HTTPRoute
+#          name: <release-name>
+#      jwt:
+#        providers:
+#          - name: <release-name>-greeter-api-jwt-provider
+#            issuer: https://api.asgardeo.io/t/lahirude/oauth2/token
+#            remoteJWKS:
+#              backendRefs:
+#                - group: gateway.envoyproxy.io
+#                  kind: Backend
+#                  name: <release-name>-greeter-api-jwks
+#                  port: 443
+#
+# 3. BackendTrafficPolicy: Rate Limiting
+#    ---
+#    apiVersion: gateway.envoyproxy.io/v1alpha1
+#    kind: BackendTrafficPolicy
+#    metadata:
+#      name: <release-name>-greeter-api-rate-limit
+#    spec:
+#      targetRefs:
+#        - group: gateway.networking.k8s.io
+#          kind: HTTPRoute
+#          name: <release-name>
+#      rateLimit:
+#        type: Local
+#        local:
+#          rules:
+#            - limit:
+#                requests: 100
+#                unit: Minute
+#
+# 4. Patched HTTPRoute (ResponseHeaderModifier filter added):
+#    ---
+#    apiVersion: gateway.networking.k8s.io/v1
+#    kind: HTTPRoute
+#    spec:
+#      rules:
+#        - filters:
+#            - type: ResponseHeaderModifier
+#              responseHeaderModifier:
+#                add:
+#                  - name: X-Gateway
+#                    value: Envoy
+#                  - name: X-Managed-By
+#                    value: OpenChoreo
+#
+# =============================================================================
+# NOTES
+# =============================================================================
+#
+# 1. JWT Identity Provider Configuration:
+#    The JWT provider details (issuer, JWKS URL, host, port) are configured in the
+#    ClusterTrait template, not as component parameters. Update the Backend and
+#    SecurityPolicy templates in envoy-gateway-api-configuration-trait.yaml with
+#    your identity provider's details before applying the trait.
+#
+# 2. Key Difference from Kong:
+#    Envoy Gateway uses BackendTrafficPolicy and SecurityPolicy CRDs that
+#    attach to HTTPRoutes via targetRefs. No annotations on the HTTPRoute are
+#    needed for rate limiting or security. This makes policy attachment more
+#    explicit and easier to audit.
+#
+# 3. Selective Feature Use:
+#    Enable only the features you need:
+#
+#    traits:
+#      - name: envoy-gateway-api-configuration
+#        instanceName: my-api
+#        parameters:
+#          jwt:
+#            enabled: false     # No auth
+#          rateLimiting:
+#            enabled: true      # Only rate limiting
+#          addResponseHeaders:
+#            enabled: false     # No header injection
+#
+# 4. Multiple Trait Instances:
+#    You can apply different configurations to different routes by using
+#    multiple instances (if the ComponentType has multiple HTTPRoutes):
+#
+#    traits:
+#      - name: envoy-gateway-api-configuration
+#        instanceName: public-api
+#        parameters:
+#          jwt:
+#            enabled: true
+#          rateLimiting:
+#            enabled: true
+#            requestsPerUnit: 100
+#      - name: envoy-gateway-api-configuration
+#        instanceName: internal-api
+#        parameters:
+#          jwt:
+#            enabled: false
+#          rateLimiting:
+#            enabled: false
+#          addResponseHeaders:
+#            enabled: true
+#            headers:
+#              - name: X-Internal
+#                value: "true"
+#
+# 5. Per-Environment Rate Limit Overrides:
+#    Override rate limits per environment via ReleaseBinding traitOverrides:
+#
+#    traitOverrides:
+#      greeter-api:
+#        rateLimiting:
+#          requestsPerUnit: 600  # Higher limit for production

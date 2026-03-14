@@ -1,77 +1,197 @@
 # Envoy Gateway API Configuration Trait for OpenChoreo
 #
 # This trait enables Envoy Gateway API management features on HTTPRoutes:
+#   - JWT Authentication: JWT validation via SecurityPolicy + Backend
 #   - Rate Limiting: Configurable request rate limits via BackendTrafficPolicy
-#   - Security: JWT authentication enforcement via SecurityPolicy
-#   - Request Headers: Add custom headers to upstream requests via HTTPRoute RequestHeaderModifier
+#   - Response Headers: Add custom headers to responses via HTTPRoute ResponseHeaderModifier
 #
 # Each feature is independently toggleable. The trait conditionally creates
 # BackendTrafficPolicy and SecurityPolicy CRDs targeting the component's HTTPRoute,
-# and patches the HTTPRoute with request header modification filters.
+# and patches the HTTPRoute with response header modification filters.
+#
+# JWT Identity Provider Configuration:
+#   The JWT provider details (issuer, JWKS URL) are configured once in this trait
+#   file before applying it to the cluster. When any component enables JWT, the
+#   trait creates a Backend ("jwt-idp-jwks") and SecurityPolicy in the component's
+#   data plane namespace. All JWT-enabled components in the same namespace share
+#   the Backend resource.
+#
+#   Update the Backend and SecurityPolicy templates below with your identity provider
+#   details before applying this trait. See README.md for configuration guidance.
 #
 # Prerequisites:
 #   - Envoy Gateway installed in the data plane (see README.md)
-#   - Envoy Gateway CRDs available (BackendTrafficPolicy, SecurityPolicy)
+#   - Envoy Gateway CRDs available (BackendTrafficPolicy, SecurityPolicy, Backend)
 #   - ComponentType must have an HTTPRoute resource for the patch and targetRef to work
 #
 # Usage:
-#   1. Add "envoy-gateway-api-configuration" to the ComponentType's allowedTraits
-#   2. Reference it in the Component's traits with desired parameters
-#   3. Optionally override rate limits per environment via ReleaseBinding traitOverrides
-#
-# See the end of this file for a complete usage example with ComponentType, Component,
-# Workload, and ReleaseBinding.
+#   1. Update the JWT provider configuration in this file (issuer, JWKS URL, host, port)
+#   2. Apply this trait to the control plane
+#   3. Add "envoy-gateway-api-configuration" to the ComponentType's allowedTraits
+#   4. Reference it in the Component's traits with desired parameters
+#   5. Optionally override rate limits per environment via ReleaseBinding traitOverrides
 
 ---
 apiVersion: openchoreo.dev/v1alpha1
-kind: Trait
+kind: ClusterTrait
 metadata:
   name: envoy-gateway-api-configuration
-  namespace: default
 spec:
-  schema:
-    parameters:
-      # --- Rate Limiting ---
-      # Controls Envoy Gateway's global rate limiting via BackendTrafficPolicy.
-      # When enabled, creates a BackendTrafficPolicy that limits requests per unit of time.
-      rateLimiting:
-        $default: {}
-        enabled: "boolean | default=true"
-        # Rate limiting time unit: Second, Minute, or Hour
-        unit: "string | default=Minute"
+  parameters:
+    openAPIV3Schema:
+      type: object
+      $defs:
+        # --- JWT authentication configuration ---
+        # Controls JWT validation via Envoy Gateway's SecurityPolicy and Backend.
+        # When enabled, creates a Backend for the JWKS endpoint and a SecurityPolicy
+        # for JWT enforcement on the component's HTTPRoute.
+        # The identity provider details (issuer, JWKS URL) are configured in the
+        # trait template below — not as component parameters.
+        JwtConfig:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+              default: false
 
-      # --- Security (JWT Authentication) ---
-      # Controls Envoy Gateway's JWT authentication via SecurityPolicy.
-      # When enabled, creates a SecurityPolicy that enforces JWT token validation.
-      # JWKS fetching uses remoteJWKS.uri pointing to the thunder-service OIDC provider.
-      security:
-        $default: {}
-        enabled: "boolean | default=false"
-        # Expected JWT issuer claim (iss). Tokens with a different issuer are rejected.
-        # Example: https://accounts.google.com
-        issuer: "string | default=''"
+        # --- rate-limiting configuration ---
+        # Controls Envoy Gateway's rate limiting via BackendTrafficPolicy.
+        # When enabled, creates a BackendTrafficPolicy that limits requests per unit of time.
+        RateLimitingConfig:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+              default: true
+            # Rate limiting time unit: Second, Minute, or Hour
+            unit:
+              type: string
+              default: Minute
+            requestsPerUnit:
+              type: integer
+              default: 60
 
-      # --- Request Header Injection ---
-      # Injects custom headers into upstream requests via HTTPRoute RequestHeaderModifier.
-      # Headers use "Header-Name:value" format (same as Kong module for consistency).
-      # Example: ["X-Gateway:Envoy", "X-Managed-By:OpenChoreo"]
-      addHeaders:
-        $default: {}
-        enabled: "boolean | default=false"
-        headers: 'array<string> | default=[]'
+        # --- response header modification configuration ---
+        # Controls adding custom headers to responses via HTTPRoute ResponseHeaderModifier.
+        # When enabled, patches the HTTPRoute with a ResponseHeaderModifier filter.
+        # Each header entry has "name" and "value" fields.
+        AddResponseHeadersConfig:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+              default: false
+            headers:
+              type: array
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  value:
+                    type: string
+              default: []
 
-    envOverrides:
-      # Platform engineers can tune rate limits per environment.
-      # For example, development might allow 600 req/min while production allows 60.
-      rateLimiting:
-        $default: {}
-        requestsPerUnit: "integer | default=60"
+      properties:
+        # Name of the workload endpoint this trait targets.
+        # Must match an endpoint key defined in the Workload spec.
+        # Used to resolve the HTTPRoute name via oc_generate_name.
+        endpointName:
+          type: string
+        jwt:
+          $ref: "#/$defs/JwtConfig"
+          default: {}
+        rateLimiting:
+          $ref: "#/$defs/RateLimitingConfig"
+          default: {}
+        addResponseHeaders:
+          $ref: "#/$defs/AddResponseHeadersConfig"
+          default: {}
+      required:
+        - endpointName
 
   creates:
+    # --- Backend: JWKS endpoint for JWT validation ---
+    # Created when jwt.enabled is true.
+    # Points to the external JWKS host so Envoy Gateway can fetch signing keys.
+    # Envoy Gateway's remoteJWKS.uri only supports HTTPS; using backendRefs
+    # with a Backend resource allows routing to any endpoint (HTTP or HTTPS).
+    #
+    # >>> UPDATE: Replace hostname and port with your identity provider's JWKS endpoint.
+    - includeWhen: ${parameters.jwt.enabled}
+      template:
+        apiVersion: gateway.envoyproxy.io/v1alpha1
+        kind: Backend
+        metadata:
+          name: ${metadata.name}-${trait.instanceName}-jwks
+          namespace: ${metadata.namespace}
+          labels: ${metadata.labels}
+        spec:
+          endpoints:
+            - fqdn:
+                hostname: api.asgardeo.io    # Replace with your IdP's JWKS host
+                port: 443                     # Replace with the JWKS endpoint port
+
+    # --- BackendTLSPolicy: TLS configuration for the JWKS Backend ---
+    # Created when jwt.enabled is true.
+    # Sets the SNI hostname for the TLS connection to the JWKS endpoint.
+    # Without this, Envoy connects to the static IP without SNI, causing
+    # CDN/WAF fronting the IdP to reject the request.
+    #
+    # >>> UPDATE: Replace hostname with your identity provider's JWKS host.
+    - includeWhen: ${parameters.jwt.enabled}
+      template:
+        apiVersion: gateway.networking.k8s.io/v1alpha3
+        kind: BackendTLSPolicy
+        metadata:
+          name: ${metadata.name}-${trait.instanceName}-jwks-tls
+          namespace: ${metadata.namespace}
+          labels: ${metadata.labels}
+        spec:
+          targetRefs:
+            - group: gateway.envoyproxy.io
+              kind: Backend
+              name: ${metadata.name}-${trait.instanceName}-jwks
+          validation:
+            hostname: api.asgardeo.io    # Replace with your IdP's JWKS host (must match Backend host)
+            wellKnownCACertificates: System
+
+    # --- SecurityPolicy: JWT Authentication ---
+    # Created when jwt.enabled is true.
+    # Targets the component's HTTPRoute and validates JWT tokens against the
+    # configured JWKS endpoint via the Backend resource.
+    # The token must be passed in the Authorization header: "Bearer <token>"
+    #
+    # >>> UPDATE: Replace issuer with your identity provider's issuer URL.
+    - includeWhen: ${parameters.jwt.enabled}
+      template:
+        apiVersion: gateway.envoyproxy.io/v1alpha1
+        kind: SecurityPolicy
+        metadata:
+          name: ${metadata.name}-${trait.instanceName}-security
+          namespace: ${metadata.namespace}
+          labels: ${metadata.labels}
+        spec:
+          targetRefs:
+            - group: gateway.networking.k8s.io
+              kind: HTTPRoute
+              name: ${oc_generate_name(metadata.componentName, parameters.endpointName)}
+          jwt:
+            providers:
+              - name: ${metadata.name}-${trait.instanceName}-jwt-provider
+                issuer: "https://api.asgardeo.io/t/lahirude/oauth2/token"    # Replace with your IdP issuer URL
+                remoteJWKS:
+                  uri: "https://api.asgardeo.io/t/lahirude/oauth2/jwks"      # Replace with your JWKS URL (required by CRD validation)
+                  backendRefs:
+                    - group: gateway.envoyproxy.io
+                      kind: Backend
+                      name: ${metadata.name}-${trait.instanceName}-jwks
+                      port: 443                                               # Must match Backend port
+
     # --- BackendTrafficPolicy: Rate Limiting ---
-    # Created when parameters.rateLimiting.enabled is true.
+    # Created when rateLimiting.enabled is true.
     # Targets the component's HTTPRoute by name and applies a local rate limit.
-    # Uses envOverrides.rateLimiting.requestsPerUnit so platform engineers
+    # Uses parameters.rateLimiting.requestsPerUnit so platform engineers
     # can set different limits per environment via ReleaseBinding traitOverrides.
     - includeWhen: ${parameters.rateLimiting.enabled}
       template:
@@ -85,46 +205,21 @@ spec:
           targetRefs:
             - group: gateway.networking.k8s.io
               kind: HTTPRoute
-              name: ${metadata.name}
+              name: ${oc_generate_name(metadata.componentName, parameters.endpointName)}
           rateLimit:
             type: Local
             local:
               rules:
                 - limit:
-                    requests: ${envOverrides.rateLimiting.requestsPerUnit}
+                    requests: ${parameters.rateLimiting.requestsPerUnit}
                     unit: ${parameters.rateLimiting.unit}
 
-    # --- SecurityPolicy: JWT Authentication ---
-    # Created when parameters.security.enabled is true.
-    # Targets the component's HTTPRoute and validates JWT tokens against the
-    # JWKS endpoint via remoteJWKS.uri.
-    # The token must be passed in the Authorization header: "Bearer <token>"
-    - includeWhen: ${parameters.security.enabled}
-      template:
-        apiVersion: gateway.envoyproxy.io/v1alpha1
-        kind: SecurityPolicy
-        metadata:
-          name: ${metadata.name}-${trait.instanceName}-security
-          namespace: ${metadata.namespace}
-          labels: ${metadata.labels}
-        spec:
-          targetRefs:
-            - group: gateway.networking.k8s.io
-              kind: HTTPRoute
-              name: ${metadata.name}
-          jwt:
-            providers:
-              - name: ${metadata.name}-${trait.instanceName}-jwt-provider
-                issuer: ${parameters.security.issuer}
-                remoteJWKS:
-                  uri: http://thunder-service.openchoreo-control-plane:8090/oauth2/jwks
-
   patches:
-    # --- Patch HTTPRoute: Add Request Headers ---
-    # Adds a RequestHeaderModifier filter to the HTTPRoute's first rule.
-    # Headers are specified as "Header-Name:value" strings and parsed into
-    # the structured format required by the Gateway API RequestHeaderModifier spec.
-    # The patch is skipped via omit() when addHeaders.enabled is false.
+    # --- Patch HTTPRoute: Add Response Headers ---
+    # Adds a ResponseHeaderModifier filter to the HTTPRoute's first rule.
+    # Headers are specified as structured {name, value} objects matching
+    # the Gateway API ResponseHeaderModifier spec.
+    # The patch is skipped via omit() when addResponseHeaders.enabled is false.
     - target:
         group: gateway.networking.k8s.io
         version: v1
@@ -133,374 +228,9 @@ spec:
         - op: add
           path: /spec/rules/0/filters/-
           value: >-
-            ${parameters.addHeaders.enabled ?
-              {"type": "RequestHeaderModifier", "requestHeaderModifier":
-                {"add": parameters.addHeaders.headers.map(h,
-                  {"name": h.split(":")[0], "value": h.split(":")[1]})}} :
+            ${parameters.addResponseHeaders.enabled ?
+              {"type": "ResponseHeaderModifier", "responseHeaderModifier":
+                {"add": parameters.addResponseHeaders.headers}} :
               oc_omit()}
 
 ---
-# =============================================================================
-# USAGE EXAMPLE
-# =============================================================================
-#
-# The following resources demonstrate how to use the envoy-gateway-api-configuration
-# trait with a simple HTTP service ComponentType.
-
-# --- ComponentType: HTTP Service with Envoy Gateway API Configuration ---
-# Lists envoy-gateway-api-configuration as an allowed trait.
-# The HTTPRoute resource in the template is what the trait patches and targets.
-apiVersion: openchoreo.dev/v1alpha1
-kind: ComponentType
-metadata:
-  name: http-service-with-envoy-gateway
-  namespace: default
-spec:
-  workloadType: deployment
-
-  allowedTraits:
-    - kind: Trait
-      name: envoy-gateway-api-configuration
-
-  schema:
-    parameters:
-      replicas: "integer | default=1"
-      imagePullPolicy: "string | default=IfNotPresent"
-      port: "integer | default=80"
-
-    envOverrides:
-      resources:
-        $default: {}
-        requests:
-          $default: {}
-          cpu: "string | default=100m"
-          memory: "string | default=256Mi"
-        limits:
-          $default: {}
-          cpu: "string | default=1000m"
-          memory: "string | default=1Gi"
-
-  resources:
-    - id: deployment
-      template:
-        apiVersion: apps/v1
-        kind: Deployment
-        metadata:
-          name: ${metadata.name}
-          namespace: ${metadata.namespace}
-          labels: ${metadata.labels}
-        spec:
-          replicas: ${parameters.replicas}
-          selector:
-            matchLabels: ${metadata.podSelectors}
-          template:
-            metadata:
-              labels: ${metadata.podSelectors}
-            spec:
-              containers:
-                - name: app
-                  image: ${workload.containers["app"].image}
-                  imagePullPolicy: ${parameters.imagePullPolicy}
-                  ports:
-                    - name: http
-                      containerPort: ${parameters.port}
-                      protocol: TCP
-                  resources:
-                    requests:
-                      cpu: ${envOverrides.resources.requests.cpu}
-                      memory: ${envOverrides.resources.requests.memory}
-                    limits:
-                      cpu: ${envOverrides.resources.limits.cpu}
-                      memory: ${envOverrides.resources.limits.memory}
-
-    - id: service
-      template:
-        apiVersion: v1
-        kind: Service
-        metadata:
-          name: ${metadata.componentName}
-          namespace: ${metadata.namespace}
-          labels: ${metadata.labels}
-        spec:
-          type: ClusterIP
-          selector: ${metadata.podSelectors}
-          ports: ${workload.toServicePorts()}
-
-    - id: httproute
-      template:
-        apiVersion: gateway.networking.k8s.io/v1
-        kind: HTTPRoute
-        metadata:
-          name: ${metadata.name}
-          namespace: ${metadata.namespace}
-          labels: ${metadata.labels}
-        spec:
-          parentRefs:
-            - name: gateway-default
-              namespace: openchoreo-data-plane
-          hostnames:
-            - ${metadata.environmentName}-${metadata.componentNamespace}.${dataplane.publicVirtualHost}
-          rules:
-          - matches:
-            - path:
-                type: PathPrefix
-                value: /${metadata.componentName}
-            filters:
-              - type: URLRewrite
-                urlRewrite:
-                  path:
-                    type: ReplacePrefixMatch
-                    replacePrefixMatch: /
-            backendRefs:
-            - name: ${metadata.componentName}
-              port: ${workload.toServicePorts()[0].port}
-
----
-# --- Component: Using all three Envoy Gateway API configuration features ---
-apiVersion: openchoreo.dev/v1alpha1
-kind: Component
-metadata:
-  name: greeter-service
-  namespace: default
-spec:
-  owner:
-    projectName: default
-  autoDeploy: true
-  componentType:
-    kind: ComponentType
-    name: deployment/http-service-with-envoy-gateway
-
-  parameters:
-    replicas: 2
-    port: 9090
-
-  traits:
-    - name: envoy-gateway-api-configuration
-      instanceName: greeter-api
-      parameters:
-        rateLimiting:
-          enabled: true
-          unit: Minute
-        security:
-          enabled: true
-          issuer: http://thunder.openchoreo.localhost:8080
-        addHeaders:
-          enabled: true
-          headers:
-            - "X-Gateway:Envoy"
-            - "X-Managed-By:OpenChoreo"
-
----
-# --- Workload ---
-apiVersion: openchoreo.dev/v1alpha1
-kind: Workload
-metadata:
-  name: greeter-service-workload
-  namespace: default
-spec:
-  owner:
-    projectName: default
-    componentName: greeter-service
-
-  endpoints:
-    http:
-      type: HTTP
-      port: 9090
-      visibility: [external]
-
-  containers:
-    app:
-      image: "ghcr.io/openchoreo/samples/greeter-service:latest"
-      args:
-        - --port
-        - "9090"
-
----
-# --- ReleaseBinding: Development environment ---
-# Overrides rate limit to 600 req/min for development (more permissive).
-apiVersion: openchoreo.dev/v1alpha1
-kind: ReleaseBinding
-metadata:
-  name: greeter-service-development
-  namespace: default
-spec:
-  owner:
-    projectName: default
-    componentName: greeter-service
-
-  environment: development
-
-  componentTypeEnvOverrides:
-    resources:
-      requests:
-        cpu: "50m"
-        memory: "128Mi"
-      limits:
-        cpu: "200m"
-        memory: "256Mi"
-
-  traitOverrides:
-    greeter-api:
-      rateLimiting:
-        requestsPerUnit: 600  # Higher limit for development
-
----
-# --- ReleaseBinding: Production environment ---
-# Uses the default rate limit of 60 req/min (stricter).
-apiVersion: openchoreo.dev/v1alpha1
-kind: ReleaseBinding
-metadata:
-  name: greeter-service-production
-  namespace: default
-spec:
-  owner:
-    projectName: default
-    componentName: greeter-service
-
-  environment: production
-
-  componentTypeEnvOverrides:
-    resources:
-      requests:
-        cpu: "500m"
-        memory: "512Mi"
-      limits:
-        cpu: "2000m"
-        memory: "2Gi"
-
-  traitOverrides:
-    greeter-api:
-      rateLimiting:
-        requestsPerUnit: 60  # Strict limit for production
-
-# =============================================================================
-# RENDERED OUTPUT (what gets applied to the data plane)
-# =============================================================================
-#
-# With all three features enabled, the trait produces:
-#
-# 1. BackendTrafficPolicy: rate limiting
-#    ---
-#    apiVersion: gateway.envoyproxy.io/v1alpha1
-#    kind: BackendTrafficPolicy
-#    metadata:
-#      name: <release-name>-greeter-api-rate-limit
-#    spec:
-#      targetRefs:
-#        - group: gateway.networking.k8s.io
-#          kind: HTTPRoute
-#          name: <release-name>
-#      rateLimit:
-#        type: Local
-#        local:
-#          rules:
-#            - limit:
-#                requests: 600      # From envOverrides (development)
-#                unit: Minute
-#
-# 2. SecurityPolicy: JWT authentication
-#    ---
-#    apiVersion: gateway.envoyproxy.io/v1alpha1
-#    kind: SecurityPolicy
-#    metadata:
-#      name: <release-name>-greeter-api-security
-#    spec:
-#      targetRefs:
-#        - group: gateway.networking.k8s.io
-#          kind: HTTPRoute
-#          name: <release-name>
-#      jwt:
-#        providers:
-#          - name: <release-name>-greeter-api-jwt-provider
-#            issuer: http://thunder.openchoreo.localhost:8080
-#            remoteJWKS:
-#              uri: http://thunder-service.openchoreo-control-plane:8090/oauth2/jwks
-#
-# 3. Patched HTTPRoute (header filter appended to rules[0].filters):
-#    ---
-#    apiVersion: gateway.networking.k8s.io/v1
-#    kind: HTTPRoute
-#    spec:
-#      rules:
-#        - filters:
-#            - type: URLRewrite        # Pre-existing filter from ComponentType (preserved)
-#              urlRewrite:
-#                path:
-#                  type: ReplacePrefixMatch
-#                  replacePrefixMatch: /
-#            - type: RequestHeaderModifier
-#              requestHeaderModifier:
-#                add:
-#                  - name: X-Gateway
-#                    value: Envoy
-#                  - name: X-Managed-By
-#                    value: OpenChoreo
-#
-# =============================================================================
-# NOTES
-# =============================================================================
-#
-# 1. JWT Authentication:
-#    The SecurityPolicy enforces JWT token validation. Clients must pass a valid
-#    JWT in the Authorization header:
-#
-#    curl -H "Authorization: Bearer <jwt-token>" http://...
-#
-#    JWKS fetching uses remoteJWKS.uri pointing directly to the thunder-service
-#    OIDC provider.
-#
-# 2. Rate Limiting Scope:
-#    BackendTrafficPolicy rate limits are local (per-Envoy-instance) when using
-#    the Local type. No external rate limit service is required. The limit applies
-#    per HTTPRoute per instance, not per client.
-#    For per-client rate limiting, add clientSelectors to the policy.
-#
-# 3. Selective Feature Use:
-#    Enable only the features you need:
-#
-#    traits:
-#      - name: envoy-gateway-api-configuration
-#        instanceName: my-api
-#        parameters:
-#          rateLimiting:
-#            enabled: true       # Only rate limiting
-#          security:
-#            enabled: false      # No JWT auth
-#          addHeaders:
-#            enabled: false      # No header injection
-#
-# 4. Multiple Trait Instances:
-#    You can apply different configurations to different routes by using
-#    multiple instances (if the ComponentType has multiple HTTPRoutes):
-#
-#    traits:
-#      - name: envoy-gateway-api-configuration
-#        instanceName: public-api
-#        parameters:
-#          rateLimiting:
-#            enabled: true
-#            unit: Minute
-#          security:
-#            enabled: true
-#            issuer: https://idp.example.com
-#      - name: envoy-gateway-api-configuration
-#        instanceName: internal-api
-#        parameters:
-#          rateLimiting:
-#            enabled: false
-#          security:
-#            enabled: false
-#          addHeaders:
-#            enabled: true
-#            headers:
-#              - "X-Internal:true"
-#
-# 5. Rate Limit Units:
-#    Envoy Gateway supports Second, Minute, and Hour as rate limit units.
-#    Use envOverrides.rateLimiting.requestsPerUnit to set environment-specific
-#    thresholds without changing the unit:
-#
-#    traitOverrides:
-#      my-api:
-#        rateLimiting:
-#          requestsPerUnit: 1000   # 1000 requests per Minute in production

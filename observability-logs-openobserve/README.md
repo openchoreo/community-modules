@@ -1,3 +1,5 @@
+[![Codecov](https://codecov.io/gh/openchoreo/community-modules/branch/main/graph/badge.svg?component=observability_logs_openobserve)](https://codecov.io/gh/openchoreo/community-modules)
+
 # Observability Logs Module for OpenObserve
 
 This module collects container logs using Fluent Bit and stores them in OpenObserve.

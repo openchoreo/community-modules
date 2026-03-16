@@ -1,3 +1,5 @@
+[![Codecov](https://codecov.io/gh/openchoreo/community-modules/branch/main/graph/badge.svg?component=observability_metrics_prometheus)](https://codecov.io/gh/openchoreo/community-modules)
+
 # Observability Metrics Module with Prometheus
 
 This module collects and stores metrics using Prometheus.

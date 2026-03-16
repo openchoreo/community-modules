@@ -17,6 +17,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   check-version-bump:
@@ -152,3 +153,79 @@ jobs:
           else
             echo "Successfully built ${BUILD_COUNT} image(s). ✓"
           fi
+
+  unit-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install yq
+        uses: mikefarah/yq@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.work
+
+      - name: Run unit tests for changed Go modules
+        run: |
+          set -euo pipefail
+
+          # Get the list of changed files compared to the base branch
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+          echo ""
+
+          TEST_COUNT=0
+
+          for module_dir in */; do
+            module="${module_dir%/}"
+
+            # Skip if this module has no module.yaml
+            if [ ! -f "${module}/module.yaml" ]; then
+              continue
+            fi
+
+            # Check if any files in this module were changed
+            if ! echo "$CHANGED_FILES" | grep -q "^${module}/"; then
+              continue
+            fi
+
+            # Skip modules without images (no program code)
+            image_count=$(yq '.images | length' "${module}/module.yaml")
+            if [ "$image_count" = "0" ] || [ "$image_count" = "null" ]; then
+              echo "Skipping ${module}: no images defined"
+              continue
+            fi
+
+            # Skip modules without Go code
+            if [ ! -f "${module}/go.mod" ]; then
+              echo "Skipping ${module}: no go.mod found"
+              continue
+            fi
+
+            echo "::group::Testing ${module}"
+            (cd "${module}" && go test -coverprofile="../${module}-coverage.out" ./...)
+            echo "::endgroup::"
+
+            TEST_COUNT=$((TEST_COUNT + 1))
+          done
+
+          echo ""
+          if [ "$TEST_COUNT" -eq 0 ]; then
+            echo "No Go modules to test for changed files."
+          else
+            echo "Successfully tested ${TEST_COUNT} module(s). ✓"
+          fi
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5.5.2
+        with:
+          files: ./*-coverage.out
+          fail_ci_if_error: false
+          use_oidc: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork) }}

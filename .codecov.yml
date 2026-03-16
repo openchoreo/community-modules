@@ -1,0 +1,16 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+components:
+  - component_id: observability_logs_openobserve
+    name: observability-logs-openobserve
+    paths:
+      - observability-logs-openobserve/**
+  - component_id: observability_metrics_prometheus
+    name: observability-metrics-prometheus
+    paths:
+      - observability-metrics-prometheus/**
+  - component_id: observability_tracing_openobserve
+    name: observability-tracing-openobserve
+    paths:
+      - observability-tracing-openobserve/**

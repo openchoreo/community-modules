@@ -1,3 +1,5 @@
+[![Codecov](https://codecov.io/gh/openchoreo/community-modules/branch/main/graph/badge.svg?component=observability_tracing_openobserve)](https://codecov.io/gh/openchoreo/community-modules)
+
 # Observability Tracing Module for OpenObserve
 
 This module collects distributed traces using OpenTelemetry collector and stores them in OpenObserve.

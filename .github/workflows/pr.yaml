@@ -14,6 +14,7 @@ on:
       - "**/go.mod"
       - "**/go.sum"
       - "**/Dockerfile"
+      - "**/Makefile"
 
 permissions:
   contents: read
@@ -165,12 +166,20 @@ jobs:
       - name: Install yq
         uses: mikefarah/yq@v4
 
+      # TODO: Extend language setup for non-Go modules as they are added
+      - name: Determine Go version
+        id: go-version
+        run: |
+          # Find the highest Go version across all go.mod files
+          GO_VERSION=$(find . -name 'go.mod' -exec grep '^go ' {} \; | awk '{print $2}' | sort -V | tail -1)
+          echo "version=${GO_VERSION}" >> "$GITHUB_OUTPUT"
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: go.work
+          go-version: ${{ steps.go-version.outputs.version }}
 
-      - name: Run unit tests for changed Go modules
+      - name: Run unit tests for changed modules
         run: |
           set -euo pipefail
 
@@ -182,6 +191,7 @@ jobs:
           echo ""
 
           TEST_COUNT=0
+          FAILED=false
 
           for module_dir in */; do
             module="${module_dir%/}"
@@ -196,32 +206,45 @@ jobs:
               continue
             fi
 
-            # Skip modules without images (no program code)
-            image_count=$(yq '.images | length' "${module}/module.yaml")
-            if [ "$image_count" = "0" ] || [ "$image_count" = "null" ]; then
-              echo "Skipping ${module}: no images defined"
+            # Skip modules without a Makefile
+            if [ ! -f "${module}/Makefile" ]; then
+              echo "Skipping ${module}: no Makefile"
               continue
             fi
 
-            # Skip modules without Go code
-            if [ ! -f "${module}/go.mod" ]; then
-              echo "Skipping ${module}: no go.mod found"
+            # Fail if Makefile exists but has no unit-test target
+            if ! grep -q '^unit-test:' "${module}/Makefile"; then
+              echo "::error::Module '${module}' has a Makefile but no 'unit-test' target. Please add a 'unit-test' target to ${module}/Makefile."
+              FAILED=true
               continue
             fi
 
             echo "::group::Testing ${module}"
-            (cd "${module}" && go test -coverprofile="../${module}-coverage.out" ./...)
+            make -C "${module}" unit-test
+            # Copy coverage output to repo root for Codecov upload
+            if [ -f "${module}/coverage.out" ]; then
+              cp "${module}/coverage.out" "${module}-coverage.out"
+            fi
             echo "::endgroup::"
 
             TEST_COUNT=$((TEST_COUNT + 1))
           done
 
+          if [ "$FAILED" = "true" ]; then
+            echo ""
+            echo "One or more modules have a Makefile without a 'unit-test' target."
+            exit 1
+          fi
+
           echo ""
           if [ "$TEST_COUNT" -eq 0 ]; then
-            echo "No Go modules to test for changed files."
+            echo "No modules with unit tests found for changed files."
           else
             echo "Successfully tested ${TEST_COUNT} module(s). ✓"
           fi
+
+      - name: Clean up in-module coverage files
+        run: find . -mindepth 2 -name 'coverage.out' -delete
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5.5.2

@@ -19,7 +19,7 @@ import (
 func extractLogLevel(log string) string {
 	upper := strings.ToUpper(log)
 
-	levels := []string{"ERROR", "FATAL", "SEVERE", "WARN", "WARNING", "INFO", "DEBUG", "UNDEFINED"}
+	levels := []string{"ERROR", "FATAL", "SEVERE", "WARN", "WARNING", "INFO", "DEBUG"}
 	for _, level := range levels {
 		if strings.Contains(upper, level) {
 			if level == "WARNING" {

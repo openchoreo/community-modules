@@ -1,6 +1,8 @@
-[![Codecov](https://codecov.io/gh/openchoreo/community-modules/branch/main/graph/badge.svg?component=observability_logs_openobserve)](https://codecov.io/gh/openchoreo/community-modules)
-
 # Observability Logs Module for OpenObserve
+
+|               |           |
+| ------------- |-----------|
+| Code coverage | [![Codecov](https://codecov.io/gh/openchoreo/community-modules/branch/main/graph/badge.svg?component=observability_logs_openobserve)](https://codecov.io/gh/openchoreo/community-modules) |
 
 This module collects container logs using Fluent Bit and stores them in OpenObserve.
 
@@ -29,7 +31,7 @@ helm upgrade --install observability-logs-openobserve \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-openobserve \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.3.6
+  --version 0.3.7
 ```
 
 ## Enable log collection
@@ -40,7 +42,7 @@ Enable Fluent Bit to start collecting logs from the cluster and publish to OpenO
 helm upgrade observability-logs-openobserve \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-openobserve \
   --namespace openchoreo-observability-plane \
-  --version 0.3.6 \
+  --version 0.3.7 \
   --reuse-values \
   --set fluent-bit.enabled=true
 ```

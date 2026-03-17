@@ -122,8 +122,7 @@ func parseDurationMinutes(duration string) (int, error) {
 // generateAlertConfig generates an OpenObserve alert configuration as JSON
 func generateAlertConfig(params LogAlertParams, streamName string, logger *slog.Logger) ([]byte, error) {
 	query := fmt.Sprintf(
-		"SELECT count(*) as %s FROM %s WHERE str_match(log, '%s')",
-		"match_count",
+		"SELECT _timestamp FROM %s WHERE str_match(log, '%s')",
 		quoteIdentifier(streamName),
 		escapeSQLString(params.SearchPattern),
 	)

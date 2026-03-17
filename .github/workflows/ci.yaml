@@ -10,6 +10,11 @@ on:
       - "**/init/**"
       - "**/helm/**"
       - "**/module.yaml"
+      - "**/*.go"
+      - "**/go.mod"
+      - "**/go.sum"
+      - "**/Dockerfile"
+      - "**/Makefile"
   workflow_dispatch:
 
 permissions:
@@ -17,7 +22,94 @@ permissions:
   packages: write
 
 jobs:
+  unit-test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install yq
+        uses: mikefarah/yq@v4
+
+      # TODO: Extend language setup for non-Go modules as they are added
+      - name: Determine Go version
+        id: go-version
+        run: |
+          # Find the highest Go version across all go.mod files
+          GO_VERSION=$(find . -name 'go.mod' -exec grep '^go ' {} \; | awk '{print $2}' | sort -V | tail -1)
+          echo "version=${GO_VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ steps.go-version.outputs.version }}
+
+      - name: Run unit tests for all modules
+        run: |
+          set -euo pipefail
+
+          TEST_COUNT=0
+          FAILED=false
+
+          for module_dir in */; do
+            module="${module_dir%/}"
+
+            # Skip if this module has no module.yaml
+            if [ ! -f "${module}/module.yaml" ]; then
+              continue
+            fi
+
+            # Skip modules without a Makefile
+            if [ ! -f "${module}/Makefile" ]; then
+              echo "Skipping ${module}: no Makefile"
+              continue
+            fi
+
+            # Skip if Makefile has no unit-test target
+            if ! grep -q '^unit-test:' "${module}/Makefile"; then
+              continue
+            fi
+
+            echo "::group::Testing ${module}"
+            make -C "${module}" unit-test
+            # Copy coverage output to repo root for Codecov upload
+            if [ -f "${module}/coverage.out" ]; then
+              cp "${module}/coverage.out" "${module}-coverage.out"
+            fi
+            echo "::endgroup::"
+
+            TEST_COUNT=$((TEST_COUNT + 1))
+          done
+
+          if [ "$FAILED" = "true" ]; then
+            echo ""
+            echo "One or more modules failed unit tests."
+            exit 1
+          fi
+
+          echo ""
+          if [ "$TEST_COUNT" -eq 0 ]; then
+            echo "No modules with unit tests found."
+          else
+            echo "Successfully tested ${TEST_COUNT} module(s). ✓"
+          fi
+
+      - name: Clean up in-module coverage files
+        run: find . -mindepth 2 -name 'coverage.out' -delete
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5.5.2
+        with:
+          files: ./*-coverage.out
+          fail_ci_if_error: false
+
   build-and-release:
+    needs: unit-test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

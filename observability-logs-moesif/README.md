@@ -30,7 +30,7 @@ Install this module in your OpenChoreo cluster:
 
 ```bash
 helm upgrade --install observability-logs-moesif \
-  oci://ghcr.io/openchoreo/charts/observability-logs-moesif \
+  oci://ghcr.io/openchoreo/helm-charts/observability-logs-moesif \
   --create-namespace \
   --namespace openchoreo-observability-plane \
   --version 0.1.0
@@ -72,7 +72,7 @@ Then install with:
 
 ```bash
 helm upgrade --install observability-logs-moesif \
-  oci://ghcr.io/openchoreo/charts/observability-logs-moesif \
+  oci://ghcr.io/openchoreo/helm-charts/observability-logs-moesif \
   --create-namespace \
   --namespace openchoreo-observability-plane \
   --version 0.1.0 \

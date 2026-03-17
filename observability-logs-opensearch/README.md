@@ -77,7 +77,10 @@ helm upgrade --install observability-logs-opensearch \
 
 ## Enable log collection
 
-Enable Fluent Bit to start collecting logs from the cluster and publish to OpenSearch
+### Single-cluster topology
+In a **single-cluster topology**, where the observability plane runs in the same cluster
+as the data-plane / workflow-plane clusters, enable Fluent Bit in the already installed Helm chart
+to start collecting logs from the cluster and publish them to OpenSearch:
 
 ```bash
 helm upgrade observability-logs-opensearch \
@@ -88,3 +91,24 @@ helm upgrade observability-logs-opensearch \
   --reuse-values \
   --set fluent-bit.enabled=true
 ```
+
+### Multi-cluster topology
+In a **multi-cluster topology**, where the observability plane runs in a separate cluster
+from the data-plane / workflow-plane clusters, install the Helm chart in those clusters with Fluent Bit enabled and OpenSearch disabled
+to start collecting logs from the cluster and publish them to the observability plane cluster's OpenSearch endpoint.
+
+```bash
+helm upgrade --install observability-logs-opensearch \
+  oci://ghcr.io/openchoreo/helm-charts/observability-logs-opensearch \
+  --create-namespace \
+  --namespace openchoreo-observability-plane \
+  --version 0.3.8 \
+  --set fluent-bit.enabled=true \
+  --set openSearch.enabled=false \
+  --set openSearchCluster.enabled=false \
+  --set openSearchSetup.enabled=false
+```
+> **Note:**
+>
+> Make sure the `opensearch-admin-credentials` secret is available in the data-plane / workflow-plane clusters as well,
+> and `fluent-bit.openSearchHost` and `fluent-bit.openSearchPort` values are set to the OpenSearch endpoint exposed from the observability plane cluster.

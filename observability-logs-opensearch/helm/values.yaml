@@ -4,59 +4,9 @@
 fluent-bit:
   enabled: false
 
-  config:
-    customParsers: |
-      [PARSER]
-          Name docker_no_time
-          Format json
-          Time_Keep Off
-          Time_Key time
-          Time_Format %Y-%m-%dT%H:%M:%S.%L
-
-    inputs: |
-      [INPUT]
-          Name tail
-          Buffer_Chunk_Size 32KB
-          Buffer_Max_Size 2MB
-          DB /var/lib/fluent-bit/db/tail-container-logs.db
-          Exclude_Path /var/log/containers/fluent-bit-*.log
-          Inotify_Watcher false
-          Mem_Buf_Limit 100MB
-          Path /var/log/containers/*.log
-          multiline.parser docker, cri
-          Read_from_Head On
-          Refresh_Interval 5
-          Skip_Long_Lines On
-          Tag kube.*
-
-    filters: |
-      [FILTER]
-          Name kubernetes
-          Buffer_Size 15MB
-          K8S-Logging.Parser On
-          K8S-Logging.Exclude On
-          Keep_Log On
-          Match kube.*
-          Merge_Log Off
-          tls.verify Off
-          Use_Kubelet true
-
-    outputs: |
-      [OUTPUT]
-          Name opensearch
-          Host opensearch
-          Generate_ID On
-          HTTP_Passwd ${OPENSEARCH_PASSWORD}
-          HTTP_User ${OPENSEARCH_USERNAME}
-          Logstash_Format On
-          Logstash_DateFormat %Y-%m-%d
-          Logstash_Prefix container-logs
-          Match kube.*
-          Port 9200
-          Replace_Dots On
-          Suppress_Type_Name On
-          tls On
-          tls.verify Off
+  existingConfigMap: "fluent-bit-config"
+  openSearchHost: "opensearch"
+  openSearchPort: 9200
 
   env:
   - name: OPENSEARCH_USERNAME

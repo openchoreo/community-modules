@@ -616,6 +616,35 @@ func TestGetSpanDetailsForTrace_NotFound(t *testing.T) {
 	}
 }
 
+func TestQuerySpansForTrace_ServerError(t *testing.T) {
+	ooServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("internal error"))
+	}))
+	defer ooServer.Close()
+
+	client := openobserve.NewClient(ooServer.URL, "default", "default", "admin", "pass", testLogger())
+	handler := NewTracingHandler(client, testLogger())
+
+	resp, err := handler.QuerySpansForTrace(context.Background(), gen.QuerySpansForTraceRequestObject{
+		TraceId: "trace-1",
+		Body: &gen.TracesQueryRequest{
+			StartTime: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+			EndTime:   time.Date(2025, 1, 2, 0, 0, 0, 0, time.UTC),
+			SearchScope: gen.ComponentSearchScope{
+				Namespace: "test-ns",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if _, ok := resp.(gen.QuerySpansForTrace500JSONResponse); !ok {
+		t.Fatalf("expected 500 response, got %T", resp)
+	}
+}
+
 func TestQueryTraces_ServerError(t *testing.T) {
 	ooServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)

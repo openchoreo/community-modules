@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -521,6 +522,50 @@ func TestParseSpanDetail(t *testing.T) {
 	}
 	if resAttrMap["resource.version"] != "v1" {
 		t.Errorf("expected resource.version=v1 in resource attributes, got %q", resAttrMap["resource.version"])
+	}
+}
+
+func TestExecuteSearchQuery_InvalidJSON(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("this is not valid json"))
+	}))
+	defer server.Close()
+
+	client := newTestClient(server.URL)
+	_, err := client.GetTraces(context.Background(), TracesQueryParams{
+		Scope: Scope{
+			Namespace: "test-ns",
+		},
+		StartTime: time.Now().Add(-time.Hour),
+		EndTime:   time.Now(),
+	})
+	if err == nil {
+		t.Fatal("expected error for invalid JSON response")
+	}
+	if !strings.Contains(err.Error(), "unmarshal") {
+		t.Errorf("expected unmarshal error, got: %v", err)
+	}
+}
+
+func TestGetSpanDetail_InvalidStream(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	// Create client with invalid stream name containing semicolon
+	client := NewClient(server.URL, "default", "bad;stream", "admin", "token", testLogger())
+	_, err := client.GetSpanDetail(context.Background(), TracesQueryParams{
+		TraceID: "trace-1",
+		SpanID:  "span-1",
+	})
+	if err == nil {
+		t.Fatal("expected error for invalid stream identifier")
+	}
+	if !strings.Contains(err.Error(), "invalid stream identifier") {
+		t.Errorf("expected 'invalid stream identifier' error, got: %v", err)
 	}
 }
 

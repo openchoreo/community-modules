@@ -717,6 +717,608 @@ func TestGetAlertRule_NotFound(t *testing.T) {
 	}
 }
 
+func TestUpdateAlertRule_Success(t *testing.T) {
+	ooServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET" && r.URL.Path == "/api/v2/default/alerts":
+			resp := map[string]interface{}{
+				"list": []map[string]string{
+					{"alert_id": "alert-upd-1", "name": "test-alert"},
+				},
+			}
+			json.NewEncoder(w).Encode(resp)
+		case r.Method == "PUT" && r.URL.Path == "/api/v2/default/alerts/alert-upd-1":
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	defer ooServer.Close()
+
+	client := openobserve.NewClient(ooServer.URL, "default", "default", "admin", "pass", testLogger())
+	handler := NewLogsHandler(client, nil, testLogger())
+
+	enabled := true
+	operator := gen.AlertRuleRequestConditionOperator("gt")
+	threshold := float32(5)
+	window := "5m"
+	interval := "1m"
+
+	resp, err := handler.UpdateAlertRule(context.Background(), gen.UpdateAlertRuleRequestObject{
+		RuleName: "test-alert",
+		Body: &gen.AlertRuleRequest{
+			Metadata: &struct {
+				ComponentUid   *openapi_types.UUID `json:"componentUid,omitempty"`
+				EnvironmentUid *openapi_types.UUID `json:"environmentUid,omitempty"`
+				Name           *string             `json:"name,omitempty"`
+				Namespace      *string             `json:"namespace,omitempty"`
+				ProjectUid     *openapi_types.UUID `json:"projectUid,omitempty"`
+			}{
+				Name:      ptr("test-alert"),
+				Namespace: ptr("ns-1"),
+			},
+			Source: &struct {
+				Metric *gen.AlertRuleRequestSourceMetric `json:"metric,omitempty"`
+				Query  *string                           `json:"query,omitempty"`
+			}{
+				Query: ptr("error"),
+			},
+			Condition: &struct {
+				Enabled   *bool                                 `json:"enabled,omitempty"`
+				Interval  *string                               `json:"interval,omitempty"`
+				Operator  *gen.AlertRuleRequestConditionOperator `json:"operator,omitempty"`
+				Threshold *float32                              `json:"threshold,omitempty"`
+				Window    *string                               `json:"window,omitempty"`
+			}{
+				Enabled:   &enabled,
+				Operator:  &operator,
+				Threshold: &threshold,
+				Window:    &window,
+				Interval:  &interval,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	updateResp, ok := resp.(gen.UpdateAlertRule200JSONResponse)
+	if !ok {
+		t.Fatalf("expected 200 response, got %T", resp)
+	}
+	if updateResp.RuleBackendId == nil || *updateResp.RuleBackendId != "alert-upd-1" {
+		t.Errorf("expected ruleBackendId 'alert-upd-1', got %v", updateResp.RuleBackendId)
+	}
+}
+
+func TestUpdateAlertRule_NotFound(t *testing.T) {
+	ooServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := map[string]interface{}{
+			"list": []map[string]string{},
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer ooServer.Close()
+
+	client := openobserve.NewClient(ooServer.URL, "default", "default", "admin", "pass", testLogger())
+	handler := NewLogsHandler(client, nil, testLogger())
+
+	enabled := true
+	operator := gen.AlertRuleRequestConditionOperator("gt")
+	threshold := float32(5)
+
+	resp, err := handler.UpdateAlertRule(context.Background(), gen.UpdateAlertRuleRequestObject{
+		RuleName: "nonexistent",
+		Body: &gen.AlertRuleRequest{
+			Condition: &struct {
+				Enabled   *bool                                 `json:"enabled,omitempty"`
+				Interval  *string                               `json:"interval,omitempty"`
+				Operator  *gen.AlertRuleRequestConditionOperator `json:"operator,omitempty"`
+				Threshold *float32                              `json:"threshold,omitempty"`
+				Window    *string                               `json:"window,omitempty"`
+			}{
+				Enabled:   &enabled,
+				Operator:  &operator,
+				Threshold: &threshold,
+				Window:    ptr("5m"),
+				Interval:  ptr("1m"),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if _, ok := resp.(gen.UpdateAlertRule400JSONResponse); !ok {
+		t.Fatalf("expected 400 response for not found, got %T", resp)
+	}
+}
+
+func TestUpdateAlertRule_InvalidError(t *testing.T) {
+	ooServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET" && r.URL.Path == "/api/v2/default/alerts":
+			resp := map[string]interface{}{
+				"list": []map[string]string{
+					{"alert_id": "alert-inv-1", "name": "test-alert"},
+				},
+			}
+			json.NewEncoder(w).Encode(resp)
+		case r.Method == "PUT":
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte("invalid alert config"))
+		}
+	}))
+	defer ooServer.Close()
+
+	client := openobserve.NewClient(ooServer.URL, "default", "default", "admin", "pass", testLogger())
+	handler := NewLogsHandler(client, nil, testLogger())
+
+	enabled := true
+	operator := gen.AlertRuleRequestConditionOperator("gt")
+	threshold := float32(5)
+
+	resp, err := handler.UpdateAlertRule(context.Background(), gen.UpdateAlertRuleRequestObject{
+		RuleName: "test-alert",
+		Body: &gen.AlertRuleRequest{
+			Condition: &struct {
+				Enabled   *bool                                 `json:"enabled,omitempty"`
+				Interval  *string                               `json:"interval,omitempty"`
+				Operator  *gen.AlertRuleRequestConditionOperator `json:"operator,omitempty"`
+				Threshold *float32                              `json:"threshold,omitempty"`
+				Window    *string                               `json:"window,omitempty"`
+			}{
+				Enabled:   &enabled,
+				Operator:  &operator,
+				Threshold: &threshold,
+				Window:    ptr("5m"),
+				Interval:  ptr("1m"),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if _, ok := resp.(gen.UpdateAlertRule400JSONResponse); !ok {
+		t.Fatalf("expected 400 response for invalid error, got %T", resp)
+	}
+}
+
+func TestUpdateAlertRule_GenericError(t *testing.T) {
+	ooServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET" && r.URL.Path == "/api/v2/default/alerts":
+			resp := map[string]interface{}{
+				"list": []map[string]string{
+					{"alert_id": "alert-gen-1", "name": "test-alert"},
+				},
+			}
+			json.NewEncoder(w).Encode(resp)
+		case r.Method == "PUT":
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("something went wrong"))
+		}
+	}))
+	defer ooServer.Close()
+
+	client := openobserve.NewClient(ooServer.URL, "default", "default", "admin", "pass", testLogger())
+	handler := NewLogsHandler(client, nil, testLogger())
+
+	enabled := true
+	operator := gen.AlertRuleRequestConditionOperator("gt")
+	threshold := float32(5)
+
+	resp, err := handler.UpdateAlertRule(context.Background(), gen.UpdateAlertRuleRequestObject{
+		RuleName: "test-alert",
+		Body: &gen.AlertRuleRequest{
+			Condition: &struct {
+				Enabled   *bool                                 `json:"enabled,omitempty"`
+				Interval  *string                               `json:"interval,omitempty"`
+				Operator  *gen.AlertRuleRequestConditionOperator `json:"operator,omitempty"`
+				Threshold *float32                              `json:"threshold,omitempty"`
+				Window    *string                               `json:"window,omitempty"`
+			}{
+				Enabled:   &enabled,
+				Operator:  &operator,
+				Threshold: &threshold,
+				Window:    ptr("5m"),
+				Interval:  ptr("1m"),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if _, ok := resp.(gen.UpdateAlertRule500JSONResponse); !ok {
+		t.Fatalf("expected 500 response for generic error, got %T", resp)
+	}
+}
+
+func TestQueryLogs_WorkflowScope_Success(t *testing.T) {
+	ooServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := openobserve.OpenObserveResponse{
+			Took:  3,
+			Total: 1,
+			Hits: []map[string]interface{}{
+				{
+					"_timestamp": float64(time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC).UnixMicro()),
+					"log":        "workflow step done",
+				},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer ooServer.Close()
+
+	client := openobserve.NewClient(ooServer.URL, "default", "default", "admin", "pass", testLogger())
+	handler := NewLogsHandler(client, nil, testLogger())
+
+	scope := gen.LogsQueryRequest_SearchScope{}
+	workflowRunName := "run-1"
+	_ = scope.FromWorkflowSearchScope(gen.WorkflowSearchScope{
+		Namespace:       "test-ns",
+		WorkflowRunName: &workflowRunName,
+	})
+
+	resp, err := handler.QueryLogs(context.Background(), gen.QueryLogsRequestObject{
+		Body: &gen.LogsQueryRequest{
+			StartTime:   time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+			EndTime:     time.Date(2025, 1, 2, 0, 0, 0, 0, time.UTC),
+			SearchScope: scope,
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if _, ok := resp.(gen.QueryLogs200JSONResponse); !ok {
+		t.Fatalf("expected 200 response, got %T", resp)
+	}
+}
+
+func TestQueryLogs_WorkflowScope_Error(t *testing.T) {
+	ooServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("server error"))
+	}))
+	defer ooServer.Close()
+
+	client := openobserve.NewClient(ooServer.URL, "default", "default", "admin", "pass", testLogger())
+	handler := NewLogsHandler(client, nil, testLogger())
+
+	scope := gen.LogsQueryRequest_SearchScope{}
+	workflowRunName := "run-1"
+	_ = scope.FromWorkflowSearchScope(gen.WorkflowSearchScope{
+		Namespace:       "test-ns",
+		WorkflowRunName: &workflowRunName,
+	})
+
+	resp, err := handler.QueryLogs(context.Background(), gen.QueryLogsRequestObject{
+		Body: &gen.LogsQueryRequest{
+			StartTime:   time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+			EndTime:     time.Date(2025, 1, 2, 0, 0, 0, 0, time.UTC),
+			SearchScope: scope,
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if _, ok := resp.(gen.QueryLogs500JSONResponse); !ok {
+		t.Fatalf("expected 500 response, got %T", resp)
+	}
+}
+
+func TestQueryLogs_WorkflowScope_EmptyNamespace(t *testing.T) {
+	handler := NewLogsHandler(nil, nil, testLogger())
+
+	scope := gen.LogsQueryRequest_SearchScope{}
+	workflowRunName := "run-1"
+	_ = scope.FromWorkflowSearchScope(gen.WorkflowSearchScope{
+		Namespace:       "  ",
+		WorkflowRunName: &workflowRunName,
+	})
+
+	resp, err := handler.QueryLogs(context.Background(), gen.QueryLogsRequestObject{
+		Body: &gen.LogsQueryRequest{
+			StartTime:   time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+			EndTime:     time.Date(2025, 1, 2, 0, 0, 0, 0, time.UTC),
+			SearchScope: scope,
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if _, ok := resp.(gen.QueryLogs400JSONResponse); !ok {
+		t.Fatalf("expected 400 response, got %T", resp)
+	}
+}
+
+func TestQueryLogs_ComponentScope_Error(t *testing.T) {
+	ooServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("server error"))
+	}))
+	defer ooServer.Close()
+
+	client := openobserve.NewClient(ooServer.URL, "default", "default", "admin", "pass", testLogger())
+	handler := NewLogsHandler(client, nil, testLogger())
+
+	scope := gen.LogsQueryRequest_SearchScope{}
+	_ = scope.FromComponentSearchScope(gen.ComponentSearchScope{
+		Namespace: "test-ns",
+	})
+
+	resp, err := handler.QueryLogs(context.Background(), gen.QueryLogsRequestObject{
+		Body: &gen.LogsQueryRequest{
+			StartTime:   time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+			EndTime:     time.Date(2025, 1, 2, 0, 0, 0, 0, time.UTC),
+			SearchScope: scope,
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if _, ok := resp.(gen.QueryLogs500JSONResponse); !ok {
+		t.Fatalf("expected 500 response, got %T", resp)
+	}
+}
+
+func TestDeleteAlertRule_Error(t *testing.T) {
+	ooServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := map[string]interface{}{
+			"list": []map[string]string{},
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer ooServer.Close()
+
+	client := openobserve.NewClient(ooServer.URL, "default", "default", "admin", "pass", testLogger())
+	handler := NewLogsHandler(client, nil, testLogger())
+
+	resp, err := handler.DeleteAlertRule(context.Background(), gen.DeleteAlertRuleRequestObject{
+		RuleName: "nonexistent",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if _, ok := resp.(gen.DeleteAlertRule500JSONResponse); !ok {
+		t.Fatalf("expected 500 response, got %T", resp)
+	}
+}
+
+func TestCreateAlertRule_Error(t *testing.T) {
+	ooServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("bad request"))
+	}))
+	defer ooServer.Close()
+
+	client := openobserve.NewClient(ooServer.URL, "default", "default", "admin", "pass", testLogger())
+	handler := NewLogsHandler(client, nil, testLogger())
+
+	enabled := true
+	operator := gen.AlertRuleRequestConditionOperator("gt")
+	threshold := float32(5)
+
+	resp, err := handler.CreateAlertRule(context.Background(), gen.CreateAlertRuleRequestObject{
+		Body: &gen.AlertRuleRequest{
+			Metadata: &struct {
+				ComponentUid   *openapi_types.UUID `json:"componentUid,omitempty"`
+				EnvironmentUid *openapi_types.UUID `json:"environmentUid,omitempty"`
+				Name           *string             `json:"name,omitempty"`
+				Namespace      *string             `json:"namespace,omitempty"`
+				ProjectUid     *openapi_types.UUID `json:"projectUid,omitempty"`
+			}{
+				Name:      ptr("test-alert"),
+				Namespace: ptr("ns-1"),
+			},
+			Source: &struct {
+				Metric *gen.AlertRuleRequestSourceMetric `json:"metric,omitempty"`
+				Query  *string                           `json:"query,omitempty"`
+			}{
+				Query: ptr("error"),
+			},
+			Condition: &struct {
+				Enabled   *bool                                 `json:"enabled,omitempty"`
+				Interval  *string                               `json:"interval,omitempty"`
+				Operator  *gen.AlertRuleRequestConditionOperator `json:"operator,omitempty"`
+				Threshold *float32                              `json:"threshold,omitempty"`
+				Window    *string                               `json:"window,omitempty"`
+			}{
+				Enabled:   &enabled,
+				Operator:  &operator,
+				Threshold: &threshold,
+				Window:    ptr("5m"),
+				Interval:  ptr("1m"),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if _, ok := resp.(gen.CreateAlertRule500JSONResponse); !ok {
+		t.Fatalf("expected 500 response, got %T", resp)
+	}
+}
+
+func TestGetAlertRule_InvalidUUIDs(t *testing.T) {
+	ooServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/default/alerts":
+			resp := map[string]interface{}{
+				"list": []map[string]string{
+					{"alert_id": "alert-uuid-test", "name": "test-alert"},
+				},
+			}
+			json.NewEncoder(w).Encode(resp)
+		case "/api/v2/default/alerts/alert-uuid-test":
+			resp := map[string]interface{}{
+				"name":    "test-alert",
+				"enabled": true,
+				"query_condition": map[string]interface{}{
+					"sql": "SELECT count(*) FROM \"default\" WHERE str_match(log, 'error')",
+				},
+				"trigger_condition": map[string]interface{}{
+					"operator":       ">",
+					"threshold":      float64(10),
+					"period":         float64(5),
+					"frequency":      float64(1),
+					"frequency_type": "minutes",
+				},
+				"context_attributes": map[string]interface{}{
+					"namespace":      "test-ns",
+					"projectUid":     "not-a-valid-uuid",
+					"environmentUid": "also-not-valid",
+					"componentUid":   "invalid-too",
+				},
+			}
+			json.NewEncoder(w).Encode(resp)
+		}
+	}))
+	defer ooServer.Close()
+
+	client := openobserve.NewClient(ooServer.URL, "default", "default", "admin", "pass", testLogger())
+	handler := NewLogsHandler(client, nil, testLogger())
+
+	resp, err := handler.GetAlertRule(context.Background(), gen.GetAlertRuleRequestObject{
+		RuleName: "test-alert",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	getResp, ok := resp.(gen.GetAlertRule200JSONResponse)
+	if !ok {
+		t.Fatalf("expected 200 response, got %T", resp)
+	}
+	// Invalid UUIDs should result in nil UID fields
+	if getResp.Metadata.ProjectUid != nil {
+		t.Error("expected projectUid to be nil for invalid UUID")
+	}
+	if getResp.Metadata.EnvironmentUid != nil {
+		t.Error("expected environmentUid to be nil for invalid UUID")
+	}
+	if getResp.Metadata.ComponentUid != nil {
+		t.Error("expected componentUid to be nil for invalid UUID")
+	}
+}
+
+func TestGetAlertRule_ServerError(t *testing.T) {
+	ooServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/default/alerts":
+			resp := map[string]interface{}{
+				"list": []map[string]string{
+					{"alert_id": "alert-err", "name": "test-alert"},
+				},
+			}
+			json.NewEncoder(w).Encode(resp)
+		case "/api/v2/default/alerts/alert-err":
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("internal error"))
+		}
+	}))
+	defer ooServer.Close()
+
+	client := openobserve.NewClient(ooServer.URL, "default", "default", "admin", "pass", testLogger())
+	handler := NewLogsHandler(client, nil, testLogger())
+
+	resp, err := handler.GetAlertRule(context.Background(), gen.GetAlertRuleRequestObject{
+		RuleName: "test-alert",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if _, ok := resp.(gen.GetAlertRule500JSONResponse); !ok {
+		t.Fatalf("expected 500 response, got %T", resp)
+	}
+}
+
+func TestToWorkflowLogsParams_AllOptions(t *testing.T) {
+	startTime := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	endTime := time.Date(2025, 1, 2, 0, 0, 0, 0, time.UTC)
+	workflowRunName := "run-1"
+	limit := 50
+	sortOrder := gen.LogsQueryRequestSortOrder("ASC")
+	search := "error"
+	logLevels := []gen.LogsQueryRequestLogLevels{"ERROR", "WARN"}
+
+	req := &gen.LogsQueryRequest{
+		StartTime:    startTime,
+		EndTime:      endTime,
+		Limit:        &limit,
+		SortOrder:    &sortOrder,
+		SearchPhrase: &search,
+		LogLevels:    &logLevels,
+	}
+	scope := &gen.WorkflowSearchScope{
+		Namespace:       "test-ns",
+		WorkflowRunName: &workflowRunName,
+	}
+
+	params := toWorkflowLogsParams(req, scope)
+
+	if params.Namespace != "test-ns" {
+		t.Errorf("expected namespace 'test-ns', got %q", params.Namespace)
+	}
+	if params.WorkflowRunName != "run-1" {
+		t.Errorf("expected workflowRunName 'run-1', got %q", params.WorkflowRunName)
+	}
+	if params.Limit != 50 {
+		t.Errorf("expected limit 50, got %d", params.Limit)
+	}
+	if params.SortOrder != "ASC" {
+		t.Errorf("expected sortOrder 'ASC', got %q", params.SortOrder)
+	}
+	if params.SearchPhrase != "error" {
+		t.Errorf("expected searchPhrase 'error', got %q", params.SearchPhrase)
+	}
+	if len(params.LogLevels) != 2 {
+		t.Errorf("expected 2 logLevels, got %d", len(params.LogLevels))
+	}
+}
+
+func TestToWorkflowLogsParams_NilOptionals(t *testing.T) {
+	startTime := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	endTime := time.Date(2025, 1, 2, 0, 0, 0, 0, time.UTC)
+
+	req := &gen.LogsQueryRequest{
+		StartTime: startTime,
+		EndTime:   endTime,
+	}
+	scope := &gen.WorkflowSearchScope{
+		Namespace: "test-ns",
+	}
+
+	params := toWorkflowLogsParams(req, scope)
+
+	if params.Namespace != "test-ns" {
+		t.Errorf("expected namespace 'test-ns', got %q", params.Namespace)
+	}
+	if params.WorkflowRunName != "" {
+		t.Errorf("expected empty workflowRunName, got %q", params.WorkflowRunName)
+	}
+	if params.Limit != 0 {
+		t.Errorf("expected limit 0, got %d", params.Limit)
+	}
+	if params.SortOrder != "" {
+		t.Errorf("expected empty sortOrder, got %q", params.SortOrder)
+	}
+	if params.SearchPhrase != "" {
+		t.Errorf("expected empty searchPhrase, got %q", params.SearchPhrase)
+	}
+	if params.LogLevels != nil {
+		t.Errorf("expected nil logLevels, got %v", params.LogLevels)
+	}
+}
+
 func TestHandleAlertWebhook_ValidBody(t *testing.T) {
 	// Mock OpenObserve for GetAlert call
 	ooServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

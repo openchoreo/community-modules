@@ -137,6 +137,34 @@ func TestLoadConfig_InvalidServerPort(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_UnknownLogLevel(t *testing.T) {
+	vars := validEnvVars()
+	vars["LOG_LEVEL"] = "TRACE"
+	setEnvVars(t, vars)
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.LogLevel != slog.LevelInfo {
+		t.Errorf("expected default LogLevel Info for unknown level, got %v", cfg.LogLevel)
+	}
+}
+
+func TestLoadConfig_EmptyLogLevel(t *testing.T) {
+	vars := validEnvVars()
+	vars["LOG_LEVEL"] = ""
+	setEnvVars(t, vars)
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.LogLevel != slog.LevelInfo {
+		t.Errorf("expected default LogLevel Info for empty level, got %v", cfg.LogLevel)
+	}
+}
+
 func TestGetEnv(t *testing.T) {
 	t.Setenv("TEST_GET_ENV_EXISTS", "value")
 

@@ -230,6 +230,73 @@ func TestHandleAlertmanagerWebhook_FiringCaseInsensitive(t *testing.T) {
 	}
 }
 
+func TestExtractAlertFields_EdgeCases(t *testing.T) {
+	tests := []struct {
+		name              string
+		ruleName          string
+		ruleNamespace     string
+		alertValue        string
+		expectedRuleName  string
+		expectedNamespace string
+		expectedValue     float32
+	}{
+		{
+			name:              "whitespace trimming",
+			ruleName:          "  high-cpu  ",
+			ruleNamespace:     "  production  ",
+			alertValue:        "  95.5  ",
+			expectedRuleName:  "high-cpu",
+			expectedNamespace: "production",
+			expectedValue:     95.5,
+		},
+		{
+			name:              "negative number",
+			ruleName:          "low-temp",
+			ruleNamespace:     "monitoring",
+			alertValue:        "-42.5",
+			expectedRuleName:  "low-temp",
+			expectedNamespace: "monitoring",
+			expectedValue:     -42.5,
+		},
+		{
+			name:              "zero value",
+			ruleName:          "zero-check",
+			ruleNamespace:     "default",
+			alertValue:        "0",
+			expectedRuleName:  "zero-check",
+			expectedNamespace: "default",
+			expectedValue:     0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			alert := gen.AlertmanagerAlert{
+				Status: "firing",
+				Annotations: gen.AlertmanagerAlert_Annotations{
+					RuleName:      tt.ruleName,
+					RuleNamespace: tt.ruleNamespace,
+					AlertValue:    tt.alertValue,
+				},
+			}
+
+			ruleName, ruleNamespace, alertValue, err := extractAlertFields(alert)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if ruleName != tt.expectedRuleName {
+				t.Errorf("expected ruleName %q, got %q", tt.expectedRuleName, ruleName)
+			}
+			if ruleNamespace != tt.expectedNamespace {
+				t.Errorf("expected ruleNamespace %q, got %q", tt.expectedNamespace, ruleNamespace)
+			}
+			if alertValue != tt.expectedValue {
+				t.Errorf("expected alertValue %v, got %v", tt.expectedValue, alertValue)
+			}
+		})
+	}
+}
+
 func TestHandleAlertmanagerWebhook_ForwardError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)

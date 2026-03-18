@@ -102,3 +102,59 @@ func TestForwardAlert_ConnectionError(t *testing.T) {
 		t.Fatal("expected error for connection failure")
 	}
 }
+
+func TestForwardAlert_ContextCancelled(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := client.ForwardAlert(ctx, "my-rule", "test-ns", 1, time.Now())
+	if err == nil {
+		t.Fatal("expected error for cancelled context")
+	}
+}
+
+func TestForwardAlert_NonSuccessStatusCodes(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+		body       string
+	}{
+		{"bad request", http.StatusBadRequest, "bad request"},
+		{"not found", http.StatusNotFound, "not found"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tt.statusCode)
+				w.Write([]byte(tt.body))
+			}))
+			defer server.Close()
+
+			client := NewClient(server.URL)
+			err := client.ForwardAlert(context.Background(), "my-rule", "test-ns", 1, time.Now())
+			if err == nil {
+				t.Fatalf("expected error for status %d", tt.statusCode)
+			}
+		})
+	}
+}
+
+func TestForwardAlert_EmptyResponseBody(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	err := client.ForwardAlert(context.Background(), "my-rule", "test-ns", 1, time.Now())
+	if err == nil {
+		t.Fatal("expected error for 500 with empty body")
+	}
+}

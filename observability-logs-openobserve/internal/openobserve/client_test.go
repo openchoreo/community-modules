@@ -400,6 +400,226 @@ func TestGetAlert(t *testing.T) {
 	}
 }
 
+func TestUpdateAlert_LookupFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := map[string]interface{}{
+			"list": []map[string]string{},
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	client := newTestClient(server.URL)
+	enabled := true
+	_, err := client.UpdateAlert(context.Background(), "nonexistent", LogAlertParams{
+		Operator: "gt",
+		Window:   "5m",
+		Interval: "1m",
+		Enabled:  &enabled,
+	})
+	if err == nil {
+		t.Fatal("expected error for nonexistent alert")
+	}
+}
+
+func TestUpdateAlert_HTTPError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET" && r.URL.Path == "/api/v2/default/alerts":
+			resp := map[string]interface{}{
+				"list": []map[string]string{
+					{"alert_id": "alert-upd-err", "name": "my-alert"},
+				},
+			}
+			json.NewEncoder(w).Encode(resp)
+		case r.Method == "PUT":
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte("bad request"))
+		}
+	}))
+	defer server.Close()
+
+	client := newTestClient(server.URL)
+	enabled := true
+	_, err := client.UpdateAlert(context.Background(), "my-alert", LogAlertParams{
+		Operator: "gt",
+		Window:   "5m",
+		Interval: "1m",
+		Enabled:  &enabled,
+	})
+	if err == nil {
+		t.Fatal("expected error for bad request response")
+	}
+}
+
+func TestUpdateAlert_ConfigError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := map[string]interface{}{
+			"list": []map[string]string{
+				{"alert_id": "alert-cfg", "name": "my-alert"},
+			},
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	client := newTestClient(server.URL)
+	enabled := true
+	// Invalid operator will cause generateAlertConfig to fail
+	_, err := client.UpdateAlert(context.Background(), "my-alert", LogAlertParams{
+		Operator: "invalid_op",
+		Window:   "5m",
+		Interval: "1m",
+		Enabled:  &enabled,
+	})
+	if err == nil {
+		t.Fatal("expected error for invalid alert config")
+	}
+}
+
+func TestDeleteAlert_HTTPError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET" && r.URL.Path == "/api/v2/default/alerts":
+			resp := map[string]interface{}{
+				"list": []map[string]string{
+					{"alert_id": "alert-del-err", "name": "my-alert"},
+				},
+			}
+			json.NewEncoder(w).Encode(resp)
+		case r.Method == "DELETE":
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("server error"))
+		}
+	}))
+	defer server.Close()
+
+	client := newTestClient(server.URL)
+	_, err := client.DeleteAlert(context.Background(), "my-alert")
+	if err == nil {
+		t.Fatal("expected error for delete failure")
+	}
+}
+
+func TestCreateAlert_ConfigError(t *testing.T) {
+	client := newTestClient("http://localhost:1")
+	enabled := true
+	name := "test"
+	// Invalid operator causes config generation to fail
+	_, err := client.CreateAlert(context.Background(), LogAlertParams{
+		Name:     &name,
+		Operator: "invalid_op",
+		Window:   "5m",
+		Interval: "1m",
+		Enabled:  &enabled,
+	})
+	if err == nil {
+		t.Fatal("expected error for invalid config")
+	}
+}
+
+func TestCreateAlert_MissingResponseID(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		// Response without "id" field
+		w.Write([]byte(`{"status": "ok"}`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(server.URL)
+	enabled := true
+	name := "test-alert"
+	_, err := client.CreateAlert(context.Background(), LogAlertParams{
+		Name:     &name,
+		Operator: "gt",
+		Window:   "5m",
+		Interval: "1m",
+		Enabled:  &enabled,
+	})
+	if err == nil {
+		t.Fatal("expected error for missing response ID")
+	}
+}
+
+func TestCreateAlert_ConnectionError(t *testing.T) {
+	client := newTestClient("http://localhost:1")
+	enabled := true
+	name := "test-alert"
+	_, err := client.CreateAlert(context.Background(), LogAlertParams{
+		Name:     &name,
+		Operator: "gt",
+		Window:   "5m",
+		Interval: "1m",
+		Enabled:  &enabled,
+	})
+	if err == nil {
+		t.Fatal("expected error for connection failure")
+	}
+}
+
+func TestExecuteSearchQuery_NonOKStatus(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("bad query"))
+	}))
+	defer server.Close()
+
+	client := newTestClient(server.URL)
+	_, err := client.GetWorkflowLogs(context.Background(), WorkflowLogsParams{
+		Namespace:       "test-ns",
+		WorkflowRunName: "run-1",
+		StartTime:       time.Now().Add(-time.Hour),
+		EndTime:         time.Now(),
+	})
+	if err == nil {
+		t.Fatal("expected error for non-OK status")
+	}
+}
+
+func TestExecuteSearchQuery_MalformedJSON(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("not valid json{{{"))
+	}))
+	defer server.Close()
+
+	client := newTestClient(server.URL)
+	_, err := client.GetComponentLogs(context.Background(), ComponentLogsParams{
+		Namespace: "test-ns",
+		StartTime: time.Now().Add(-time.Hour),
+		EndTime:   time.Now(),
+	})
+	if err == nil {
+		t.Fatal("expected error for malformed JSON response")
+	}
+}
+
+func TestGetAlert_ServerError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/v2/default/alerts" && r.Method == "GET":
+			resp := map[string]interface{}{
+				"list": []map[string]string{
+					{"alert_id": "alert-err", "name": "my-alert"},
+				},
+			}
+			json.NewEncoder(w).Encode(resp)
+		case r.URL.Path == "/api/v2/default/alerts/alert-err":
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("server error"))
+		}
+	}))
+	defer server.Close()
+
+	client := newTestClient(server.URL)
+	_, err := client.GetAlert(context.Background(), "my-alert")
+	if err == nil {
+		t.Fatal("expected error for server error response")
+	}
+}
+
 func TestExtractLogLevel(t *testing.T) {
 	tests := []struct {
 		log      string

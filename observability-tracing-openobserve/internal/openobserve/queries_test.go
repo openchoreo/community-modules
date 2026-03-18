@@ -5,6 +5,9 @@ package openobserve
 
 import (
 	"encoding/json"
+	"io"
+	"log/slog"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -443,4 +446,137 @@ func TestGenerateSpanDetailQuery(t *testing.T) {
 			t.Fatal("expected error for invalid stream identifier")
 		}
 	})
+}
+
+// captureStdout runs fn and returns whatever it wrote to os.Stdout.
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+
+	origStdout := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("failed to create pipe: %v", err)
+	}
+	os.Stdout = w
+
+	fn()
+
+	w.Close()
+	os.Stdout = origStdout
+
+	captured, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatalf("failed to read captured output: %v", err)
+	}
+	return string(captured)
+}
+
+func debugLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
+}
+
+func TestGenerateTracesListQuery_DebugLogging(t *testing.T) {
+	startTime := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	endTime := time.Date(2025, 1, 2, 0, 0, 0, 0, time.UTC)
+
+	params := TracesQueryParams{
+		Scope: Scope{
+			Namespace: "test-ns",
+		},
+		StartTime: startTime,
+		EndTime:   endTime,
+	}
+
+	var result []byte
+	output := captureStdout(t, func() {
+		var err error
+		result, err = generateTracesListQuery(params, "mystream", debugLogger())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	var query map[string]interface{}
+	if err := json.Unmarshal(result, &query); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+
+	q := query["query"].(map[string]interface{})
+	sql := q["sql"].(string)
+	if !strings.Contains(sql, "FROM mystream") {
+		t.Errorf("expected stream name in SQL: %s", sql)
+	}
+
+	if !strings.Contains(output, "FROM mystream") {
+		t.Errorf("expected debug output to contain SQL with stream name, got: %s", output)
+	}
+}
+
+func TestGenerateSpansListQuery_DebugLogging(t *testing.T) {
+	startTime := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	endTime := time.Date(2025, 1, 2, 0, 0, 0, 0, time.UTC)
+
+	params := TracesQueryParams{
+		TraceID:   "abc123",
+		StartTime: startTime,
+		EndTime:   endTime,
+	}
+
+	var result []byte
+	output := captureStdout(t, func() {
+		var err error
+		result, err = generateSpansListQuery(params, "mystream", debugLogger())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	var query map[string]interface{}
+	if err := json.Unmarshal(result, &query); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+
+	q := query["query"].(map[string]interface{})
+	sql := q["sql"].(string)
+	if !strings.Contains(sql, "trace_id = 'abc123'") {
+		t.Errorf("expected trace_id filter in SQL: %s", sql)
+	}
+
+	if !strings.Contains(output, "trace_id = 'abc123'") {
+		t.Errorf("expected debug output to contain trace_id filter, got: %s", output)
+	}
+}
+
+func TestGenerateSpanDetailQuery_DebugLogging(t *testing.T) {
+	params := TracesQueryParams{
+		TraceID: "trace-1",
+		SpanID:  "span-1",
+	}
+
+	var result []byte
+	output := captureStdout(t, func() {
+		var err error
+		result, err = generateSpanDetailQuery(params, "mystream", debugLogger())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	var query map[string]interface{}
+	if err := json.Unmarshal(result, &query); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+
+	q := query["query"].(map[string]interface{})
+	sql := q["sql"].(string)
+	if !strings.Contains(sql, "trace_id = 'trace-1'") {
+		t.Errorf("expected trace_id filter in SQL: %s", sql)
+	}
+	if !strings.Contains(sql, "span_id = 'span-1'") {
+		t.Errorf("expected span_id filter in SQL: %s", sql)
+	}
+
+	if !strings.Contains(output, "trace_id = 'trace-1'") {
+		t.Errorf("expected debug output to contain trace_id filter, got: %s", output)
+	}
 }

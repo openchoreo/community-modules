@@ -265,8 +265,8 @@ func (h *LogsHandler) UpdateAlertRule(ctx context.Context, request gen.UpdateAle
 			slog.Any("error", err),
 		)
 		if strings.Contains(err.Error(), "not found") {
-			return gen.UpdateAlertRule500JSONResponse{
-				Title:   ptr(gen.InternalServerError),
+			return gen.UpdateAlertRule400JSONResponse{
+				Title:   ptr(gen.BadRequest),
 				Message: ptr("alert rule not found"),
 			}, nil
 		}

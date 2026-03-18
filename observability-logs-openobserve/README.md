@@ -31,7 +31,7 @@ helm upgrade --install observability-logs-openobserve \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-openobserve \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.3.9
+  --version 0.3.10
 ```
 
 ## Enable log collection
@@ -45,7 +45,7 @@ to start collecting logs from the cluster and publish them to OpenObserve:
 helm upgrade observability-logs-openobserve \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-openobserve \
   --namespace openchoreo-observability-plane \
-  --version 0.3.9 \
+  --version 0.3.10 \
   --reuse-values \
   --set fluent-bit.enabled=true
 ```
@@ -60,7 +60,7 @@ helm upgrade --install observability-logs-openobserve \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-openobserve \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.3.9 \
+  --version 0.3.10 \
   --set fluent-bit.enabled=true \
   --set openObserve.enabled=false \
   --set openObserveSetup.enabled=false \

@@ -30,7 +30,7 @@ helm upgrade --install observability-tracing-openobserve \
   oci://ghcr.io/openchoreo/helm-charts/observability-tracing-openobserve \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.1.4
+  --version 0.1.5
 ```
 
 > **Note:** If OpenObserve is already installed by another module (e.g., `observability-logs-openobserve`), disable it to avoid conflicts:
@@ -40,6 +40,6 @@ helm upgrade --install observability-tracing-openobserve \
 >  oci://ghcr.io/openchoreo/helm-charts/observability-tracing-openobserve \
 >  --create-namespace \
 >  --namespace openchoreo-observability-plane \
->  --version 0.1.4 \
+>  --version 0.1.5 \
 >  --set openObserve.enabled=false
 >```

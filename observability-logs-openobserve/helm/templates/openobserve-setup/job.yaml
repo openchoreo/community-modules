@@ -29,12 +29,12 @@ spec:
           valueFrom:
             secretKeyRef:
               name: openobserve-admin-credentials
-              key: username
+              key: ZO_ROOT_USER_EMAIL
         - name: OPENOBSERVE_PASSWORD
           valueFrom:
             secretKeyRef:
               name: openobserve-admin-credentials
-              key: password
+              key: ZO_ROOT_USER_PASSWORD
         - name: OPENOBSERVE_ORG
           value: {{ .Values.common.openObserveOrg | quote }}
 {{- end }}

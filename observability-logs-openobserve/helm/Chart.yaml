@@ -5,8 +5,8 @@ apiVersion: v2
 name: observability-logs-openobserve
 description: A Helm chart for OpenChoreo Logs Module for OpenObserve
 type: application
-version: 0.3.10
-appVersion: "0.3.10"
+version: 0.4.0
+appVersion: "0.4.0"
 keywords:
   - openobserve
   - openchoreo
@@ -19,3 +19,11 @@ dependencies:
     version: "0.56.0"
     repository: https://fluent.github.io/helm-charts
     condition: fluent-bit.enabled
+  - name: openobserve-standalone
+    version: "0.60.3"
+    repository: https://charts.openobserve.ai
+    condition: openobserve-standalone.enabled
+  - name: openobserve
+    version: "0.60.3"
+    repository: https://charts.openobserve.ai
+    condition: openobserve.enabled

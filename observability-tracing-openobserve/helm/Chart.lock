@@ -2,5 +2,11 @@ dependencies:
 - name: opentelemetry-collector
   repository: https://open-telemetry.github.io/opentelemetry-helm-charts
   version: 0.146.1
-digest: sha256:5c2e1ccda7de58680e652026f89d9f8c004493920cef11720fd8b2da584195ff
-generated: "2026-03-09T12:37:55.691904+05:30"
+- name: openobserve-standalone
+  repository: https://charts.openobserve.ai
+  version: 0.60.3
+- name: openobserve
+  repository: https://charts.openobserve.ai
+  version: 0.60.3
+digest: sha256:cd1df75167cbc6225f3032dc0ecdf9a6bafe14f3d1ef530e16d49b2d11adcc2e
+generated: "2026-03-18T18:00:14.02564+05:30"

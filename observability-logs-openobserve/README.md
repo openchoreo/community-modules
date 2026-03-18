@@ -4,7 +4,7 @@
 | ------------- |-----------|
 | Code coverage | [![Codecov](https://codecov.io/gh/openchoreo/community-modules/branch/main/graph/badge.svg?component=observability_logs_openobserve)](https://codecov.io/gh/openchoreo/community-modules) |
 
-This module collects container logs using Fluent Bit and stores them in OpenObserve.
+This module collects container logs using Fluent Bit and stores them in [OpenObserve](https://openobserve.ai).
 
 ## Prerequisites
 
@@ -20,9 +20,16 @@ Before installing, create Kubernetes Secrets with the OpenObserve admin credenti
 ```bash
 kubectl create secret generic openobserve-admin-credentials \
   --namespace openchoreo-observability-plane \
-  --from-literal=username='root@example.com' \
-  --from-literal=password='YOUR_PASSWORD'
+  --from-literal=ZO_ROOT_USER_EMAIL='root@example.com' \
+  --from-literal=ZO_ROOT_USER_PASSWORD='YOUR_PASSWORD'
 ```
+
+## OpenObserve deployment modes
+
+This chart includes two OpenObserve Helm chart dependencies:
+
+- **`openobserve-standalone`** — A single-node deployment that uses local disk storage. This is enabled by default and suitable for most use cases.
+- **`openobserve`** — A distributed, high-availability (HA) deployment with separate components (router, ingester, querier, etc.) that requires object storage (e.g. S3, MinIO). This is disabled by default.
 
 Install this module in your OpenChoreo cluster using:
 
@@ -31,8 +38,22 @@ helm upgrade --install observability-logs-openobserve \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-openobserve \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.3.10
+  --version 0.4.0
 ```
+
+To switch to HA mode, disable the standalone chart and enable the distributed chart:
+
+```bash
+helm upgrade --install observability-logs-openobserve \
+  oci://ghcr.io/openchoreo/helm-charts/observability-logs-openobserve \
+  --namespace openchoreo-observability-plane \
+  --version 0.4.0 \
+  --reuse-values \
+  --set openobserve-standalone.enabled=false \
+  --set openobserve.enabled=true
+```
+
+Refer to the [openobserve Helm chart documentation](https://github.com/openobserve/openobserve-helm-chart/tree/main/charts/openobserve) to configure the distributed deployment.
 
 ## Enable log collection
 
@@ -45,7 +66,7 @@ to start collecting logs from the cluster and publish them to OpenObserve:
 helm upgrade observability-logs-openobserve \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-openobserve \
   --namespace openchoreo-observability-plane \
-  --version 0.3.10 \
+  --version 0.4.0 \
   --reuse-values \
   --set fluent-bit.enabled=true
 ```
@@ -60,9 +81,9 @@ helm upgrade --install observability-logs-openobserve \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-openobserve \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.3.10 \
+  --version 0.4.0 \
   --set fluent-bit.enabled=true \
-  --set openObserve.enabled=false \
+  --set openobserve-standalone.enabled=false \
   --set openObserveSetup.enabled=false \
   --set adapter.enabled=false
 ```

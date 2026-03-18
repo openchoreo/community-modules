@@ -41,12 +41,12 @@ spec:
           valueFrom:
             secretKeyRef:
               name: openobserve-admin-credentials
-              key: username
+              key: ZO_ROOT_USER_EMAIL
         - name: OPENOBSERVE_PASSWORD
           valueFrom:
             secretKeyRef:
               name: openobserve-admin-credentials
-              key: password
+              key: ZO_ROOT_USER_PASSWORD
         resources:
           limits:
             cpu: {{ .Values.adapter.resources.limits.cpu }}

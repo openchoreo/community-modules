@@ -18,12 +18,12 @@ fluent-bit:
     valueFrom:
       secretKeyRef:
         name: openobserve-admin-credentials
-        key: username
+        key: ZO_ROOT_USER_EMAIL
   - name: OPENOBSERVE_PASSWORD
     valueFrom:
       secretKeyRef:
         name: openobserve-admin-credentials
-        key: password
+        key: ZO_ROOT_USER_PASSWORD
 
   fullnameOverride: "fluent-bit"
 
@@ -90,10 +90,19 @@ fluent-bit:
   # Values for fluent-bit config map
   openObserveHost: "openobserve"
   openObservePort: 5080
+  openObserveTls: "Off"
 
-openObserve:
+openobserve-standalone:
   enabled: true
-  httpRouteHostnames: []
+  fullnameOverride: "openobserve"
+  auth:
+    ZO_ROOT_USER_EMAIL: ""
+    ZO_ROOT_USER_PASSWORD: ""
+    existingRootUserSecret:
+      name: "openobserve-admin-credentials"
+  persistence:
+    enabled: true
+    size: 10Gi
   resources:
     limits:
       cpu: 500m
@@ -101,10 +110,13 @@ openObserve:
     requests:
       cpu: 20m
       memory: 500Mi
-  service:
-    type: ClusterIP
-  storage:
-    size: 10Gi
+
+  ## OpenChoreo specific values. These are not passed to the upstream chart
+  httpRouteHostnames: []
+
+openobserve:
+  enabled: false
+  fullnameOverride: "openobserve"
 
 ## -----------------------------------------------------------
 ## Values for OpenChoreo specific customizations and workloads

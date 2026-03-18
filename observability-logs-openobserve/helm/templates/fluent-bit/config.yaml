@@ -53,7 +53,7 @@ data:
         Format json
         http_user ${OPENOBSERVE_USERNAME}
         http_passwd ${OPENOBSERVE_PASSWORD}
-        tls On
+        tls {{ index .Values "fluent-bit" "openObserveTls" }}
 
   parsers.conf: |
     [PARSER]

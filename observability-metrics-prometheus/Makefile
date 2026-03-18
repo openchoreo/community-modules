@@ -12,5 +12,8 @@ openapi-codegen: oapi-codegen-install
 	cd $(CFG_DIR) && $(OAPI_CODEGEN_BIN) --config cfg-models.yaml ../../$(SPEC)
 	cd $(CFG_DIR) && $(OAPI_CODEGEN_BIN) --config cfg-server.yaml ../../$(SPEC)
 
+MODULE_NAME := $(notdir $(CURDIR))
+
 unit-test:
 	go test -coverprofile=coverage.out ./...
+	mv coverage.out ../$(MODULE_NAME)-coverage.out

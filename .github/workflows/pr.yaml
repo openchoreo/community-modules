@@ -223,10 +223,6 @@ jobs:
 
             echo "::group::Testing ${module}"
             make -C "${module}" unit-test
-            # Copy coverage output to repo root for Codecov upload
-            if [ -f "${module}/coverage.out" ]; then
-              cp "${module}/coverage.out" "${module}-coverage.out"
-            fi
             echo "::endgroup::"
 
             TEST_COUNT=$((TEST_COUNT + 1))
@@ -244,9 +240,6 @@ jobs:
           else
             echo "Successfully tested ${TEST_COUNT} module(s). ✓"
           fi
-
-      - name: Clean up in-module coverage files
-        run: find . -mindepth 2 -name 'coverage.out' -delete
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5.5.2

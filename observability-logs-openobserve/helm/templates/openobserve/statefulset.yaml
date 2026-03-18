@@ -1,6 +1,7 @@
 # Copyright 2026 The OpenChoreo Authors
 # SPDX-License-Identifier: Apache-2.0
 
+{{- if .Values.openObserve.enabled }}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -65,3 +66,4 @@ spec:
       resources:
         requests:
           storage: {{ .Values.openObserve.storage.size | quote }}
+{{- end }}

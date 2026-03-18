@@ -1,6 +1,7 @@
 # Copyright 2026 The OpenChoreo Authors
 # SPDX-License-Identifier: Apache-2.0
 
+{{- if .Values.openObserveSetup.enabled }}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -36,3 +37,4 @@ spec:
               key: password
         - name: OPENOBSERVE_ORG
           value: {{ .Values.common.openObserveOrg | quote }}
+{{- end }}

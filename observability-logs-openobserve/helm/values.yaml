@@ -8,54 +8,8 @@ common:
 
 fluent-bit:
   enabled: true
-  config:
-    customParsers: |
-      [PARSER]
-          Name docker_no_time
-          Format json
-          Time_Keep Off
-          Time_Key time
-          Time_Format %Y-%m-%dT%H:%M:%S.%L
 
-    inputs: |
-      [INPUT]
-          Name tail
-          Buffer_Chunk_Size 32KB
-          Buffer_Max_Size 2MB
-          DB /var/lib/fluent-bit/db/tail-container-logs.db
-          Exclude_Path /var/log/containers/fluent-bit-*_openchoreo-observability-plane_*.log
-          Inotify_Watcher false
-          Mem_Buf_Limit 100MB
-          Path /var/log/containers/*.log
-          multiline.parser docker, cri
-          Read_from_Head On
-          Refresh_Interval 5
-          Skip_Long_Lines On
-          Tag kube.*
-
-    filters: |
-      [FILTER]
-          Name kubernetes
-          Buffer_Size 15MB
-          K8S-Logging.Parser On
-          K8S-Logging.Exclude On
-          Keep_Log On
-          Match kube.*
-          Merge_Log Off
-          tls.verify Off
-          Use_Kubelet true
-
-    outputs: |
-      [OUTPUT]
-          Name http
-          Match *
-          Host openobserve
-          Port 5080
-          URI /api/default/default/_json
-          Format json
-          http_user ${OPENOBSERVE_USERNAME}
-          http_passwd ${OPENOBSERVE_PASSWORD}
-          Tls Off
+  existingConfigMap: "fluent-bit"
 
   dnsPolicy: ClusterFirstWithHostNet
 
@@ -133,6 +87,10 @@ fluent-bit:
     - name: db
       mountPath: /var/lib/fluent-bit/db
 
+  # Values for fluent-bit config map
+  openObserveHost: "openobserve"
+  openObservePort: 5080
+
 openObserve:
   enabled: true
   httpRouteHostnames: []
@@ -147,13 +105,13 @@ openObserve:
     type: ClusterIP
   storage:
     size: 10Gi
-      
 
 ## -----------------------------------------------------------
 ## Values for OpenChoreo specific customizations and workloads
 ## -----------------------------------------------------------
 
 adapter:
+  enabled: true
   observerUrl: "http://observer-internal.openchoreo-observability-plane:8081"
   image:
     repository: "ghcr.io/openchoreo/observability-logs-openobserve-adapter"
@@ -171,5 +129,3 @@ openObserveSetup:
   image:
     repository: "ghcr.io/openchoreo/observability-logs-openobserve-setup"
     tag: ""
-
-  

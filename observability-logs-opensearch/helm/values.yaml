@@ -4,10 +4,7 @@
 fluent-bit:
   enabled: false
 
-  existingConfigMap: "fluent-bit-config"
-  openSearchHost: "opensearch"
-  openSearchPort: 9200
-  openSearchVHost: "opensearch"
+  existingConfigMap: "fluent-bit"
 
   env:
   - name: OPENSEARCH_USERNAME
@@ -81,6 +78,10 @@ fluent-bit:
     - name: db
       mountPath: /var/lib/fluent-bit/db
 
+  # Values for fluent-bit config map
+  openSearchHost: "opensearch"
+  openSearchPort: 9200
+  openSearchVHost: "opensearch"
 
 openSearch:
   enabled: true

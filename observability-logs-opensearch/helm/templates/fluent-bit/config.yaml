@@ -57,6 +57,7 @@ data:
         Suppress_Type_Name On
         tls On
         tls.verify Off
+        tls.vhost {{ index .Values "fluent-bit" "openSearchVHost" | default "opensearch" }}
 
   parsers.conf: |
     [PARSER]

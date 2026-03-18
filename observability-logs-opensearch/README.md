@@ -111,4 +111,4 @@ helm upgrade --install observability-logs-opensearch \
 > **Note:**
 >
 > Make sure the `opensearch-admin-credentials` secret is available in the data-plane / workflow-plane clusters as well,
-> and `fluent-bit.openSearchHost` and `fluent-bit.openSearchPort` values are set to the OpenSearch endpoint exposed from the observability plane cluster.
+> and `fluent-bit.openSearchHost`, `fluent-bit.openSearchPort` and `fluent-bit.openSearchVHost` values are set to the OpenSearch endpoint exposed from the observability plane cluster.

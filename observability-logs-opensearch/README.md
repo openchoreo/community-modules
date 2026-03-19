@@ -103,12 +103,16 @@ helm upgrade --install observability-logs-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
   --version 0.3.10 \
-  --set fluent-bit.enabled=true \
   --set openSearch.enabled=false \
   --set openSearchCluster.enabled=false \
-  --set openSearchSetup.enabled=false
+  --set openSearchSetup.enabled=false \
+  --set fluent-bit.enabled=true \
+  --set fluent-bit.openSearchHost=opensearch.<gateway-domain> \
+  --set fluent-bit.openSearchPort=<gateway-port>
 ```
 > **Note:**
 >
 > Make sure the `opensearch-admin-credentials` secret is available in the data-plane / workflow-plane clusters as well,
 > and `fluent-bit.openSearchHost`, `fluent-bit.openSearchPort` and `fluent-bit.openSearchVHost` values are set to the OpenSearch endpoint exposed from the observability plane cluster.
+> Also, set `fluent-bit.openSearchVHost` if openSearchHost differs from gateway domain
+

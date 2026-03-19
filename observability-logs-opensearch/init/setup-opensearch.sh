@@ -138,52 +138,10 @@ containerLogsIndexTemplate='
   }
 }'
 
-# Template for indices which hold RCA reports
-rcaReportsIndexTemplate='
-{
-  "index_patterns": [
-    "rca-reports-*"
-  ],
-  "template": {
-    "settings": {
-      "number_of_shards": 1,
-      "number_of_replicas": 1
-    },
-    "mappings": {
-      "dynamic": "false",
-      "properties": {
-        "@timestamp": {
-          "type": "date"
-        },
-        "reportId": {
-          "type": "keyword"
-        },
-        "alertId": {
-          "type": "keyword"
-        },
-        "status": {
-          "type": "keyword"
-        },
-        "resource": {
-          "properties": {
-            "openchoreo.dev/project-uid": {
-              "type": "keyword"
-            },
-            "openchoreo.dev/environment-uid": {
-              "type": "keyword"
-            }
-          }
-        }
-      }
-    }
-  }
-}'
-# TODO: "openchoreo.dev/organization-uid": should be removed or refactored
-
 # The following array holds pairs of index template names and their definitions. Define more templates above
 # and add them to this array.
 # Format: (templateName1 templateDefinition1 templateName2 templateDefinition2 ...)
-indexTemplates=("container-logs" "containerLogsIndexTemplate" "rca-reports" "rcaReportsIndexTemplate")
+indexTemplates=("container-logs" "containerLogsIndexTemplate")
 
 # Create index templates through a loop using the above array
 echo "Creating index templates..."
@@ -293,7 +251,6 @@ echo -e "\nManaging ISM Policies..."
 
 # Read retention periods from environment variables or use defaults
 containerLogsRetention="${CONTAINER_LOGS_MIN_INDEX_AGE:-30d}"
-rcaReportsRetention="${RCA_REPORTS_MIN_INDEX_AGE:-90d}"
 
 # container logs
 containerLogsIsmPolicy='{
@@ -332,46 +289,9 @@ containerLogsIsmPolicy='{
   }
 }'
 
-# RCA reports
-rcaReportsIsmPolicy='{
-  "policy": {
-    "description": "Delete RCA reports older than '"$rcaReportsRetention"'",
-    "default_state": "active",
-    "states": [
-      {
-        "name": "active",
-        "actions": [],
-        "transitions": [
-          {
-            "state_name": "delete",
-            "conditions": {
-              "min_index_age": "'"$rcaReportsRetention"'"
-            }
-          }
-        ]
-      },
-      {
-        "name": "delete",
-        "actions": [
-          {
-            "delete": {}
-          }
-        ],
-        "transitions": []
-      }
-    ],
-    "ism_template": [
-      {
-        "index_patterns": ["rca-reports-*"],
-        "priority": 100
-      }
-    ]
-  }
-}'
-
 # Array to hold policy names and their definitions
 # Format: (ismPolicyName1 ismPolicyDefinition1 ismPolicyName2 ismPolicyDefinition2 ...)
-ismPolicies=("container-logs" "containerLogsIsmPolicy" "rca-reports" "rcaReportsIsmPolicy")
+ismPolicies=("container-logs" "containerLogsIsmPolicy")
 
 # Function to normalize JSON for comparison (removes whitespace differences)
 normalize_json() {

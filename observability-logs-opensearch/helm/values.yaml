@@ -153,7 +153,6 @@ openSearchCluster:
           memory: 900Mi
 
   credentialsSecretName: ""
-  adminPassword: ""
 
   internalUsers: |
     # This is the internal user database
@@ -180,4 +179,3 @@ openSearchSetup:
 
   dataRetentionTime:
     containerLogs: "30d"
-    rcaReports: "90d"

@@ -52,14 +52,14 @@ helm upgrade --install opensearch-operator opensearch-operator/opensearch-operat
 
 ## Deploy Helm chart
 
-> **Note:** If you wish to use the Kubernetes operator-based OpenSearch version, add `--set openSearch.enabled=false --set openSearchCluster.enabled=true` flags when installing the Helm chart
+> **Note:** If you wish to use the Kubernetes operator-based OpenSearch version, add `--set openSearch.enabled=false --set openSearchCluster.enabled=true --set openSearchCluster.credentialsSecretName="opensearch-admin-credentials"` flags when installing the Helm chart. The admin password will be read from the credentials secret at install time.
 
 ```bash
 helm upgrade --install observability-logs-opensearch \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.3.9 \
+  --version 0.3.10 \
   --set openSearchSetup.openSearchSecretName="opensearch-admin-credentials"
 ```
 
@@ -70,7 +70,7 @@ helm upgrade --install observability-logs-opensearch \
 >   oci://ghcr.io/openchoreo/helm-charts/observability-logs-opensearch \
 >   --create-namespace \
 >   --namespace openchoreo-observability-plane \
->   --version 0.3.9 \
+>   --version 0.3.10 \
 >   --set openSearch.enabled=false \
 >   --set openSearchSetup.openSearchSecretName="opensearch-admin-credentials"
 > ```
@@ -87,7 +87,7 @@ helm upgrade observability-logs-opensearch \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.3.9 \
+  --version 0.3.10 \
   --reuse-values \
   --set fluent-bit.enabled=true
 ```
@@ -102,7 +102,7 @@ helm upgrade --install observability-logs-opensearch \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.3.9 \
+  --version 0.3.10 \
   --set fluent-bit.enabled=true \
   --set openSearch.enabled=false \
   --set openSearchCluster.enabled=false \

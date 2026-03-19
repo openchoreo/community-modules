@@ -2,14 +2,17 @@
 # SPDX-License-Identifier: Apache-2.0
 
 global:
-  installationMode: "singleCluster"
+  installationMode: "singleCluster" # supports "singleCluster", "multiClusterExporter", "multiClusterReceiver"
 
 openSearch:
   enabled: true
 
   extraEnvs:
     - name: OPENSEARCH_INITIAL_ADMIN_PASSWORD
-      value: ThisIsTheOpenSearchPassword1
+      valueFrom:
+        secretKeyRef:
+          name: opensearch-admin-credentials
+          key: password
 
   nameOverride: "opensearch"
 
@@ -41,7 +44,19 @@ opentelemetry-collector:
 
   configMap:
     create: false
-    existingName: "opentelemetry-collector-config"
+    existingName: "opentelemetry-collector"
+
+  extraEnvs:
+    - name: OPENSEARCH_USERNAME
+      valueFrom:
+        secretKeyRef:
+          name: opensearch-admin-credentials
+          key: username
+    - name: OPENSEARCH_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: opensearch-admin-credentials
+          key: password
 
   fullnameOverride: "opentelemetry-collector"
 
@@ -57,9 +72,9 @@ opentelemetry-collector:
     requests:
       cpu: 50m
       memory: 100Mi
-  
+
   service:
-    type: LoadBalancer
+    type: ClusterIP
 
 
 ## -----------------------------------------------------------
@@ -153,3 +168,8 @@ opentelemetryCollectorCustomizations:
       sampledCacheSize: 10000
       nonSampledCacheSize: 1000
     spansPerSecond: 10
+
+  http:
+    observabilityPlaneUrl: ""
+    observabilityPlaneVirtualHost: ""
+    hostnames: []

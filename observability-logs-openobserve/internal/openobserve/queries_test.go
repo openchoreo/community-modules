@@ -415,6 +415,12 @@ func TestGenerateAlertConfig(t *testing.T) {
 		if !strings.Contains(sql, "str_match(log, 'error')") {
 			t.Errorf("expected str_match in SQL: %s", sql)
 		}
+		if !strings.Contains(sql, "kubernetes_labels_openchoreo_dev_environment_uid = 'env-uid'") {
+			t.Errorf("expected environment_uid filter in SQL: %s", sql)
+		}
+		if !strings.Contains(sql, "kubernetes_labels_openchoreo_dev_component_uid = 'comp-uid'") {
+			t.Errorf("expected component_uid filter in SQL: %s", sql)
+		}
 
 		tc := config["trigger_condition"].(map[string]interface{})
 		if tc["operator"] != ">" {

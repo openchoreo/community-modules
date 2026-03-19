@@ -473,43 +473,18 @@ func toComponentLogsParams(req *gen.LogsQueryRequest, scope *gen.ComponentSearch
 
 // toLogAlertParams converts the generated AlertRuleRequest to internal params.
 func toLogAlertParams(req *gen.AlertRuleRequest) openobserve.LogAlertParams {
-	params := openobserve.LogAlertParams{}
-	if req.Metadata != nil {
-		params.Name = req.Metadata.Name
-		if req.Metadata.Namespace != nil {
-			params.Namespace = *req.Metadata.Namespace
-		}
-		if req.Metadata.ProjectUid != nil {
-			params.ProjectUID = req.Metadata.ProjectUid.String()
-		}
-		if req.Metadata.EnvironmentUid != nil {
-			params.EnvironmentUID = req.Metadata.EnvironmentUid.String()
-		}
-		if req.Metadata.ComponentUid != nil {
-			params.ComponentUID = req.Metadata.ComponentUid.String()
-		}
-	}
-	if req.Source != nil {
-		if req.Source.Query != nil {
-			params.SearchPattern = *req.Source.Query
-		}
-	}
-	if req.Condition != nil {
-		if req.Condition.Enabled != nil {
-			params.Enabled = req.Condition.Enabled
-		}
-		if req.Condition.Operator != nil {
-			params.Operator = string(*req.Condition.Operator)
-		}
-		if req.Condition.Threshold != nil {
-			params.ThresholdValue = *req.Condition.Threshold
-		}
-		if req.Condition.Window != nil {
-			params.Window = *req.Condition.Window
-		}
-		if req.Condition.Interval != nil {
-			params.Interval = *req.Condition.Interval
-		}
+	params := openobserve.LogAlertParams{
+		Name:           &req.Metadata.Name,
+		Namespace:      req.Metadata.Namespace,
+		ProjectUID:     req.Metadata.ProjectUid.String(),
+		EnvironmentUID: req.Metadata.EnvironmentUid.String(),
+		ComponentUID:   req.Metadata.ComponentUid.String(),
+		SearchPattern:  req.Source.Query,
+		Operator:       string(req.Condition.Operator),
+		ThresholdValue: req.Condition.Threshold,
+		Window:         req.Condition.Window,
+		Interval:       req.Condition.Interval,
+		Enabled:        &req.Condition.Enabled,
 	}
 	return params
 }

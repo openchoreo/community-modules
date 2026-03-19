@@ -278,9 +278,9 @@ func TestToWorkflowLogsParams(t *testing.T) {
 
 func TestToLogAlertParams(t *testing.T) {
 	enabled := true
-	projUID := openapi_types.UUID{}
-	envUID := openapi_types.UUID{}
-	compUID := openapi_types.UUID{}
+	projUID, _ := parseUUID("550e8400-e29b-41d4-a716-446655440000")
+	envUID, _ := parseUUID("550e8400-e29b-41d4-a716-446655440001")
+	compUID, _ := parseUUID("550e8400-e29b-41d4-a716-446655440002")
 	operator := gen.AlertRuleRequestConditionOperator("gt")
 	threshold := float32(5)
 	window := "5m"
@@ -288,37 +288,36 @@ func TestToLogAlertParams(t *testing.T) {
 	query := "error pattern"
 
 	req := &gen.AlertRuleRequest{
-		Metadata: &struct {
-			ComponentUid   *openapi_types.UUID `json:"componentUid,omitempty"`
-			EnvironmentUid *openapi_types.UUID `json:"environmentUid,omitempty"`
-			Name           *string   `json:"name,omitempty"`
-			Namespace      *string   `json:"namespace,omitempty"`
-			ProjectUid     *openapi_types.UUID `json:"projectUid,omitempty"`
+		Metadata: struct {
+			ComponentUid   openapi_types.UUID `json:"componentUid"`
+			EnvironmentUid openapi_types.UUID `json:"environmentUid"`
+			Name           string             `json:"name"`
+			Namespace      string             `json:"namespace"`
+			ProjectUid     openapi_types.UUID `json:"projectUid"`
 		}{
-			Name:           ptr("my-alert"),
-			Namespace:      ptr("ns-1"),
-			ProjectUid:     &projUID,
-			EnvironmentUid: &envUID,
-			ComponentUid:   &compUID,
+			Name:           "my-alert",
+			Namespace:      "ns-1",
+			ProjectUid:     projUID,
+			EnvironmentUid: envUID,
+			ComponentUid:   compUID,
 		},
-		Source: &struct {
-			Metric *gen.AlertRuleRequestSourceMetric `json:"metric,omitempty"`
-			Query  *string                           `json:"query,omitempty"`
+		Source: struct {
+			Query string `json:"query"`
 		}{
-			Query: &query,
+			Query: query,
 		},
-		Condition: &struct {
-			Enabled   *bool                                     `json:"enabled,omitempty"`
-			Interval  *string                                   `json:"interval,omitempty"`
-			Operator  *gen.AlertRuleRequestConditionOperator     `json:"operator,omitempty"`
-			Threshold *float32                                  `json:"threshold,omitempty"`
-			Window    *string                                   `json:"window,omitempty"`
+		Condition: struct {
+			Enabled   bool                                 `json:"enabled"`
+			Interval  string                               `json:"interval"`
+			Operator  gen.AlertRuleRequestConditionOperator `json:"operator"`
+			Threshold float32                              `json:"threshold"`
+			Window    string                               `json:"window"`
 		}{
-			Enabled:   &enabled,
-			Operator:  &operator,
-			Threshold: &threshold,
-			Window:    &window,
-			Interval:  &interval,
+			Enabled:   enabled,
+			Operator:  operator,
+			Threshold: threshold,
+			Window:    window,
+			Interval:  interval,
 		},
 	}
 
@@ -557,36 +556,40 @@ func TestCreateAlertRule_Success(t *testing.T) {
 	window := "5m"
 	interval := "1m"
 
+	envUID, _ := parseUUID("550e8400-e29b-41d4-a716-446655440001")
+	compUID, _ := parseUUID("550e8400-e29b-41d4-a716-446655440002")
+
 	resp, err := handler.CreateAlertRule(context.Background(), gen.CreateAlertRuleRequestObject{
 		Body: &gen.AlertRuleRequest{
-			Metadata: &struct {
-				ComponentUid   *openapi_types.UUID `json:"componentUid,omitempty"`
-				EnvironmentUid *openapi_types.UUID `json:"environmentUid,omitempty"`
-				Name           *string   `json:"name,omitempty"`
-				Namespace      *string   `json:"namespace,omitempty"`
-				ProjectUid     *openapi_types.UUID `json:"projectUid,omitempty"`
+			Metadata: struct {
+				ComponentUid   openapi_types.UUID `json:"componentUid"`
+				EnvironmentUid openapi_types.UUID `json:"environmentUid"`
+				Name           string             `json:"name"`
+				Namespace      string             `json:"namespace"`
+				ProjectUid     openapi_types.UUID `json:"projectUid"`
 			}{
-				Name:      ptr("test-alert"),
-				Namespace: ptr("ns-1"),
+				Name:           "test-alert",
+				Namespace:      "ns-1",
+				EnvironmentUid: envUID,
+				ComponentUid:   compUID,
 			},
-			Source: &struct {
-				Metric *gen.AlertRuleRequestSourceMetric `json:"metric,omitempty"`
-				Query  *string                           `json:"query,omitempty"`
+			Source: struct {
+				Query string `json:"query"`
 			}{
-				Query: ptr("error"),
+				Query: "error",
 			},
-			Condition: &struct {
-				Enabled   *bool                                     `json:"enabled,omitempty"`
-				Interval  *string                                   `json:"interval,omitempty"`
-				Operator  *gen.AlertRuleRequestConditionOperator     `json:"operator,omitempty"`
-				Threshold *float32                                  `json:"threshold,omitempty"`
-				Window    *string                                   `json:"window,omitempty"`
+			Condition: struct {
+				Enabled   bool                                 `json:"enabled"`
+				Interval  string                               `json:"interval"`
+				Operator  gen.AlertRuleRequestConditionOperator `json:"operator"`
+				Threshold float32                              `json:"threshold"`
+				Window    string                               `json:"window"`
 			}{
-				Enabled:   &enabled,
-				Operator:  &operator,
-				Threshold: &threshold,
-				Window:    &window,
-				Interval:  &interval,
+				Enabled:   enabled,
+				Operator:  operator,
+				Threshold: threshold,
+				Window:    window,
+				Interval:  interval,
 			},
 		},
 	})
@@ -745,34 +748,33 @@ func TestUpdateAlertRule_Success(t *testing.T) {
 	resp, err := handler.UpdateAlertRule(context.Background(), gen.UpdateAlertRuleRequestObject{
 		RuleName: "test-alert",
 		Body: &gen.AlertRuleRequest{
-			Metadata: &struct {
-				ComponentUid   *openapi_types.UUID `json:"componentUid,omitempty"`
-				EnvironmentUid *openapi_types.UUID `json:"environmentUid,omitempty"`
-				Name           *string             `json:"name,omitempty"`
-				Namespace      *string             `json:"namespace,omitempty"`
-				ProjectUid     *openapi_types.UUID `json:"projectUid,omitempty"`
+			Metadata: struct {
+				ComponentUid   openapi_types.UUID `json:"componentUid"`
+				EnvironmentUid openapi_types.UUID `json:"environmentUid"`
+				Name           string             `json:"name"`
+				Namespace      string             `json:"namespace"`
+				ProjectUid     openapi_types.UUID `json:"projectUid"`
 			}{
-				Name:      ptr("test-alert"),
-				Namespace: ptr("ns-1"),
+				Name:      "test-alert",
+				Namespace: "ns-1",
 			},
-			Source: &struct {
-				Metric *gen.AlertRuleRequestSourceMetric `json:"metric,omitempty"`
-				Query  *string                           `json:"query,omitempty"`
+			Source: struct {
+				Query string `json:"query"`
 			}{
-				Query: ptr("error"),
+				Query: "error",
 			},
-			Condition: &struct {
-				Enabled   *bool                                 `json:"enabled,omitempty"`
-				Interval  *string                               `json:"interval,omitempty"`
-				Operator  *gen.AlertRuleRequestConditionOperator `json:"operator,omitempty"`
-				Threshold *float32                              `json:"threshold,omitempty"`
-				Window    *string                               `json:"window,omitempty"`
+			Condition: struct {
+				Enabled   bool                                 `json:"enabled"`
+				Interval  string                               `json:"interval"`
+				Operator  gen.AlertRuleRequestConditionOperator `json:"operator"`
+				Threshold float32                              `json:"threshold"`
+				Window    string                               `json:"window"`
 			}{
-				Enabled:   &enabled,
-				Operator:  &operator,
-				Threshold: &threshold,
-				Window:    &window,
-				Interval:  &interval,
+				Enabled:   enabled,
+				Operator:  operator,
+				Threshold: threshold,
+				Window:    window,
+				Interval:  interval,
 			},
 		},
 	})
@@ -808,18 +810,18 @@ func TestUpdateAlertRule_NotFound(t *testing.T) {
 	resp, err := handler.UpdateAlertRule(context.Background(), gen.UpdateAlertRuleRequestObject{
 		RuleName: "nonexistent",
 		Body: &gen.AlertRuleRequest{
-			Condition: &struct {
-				Enabled   *bool                                 `json:"enabled,omitempty"`
-				Interval  *string                               `json:"interval,omitempty"`
-				Operator  *gen.AlertRuleRequestConditionOperator `json:"operator,omitempty"`
-				Threshold *float32                              `json:"threshold,omitempty"`
-				Window    *string                               `json:"window,omitempty"`
+			Condition: struct {
+				Enabled   bool                                 `json:"enabled"`
+				Interval  string                               `json:"interval"`
+				Operator  gen.AlertRuleRequestConditionOperator `json:"operator"`
+				Threshold float32                              `json:"threshold"`
+				Window    string                               `json:"window"`
 			}{
-				Enabled:   &enabled,
-				Operator:  &operator,
-				Threshold: &threshold,
-				Window:    ptr("5m"),
-				Interval:  ptr("1m"),
+				Enabled:   enabled,
+				Operator:  operator,
+				Threshold: threshold,
+				Window:    "5m",
+				Interval:  "1m",
 			},
 		},
 	})
@@ -859,18 +861,18 @@ func TestUpdateAlertRule_InvalidError(t *testing.T) {
 	resp, err := handler.UpdateAlertRule(context.Background(), gen.UpdateAlertRuleRequestObject{
 		RuleName: "test-alert",
 		Body: &gen.AlertRuleRequest{
-			Condition: &struct {
-				Enabled   *bool                                 `json:"enabled,omitempty"`
-				Interval  *string                               `json:"interval,omitempty"`
-				Operator  *gen.AlertRuleRequestConditionOperator `json:"operator,omitempty"`
-				Threshold *float32                              `json:"threshold,omitempty"`
-				Window    *string                               `json:"window,omitempty"`
+			Condition: struct {
+				Enabled   bool                                 `json:"enabled"`
+				Interval  string                               `json:"interval"`
+				Operator  gen.AlertRuleRequestConditionOperator `json:"operator"`
+				Threshold float32                              `json:"threshold"`
+				Window    string                               `json:"window"`
 			}{
-				Enabled:   &enabled,
-				Operator:  &operator,
-				Threshold: &threshold,
-				Window:    ptr("5m"),
-				Interval:  ptr("1m"),
+				Enabled:   enabled,
+				Operator:  operator,
+				Threshold: threshold,
+				Window:    "5m",
+				Interval:  "1m",
 			},
 		},
 	})
@@ -910,18 +912,18 @@ func TestUpdateAlertRule_GenericError(t *testing.T) {
 	resp, err := handler.UpdateAlertRule(context.Background(), gen.UpdateAlertRuleRequestObject{
 		RuleName: "test-alert",
 		Body: &gen.AlertRuleRequest{
-			Condition: &struct {
-				Enabled   *bool                                 `json:"enabled,omitempty"`
-				Interval  *string                               `json:"interval,omitempty"`
-				Operator  *gen.AlertRuleRequestConditionOperator `json:"operator,omitempty"`
-				Threshold *float32                              `json:"threshold,omitempty"`
-				Window    *string                               `json:"window,omitempty"`
+			Condition: struct {
+				Enabled   bool                                 `json:"enabled"`
+				Interval  string                               `json:"interval"`
+				Operator  gen.AlertRuleRequestConditionOperator `json:"operator"`
+				Threshold float32                              `json:"threshold"`
+				Window    string                               `json:"window"`
 			}{
-				Enabled:   &enabled,
-				Operator:  &operator,
-				Threshold: &threshold,
-				Window:    ptr("5m"),
-				Interval:  ptr("1m"),
+				Enabled:   enabled,
+				Operator:  operator,
+				Threshold: threshold,
+				Window:    "5m",
+				Interval:  "1m",
 			},
 		},
 	})
@@ -1104,37 +1106,40 @@ func TestCreateAlertRule_Error(t *testing.T) {
 	enabled := true
 	operator := gen.AlertRuleRequestConditionOperator("gt")
 	threshold := float32(5)
+	envUID, _ := parseUUID("550e8400-e29b-41d4-a716-446655440001")
+	compUID, _ := parseUUID("550e8400-e29b-41d4-a716-446655440002")
 
 	resp, err := handler.CreateAlertRule(context.Background(), gen.CreateAlertRuleRequestObject{
 		Body: &gen.AlertRuleRequest{
-			Metadata: &struct {
-				ComponentUid   *openapi_types.UUID `json:"componentUid,omitempty"`
-				EnvironmentUid *openapi_types.UUID `json:"environmentUid,omitempty"`
-				Name           *string             `json:"name,omitempty"`
-				Namespace      *string             `json:"namespace,omitempty"`
-				ProjectUid     *openapi_types.UUID `json:"projectUid,omitempty"`
+			Metadata: struct {
+				ComponentUid   openapi_types.UUID `json:"componentUid"`
+				EnvironmentUid openapi_types.UUID `json:"environmentUid"`
+				Name           string             `json:"name"`
+				Namespace      string             `json:"namespace"`
+				ProjectUid     openapi_types.UUID `json:"projectUid"`
 			}{
-				Name:      ptr("test-alert"),
-				Namespace: ptr("ns-1"),
+				Name:           "test-alert",
+				Namespace:      "ns-1",
+				EnvironmentUid: envUID,
+				ComponentUid:   compUID,
 			},
-			Source: &struct {
-				Metric *gen.AlertRuleRequestSourceMetric `json:"metric,omitempty"`
-				Query  *string                           `json:"query,omitempty"`
+			Source: struct {
+				Query string `json:"query"`
 			}{
-				Query: ptr("error"),
+				Query: "error",
 			},
-			Condition: &struct {
-				Enabled   *bool                                 `json:"enabled,omitempty"`
-				Interval  *string                               `json:"interval,omitempty"`
-				Operator  *gen.AlertRuleRequestConditionOperator `json:"operator,omitempty"`
-				Threshold *float32                              `json:"threshold,omitempty"`
-				Window    *string                               `json:"window,omitempty"`
+			Condition: struct {
+				Enabled   bool                                 `json:"enabled"`
+				Interval  string                               `json:"interval"`
+				Operator  gen.AlertRuleRequestConditionOperator `json:"operator"`
+				Threshold float32                              `json:"threshold"`
+				Window    string                               `json:"window"`
 			}{
-				Enabled:   &enabled,
-				Operator:  &operator,
-				Threshold: &threshold,
-				Window:    ptr("5m"),
-				Interval:  ptr("1m"),
+				Enabled:   enabled,
+				Operator:  operator,
+				Threshold: threshold,
+				Window:    "5m",
+				Interval:  "1m",
 			},
 		},
 	})

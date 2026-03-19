@@ -122,9 +122,11 @@ func parseDurationMinutes(duration string) (int, error) {
 // generateAlertConfig generates an OpenObserve alert configuration as JSON
 func generateAlertConfig(params LogAlertParams, streamName string, logger *slog.Logger) ([]byte, error) {
 	query := fmt.Sprintf(
-		"SELECT _timestamp FROM %s WHERE str_match(log, '%s')",
+		"SELECT _timestamp FROM %s WHERE str_match(log, '%s') AND kubernetes_labels_openchoreo_dev_environment_uid = '%s' AND kubernetes_labels_openchoreo_dev_component_uid = '%s'",
 		quoteIdentifier(streamName),
 		escapeSQLString(params.SearchPattern),
+		escapeSQLString(params.EnvironmentUID),
+		escapeSQLString(params.ComponentUID),
 	)
 
 	sqlOperator, err := mapOperator(params.Operator)

@@ -4,7 +4,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: opentelemetry-collector-config
+  name: opentelemetry-collector
   namespace: {{ .Release.Namespace }}
 data:
   relay: |
@@ -17,6 +17,7 @@ data:
             endpoint: 0.0.0.0:4318
 
     exporters:
+      {{- if or (eq .Values.global.installationMode "singleCluster") (eq .Values.global.installationMode "multiClusterReceiver") }}
       opensearch:
         http:
           auth:
@@ -30,17 +31,30 @@ data:
           sizer: {{ .Values.opentelemetryCollectorCustomizations.openSearchQueue.sizer }}
         traces_index: "otel-traces"
         traces_index_time_format: "yyyy-MM-dd"
+      {{- end }}
+      {{- if (eq .Values.global.installationMode "multiClusterExporter") }}
+      otlp:
+        endpoint: {{ .Values.opentelemetryCollectorCustomizations.http.observabilityPlaneUrl }}
+        tls:
+          insecure: true # TODO: Enable mTLS between collectors
+        {{- with .Values.opentelemetryCollectorCustomizations.http.observabilityPlaneVirtualHost }}
+        headers:
+          Host: {{ . | quote }}
+        {{- end }}
+      {{- end }}
 
     extensions:
+      {{- if or (eq .Values.global.installationMode "singleCluster") (eq .Values.global.installationMode "multiClusterReceiver") }}
       basicauth/opensearch:
-        client_auth: 
-          username: admin
-          password: ThisIsTheOpenSearchPassword1
+        client_auth:
+          username: ${env:OPENSEARCH_USERNAME}
+          password: ${env:OPENSEARCH_PASSWORD}
+      {{- end }}
       health_check:
         endpoint: ${env:MY_POD_IP}:13133
-  
+
     processors:
-      {{- if eq .Values.global.installationMode "singleCluster" }}
+      {{- if or (eq .Values.global.installationMode "singleCluster") (eq .Values.global.installationMode "multiClusterExporter") }}
       k8sattributes:
         auth_type: "serviceAccount"
         passthrough: false
@@ -50,7 +64,7 @@ data:
             - tag_name: $$1
               key_regex: (.*)
               from: pod
-            
+
           metadata:
             - k8s.pod.name
             - k8s.pod.uid
@@ -76,12 +90,17 @@ data:
       {{- end }}
 
     service:
+      {{- if or (eq .Values.global.installationMode "singleCluster") (eq .Values.global.installationMode "multiClusterReceiver") }}
       extensions: [basicauth/opensearch, health_check]
+      {{- end }}
+      {{- if (eq .Values.global.installationMode "multiClusterExporter") }}
+      extensions: [health_check]
+      {{- end }}
       pipelines:
         traces:
           receivers: [otlp]
           {{- $processors := list }}
-          {{- if eq .Values.global.installationMode "singleCluster" }}
+          {{- if or (eq .Values.global.installationMode "singleCluster") (eq .Values.global.installationMode "multiClusterExporter") }}
           {{- $processors = append $processors "k8sattributes" }}
           {{- end }}
           {{- if .Values.opentelemetryCollectorCustomizations.tailSampling.enabled }}
@@ -90,4 +109,9 @@ data:
           {{- if $processors }}
           processors: [{{ join ", " $processors }}]
           {{- end }}
+          {{- if or (eq .Values.global.installationMode "singleCluster") (eq .Values.global.installationMode "multiClusterReceiver") }}
           exporters: [opensearch]
+          {{- end }}
+          {{- if (eq .Values.global.installationMode "multiClusterExporter") }}
+          exporters: [otlp]
+          {{- end }}

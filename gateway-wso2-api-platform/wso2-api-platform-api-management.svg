@@ -1,0 +1,216 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 680" font-family="'Segoe UI', system-ui, -apple-system, sans-serif">
+  <defs>
+    <linearGradient id="controlPlane" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#e8eaf6"/>
+      <stop offset="100%" stop-color="#c5cae9"/>
+    </linearGradient>
+    <linearGradient id="dataPlane" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ede7f6"/>
+      <stop offset="100%" stop-color="#d1c4e9"/>
+    </linearGradient>
+    <linearGradient id="kgatewayGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#7e57c2"/>
+      <stop offset="100%" stop-color="#5e35b1"/>
+    </linearGradient>
+    <linearGradient id="kgatewayCtrlGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#9575cd"/>
+      <stop offset="100%" stop-color="#7e57c2"/>
+    </linearGradient>
+    <linearGradient id="wso2Grad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ff8f00"/>
+      <stop offset="100%" stop-color="#ef6c00"/>
+    </linearGradient>
+    <linearGradient id="wso2CtrlGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffa726"/>
+      <stop offset="100%" stop-color="#ff8f00"/>
+    </linearGradient>
+    <linearGradient id="componentGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#42a5f5"/>
+      <stop offset="100%" stop-color="#1e88e5"/>
+    </linearGradient>
+    <linearGradient id="controllerGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#5c6bc0"/>
+      <stop offset="100%" stop-color="#3949ab"/>
+    </linearGradient>
+    <filter id="shadow" x="-2%" y="-2%" width="104%" height="108%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.12"/>
+    </filter>
+    <filter id="shadowSm" x="-2%" y="-2%" width="104%" height="108%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-opacity="0.1"/>
+    </filter>
+    <marker id="arrowHead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#546e7a"/>
+    </marker>
+    <marker id="arrowHeadPurple" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#7e57c2"/>
+    </marker>
+    <marker id="arrowHeadOrange" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#ef6c00"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="780" height="680" rx="12" fill="#fafafa"/>
+
+  <!-- Title -->
+  <text x="390" y="36" text-anchor="middle" font-size="18" font-weight="700" fill="#263238">WSO2 API Platform Gateway Module &#x2014; Architecture</text>
+  <text x="390" y="56" text-anchor="middle" font-size="11" fill="#78909c">CORS &#x00B7; JWT Authentication &#x00B7; Rate Limiting &#x00B7; Custom Headers via WSO2 RestApi policies</text>
+
+  <!-- ==================== CONTROL PLANE ==================== -->
+  <rect x="40" y="76" width="700" height="74" rx="8" fill="url(#controlPlane)" filter="url(#shadow)" stroke="#9fa8da" stroke-width="1"/>
+  <text x="52" y="94" font-size="9" font-weight="600" fill="#3949ab" letter-spacing="1">CONTROL PLANE</text>
+
+  <!-- OpenChoreo Controllers -->
+  <rect x="52" y="102" width="290" height="36" rx="5" fill="url(#controllerGrad)" filter="url(#shadowSm)"/>
+  <text x="197" y="122" text-anchor="middle" font-size="11" font-weight="500" fill="#fff">OpenChoreo Controllers</text>
+  <text x="197" y="134" text-anchor="middle" font-size="8" fill="#c5cae9">Renders ClusterTrait templates into Backend, RestApi, HTTPRoute patch</text>
+
+  <!-- ClusterTrait badge -->
+  <rect x="370" y="102" width="356" height="36" rx="5" fill="#fff" filter="url(#shadowSm)" stroke="#9fa8da" stroke-width="1"/>
+  <text x="382" y="118" font-size="9" font-weight="600" fill="#3949ab">ClusterTrait</text>
+  <text x="449" y="118" font-size="9" fill="#546e7a">api-management</text>
+  <text x="382" y="132" font-size="8" fill="#78909c">Defines Backend, RestApi, HTTPRoute patch templates</text>
+
+  <!-- Arrow: Control Plane to Data Plane -->
+  <line x1="197" y1="150" x2="197" y2="182" stroke="#546e7a" stroke-width="1.5" marker-end="url(#arrowHead)"/>
+  <text x="210" y="170" font-size="8" fill="#78909c">applies</text>
+
+  <!-- ==================== DATA PLANE ==================== -->
+  <rect x="40" y="186" width="700" height="460" rx="8" fill="url(#dataPlane)" filter="url(#shadow)" stroke="#b39ddb" stroke-width="1"/>
+  <text x="52" y="204" font-size="9" font-weight="600" fill="#4527a0" letter-spacing="1">DATA PLANE</text>
+
+  <!-- Gateway CR -->
+  <rect x="60" y="216" width="180" height="52" rx="6" fill="#fff" filter="url(#shadowSm)" stroke="#b39ddb" stroke-width="1"/>
+  <text x="72" y="234" font-size="9" font-weight="600" fill="#4527a0">Gateway CR</text>
+  <text x="72" y="248" font-size="9" fill="#546e7a">name: gateway-default</text>
+  <text x="72" y="260" font-size="9" fill="#7e57c2" font-weight="500">class: kgateway</text>
+
+  <!-- HTTPRoute -->
+  <rect x="270" y="216" width="200" height="52" rx="6" fill="#fff" filter="url(#shadowSm)" stroke="#b39ddb" stroke-width="1"/>
+  <text x="282" y="234" font-size="9" font-weight="600" fill="#4527a0">HTTPRoute (patched)</text>
+  <text x="282" y="248" font-size="9" fill="#546e7a">parentRef: gateway-default</text>
+  <text x="282" y="260" font-size="9" fill="#7e57c2">backendRef: Backend (WSO2)</text>
+
+  <!-- Arrow: HTTPRoute to Gateway CR -->
+  <line x1="270" y1="242" x2="243" y2="242" stroke="#546e7a" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrowHead)"/>
+
+  <!-- kgateway Controller -->
+  <rect x="270" y="290" width="200" height="50" rx="8" fill="url(#kgatewayCtrlGrad)" filter="url(#shadow)"/>
+  <text x="370" y="312" text-anchor="middle" font-size="11" font-weight="600" fill="#fff">kgateway Controller</text>
+  <text x="370" y="328" text-anchor="middle" font-size="9" fill="#e8eaf6">Watches Gateway API + Backend CRDs</text>
+
+  <!-- kgateway Proxy -->
+  <rect x="60" y="290" width="180" height="50" rx="8" fill="url(#kgatewayGrad)" filter="url(#shadow)"/>
+  <text x="150" y="310" text-anchor="middle" font-size="11" font-weight="600" fill="#fff">kgateway Proxy</text>
+  <text x="150" y="324" text-anchor="middle" font-size="9" fill="#e8eaf6">TLS termination &#x00B7; :19080 &#x00B7; :19443</text>
+
+  <!-- Arrow: kgateway controller to kgateway proxy -->
+  <line x1="270" y1="315" x2="243" y2="315" stroke="#d1c4e9" stroke-width="1.5" marker-end="url(#arrowHead)"/>
+
+  <!-- Arrow: Gateway CR to kgateway proxy -->
+  <line x1="150" y1="268" x2="150" y2="287" stroke="#546e7a" stroke-width="1.5" marker-end="url(#arrowHead)"/>
+
+  <!-- WSO2 API Platform Router -->
+  <rect x="60" y="380" width="180" height="56" rx="8" fill="url(#wso2Grad)" filter="url(#shadow)"/>
+  <text x="150" y="400" text-anchor="middle" font-size="11" font-weight="600" fill="#fff">WSO2 API Platform</text>
+  <text x="150" y="414" text-anchor="middle" font-size="10" font-weight="500" fill="#fff">Router</text>
+  <text x="150" y="428" text-anchor="middle" font-size="9" fill="#fff3e0">Policy enforcement &#x00B7; :8080</text>
+
+  <!-- WSO2 Operator -->
+  <rect x="270" y="380" width="200" height="56" rx="8" fill="url(#wso2CtrlGrad)" filter="url(#shadow)"/>
+  <text x="370" y="400" text-anchor="middle" font-size="11" font-weight="600" fill="#fff">WSO2 API Platform</text>
+  <text x="370" y="414" text-anchor="middle" font-size="10" font-weight="500" fill="#fff">Operator</text>
+  <text x="370" y="428" text-anchor="middle" font-size="9" fill="#fff3e0">Watches RestApi + APIGateway CRDs</text>
+
+  <!-- Arrow: WSO2 operator to WSO2 router -->
+  <line x1="270" y1="408" x2="243" y2="408" stroke="#fff3e0" stroke-width="1.5" marker-end="url(#arrowHead)"/>
+
+  <!-- Arrow: kgateway proxy to WSO2 router -->
+  <line x1="150" y1="340" x2="150" y2="377" stroke="#546e7a" stroke-width="1.5" marker-end="url(#arrowHead)"/>
+  <text x="160" y="363" font-size="8" fill="#546e7a">via Backend</text>
+
+  <!-- Component Pod -->
+  <rect x="80" y="480" width="160" height="42" rx="6" fill="url(#componentGrad)" filter="url(#shadowSm)"/>
+  <text x="160" y="500" text-anchor="middle" font-size="10" font-weight="500" fill="#fff">Component Pod</text>
+  <text x="160" y="514" text-anchor="middle" font-size="9" fill="#e3f2fd">:9090</text>
+
+  <!-- Arrow: WSO2 router to Pod -->
+  <line x1="150" y1="436" x2="150" y2="477" stroke="#546e7a" stroke-width="1.5" marker-end="url(#arrowHead)"/>
+  <text x="160" y="460" font-size="8" fill="#546e7a">upstream</text>
+
+  <!-- ==================== TRAIT RESOURCES (right side) ==================== -->
+  <text x="510" y="210" font-size="9" font-weight="600" fill="#4527a0" letter-spacing="0.5">TRAIT-GENERATED RESOURCES</text>
+
+  <!-- Backend (kgateway) -->
+  <rect x="500" y="220" width="220" height="48" rx="5" fill="#fff" filter="url(#shadowSm)" stroke="#7e57c2" stroke-width="1"/>
+  <text x="514" y="237" font-size="9" font-weight="600" fill="#7e57c2">Backend (kgateway)</text>
+  <text x="514" y="252" font-size="8" fill="#546e7a">type: Static</text>
+  <text x="514" y="263" font-size="8" fill="#546e7a">&#x2192; WSO2 router :8080</text>
+
+  <!-- Arrow: Backend to HTTPRoute backendRef -->
+  <path d="M500,244 L475,244 L475,250 L473,250" stroke="#7e57c2" stroke-width="1.2" fill="none" stroke-dasharray="4,3" marker-end="url(#arrowHeadPurple)"/>
+  <text x="478" y="238" font-size="7" fill="#7e57c2">backendRef</text>
+
+  <!-- RestApi (WSO2) -->
+  <rect x="500" y="280" width="220" height="48" rx="5" fill="#fff" filter="url(#shadowSm)" stroke="#ef6c00" stroke-width="1"/>
+  <text x="514" y="297" font-size="9" font-weight="600" fill="#ef6c00">RestApi (WSO2)</text>
+  <text x="514" y="312" font-size="8" fill="#546e7a">context, version, upstream, operations</text>
+  <text x="514" y="323" font-size="8" fill="#546e7a">+ policies (CORS, JWT, RateLimit, Headers)</text>
+
+  <!-- Arrow: RestApi to WSO2 operator -->
+  <path d="M500,304 L480,304 L480,400 L473,400" stroke="#ef6c00" stroke-width="1.2" fill="none" stroke-dasharray="4,3" marker-end="url(#arrowHeadOrange)"/>
+  <text x="484" y="355" font-size="7" fill="#ef6c00" transform="rotate(-90,484,355)">reconciles</text>
+
+  <!-- Policy cards -->
+  <text x="510" y="348" font-size="9" font-weight="600" fill="#4527a0" letter-spacing="0.5">RESTAPI POLICIES</text>
+
+  <rect x="500" y="358" width="106" height="26" rx="4" fill="#fff3e0" stroke="#ef6c00" stroke-width="0.8"/>
+  <text x="553" y="375" text-anchor="middle" font-size="8" font-weight="600" fill="#e65100">CORS (always)</text>
+
+  <rect x="614" y="358" width="106" height="26" rx="4" fill="#fff3e0" stroke="#ef6c00" stroke-width="0.8"/>
+  <text x="667" y="375" text-anchor="middle" font-size="8" font-weight="600" fill="#e65100">JWT Auth</text>
+  <!-- includeWhen badge -->
+  <rect x="684" y="360" width="34" height="10" rx="2" fill="#e8f5e9" stroke="#a5d6a7" stroke-width="0.5"/>
+  <text x="701" y="368" text-anchor="middle" font-size="6" fill="#2e7d32">opt</text>
+
+  <rect x="500" y="392" width="106" height="26" rx="4" fill="#fff3e0" stroke="#ef6c00" stroke-width="0.8"/>
+  <text x="553" y="409" text-anchor="middle" font-size="8" font-weight="600" fill="#e65100">Rate Limit</text>
+  <rect x="570" y="394" width="34" height="10" rx="2" fill="#e8f5e9" stroke="#a5d6a7" stroke-width="0.5"/>
+  <text x="587" y="402" text-anchor="middle" font-size="6" fill="#2e7d32">opt</text>
+
+  <rect x="614" y="392" width="106" height="26" rx="4" fill="#fff3e0" stroke="#ef6c00" stroke-width="0.8"/>
+  <text x="667" y="409" text-anchor="middle" font-size="8" font-weight="600" fill="#e65100">Add Headers</text>
+  <rect x="684" y="394" width="34" height="10" rx="2" fill="#e8f5e9" stroke="#a5d6a7" stroke-width="0.5"/>
+  <text x="701" y="402" text-anchor="middle" font-size="6" fill="#2e7d32">opt</text>
+
+  <!-- ==================== TRAFFIC FLOW (bottom) ==================== -->
+  <rect x="60" y="546" width="660" height="84" rx="6" fill="#fff" filter="url(#shadowSm)" stroke="#b0bec5" stroke-width="1"/>
+  <text x="72" y="564" font-size="9" font-weight="600" fill="#37474f" letter-spacing="0.5">TRAFFIC FLOW</text>
+
+  <!-- Traffic flow arrows -->
+  <text x="80" y="590" font-size="10" fill="#263238" font-weight="500">Client</text>
+  <line x1="116" y1="586" x2="138" y2="586" stroke="#546e7a" stroke-width="1.5" marker-end="url(#arrowHead)"/>
+
+  <rect x="148" y="576" width="100" height="22" rx="4" fill="url(#kgatewayGrad)"/>
+  <text x="198" y="591" text-anchor="middle" font-size="9" font-weight="500" fill="#fff">kgateway</text>
+  <line x1="250" y1="586" x2="272" y2="586" stroke="#546e7a" stroke-width="1.5" marker-end="url(#arrowHead)"/>
+
+  <rect x="282" y="576" width="130" height="22" rx="4" fill="url(#wso2Grad)"/>
+  <text x="347" y="591" text-anchor="middle" font-size="9" font-weight="500" fill="#fff">WSO2 Router</text>
+  <line x1="414" y1="586" x2="436" y2="586" stroke="#546e7a" stroke-width="1.5" marker-end="url(#arrowHead)"/>
+
+  <rect x="446" y="576" width="80" height="22" rx="4" fill="url(#componentGrad)"/>
+  <text x="486" y="591" text-anchor="middle" font-size="9" font-weight="500" fill="#fff">Service</text>
+  <line x1="528" y1="586" x2="550" y2="586" stroke="#546e7a" stroke-width="1.5" marker-end="url(#arrowHead)"/>
+
+  <rect x="560" y="576" width="60" height="22" rx="4" fill="url(#componentGrad)"/>
+  <text x="590" y="591" text-anchor="middle" font-size="9" font-weight="500" fill="#fff">Pod</text>
+
+  <text x="185" y="614" font-size="7" fill="#78909c">TLS termination</text>
+  <text x="185" y="622" font-size="7" fill="#78909c">hostname routing</text>
+  <text x="320" y="614" font-size="7" fill="#78909c">policy enforcement</text>
+  <text x="320" y="622" font-size="7" fill="#78909c">(CORS, JWT, rate limit)</text>
+
+  <!-- Footer -->
+  <text x="390" y="664" text-anchor="middle" font-size="10" fill="#90a4ae">kgateway remains the edge gateway. WSO2 API Platform sits behind it as the API management layer.</text>
+</svg>

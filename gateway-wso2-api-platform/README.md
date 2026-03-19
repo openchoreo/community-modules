@@ -31,6 +31,8 @@ Unlike Kong, Traefik, or Envoy Gateway, **WSO2 API Platform does not implement t
 
 ## High-Level Architecture
 
+![WSO2 API Platform Gateway Module — Architecture](wso2-api-platform-api-management.svg)
+
 ### Gateway Integration in OpenChoreo
 
 ```

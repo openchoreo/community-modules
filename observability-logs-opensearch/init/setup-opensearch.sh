@@ -31,11 +31,14 @@ while [ $attempt -le $max_attempts ]; do
     if [ $curlExitCode -ne 0 ]; then
         echo "curl failed with exit code $curlExitCode (attempt $attempt/$max_attempts)"
     else
-        echo $clusterHealth | jq
-        clusterStatus=$(echo "$clusterHealth" | jq --raw-output '.status')
-        if [[ "$clusterStatus" == "green" || "$clusterStatus" == "yellow" ]]; then
-            echo -e "OpenSearch cluster ready. Continuing with setup...\n"
-            break
+        if echo "$clusterHealth" | jq . 2>/dev/null; then
+            clusterStatus=$(echo "$clusterHealth" | jq --raw-output '.status')
+            if [[ "$clusterStatus" == "green" || "$clusterStatus" == "yellow" ]]; then
+                echo -e "OpenSearch cluster ready. Continuing with setup...\n"
+                break
+            fi
+        else
+            echo "Received an invalid response. OpenSearch might still be starting up. (attempt $attempt/$max_attempts)"
         fi
     fi
 

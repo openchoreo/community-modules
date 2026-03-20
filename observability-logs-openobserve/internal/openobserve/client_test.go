@@ -4,13 +4,37 @@
 package openobserve
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
+
+// isCountQuery checks if the request body contains a count query (size=0 and SELECT count).
+func isCountQuery(r *http.Request) bool {
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		return false
+	}
+	r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
+	var body map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &body); err != nil {
+		return false
+	}
+	query, ok := body["query"].(map[string]interface{})
+	if !ok {
+		return false
+	}
+	size, _ := query["size"].(float64)
+	sql, _ := query["sql"].(string)
+	return size == 0 && strings.Contains(strings.ToLower(sql), "count")
+}
 
 func newTestClient(serverURL string) *Client {
 	return NewClient(serverURL, "default", "default", "admin", "token", testLogger())
@@ -48,6 +72,19 @@ func TestGetComponentLogs(t *testing.T) {
 		user, pass, ok := r.BasicAuth()
 		if !ok || user != "admin" || pass != "token" {
 			t.Error("missing or incorrect basic auth")
+		}
+
+		if isCountQuery(r) {
+			resp := OpenObserveResponse{
+				Took:  1,
+				Total: 1,
+				Hits: []map[string]interface{}{
+					{"total": float64(2)},
+				},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(resp)
+			return
 		}
 
 		resp := OpenObserveResponse{
@@ -137,6 +174,19 @@ func TestGetComponentLogs_ServerError(t *testing.T) {
 
 func TestGetWorkflowLogs(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isCountQuery(r) {
+			resp := OpenObserveResponse{
+				Took:  1,
+				Total: 1,
+				Hits: []map[string]interface{}{
+					{"total": float64(1)},
+				},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(resp)
+			return
+		}
+
 		resp := OpenObserveResponse{
 			Took:  10,
 			Total: 1,

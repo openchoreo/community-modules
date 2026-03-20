@@ -119,6 +119,111 @@ func parseDurationMinutes(duration string) (int, error) {
 	}
 }
 
+// generateComponentLogsCountQuery generates a count query to get the true total of matching component logs.
+func generateComponentLogsCountQuery(params ComponentLogsParams, stream string, logger *slog.Logger) ([]byte, error) {
+	if params.Namespace == "" {
+		return nil, fmt.Errorf("namespace is required for component log queries")
+	}
+
+	var conditions []string
+
+	conditions = append(conditions, "kubernetes_labels_openchoreo_dev_namespace = '"+escapeSQLString(params.Namespace)+"'")
+
+	if params.ProjectID != "" {
+		conditions = append(conditions, "kubernetes_labels_openchoreo_dev_project_uid = '"+escapeSQLString(params.ProjectID)+"'")
+	}
+	if params.EnvironmentID != "" {
+		conditions = append(conditions, "kubernetes_labels_openchoreo_dev_environment_uid = '"+escapeSQLString(params.EnvironmentID)+"'")
+	}
+	if len(params.ComponentIDs) > 0 {
+		componentConditions := make([]string, len(params.ComponentIDs))
+		for i, id := range params.ComponentIDs {
+			componentConditions[i] = "kubernetes_labels_openchoreo_dev_component_uid = '" + escapeSQLString(id) + "'"
+		}
+		conditions = append(conditions, "("+strings.Join(componentConditions, " OR ")+")")
+	}
+	if params.SearchPhrase != "" {
+		conditions = append(conditions, "log LIKE '%"+escapeSQLString(params.SearchPhrase)+"%'")
+	}
+	if len(params.LogLevels) > 0 {
+		levelConditions := make([]string, len(params.LogLevels))
+		for i, level := range params.LogLevels {
+			levelConditions[i] = "logLevel = '" + escapeSQLString(level) + "'"
+		}
+		conditions = append(conditions, "("+strings.Join(levelConditions, " OR ")+")")
+	}
+
+	sql := "SELECT count(*) as total FROM " + quoteIdentifier(stream)
+	if len(conditions) > 0 {
+		sql += " WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	query := map[string]interface{}{
+		"query": map[string]interface{}{
+			"sql":        sql,
+			"start_time": params.StartTime.UnixMicro(),
+			"end_time":   params.EndTime.UnixMicro(),
+			"from":       0,
+			"size":       0,
+		},
+	}
+
+	if logger.Enabled(nil, slog.LevelDebug) {
+		if prettyJSON, err := json.MarshalIndent(query, "", "    "); err == nil {
+			fmt.Printf("Generated count query for component logs:\n")
+			fmt.Println(string(prettyJSON))
+		}
+	}
+
+	return json.Marshal(query)
+}
+
+// generateWorkflowLogsCountQuery generates a count query to get the true total of matching workflow logs.
+func generateWorkflowLogsCountQuery(params WorkflowLogsParams, stream string, logger *slog.Logger) ([]byte, error) {
+	var conditions []string
+
+	if params.Namespace != "" {
+		conditions = append(conditions, "kubernetes_namespace_name = 'workflows-"+escapeSQLString(params.Namespace)+"'")
+	}
+	if params.WorkflowRunName != "" {
+		conditions = append(conditions, "kubernetes_labels_workflows_argoproj_io_workflow = '"+escapeSQLString(params.WorkflowRunName)+"'")
+	}
+	if params.SearchPhrase != "" {
+		conditions = append(conditions, "log LIKE '%"+escapeSQLString(params.SearchPhrase)+"%'")
+	}
+	if len(params.LogLevels) > 0 {
+		levelConditions := make([]string, len(params.LogLevels))
+		for i, level := range params.LogLevels {
+			levelConditions[i] = "logLevel = '" + escapeSQLString(level) + "'"
+		}
+		conditions = append(conditions, "("+strings.Join(levelConditions, " OR ")+")")
+	}
+
+	sql := "SELECT count(*) as total FROM " + quoteIdentifier(stream)
+	if len(conditions) > 0 {
+		sql += " WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	query := map[string]interface{}{
+		"query": map[string]interface{}{
+			"sql":        sql,
+			"start_time": params.StartTime.UnixMicro(),
+			"end_time":   params.EndTime.UnixMicro(),
+			"from":       0,
+			"size":       0,
+		},
+	}
+
+	if logger.Enabled(nil, slog.LevelDebug) {
+		if prettyJSON, err := json.MarshalIndent(query, "", "    "); err == nil {
+			fmt.Printf("Generated count query for workflow logs:\n")
+			fmt.Println(string(prettyJSON))
+		}
+	}
+
+	return json.Marshal(query)
+}
+
 // generateAlertConfig generates an OpenObserve alert configuration as JSON
 func generateAlertConfig(params LogAlertParams, streamName string, logger *slog.Logger) ([]byte, error) {
 	query := fmt.Sprintf(

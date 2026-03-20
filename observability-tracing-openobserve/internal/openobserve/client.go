@@ -249,9 +249,19 @@ func (c *Client) GetTraces(ctx context.Context, params TracesQueryParams) (*Trac
 		traces = append(traces, agg.entry)
 	}
 
+	// Execute a separate count query to get the true total number of matching traces
+	countQueryJSON, err := generateTracesCountQuery(params, c.stream, c.logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate traces count query: %w", err)
+	}
+	countResp, err := c.executeSearchQuery(ctx, countQueryJSON)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute traces count query: %w", err)
+	}
+
 	return &TracesResult{
 		Traces: traces,
-		Total:  len(traces),
+		Total:  extractTotalCount(countResp),
 		TookMs: openObserveResp.Took,
 	}, nil
 }
@@ -274,9 +284,19 @@ func (c *Client) GetSpans(ctx context.Context, params TracesQueryParams) (*Spans
 		spans = append(spans, entry)
 	}
 
+	// Execute a separate count query to get the true total number of matching spans
+	countQueryJSON, err := generateSpansCountQuery(params, c.stream, c.logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate spans count query: %w", err)
+	}
+	countResp, err := c.executeSearchQuery(ctx, countQueryJSON)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute spans count query: %w", err)
+	}
+
 	return &SpansResult{
 		Spans:  spans,
-		Total:  openObserveResp.Total,
+		Total:  extractTotalCount(countResp),
 		TookMs: openObserveResp.Took,
 	}, nil
 }
@@ -302,6 +322,23 @@ func (c *Client) GetSpanDetail(ctx context.Context, params TracesQueryParams) (*
 	return &SpanDetailResult{
 		Span: span,
 	}, nil
+}
+
+// extractTotalCount extracts the total count from a count query response.
+// The response is expected to have hits[0].total as the count value.
+func extractTotalCount(resp *OpenObserveResponse) int {
+	if len(resp.Hits) > 0 {
+		if total, ok := resp.Hits[0]["total"]; ok {
+			switch v := total.(type) {
+			case json.Number:
+				n, _ := v.Int64()
+				return int(n)
+			case float64:
+				return int(v)
+			}
+		}
+	}
+	return 0
 }
 
 // parseSpanEntry converts a raw OpenObserve hit into a SpanEntry

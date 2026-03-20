@@ -184,6 +184,79 @@ func generateSpanDetailQuery(params TracesQueryParams, stream string, logger *sl
 	return json.Marshal(query)
 }
 
+// generateTracesCountQuery generates a count query to get the true total number of matching traces.
+func generateTracesCountQuery(params TracesQueryParams, stream string, logger *slog.Logger) ([]byte, error) {
+	safeStream, err := validateSQLIdentifier(stream)
+	if err != nil {
+		return nil, fmt.Errorf("invalid stream identifier: %w", err)
+	}
+
+	sql := fmt.Sprintf(
+		"SELECT count(distinct trace_id) as total FROM %s",
+		safeStream,
+	)
+
+	conditions := buildFilterConditions(params)
+	if len(conditions) > 0 {
+		sql += " WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	query := map[string]interface{}{
+		"query": map[string]interface{}{
+			"sql":        sql,
+			"start_time": params.StartTime.UnixMicro(),
+			"end_time":   params.EndTime.UnixMicro(),
+			"from":       0,
+			"size":       0,
+		},
+	}
+
+	if logger.Enabled(nil, slog.LevelDebug) {
+		if prettyJSON, err := json.MarshalIndent(query, "", "    "); err == nil {
+			fmt.Printf("Generated count query for traces:\n")
+			fmt.Println(string(prettyJSON))
+		}
+	}
+
+	return json.Marshal(query)
+}
+
+// generateSpansCountQuery generates a count query to get the true total number of matching spans for a trace.
+func generateSpansCountQuery(params TracesQueryParams, stream string, logger *slog.Logger) ([]byte, error) {
+	safeStream, err := validateSQLIdentifier(stream)
+	if err != nil {
+		return nil, fmt.Errorf("invalid stream identifier: %w", err)
+	}
+
+	conditions := []string{
+		"trace_id = '" + escapeSQLString(params.TraceID) + "'",
+	}
+
+	sql := fmt.Sprintf(
+		"SELECT count(*) as total FROM %s WHERE %s",
+		safeStream, strings.Join(conditions, " AND "),
+	)
+
+	query := map[string]interface{}{
+		"query": map[string]interface{}{
+			"sql":        sql,
+			"start_time": params.StartTime.UnixMicro(),
+			"end_time":   params.EndTime.UnixMicro(),
+			"from":       0,
+			"size":       0,
+		},
+	}
+
+	if logger.Enabled(nil, slog.LevelDebug) {
+		if prettyJSON, err := json.MarshalIndent(query, "", "    "); err == nil {
+			fmt.Printf("Generated count query for spans (trace=%s):\n", params.TraceID)
+			fmt.Println(string(prettyJSON))
+		}
+	}
+
+	return json.Marshal(query)
+}
+
 // buildFilterConditions builds SQL WHERE conditions from the scope filter parameters.
 func buildFilterConditions(params TracesQueryParams) []string {
 	var conditions []string

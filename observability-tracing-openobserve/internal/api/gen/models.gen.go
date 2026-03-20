@@ -7,10 +7,6 @@ import (
 	"time"
 )
 
-const (
-	BearerAuthScopes = "BearerAuth.Scopes"
-)
-
 // Defines values for ErrorResponseTitle.
 const (
 	BadRequest          ErrorResponseTitle = "badRequest"
@@ -116,7 +112,7 @@ type TraceSpansListResponse struct {
 	// TookMs The time taken to query the spans in milliseconds
 	TookMs *int `json:"tookMs,omitempty"`
 
-	// Total The total number of spans
+	// Total The total number of matching spans, capped at 1000
 	Total *int `json:"total,omitempty"`
 }
 
@@ -125,7 +121,7 @@ type TracesListResponse struct {
 	// TookMs The time taken to query the traces in milliseconds
 	TookMs *int `json:"tookMs,omitempty"`
 
-	// Total The total number of traces
+	// Total The total number of matching traces, capped at 1000
 	Total *int `json:"total,omitempty"`
 
 	// Traces The list of traces

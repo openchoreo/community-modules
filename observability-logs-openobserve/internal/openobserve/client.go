@@ -184,6 +184,19 @@ func (c *Client) executeSearchQuery(ctx context.Context, queryJSON []byte) (*Ope
 	return &openObserveResp, nil
 }
 
+// extractTotalCount extracts the total count from a count query response.
+// The response is expected to have hits[0].total as the count value.
+func extractTotalCount(resp *OpenObserveResponse) int {
+	if len(resp.Hits) > 0 {
+		if total, ok := resp.Hits[0]["total"]; ok {
+			if v, ok := total.(float64); ok {
+				return int(v)
+			}
+		}
+	}
+	return 0
+}
+
 func (c *Client) GetComponentLogs(ctx context.Context, params ComponentLogsParams) (*ComponentLogsResult, error) {
 	queryJSON, err := generateComponentLogsQuery(params, c.stream, c.logger)
 	if err != nil {
@@ -209,9 +222,19 @@ func (c *Client) GetComponentLogs(ctx context.Context, params ComponentLogsParam
 		logs = append(logs, entry)
 	}
 
+	// Execute a separate count query to get the true total number of matching logs
+	countQueryJSON, err := generateComponentLogsCountQuery(params, c.stream, c.logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate component logs count query: %w", err)
+	}
+	countResp, err := c.executeSearchQuery(ctx, countQueryJSON)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute component logs count query: %w", err)
+	}
+
 	return &ComponentLogsResult{
 		Logs:       logs,
-		TotalCount: openObserveResp.Total,
+		TotalCount: extractTotalCount(countResp),
 		Took:       openObserveResp.Took,
 	}, nil
 }
@@ -239,9 +262,19 @@ func (c *Client) GetWorkflowLogs(ctx context.Context, params WorkflowLogsParams)
 		logs = append(logs, entry)
 	}
 
+	// Execute a separate count query to get the true total number of matching workflow logs
+	countQueryJSON, err := generateWorkflowLogsCountQuery(params, c.stream, c.logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate workflow logs count query: %w", err)
+	}
+	countResp, err := c.executeSearchQuery(ctx, countQueryJSON)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute workflow logs count query: %w", err)
+	}
+
 	return &WorkflowLogsResult{
 		Logs:       logs,
-		TotalCount: openObserveResp.Total,
+		TotalCount: extractTotalCount(countResp),
 		Took:       openObserveResp.Took,
 	}, nil
 }

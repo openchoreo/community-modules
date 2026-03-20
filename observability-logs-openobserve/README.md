@@ -38,7 +38,7 @@ helm upgrade --install observability-logs-openobserve \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-openobserve \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.4.1
+  --version 0.4.2
 ```
 
 To switch to HA mode, disable the standalone chart and enable the distributed chart:
@@ -47,7 +47,7 @@ To switch to HA mode, disable the standalone chart and enable the distributed ch
 helm upgrade --install observability-logs-openobserve \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-openobserve \
   --namespace openchoreo-observability-plane \
-  --version 0.4.1 \
+  --version 0.4.2 \
   --reuse-values \
   --set openobserve-standalone.enabled=false \
   --set openobserve.enabled=true
@@ -66,7 +66,7 @@ to start collecting logs from the cluster and publish them to OpenObserve:
 helm upgrade observability-logs-openobserve \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-openobserve \
   --namespace openchoreo-observability-plane \
-  --version 0.4.1 \
+  --version 0.4.2 \
   --reuse-values \
   --set fluent-bit.enabled=true
 ```
@@ -81,7 +81,7 @@ helm upgrade --install observability-logs-openobserve \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-openobserve \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.4.1 \
+  --version 0.4.2 \
   --set fluent-bit.enabled=true \
   --set openobserve-standalone.enabled=false \
   --set openObserveSetup.enabled=false \

@@ -4,9 +4,11 @@
 package openobserve
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -44,6 +46,28 @@ func TestNewClient(t *testing.T) {
 	}
 }
 
+// isCountQuery checks if the request body contains a count query (size=0 and SELECT count).
+// It reads the body and replaces it so subsequent reads still work.
+func isCountQuery(r *http.Request) bool {
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		return false
+	}
+	r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
+	var body map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &body); err != nil {
+		return false
+	}
+	query, ok := body["query"].(map[string]interface{})
+	if !ok {
+		return false
+	}
+	size, _ := query["size"].(float64)
+	sql, _ := query["sql"].(string)
+	return size == 0 && strings.Contains(strings.ToLower(sql), "count")
+}
+
 func TestGetTraces(t *testing.T) {
 	startNs := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC).UnixNano()
 	endNs := time.Date(2025, 1, 1, 12, 1, 0, 0, time.UTC).UnixNano()
@@ -62,6 +86,21 @@ func TestGetTraces(t *testing.T) {
 		user, pass, ok := r.BasicAuth()
 		if !ok || user != "admin" || pass != "token" {
 			t.Error("missing or incorrect basic auth")
+		}
+
+		if isCountQuery(r) {
+			// Return count response for the count query
+			resp := OpenObserveResponse{
+				Took:  1,
+				Total: 1,
+				Hits: []map[string]interface{}{
+					{"total": json.Number("2")},
+				},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			data, _ := json.Marshal(resp)
+			w.Write(data)
+			return
 		}
 
 		resp := OpenObserveResponse{
@@ -178,6 +217,19 @@ func TestGetTraces_ServerError(t *testing.T) {
 
 func TestGetTraces_EmptyResponse(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isCountQuery(r) {
+			resp := OpenObserveResponse{
+				Took:  1,
+				Total: 1,
+				Hits: []map[string]interface{}{
+					{"total": json.Number("0")},
+				},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			data, _ := json.Marshal(resp)
+			w.Write(data)
+			return
+		}
 		resp := OpenObserveResponse{
 			Took:  1,
 			Total: 0,
@@ -212,6 +264,20 @@ func TestGetSpans(t *testing.T) {
 	endNs := time.Date(2025, 1, 1, 12, 0, 1, 0, time.UTC).UnixNano()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isCountQuery(r) {
+			resp := OpenObserveResponse{
+				Took:  1,
+				Total: 1,
+				Hits: []map[string]interface{}{
+					{"total": json.Number("2")},
+				},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			data, _ := json.Marshal(resp)
+			w.Write(data)
+			return
+		}
+
 		resp := OpenObserveResponse{
 			Took:  10,
 			Total: 2,

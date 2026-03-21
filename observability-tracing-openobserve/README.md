@@ -4,23 +4,52 @@
 | ------------- |-----------|
 | Code coverage | [![Codecov](https://codecov.io/gh/openchoreo/community-modules/branch/main/graph/badge.svg?component=observability_tracing_openobserve)](https://codecov.io/gh/openchoreo/community-modules) |
 
-This module collects distributed traces using OpenTelemetry collector and stores them in [OpenObserve](https://openobserve.ai).
+This module collects distributed traces using [OpenTelemetry collector](https://opentelemetry.io) and stores them in [OpenObserve](https://openobserve.ai).
 
 ## Prerequisites
 
-- [OpenChoreo](https://github.com/openchoreo/openchoreo) must be installed with the **observability plane** enabled for this module to work. Deploy the `openchoreo-observability-plane` helm chart with the helm value `observer.tracingAdapter.enabled="true"` to enable the observer to fetch data from this tracing module.
+- [OpenChoreo](https://openchoreo.dev) must be installed with the **observability plane** enabled for this module to work. Deploy the `openchoreo-observability-plane` helm chart with the helm value `observer.tracingAdapter.enabled="true"` to enable the observer to fetch data from this tracing module.
 
 ## Installation
 
-Before installing, create Kubernetes Secrets with the OpenObserve admin credentials:
+### Pre-requisites
 
-> ⚠️ **Important:** Replace `YOUR_PASSWORD` with a strong, unique password.
+1. OpenObserve credentials are required to configure it during installation and to access it. OpenChoreo uses the External Secrets Operator to manage secrets. Add your OpenObserve credentials (`ZO_ROOT_USER_EMAIL` and `ZO_ROOT_USER_PASSWORD`) to a secret store and use an `ExternalSecret` resource to generate a Kubernetes secret named `openobserve-admin-credentials` from it.
+Refer to the [secret management guide](https://openchoreo.dev/docs/operations/secret-management/) for more details.
+
+For example, the commands below add the secrets to OpenBao and pull them from the `ClusterSecretStore` created earlier in the [OpenChoreo installation guide](https://openchoreo.dev/docs).
 
 ```bash
-kubectl create secret generic openobserve-admin-credentials \
-  --namespace openchoreo-observability-plane \
-  --from-literal=ZO_ROOT_USER_EMAIL='root@example.com' \
-  --from-literal=ZO_ROOT_USER_PASSWORD='YOUR_PASSWORD'
+kubectl exec -it -n openbao openbao-0 -- \
+    bao kv put secret/openobserve-admin-credentials \
+    ZO_ROOT_USER_EMAIL='YOUR_USERNAME' \
+    ZO_ROOT_USER_PASSWORD='YOUR_PASSWORD'
+```
+
+```bash
+kubectl apply -f - <<EOF
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: openobserve-admin-credentials
+  namespace: openchoreo-observability-plane
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: default
+  target:
+    name: openobserve-admin-credentials
+  data:
+    - secretKey: ZO_ROOT_USER_EMAIL
+      remoteRef:
+        key: openobserve-admin-credentials
+        property: ZO_ROOT_USER_EMAIL
+    - secretKey: ZO_ROOT_USER_PASSWORD
+      remoteRef:
+        key: openobserve-admin-credentials
+        property: ZO_ROOT_USER_PASSWORD
+EOF
 ```
 
 ## OpenObserve deployment modes

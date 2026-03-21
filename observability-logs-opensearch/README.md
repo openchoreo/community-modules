@@ -1,16 +1,19 @@
 # Observability Logs Module for OpenSearch
 
-This module collects logs using Fluent Bit and stores them in OpenSearch.
+This module collects logs using [Fluent Bit](https://fluentbit.io) and stores them in [OpenSearch](https://opensearch.org).
 
 ## Prerequisites
 
-- [OpenChoreo](https://github.com/openchoreo/openchoreo) must be installed with the **observability plane** enabled for this module to work.
+- [OpenChoreo](https://openchoreo.dev) must be installed with the **observability plane** enabled for this module to work.
 
 ## Installation
 
 ### Pre-requisites
 
-1. OpenSearch setup scripts in this helm chart need admin credentials to connect to OpenSearch and configure it. The command below pulls values from the `ClusterSecretStore` created earlier in the [OpenChoreo installation guide](https://openchoreo.dev/docs)
+1. OpenSearch setup scripts in this helm chart need admin credentials to connect to OpenSearch and configure it. OpenChoreo uses the External Secrets Operator to manage secrets. Add your OpenSearch credentials (username and password) to a secret store and use an `ExternalSecret` resource to generate a Kubernetes secret from it.
+Refer to the [secret management guide](https://openchoreo.dev/docs/operations/secret-management/) for more details.
+
+For example, the command below pulls values from the `ClusterSecretStore` created earlier in the [OpenChoreo installation guide](https://openchoreo.dev/docs).
 
 ```bash
 kubectl apply -f - <<EOF

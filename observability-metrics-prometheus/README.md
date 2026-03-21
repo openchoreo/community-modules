@@ -4,11 +4,11 @@
 | ------------- |-----------|
 | Code coverage | [![Codecov](https://codecov.io/gh/openchoreo/community-modules/branch/main/graph/badge.svg?component=observability_metrics_prometheus)](https://codecov.io/gh/openchoreo/community-modules) |
 
-This module collects and stores metrics using Prometheus.
+This module collects and stores metrics using [Prometheus](https://prometheus.io).
 
 ## Prerequisites
 
-- [OpenChoreo](https://github.com/openchoreo/openchoreo) must be installed with the **observability plane** enabled for this module to work.
+- [OpenChoreo](https://openchoreo.dev) must be installed with the **observability plane** enabled for this module to work.
 
 ## Installation
 

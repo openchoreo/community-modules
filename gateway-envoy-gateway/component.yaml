@@ -198,9 +198,9 @@ spec:
 #                value: "true"
 #
 # 5. Per-Environment Rate Limit Overrides:
-#    Override rate limits per environment via ReleaseBinding traitOverrides:
+#    Override rate limits per environment via ReleaseBinding traitEnvironmentConfigs:
 #
-#    traitOverrides:
+#    traitEnvironmentConfigs:
 #      greeter-api:
 #        rateLimiting:
 #          requestsPerUnit: 600  # Higher limit for production

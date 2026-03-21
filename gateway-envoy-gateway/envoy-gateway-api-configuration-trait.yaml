@@ -29,7 +29,7 @@
 #   2. Apply this trait to the control plane
 #   3. Add "envoy-gateway-api-configuration" to the ComponentType's allowedTraits
 #   4. Reference it in the Component's traits with desired parameters
-#   5. Optionally override rate limits per environment via ReleaseBinding traitOverrides
+#   5. Optionally override rate limits per environment via ReleaseBinding traitEnvironmentConfigs
 
 ---
 apiVersion: openchoreo.dev/v1alpha1
@@ -192,7 +192,7 @@ spec:
     # Created when rateLimiting.enabled is true.
     # Targets the component's HTTPRoute by name and applies a local rate limit.
     # Uses parameters.rateLimiting.requestsPerUnit so platform engineers
-    # can set different limits per environment via ReleaseBinding traitOverrides.
+    # can set different limits per environment via ReleaseBinding traitEnvironmentConfigs.
     - includeWhen: ${parameters.rateLimiting.enabled}
       template:
         apiVersion: gateway.envoyproxy.io/v1alpha1

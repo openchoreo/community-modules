@@ -21,7 +21,7 @@
 # Usage:
 #   1. Add "traefik-api-configuration" to the ComponentType's allowedTraits
 #   2. Reference it in the Component's traits with desired parameters
-#   3. Optionally override rate limits per environment via ReleaseBinding traitOverrides
+#   3. Optionally override rate limits per environment via ReleaseBinding traitEnvironmentConfigs
 #
 # See the end of this file for a complete usage example with ComponentType, Component,
 # Workload, and ReleaseBinding.
@@ -33,48 +33,92 @@ metadata:
   name: traefik-api-configuration
   namespace: default
 spec:
-  schema:
-    parameters:
-      # --- Rate Limiting ---
-      rateLimiting:
-        $default: {}
-        enabled: "boolean | default=true"
-        burst: "integer | default=200"
+  parameters:
+    openAPIV3Schema:
+      type: object
+      $defs:
+        # --- Rate Limiting ---
+        RateLimitingConfig:
+          type: object
+          default: {}
+          properties:
+            enabled:
+              type: boolean
+              default: true
+            burst:
+              type: integer
+              default: 200
 
-      # --- Security (BasicAuth / API Key) ---
-      # Credentials must be stored in a Kubernetes Secret (htpasswd format) BEFORE
-      # enabling this feature. The Secret must have a "users" key containing one
-      # "user:hash" entry per line. Create it with (see NOTES section for details):
-      #   kubectl create secret generic <secret-name> \
-      #     --from-literal=users="$(htpasswd -nbm myuser mypassword)" \
-      #     -n <namespace>
-      security:
-        $default: {}
-        enabled: "boolean | default=false"
-        # Name of an existing Kubernetes Secret containing htpasswd-formatted users.
-        # The Secret must exist in the same namespace as the component and have a
-        # "users" key with one "user:hash" entry per line.
-        secretName: "string | default=''"
+        # --- Security (BasicAuth / API Key) ---
+        # Credentials must be stored in a Kubernetes Secret (htpasswd format) BEFORE
+        # enabling this feature. The Secret must have a "users" key containing one
+        # "user:hash" entry per line. Create it with (see NOTES section for details):
+        #   kubectl create secret generic <secret-name> \
+        #     --from-literal=users="$(htpasswd -nbm myuser mypassword)" \
+        #     -n <namespace>
+        SecurityConfig:
+          type: object
+          default: {}
+          properties:
+            enabled:
+              type: boolean
+              default: false
+            # Name of an existing Kubernetes Secret containing htpasswd-formatted users.
+            # The Secret must exist in the same namespace as the component and have a
+            # "users" key with one "user:hash" entry per line.
+            secretName:
+              type: string
+              default: ""
 
-      # --- Request/Response Header Injection ---
-      # Controls Traefik's Headers Middleware to inject custom headers into
-      # upstream requests and/or downstream responses.
-      # Headers use "Header-Name:value" format.
-      # Example requestHeaders: ["X-Gateway:Traefik", "X-Managed-By:OpenChoreo"]
-      # Example responseHeaders: ["X-Powered-By:OpenChoreo"]
-      addHeaders:
-        $default: {}
-        enabled: "boolean | default=false"
-        # Headers to add to upstream requests (Traefik customRequestHeaders).
-        requestHeaders: "array<string> | default=[]"
-        # Headers to add to downstream responses (Traefik customResponseHeaders).
-        responseHeaders: "array<string> | default=[]"
+        # --- Request/Response Header Injection ---
+        # Controls Traefik's Headers Middleware to inject custom headers into
+        # upstream requests and/or downstream responses.
+        # Headers use "Header-Name:value" format.
+        # Example requestHeaders: ["X-Gateway:Traefik", "X-Managed-By:OpenChoreo"]
+        # Example responseHeaders: ["X-Powered-By:OpenChoreo"]
+        AddHeadersConfig:
+          type: object
+          default: {}
+          properties:
+            enabled:
+              type: boolean
+              default: false
+            # Headers to add to upstream requests (Traefik customRequestHeaders).
+            requestHeaders:
+              type: array
+              items:
+                type: string
+              default: []
+            # Headers to add to downstream responses (Traefik customResponseHeaders).
+            responseHeaders:
+              type: array
+              items:
+                type: string
+              default: []
 
-    envOverrides:
-      # Platform engineers can tune rate limits per environment.
-      rateLimiting:
-        $default: {}
-        average: "integer | default=100"
+      properties:
+        rateLimiting:
+          $ref: "#/$defs/RateLimitingConfig"
+        security:
+          $ref: "#/$defs/SecurityConfig"
+        addHeaders:
+          $ref: "#/$defs/AddHeadersConfig"
+
+  environmentConfigs:
+    openAPIV3Schema:
+      type: object
+      $defs:
+        # Platform engineers can tune rate limits per environment.
+        RateLimitingEnvConfig:
+          type: object
+          default: {}
+          properties:
+            average:
+              type: integer
+              default: 100
+      properties:
+        rateLimiting:
+          $ref: "#/$defs/RateLimitingEnvConfig"
 
   creates:
     # --- Middleware: Rate Limiting (always created) ---
@@ -100,7 +144,7 @@ spec:
         spec:
           rateLimit: >-
             ${parameters.rateLimiting.enabled ?
-              {"average": envOverrides.rateLimiting.average,
+              {"average": environmentConfigs.rateLimiting.average,
                "burst": parameters.rateLimiting.burst,
                "period": "1m"} :
               oc_omit()}
@@ -243,29 +287,53 @@ spec:
       name: docker
 
   allowedTraits:
-    - name: api-configuration
-    - name: observability-alert-rule
-    - name: traefik-api-configuration  # Added for Traefik gateway module
+    - kind: Trait
+      name: api-configuration
+    - kind: Trait
+      name: observability-alert-rule
+    - kind: Trait
+      name: traefik-api-configuration  # Added for Traefik gateway module
 
   validations:
     - rule: "${size(workload.endpoints) > 0}"
       message: "Service components must have at least one endpoint. Use 'deployment/worker' for components without endpoints."
 
-  schema:
-    types:
-      ResourceRequirements:
-        requests: "ResourceQuantity | default={}"
-        limits: "ResourceQuantity | default={}"
-      ResourceQuantity:
-        cpu: "string | default=100m"
-        memory: "string | default=256Mi"
-
-    parameters: {}
-
-    envOverrides:
-      replicas: "integer | default=1"
-      resources: "ResourceRequirements | default={}"
-      imagePullPolicy: "string | default=IfNotPresent"
+  environmentConfigs:
+    openAPIV3Schema:
+      type: object
+      $defs:
+        ResourceQuantity:
+          type: object
+          default: {}
+          properties:
+            cpu:
+              type: string
+              default: "100m"
+            memory:
+              type: string
+              default: "256Mi"
+        ResourceRequirements:
+          type: object
+          default: {}
+          properties:
+            requests:
+              $ref: "#/$defs/ResourceQuantity"
+            limits:
+              $ref: "#/$defs/ResourceQuantity"
+      properties:
+        replicas:
+          type: integer
+          default: 1
+          minimum: 0
+        resources:
+          $ref: "#/$defs/ResourceRequirements"
+        imagePullPolicy:
+          type: string
+          default: IfNotPresent
+          enum:
+            - Always
+            - IfNotPresent
+            - Never
 
   resources:
     - id: deployment
@@ -277,7 +345,7 @@ spec:
           namespace: ${metadata.namespace}
           labels: ${metadata.labels}
         spec:
-          replicas: ${envOverrides.replicas}
+          replicas: ${environmentConfigs.replicas}
           selector:
             matchLabels: ${metadata.podSelectors}
           template:
@@ -287,19 +355,19 @@ spec:
               containers:
                 - name: main
                   image: ${workload.container.image}
-                  imagePullPolicy: ${envOverrides.imagePullPolicy}
+                  imagePullPolicy: ${environmentConfigs.imagePullPolicy}
                   command: |
                     ${has(workload.container.command) ? workload.container.command : oc_omit()}
                   args: |
                     ${has(workload.container.args) ? workload.container.args : oc_omit()}
                   resources:
                     requests:
-                      cpu: ${envOverrides.resources.requests.cpu}
-                      memory: ${envOverrides.resources.requests.memory}
+                      cpu: ${environmentConfigs.resources.requests.cpu}
+                      memory: ${environmentConfigs.resources.requests.memory}
                     limits:
-                      cpu: ${envOverrides.resources.limits.cpu}
-                      memory: ${envOverrides.resources.limits.memory}
-                  env: ${connections.toContainerEnv()}
+                      cpu: ${environmentConfigs.resources.limits.cpu}
+                      memory: ${environmentConfigs.resources.limits.memory}
+                  env: ${dependencies.toContainerEnvs()}
                   envFrom: ${configurations.toContainerEnvFrom()}
                   volumeMounts: ${configurations.toContainerVolumeMounts()}
               volumes: ${configurations.toVolumes()}
@@ -319,15 +387,15 @@ spec:
           ports: ${workload.toServicePorts()}
 
     - id: httproute-external
-      forEach: '${workload.endpoints.transformList(name, ep, ("external" in ep.visibility && ep.type in ["HTTP", "REST", "GraphQL", "Websocket"]) ? [name] : []).flatten()}'
+      forEach: '${workload.endpoints.transformMap(name, ep, "external" in ep.visibility && ep.type in ["HTTP", "REST", "GraphQL", "Websocket"], ep)}'
       var: endpoint
       template:
         apiVersion: gateway.networking.k8s.io/v1
         kind: HTTPRoute
         metadata:
-          name: ${oc_generate_name(metadata.componentName, endpoint)}
+          name: ${oc_generate_name(metadata.componentName, endpoint.key)}
           namespace: ${metadata.namespace}
-          labels: '${oc_merge(metadata.labels, {"openchoreo.dev/endpoint-name": endpoint, "openchoreo.dev/endpoint-visibility": "external"})}'
+          labels: '${oc_merge(metadata.labels, {"openchoreo.dev/endpoint-name": endpoint.key, "openchoreo.dev/endpoint-visibility": "external"})}'
         spec:
           parentRefs:
             - name: ${gateway.ingress.external.name}
@@ -340,27 +408,27 @@ spec:
           - matches:
             - path:
                 type: PathPrefix
-                value: /${metadata.componentName}-${endpoint}
+                value: /${metadata.componentName}-${endpoint.key}
             filters:
               - type: URLRewrite
                 urlRewrite:
                   path:
                     type: ReplacePrefixMatch
-                    replacePrefixMatch: '${workload.endpoints[endpoint].?basePath.orValue("") != "" ? workload.endpoints[endpoint].?basePath.orValue("") : "/"}'
+                    replacePrefixMatch: '${endpoint.value.?basePath.orValue("/")}'
             backendRefs:
             - name: ${metadata.componentName}
-              port: ${workload.endpoints[endpoint].port}
+              port: ${endpoint.value.port}
 
     - id: httproute-internal
-      forEach: '${workload.endpoints.transformList(name, ep, ("internal" in ep.visibility && ep.type in ["HTTP", "REST", "GraphQL", "Websocket"]) ? [name] : []).flatten()}'
+      forEach: '${workload.endpoints.transformMap(name, ep, "internal" in ep.visibility && ep.type in ["HTTP", "REST", "GraphQL", "Websocket"], ep)}'
       var: endpoint
       template:
         apiVersion: gateway.networking.k8s.io/v1
         kind: HTTPRoute
         metadata:
-          name: '${oc_generate_name(metadata.componentName, endpoint, "internal")}'
+          name: '${oc_generate_name(metadata.componentName, endpoint.key, "internal")}'
           namespace: ${metadata.namespace}
-          labels: '${oc_merge(metadata.labels, {"openchoreo.dev/endpoint-name": endpoint, "openchoreo.dev/endpoint-visibility": "internal"})}'
+          labels: '${oc_merge(metadata.labels, {"openchoreo.dev/endpoint-name": endpoint.key, "openchoreo.dev/endpoint-visibility": "internal"})}'
         spec:
           parentRefs:
             - name: ${gateway.ingress.internal.name}
@@ -373,16 +441,16 @@ spec:
           - matches:
             - path:
                 type: PathPrefix
-                value: /${metadata.componentName}-${endpoint}
+                value: /${metadata.componentName}-${endpoint.key}
             filters:
               - type: URLRewrite
                 urlRewrite:
                   path:
                     type: ReplacePrefixMatch
-                    replacePrefixMatch: '${workload.endpoints[endpoint].?basePath.orValue("") != "" ? workload.endpoints[endpoint].?basePath.orValue("") : "/"}'
+                    replacePrefixMatch: '${endpoint.value.?basePath.orValue("/")}'
             backendRefs:
             - name: ${metadata.componentName}
-              port: ${workload.endpoints[endpoint].port}
+              port: ${endpoint.value.port}
 
     - id: env-config
       forEach: ${configurations.toConfigEnvsByContainer()}
@@ -431,7 +499,7 @@ spec:
               "secretKey": secret.name,
               "remoteRef": {
                 "key": secret.remoteRef.key,
-                "property": has(secret.remoteRef.property) ? secret.remoteRef.property : oc_omit()
+                ?"property": secret.remoteRef.?property
               }
             })}
 
@@ -456,12 +524,11 @@ spec:
             - secretKey: ${file.name}
               remoteRef:
                 key: ${file.remoteRef.key}
-                property: |
-                  ${has(file.remoteRef.property) ? file.remoteRef.property : oc_omit()}
+                ?property: ${file.remoteRef.?property}
 
 ---
 # --- Component: Using Traefik API configuration with the service ComponentType ---
-# The service ComponentType has no parameters (envOverrides only), so only
+# The service ComponentType has no parameters (environmentConfigs only), so only
 # the traits block is needed for Traefik-specific configuration.
 apiVersion: openchoreo.dev/v1alpha1
 kind: Component
@@ -524,9 +591,9 @@ spec:
 
 ---
 # --- ReleaseBinding: Development environment ---
-# Uses componentTypeEnvOverrides to configure replicas and resources (per the
-# service ComponentType's envOverrides schema). Overrides rate limit to 600
-# req/min for development via traitOverrides.
+# Uses componentTypeEnvironmentConfigs to configure replicas and resources (per the
+# service ComponentType's environmentConfigs schema). Overrides rate limit to 600
+# req/min for development via traitEnvironmentConfigs.
 apiVersion: openchoreo.dev/v1alpha1
 kind: ReleaseBinding
 metadata:
@@ -539,7 +606,7 @@ spec:
 
   environment: development
 
-  componentTypeEnvOverrides:
+  componentTypeEnvironmentConfigs:
     replicas: 1
     imagePullPolicy: IfNotPresent
     resources:
@@ -550,7 +617,7 @@ spec:
         cpu: "200m"
         memory: "256Mi"
 
-  traitOverrides:
+  traitEnvironmentConfigs:
     greeter-api:
       rateLimiting:
         average: 10
@@ -570,7 +637,7 @@ spec:
 
   environment: production
 
-  componentTypeEnvOverrides:
+  componentTypeEnvironmentConfigs:
     replicas: 3
     imagePullPolicy: IfNotPresent
     resources:
@@ -581,7 +648,7 @@ spec:
         cpu: "2000m"
         memory: "2Gi"
 
-  traitOverrides:
+  traitEnvironmentConfigs:
     greeter-api:
       rateLimiting:
         average: 100  # Default limit for production
@@ -600,7 +667,7 @@ spec:
 #      name: <release-name>-greeter-api-rate-limiting
 #    spec:
 #      rateLimit:
-#        average: 200        # From envOverrides (development)
+#        average: 200        # From environmentConfigs (development)
 #        burst: 200
 #        period: 1s
 #

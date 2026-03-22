@@ -10,4 +10,4 @@ Community modules are pluggable integrations that extend [OpenChoreo](https://op
 
 Browse the available modules in the [OpenChoreo Module Catalogue](https://openchoreo.dev/modules/) and follow the installation instructions for each module.
 
-For a deeper understanding of how modules work and how to add a new OpenChoreo module, see the [modules overview](https://openchoreo.dev/docs/operations/modules/overview/) documentation.
+For a deeper understanding of how modules work and how to add a new OpenChoreo module, see the [modules overview](https://openchoreo.dev/docs/platform-engineer-guide/modules/overview/) documentation.

@@ -11,7 +11,7 @@ This module collects logs using [Fluent Bit](https://fluentbit.io) and stores th
 ### Pre-requisites
 
 1. OpenSearch setup scripts in this helm chart need admin credentials to connect to OpenSearch and configure it. OpenChoreo uses the External Secrets Operator to manage secrets. Add your OpenSearch credentials (username and password) to a secret store and use an `ExternalSecret` resource to generate a Kubernetes secret from it.
-Refer to the [secret management guide](https://openchoreo.dev/docs/operations/secret-management/) for more details.
+Refer to the [secret management guide](https://openchoreo.dev/docs/platform-engineer-guide/secret-management/) for more details.
 
 For example, the command below pulls values from the `ClusterSecretStore` created earlier in the [OpenChoreo installation guide](https://openchoreo.dev/docs).
 

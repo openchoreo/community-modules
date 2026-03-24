@@ -188,6 +188,7 @@ helm repo update
 helm install kong kong/ingress \
   --namespace openchoreo-data-plane \
   --set gateway.enabled=true \
+  --set gateway.podLabels.openchoreo\.dev/system-component=gateway \
   --set ingressController.enabled=true \
   --set ingressController.installCRDs=true \
   --set ingressController.gatewayAPI.enabled=true \
@@ -296,7 +297,18 @@ EOF
 > kubectl delete clusterrolebinding kong-gateway-module
 > ```
 
-### Step 7: Deploy and Invoke the Greeter Service
+### Step 7: Allow the Kong Trait on ComponentTypes
+
+To use the `kong-api-management` trait with a ComponentType, add it to the ComponentType's `allowedTraits`. For example, to allow it on the built-in `service` ComponentType:
+
+```bash
+kubectl patch clustercomponenttype service --type=json \
+  -p '[{"op":"add","path":"/spec/allowedTraits/-","value":{"kind":"ClusterTrait","name":"kong-api-management"}}]'
+```
+
+Repeat for any other ComponentTypes that should support Kong API management plugins.
+
+### Step 8: Deploy and Invoke the Greeter Service
 
 Deploy the sample greeter service to verify end-to-end traffic flow through Kong, including the `kong-api-management` trait for API management plugins.
 
@@ -531,13 +543,13 @@ kubectl patch clusterdataplane default --type merge -p '{
 }'
 ```
 
-| Field                  | Description                                                                                             |
-| ---------------------- | ------------------------------------------------------------------------------------------------------- |
-| `name`                 | Name of the Gateway CR. Must match the Gateway resource created in the data plane                       |
-| `namespace`            | Namespace where the Gateway CR is deployed                                                              |
-| `http.host`            | Hostname used for routing. For ClusterIP gateways, use `<service-name>.<namespace>` (in-cluster DNS)    |
-| `http.listenerName`    | Named listener on the Gateway CR (e.g., `http`)                                                         |
-| `http.port`            | Port the gateway service listens on                                                                     |
+| Field               | Description                                                                                          |
+| ------------------- | ---------------------------------------------------------------------------------------------------- |
+| `name`              | Name of the Gateway CR. Must match the Gateway resource created in the data plane                    |
+| `namespace`         | Namespace where the Gateway CR is deployed                                                           |
+| `http.host`         | Hostname used for routing. For ClusterIP gateways, use `<service-name>.<namespace>` (in-cluster DNS) |
+| `http.listenerName` | Named listener on the Gateway CR (e.g., `http`)                                                      |
+| `http.port`         | Port the gateway service listens on                                                                  |
 
 > **Note:** For internal (ClusterIP) gateways, set `http.host` to the in-cluster DNS name of the gateway service (e.g., `gateway-internal.openchoreo-data-plane`). For LoadBalancer gateways, use the external hostname or IP assigned by the cloud provider.
 
@@ -861,3 +873,105 @@ For production deployments requiring advanced API management:
 - **Vitals / Analytics**: Requires Kong Enterprise license
 
 See the [Kong Enterprise documentation](https://docs.konghq.com/gateway/latest/) for license setup.
+
+### Connecting to Kong Konnect
+
+[Kong Konnect](https://cloud.konghq.com) is Kong's SaaS control plane that provides centralized visibility, analytics, and management for Kong Gateway instances. Connecting KIC to Konnect gives you a web UI to view routes, services, plugins, and monitor traffic — while Kubernetes resources remain the source of truth for configuration.
+
+> **Note:** The Konnect dashboard is read-only for KIC-managed gateways. All configuration changes must be made via kubectl or Helm.
+
+#### 1. Create a Konnect Control Plane
+
+Log in to [Kong Konnect](https://cloud.konghq.com) and create a KIC control plane via the API:
+
+```bash
+export KONNECT_TOKEN="<your-konnect-personal-access-token>"
+
+CONTROL_PLANE_DETAILS=$(curl -X POST "https://us.api.konghq.com/v2/control-planes" \
+  --no-progress-meter --fail-with-body \
+  -H "Authorization: Bearer $KONNECT_TOKEN" \
+  --json '{
+    "name": "openchoreo-data-plane",
+    "cluster_type": "CLUSTER_TYPE_K8S_INGRESS_CONTROLLER"
+  }')
+
+CONTROL_PLANE_ID=$(echo $CONTROL_PLANE_DETAILS | jq -r .id)
+CONTROL_PLANE_TELEMETRY=$(echo $CONTROL_PLANE_DETAILS | jq -r '.config.telemetry_endpoint | sub("https://";"")')
+
+echo "Control Plane ID: $CONTROL_PLANE_ID"
+echo "Telemetry Endpoint: $CONTROL_PLANE_TELEMETRY"
+```
+
+#### 2. Generate and Upload TLS Certificates
+
+KIC authenticates to Konnect using mTLS. Generate a certificate and upload it:
+
+```bash
+openssl req -new -x509 -nodes -newkey rsa:2048 \
+  -subj "/CN=kongdp/C=US" -keyout ./tls.key -out ./tls.crt
+
+# Upload the certificate to Konnect
+CERT=$(awk 'NF {sub(/\r/, ""); printf "%s\\n",$0;}' tls.crt)
+curl -X POST "https://us.api.konghq.com/v2/control-planes/$CONTROL_PLANE_ID/dp-client-certificates" \
+  -H "Authorization: Bearer $KONNECT_TOKEN" \
+  --json '{"cert": "'"$CERT"'"}'
+```
+
+#### 3. Create Kubernetes Secret
+
+Store the TLS certificate in the data plane namespace:
+
+```bash
+kubectl create secret tls konnect-client-tls \
+  -n openchoreo-data-plane \
+  --cert=./tls.crt --key=./tls.key
+```
+
+#### 4. Upgrade Kong with Konnect Configuration
+
+Upgrade the Kong Helm release with Konnect connectivity settings:
+
+```bash
+helm upgrade kong kong/ingress \
+  --namespace openchoreo-data-plane \
+  --reuse-values \
+  --set controller.ingressController.image.tag=3.5 \
+  --set controller.ingressController.env.feature_gates="FillIDs=true" \
+  --set controller.ingressController.konnect.license.enabled=true \
+  --set controller.ingressController.konnect.enabled=true \
+  --set controller.ingressController.konnect.controlPlaneID="$CONTROL_PLANE_ID" \
+  --set controller.ingressController.konnect.tlsClientCertSecretName=konnect-client-tls \
+  --set controller.ingressController.konnect.apiHostname="us.kic.api.konghq.com" \
+  --set gateway.image.repository=kong/kong-gateway \
+  --set gateway.image.tag="3.13" \
+  --set gateway.env.konnect_mode="on" \
+  --set gateway.env.vitals="off" \
+  --set gateway.env.cluster_mtls=pki \
+  --set gateway.env.cluster_telemetry_endpoint="$CONTROL_PLANE_TELEMETRY:443" \
+  --set gateway.env.cluster_telemetry_server_name="$CONTROL_PLANE_TELEMETRY" \
+  --set gateway.env.cluster_cert="/etc/secrets/konnect-client-tls/tls.crt" \
+  --set gateway.env.cluster_cert_key="/etc/secrets/konnect-client-tls/tls.key" \
+  --set gateway.env.lua_ssl_trusted_certificate=system \
+  --set 'gateway.secretVolumes[0]=konnect-client-tls'
+```
+
+> **Note:** For EU region, use `eu.kic.api.konghq.com` for `apiHostname` and the EU API endpoint (`eu.api.konghq.com`) for control plane creation.
+
+#### 5. Verify Konnect Connection
+
+Check that KIC has synced to Konnect:
+
+```bash
+kubectl logs -n openchoreo-data-plane -l app.kubernetes.io/name=controller --tail=20 | grep konnect
+```
+
+Look for `Successfully synced configuration to Konnect` in the logs.
+
+You can also list routes via the Konnect API:
+
+```bash
+curl -s -H "Authorization: Bearer $KONNECT_TOKEN" \
+  "https://us.api.konghq.com/v2/control-planes/$CONTROL_PLANE_ID/core-entities/routes" | jq
+```
+
+Or view them in the Konnect UI: **Gateway Manager → your control plane → Routes**.

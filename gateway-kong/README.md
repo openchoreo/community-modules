@@ -299,14 +299,14 @@ EOF
 
 ### Step 7: Allow the Kong Trait on ComponentTypes
 
-To use the `kong-api-management` trait with a ComponentType, add it to the ComponentType's `allowedTraits`. For example, to allow it on the built-in `service` ComponentType:
+To use the `kong-api-management` trait with a ComponentType or ClusterComponentType, add it to the resource's `allowedTraits`. For example, to allow it on the built-in `service` ClusterComponentType:
 
 ```bash
 kubectl patch clustercomponenttype service --type=json \
   -p '[{"op":"add","path":"/spec/allowedTraits/-","value":{"kind":"ClusterTrait","name":"kong-api-management"}}]'
 ```
 
-Repeat for any other ComponentTypes that should support Kong API management plugins.
+Repeat for any other ComponentTypes or ClusterComponentTypes that should support Kong API management plugins.
 
 ### Step 8: Deploy and Invoke the Greeter Service
 

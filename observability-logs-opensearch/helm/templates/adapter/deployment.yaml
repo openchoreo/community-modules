@@ -1,0 +1,61 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+{{- if .Values.adapter.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: logs-adapter-opensearch
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: logs-adapter-opensearch
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: logs-adapter-opensearch
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/adapter/configmap.yaml") . | sha256sum }}
+      labels:
+        app: logs-adapter-opensearch
+    spec:
+      securityContext:
+        runAsUser: 10500
+        runAsGroup: 10500
+        runAsNonRoot: true
+      containers:
+      - name: logs-adapter-opensearch
+        image: "{{ .Values.adapter.image.repository }}:{{ .Values.adapter.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.adapter.image.pullPolicy | default "IfNotPresent" }}
+        ports:
+        - containerPort: 9098
+        envFrom:
+        - configMapRef:
+            name: logs-adapter-opensearch
+        env:
+        - name: OPENSEARCH_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.adapter.openSearchSecretName }}
+              key: username
+        - name: OPENSEARCH_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.adapter.openSearchSecretName }}
+              key: password
+        resources:
+          limits:
+            cpu: {{ .Values.adapter.resources.limits.cpu }}
+            memory: {{ .Values.adapter.resources.limits.memory }}
+          requests:
+            cpu: {{ .Values.adapter.resources.requests.cpu }}
+            memory: {{ .Values.adapter.resources.requests.memory }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+{{- end }}

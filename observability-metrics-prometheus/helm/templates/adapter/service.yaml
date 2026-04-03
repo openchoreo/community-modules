@@ -1,6 +1,7 @@
 # Copyright 2026 The OpenChoreo Authors
 # SPDX-License-Identifier: Apache-2.0
 
+{{- if ne .Values.global.installationMode "multiClusterExporter" }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -17,3 +18,4 @@ spec:
     name: http
   selector:
     app: metrics-adapter-prometheus
+{{- end }}

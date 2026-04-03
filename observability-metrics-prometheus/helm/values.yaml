@@ -1,6 +1,9 @@
 # Copyright 2026 The OpenChoreo Authors
 # SPDX-License-Identifier: Apache-2.0
 
+global:
+  installationMode: "singleCluster" # supports "singleCluster", "multiClusterExporter", "multiClusterReceiver"
+
 kube-prometheus-stack:
   enabled: true
 
@@ -159,3 +162,12 @@ adapter:
     requests:
       cpu: 20m
       memory: 64Mi
+
+## -----------------------------------------------------------
+## Prometheus customizations
+## -----------------------------------------------------------
+
+prometheusCustomizations:
+  http:
+    observabilityPlaneUrl: ""         # multiClusterExporter: remote write receiver URL (e.g., http://prometheus.<gateway-domain>:9091/api/v1/write)
+    hostnames: []                     # multiClusterReceiver: hostnames for the gateway HTTPRoute

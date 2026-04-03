@@ -1,0 +1,33 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+{{- if eq .Values.global.installationMode "multiClusterExporter" }}
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: PrometheusAgent
+metadata:
+  name: openchoreo-prometheus-agent
+  namespace: {{ .Release.Namespace }}
+spec:
+  serviceAccountName: openchoreo-prometheus-agent
+  serviceMonitorNamespaceSelector: {}
+  serviceMonitorSelector: {}
+  podMonitorSelector: {}
+  podMonitorNamespaceSelector: {}
+  remoteWrite:
+    - url: {{ .Values.prometheusCustomizations.http.observabilityPlaneUrl | quote }}
+      queueConfig:
+        capacity: 2500
+        maxShards: 200
+        minShards: 1
+        maxSamplesPerSend: 500
+        batchSendDeadline: 5s
+        minBackoff: 30ms
+        maxBackoff: 100ms
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+{{- end }}

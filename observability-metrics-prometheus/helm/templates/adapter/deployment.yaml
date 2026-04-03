@@ -1,6 +1,7 @@
 # Copyright 2026 The OpenChoreo Authors
 # SPDX-License-Identifier: Apache-2.0
 
+{{- if ne .Values.global.installationMode "multiClusterExporter" }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -58,3 +59,4 @@ spec:
           requests:
             cpu: {{ .Values.adapter.resources.requests.cpu }}
             memory: {{ .Values.adapter.resources.requests.memory }}
+{{- end }}

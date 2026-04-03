@@ -530,6 +530,15 @@ func (response UpdateAlertRule400JSONResponse) VisitUpdateAlertRuleResponse(w ht
 	return json.NewEncoder(w).Encode(response)
 }
 
+type UpdateAlertRule404JSONResponse ErrorResponse
+
+func (response UpdateAlertRule404JSONResponse) VisitUpdateAlertRuleResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type UpdateAlertRule500JSONResponse ErrorResponse
 
 func (response UpdateAlertRule500JSONResponse) VisitUpdateAlertRuleResponse(w http.ResponseWriter) error {

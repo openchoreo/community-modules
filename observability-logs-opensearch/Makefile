@@ -16,4 +16,4 @@ MODULE_NAME := $(notdir $(CURDIR))
 
 unit-test:
 	go test -coverprofile=coverage.out ./...
-	mv coverage.out ../$(MODULE_NAME)-coverage.out
+	if [ -f coverage.out ]; then mv coverage.out ../$(MODULE_NAME)-coverage.out; fi

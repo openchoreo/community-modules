@@ -187,7 +187,7 @@ func (c *Client) CreateMonitor(ctx context.Context, monitor map[string]interface
 	c.logger.Debug("Creating monitor", "body", string(body))
 
 	path := "/_plugins/_alerting/monitors"
-	req, err := http.NewRequest("POST", path, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, "POST", path, bytes.NewReader(body))
 	if err != nil {
 		return "", 0, fmt.Errorf("failed to create request: %w", err)
 	}

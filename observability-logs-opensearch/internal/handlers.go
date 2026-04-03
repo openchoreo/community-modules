@@ -171,7 +171,16 @@ func (h *LogsHandler) queryComponentLogs(ctx context.Context, req *gen.LogsQuery
 		TookMs: &took,
 	}
 	logs := gen.LogsQueryResponse_Logs{}
-	_ = logs.FromLogsQueryResponseLogs0(entries)
+	if err := logs.FromLogsQueryResponseLogs0(entries); err != nil {
+		h.logger.Error("Failed to serialize component log entries",
+			slog.String("function", "QueryLogs"),
+			slog.Any("error", err),
+		)
+		return gen.QueryLogs500JSONResponse{
+			Title:   ptr(gen.InternalServerError),
+			Message: ptr("internal server error"),
+		}, nil
+	}
 	resp.Logs = &logs
 
 	return gen.QueryLogs200JSONResponse(resp), nil
@@ -268,7 +277,16 @@ func (h *LogsHandler) queryWorkflowLogs(ctx context.Context, req *gen.LogsQueryR
 		TookMs: &took,
 	}
 	logs := gen.LogsQueryResponse_Logs{}
-	_ = logs.FromLogsQueryResponseLogs1(entries)
+	if err := logs.FromLogsQueryResponseLogs1(entries); err != nil {
+		h.logger.Error("Failed to serialize workflow log entries",
+			slog.String("function", "QueryLogs"),
+			slog.Any("error", err),
+		)
+		return gen.QueryLogs500JSONResponse{
+			Title:   ptr(gen.InternalServerError),
+			Message: ptr("internal server error"),
+		}, nil
+	}
 	resp.Logs = &logs
 
 	return gen.QueryLogs200JSONResponse(resp), nil
@@ -335,8 +353,8 @@ func (h *LogsHandler) DeleteAlertRule(ctx context.Context, request gen.DeleteAle
 		}, nil
 	}
 	if !found {
-		return gen.DeleteAlertRule500JSONResponse{
-			Title:   ptr(gen.InternalServerError),
+		return gen.DeleteAlertRule404JSONResponse{
+			Title:   ptr(gen.NotFound),
 			Message: ptr("alert rule not found"),
 		}, nil
 	}
@@ -435,8 +453,8 @@ func (h *LogsHandler) UpdateAlertRule(ctx context.Context, request gen.UpdateAle
 		}, nil
 	}
 	if !found {
-		return gen.UpdateAlertRule400JSONResponse{
-			Title:   ptr(gen.BadRequest),
+		return gen.UpdateAlertRule404JSONResponse{
+			Title:   ptr(gen.NotFound),
 			Message: ptr("alert rule not found"),
 		}, nil
 	}

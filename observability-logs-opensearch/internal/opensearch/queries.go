@@ -362,10 +362,18 @@ func (qb *QueryBuilder) BuildLogAlertingRuleMonitorBody(params AlertingRuleReque
 	if err != nil {
 		return nil, fmt.Errorf("invalid interval format: %w", err)
 	}
+	if intervalDuration <= 0 || intervalDuration%time.Minute != 0 {
+		return nil, fmt.Errorf("invalid interval: must be a positive whole number of minutes, got %q", params.Condition.Interval)
+	}
 
 	query, err := qb.BuildLogAlertingRuleQuery(params)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build log alerting rule query: %w", err)
+	}
+
+	operatorSymbol, err := GetOperatorSymbol(params.Condition.Operator)
+	if err != nil {
+		return nil, fmt.Errorf("invalid condition operator: %w", err)
 	}
 
 	monitorBody := MonitorBody{
@@ -375,7 +383,7 @@ func (qb *QueryBuilder) BuildLogAlertingRuleMonitorBody(params AlertingRuleReque
 		Enabled:     params.Condition.Enabled,
 		Schedule: MonitorSchedule{
 			Period: MonitorSchedulePeriod{
-				Interval: intervalDuration.Minutes(),
+				Interval: int(intervalDuration.Minutes()),
 				Unit:     "MINUTES",
 			},
 		},
@@ -394,7 +402,7 @@ func (qb *QueryBuilder) BuildLogAlertingRuleMonitorBody(params AlertingRuleReque
 					Severity: "1",
 					Condition: MonitorTriggerCondition{
 						Script: MonitorTriggerConditionScript{
-							Source: fmt.Sprintf("ctx.results[0].hits.total.value %s %s", GetOperatorSymbol(params.Condition.Operator), strconv.FormatFloat(params.Condition.Threshold, 'f', -1, 64)),
+							Source: fmt.Sprintf("ctx.results[0].hits.total.value %s %s", operatorSymbol, strconv.FormatFloat(params.Condition.Threshold, 'f', -1, 64)),
 							Lang:   "painless",
 						},
 					},
@@ -443,18 +451,18 @@ func (qb *QueryBuilder) BuildLogAlertingRuleMonitorBody(params AlertingRuleReque
 }
 
 // GetOperatorSymbol converts an operator string to its symbol.
-func GetOperatorSymbol(operator string) string {
+func GetOperatorSymbol(operator string) (string, error) {
 	switch operator {
 	case "gt":
-		return ">"
+		return ">", nil
 	case "gte":
-		return ">="
+		return ">=", nil
 	case "lt":
-		return "<"
+		return "<", nil
 	case "lte":
-		return "<="
+		return "<=", nil
 	}
-	return ""
+	return "", fmt.Errorf("unknown operator: %q", operator)
 }
 
 // ReverseMapOperator converts an operator symbol back to its string name.

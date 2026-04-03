@@ -70,18 +70,22 @@ func main() {
 	logsHandler := app.NewLogsHandler(osClient, queryBuilder, observerClient, logger)
 	srv := app.NewServer(cfg.ServerPort, logsHandler, logger)
 
+	errCh := make(chan error, 1)
 	go func() {
 		if err := srv.Start(); err != nil {
-			logger.Error("Server error", slog.Any("error", err))
-			os.Exit(1)
+			errCh <- err
 		}
 	}()
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
 
-	logger.Info("Shutting down gracefully")
+	select {
+	case err := <-errCh:
+		logger.Error("Server error", slog.Any("error", err))
+	case <-quit:
+		logger.Info("Shutting down gracefully")
+	}
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()

@@ -142,7 +142,7 @@ type MonitorSchedule struct {
 
 // MonitorSchedulePeriod defines the time period for schedule.
 type MonitorSchedulePeriod struct {
-	Interval float64 `json:"interval"`
+	Interval int `json:"interval"`
 	Unit     string  `json:"unit"`
 }
 

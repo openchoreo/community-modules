@@ -1,0 +1,21 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+{{- if .Values.adapter.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: logs-adapter
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: logs-adapter-opensearch
+spec:
+  type: ClusterIP
+  ports:
+  - port: 9098
+    targetPort: 9098
+    protocol: TCP
+    name: http
+  selector:
+    app: logs-adapter-opensearch
+{{- end }}

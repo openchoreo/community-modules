@@ -1,0 +1,17 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+{{- if .Values.adapter.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: logs-adapter-opensearch
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: logs-adapter-opensearch
+data:
+  SERVER_PORT: "9098"
+  OPENSEARCH_ADDRESS: "https://opensearch:9200"
+  OPENSEARCH_INDEX_PREFIX: "container-logs-"
+  OBSERVER_URL: {{ .Values.adapter.observerUrl | quote }}
+{{- end }}

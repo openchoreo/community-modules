@@ -169,6 +169,21 @@ openSearchCluster:
       - "admin"
       description: "Admin user"
 
+adapter:
+  enabled: true
+  observerUrl: "http://observer-internal.openchoreo-observability-plane:8081"
+  openSearchSecretName: ""
+  image:
+    repository: "ghcr.io/openchoreo/observability-logs-opensearch-adapter"
+    tag: ""
+  resources:
+    limits:
+      cpu: 100m
+      memory: 100Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
 openSearchSetup:
   enabled: true
   image:

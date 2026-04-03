@@ -6,6 +6,9 @@
 # corresponding field in helm/values.yaml to update with the published image URI.
 
 images:
+  - name: observability-logs-opensearch-adapter
+    context: .
+    dockerfile: Dockerfile
   - name: observability-logs-opensearch-setup
     context: init
     dockerfile: init/Dockerfile

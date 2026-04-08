@@ -1,0 +1,26 @@
+# HTTPRoute to expose the Agent Manager Console via the OpenChoreo Gateway.
+#
+# BEFORE APPLYING: set AMP_CONSOLE_HOSTNAME to the hostname configured in DNS,
+# e.g. amp.<base-domain>
+#
+#   AMP_CONSOLE_HOSTNAME=amp.example.com
+#   envsubst < resources/httproute-amp-console.yaml | kubectl apply -f -
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: amp-console
+  namespace: wso2-amp
+spec:
+  parentRefs:
+    - name: gateway-default
+      namespace: openchoreo-control-plane
+  hostnames:
+    - "${AMP_CONSOLE_HOSTNAME}"
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: amp-console
+          port: 3000

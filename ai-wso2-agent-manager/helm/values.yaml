@@ -1,0 +1,7 @@
+# Authorization configuration for OpenChoreo.
+# Grants the Agent Manager API client the admin role so it can call OpenChoreo APIs.
+authz:
+  ampApiClient:
+    # Required: set to the Client ID of the Agent Manager API Client registered in your IdP.
+    clientId: ""
+    role: admin

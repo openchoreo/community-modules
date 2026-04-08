@@ -1,0 +1,10 @@
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: APIGateway
+metadata:
+  name: obs-gateway
+  namespace: openchoreo-data-plane
+spec:
+  apiSelector:
+    scope: Cluster
+  configRef:
+    name: obs-gateway-config

@@ -1,0 +1,9 @@
+apiVersion: v2
+name: amp-platform-resources
+description: >
+  Minimal platform resources for WSO2 Agent Manager on an existing OpenChoreo installation.
+  Installs component types, traits, workflows, and the ClusterAuthzRoleBinding needed
+  for the Agent Manager API client to access OpenChoreo APIs.
+type: application
+version: 0.1.0
+appVersion: "0.10.3"

@@ -1,0 +1,295 @@
+apiVersion: openchoreo.dev/v1alpha1
+kind: ClusterComponentType
+metadata:
+  name: agent-api
+  annotations:
+    openchoreo.dev/display-name: Platform Hosted Agent API
+    openchoreo.dev/description: Component type for deploying agent APIs in the AI Agent Management Platform.
+spec:
+  workloadType: deployment
+
+  allowedWorkflows:
+    - kind: ClusterWorkflow
+      name: amp-docker
+    - kind: ClusterWorkflow
+      name: amp-ballerina-buildpack
+    - kind: ClusterWorkflow
+      name: amp-google-cloud-buildpacks
+
+  allowedTraits:
+    - kind: ClusterTrait
+      name: python-otel-instrumentation-trait
+    - kind: ClusterTrait
+      name: instrumentation-trait-env-injection
+    - kind: ClusterTrait
+      name: api-configuration
+  traits:
+    - name: horizontal-pod-autoscaler
+      kind: ClusterTrait
+      instanceName: ${meta.componentName}-hpa
+      environmentConfigs:
+        enabled: ${environmentConfigs.autoscaling.enabled}
+        minReplicas: ${environmentConfigs.autoscaling.minReplicas}
+        maxReplicas: ${environmentConfigs.autoscaling.maxReplicas}
+        targetCPUUtilizationPercentage: ${environmentConfigs.autoscaling.cpuUtilizationPercentage}
+
+  validations:
+    - rule: "${size(workload.endpoints) > 0}"
+      message: "Agent API components must have at least one endpoint."
+
+  environmentConfigs:
+    openAPIV3Schema:
+      type: object
+      $defs:
+        ResourceQuantity:
+          type: object
+          default: {}
+          properties:
+            cpu:
+              type: string
+              default: "100m"
+            memory:
+              type: string
+              default: "256Mi"
+        ResourceRequirements:
+          type: object
+          properties:
+            requests:
+              $ref: "#/$defs/ResourceQuantity"
+            limits:
+              $ref: "#/$defs/ResourceQuantity"
+          default: {}
+        CORSConfig:
+          type: object
+          default: {}
+          properties:
+            allowOrigin:
+              type: array
+              items:
+                type: string
+              default:
+                - "http://localhost:3000"
+            allowMethods:
+              type: array
+              items:
+                type: string
+              default:
+                - "GET"
+                - "POST"
+                - "PUT"
+                - "DELETE"
+                - "PATCH"
+                - "OPTIONS"
+            allowHeaders:
+              type: array
+              items:
+                type: string
+              default:
+                - "authorization"
+                - "Content-Type"
+                - "Origin"
+        AutoscalingConfig:
+          type: object
+          default: {}
+          properties:
+            enabled:
+              type: boolean
+              default: false
+            cpuUtilizationPercentage:
+              type: integer
+              default: 80
+              minimum: 1
+              maximum: 100
+            minReplicas:
+              type: integer
+              default: 2
+              minimum: 1
+            maxReplicas:
+              type: integer
+              default: 5
+              minimum: 1
+      properties:
+        replicas:
+          type: integer
+          default: 1
+          minimum: 0
+        resources:
+          $ref: "#/$defs/ResourceRequirements"
+        imagePullPolicy:
+          type: string
+          default: IfNotPresent
+          enum:
+            - Always
+            - IfNotPresent
+            - Never
+        cors:
+          $ref: "#/$defs/CORSConfig"
+        restartedAt:
+          type: string
+          default: ""
+        autoscaling:
+          $ref: "#/$defs/AutoscalingConfig"
+
+  resources:
+    - id: deployment
+      template:
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: ${metadata.name}
+          namespace: ${metadata.namespace}
+          labels: ${metadata.labels}
+        spec:
+          replicas: ${environmentConfigs.replicas}
+          selector:
+            matchLabels: ${metadata.podSelectors}
+          template:
+            metadata:
+              labels: ${metadata.podSelectors}
+              annotations:
+                openchoreo.dev/restarted-at: ${environmentConfigs.restartedAt}
+            spec:
+              containers:
+                - name: main
+                  image: ${workload.container.image}
+                  imagePullPolicy: ${environmentConfigs.imagePullPolicy}
+                  command: |
+                    ${has(workload.container.command) ? workload.container.command : oc_omit()}
+                  args: |
+                    ${has(workload.container.args) ? workload.container.args : oc_omit()}
+                  resources:
+                    requests:
+                      cpu: ${environmentConfigs.resources.requests.cpu}
+                      memory: ${environmentConfigs.resources.requests.memory}
+                    limits:
+                      cpu: ${environmentConfigs.resources.limits.cpu}
+                      memory: ${environmentConfigs.resources.limits.memory}
+                  env: ${dependencies.toContainerEnvs()}
+                  envFrom: ${configurations.toContainerEnvFrom()}
+                  volumeMounts: ${configurations.toContainerVolumeMounts()}
+              volumes: ${configurations.toVolumes()}
+
+    - id: service
+      includeWhen: ${size(workload.endpoints) > 0}
+      template:
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: ${metadata.componentName}
+          namespace: ${metadata.namespace}
+          labels: ${metadata.labels}
+        spec:
+          type: ClusterIP
+          selector: ${metadata.podSelectors}
+          ports: ${workload.toServicePorts()}
+
+    - id: httproute-external
+      forEach: '${workload.endpoints.transformMap(name, ep, "external" in ep.visibility && ep.type in ["HTTP", "REST", "GraphQL", "Websocket"], ep)}'
+      var: endpoint
+      template:
+        apiVersion: gateway.networking.k8s.io/v1
+        kind: HTTPRoute
+        metadata:
+          name: ${oc_generate_name(metadata.componentName, endpoint.key)}
+          namespace: ${metadata.namespace}
+          labels: '${oc_merge(metadata.labels, {"openchoreo.dev/endpoint-name": endpoint.key, "openchoreo.dev/endpoint-visibility": "external"})}'
+        spec:
+          parentRefs:
+            - name: ${gateway.ingress.external.name}
+              namespace: ${gateway.ingress.external.namespace}
+          hostnames: |
+            ${[gateway.ingress.external.?http, gateway.ingress.external.?https]
+              .filter(g, g.hasValue()).map(g, g.value().host).distinct()
+              .map(h, metadata.environmentName + "-" + metadata.componentNamespace + "." + h)}
+          rules:
+          - matches:
+            - path:
+                type: PathPrefix
+                value: /${metadata.componentName}-${endpoint.key}
+            filters:
+              - type: URLRewrite
+                urlRewrite:
+                  path:
+                    type: ReplacePrefixMatch
+                    replacePrefixMatch: '${endpoint.value.?basePath.orValue("/")}'
+              - type: CORS
+                cors:
+                  allowOrigins: ${environmentConfigs.cors.allowOrigin}
+                  allowMethods: ${environmentConfigs.cors.allowMethods}
+                  allowHeaders: ${environmentConfigs.cors.allowHeaders}
+            backendRefs:
+            - name: ${metadata.componentName}
+              port: ${endpoint.value.port}
+            timeouts:
+              request: 30s
+
+    - id: httproute-internal
+      forEach: '${workload.endpoints.transformMap(name, ep, "internal" in ep.visibility && ep.type in ["HTTP", "REST", "GraphQL", "Websocket"], ep)}'
+      var: endpoint
+      template:
+        apiVersion: gateway.networking.k8s.io/v1
+        kind: HTTPRoute
+        metadata:
+          name: '${oc_generate_name(metadata.componentName, endpoint.key, "internal")}'
+          namespace: ${metadata.namespace}
+          labels: '${oc_merge(metadata.labels, {"openchoreo.dev/endpoint-name": endpoint.key, "openchoreo.dev/endpoint-visibility": "internal"})}'
+        spec:
+          parentRefs:
+            - name: ${gateway.ingress.internal.name}
+              namespace: ${gateway.ingress.internal.namespace}
+          hostnames: |
+            ${[gateway.ingress.internal.?http, gateway.ingress.internal.?https]
+              .filter(g, g.hasValue()).map(g, g.value().host).distinct()
+              .map(h, metadata.environmentName + "-" + metadata.componentNamespace + "." + h)}
+          rules:
+          - matches:
+            - path:
+                type: PathPrefix
+                value: /${metadata.componentName}-${endpoint.key}
+            filters:
+              - type: URLRewrite
+                urlRewrite:
+                  path:
+                    type: ReplacePrefixMatch
+                    replacePrefixMatch: '${endpoint.value.?basePath.orValue("/")}'
+            backendRefs:
+            - name: ${metadata.componentName}
+              port: ${endpoint.value.port}
+
+    - id: env-config
+      forEach: ${configurations.toConfigEnvsByContainer()}
+      var: envConfig
+      template:
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: ${envConfig.resourceName}
+          namespace: ${metadata.namespace}
+        data: |
+          ${envConfig.envs.transformMapEntry(index, env, {env.name: env.value})}
+
+    - id: secret-env-external
+      forEach: ${configurations.toSecretEnvsByContainer()}
+      var: secretEnv
+      template:
+        apiVersion: external-secrets.io/v1
+        kind: ExternalSecret
+        metadata:
+          name: ${secretEnv.resourceName}
+          namespace: ${metadata.namespace}
+        spec:
+          refreshInterval: 15s
+          secretStoreRef:
+            name: ${dataplane.secretStore}
+            kind: ClusterSecretStore
+          target:
+            name: ${secretEnv.resourceName}
+            creationPolicy: Owner
+          data: |
+            ${secretEnv.envs.map(secret, {
+              "secretKey": secret.name,
+              "remoteRef": {
+                "key": secret.remoteRef.key,
+                "property": has(secret.remoteRef.property) ? secret.remoteRef.property : oc_omit()
+              }
+            })}

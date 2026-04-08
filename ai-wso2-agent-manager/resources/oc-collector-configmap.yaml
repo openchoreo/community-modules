@@ -1,0 +1,77 @@
+# OpenTelemetry Collector ConfigMap for the OpenChoreo observability plane.
+# Apply this to openchoreo-observability-plane BEFORE (re)installing the
+# observability plane Helm release.
+#
+# BEFORE APPLYING: replace all <PLACEHOLDER> values.
+#
+# Required substitutions:
+#   <OPENSEARCH_USERNAME>   — OpenSearch admin username (or use ExternalSecret)
+#   <OPENSEARCH_PASSWORD>   — OpenSearch admin password (or use ExternalSecret)
+#
+# If you are managing credentials via ExternalSecrets, remove the basicauth
+# extension block and configure the opensearch exporter to reference the
+# secret directly.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: oc-collector-config
+  namespace: openchoreo-observability-plane
+data:
+  collector.yaml: |
+    extensions:
+      basicauth/opensearch:
+        client_auth:
+          username: "${OPENSEARCH_USERNAME}"
+          password: "${OPENSEARCH_PASSWORD}"
+      health_check:
+        endpoint: 0.0.0.0:13133
+
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+    processors:
+      resource:
+        attributes:
+          - key: component-uid
+            action: upsert
+            from_attribute: component_uid
+          - key: environment-uid
+            action: upsert
+            from_attribute: environment_uid
+          - key: project-uid
+            action: upsert
+            from_attribute: project_uid
+      k8sattributes:
+        extract:
+          metadata:
+            - k8s.pod.name
+            - k8s.deployment.name
+            - k8s.namespace.name
+            - k8s.node.name
+
+    exporters:
+      opensearch/traces:
+        http:
+          endpoint: https://opensearch.openchoreo-observability-plane.svc.cluster.local:9200
+          auth:
+            authenticator: basicauth/opensearch
+          tls:
+            # Set to false and configure a valid CA in production.
+            insecure_skip_verify: true
+        dataset: traces
+        sending_queue:
+          num_consumers: 5
+          queue_size: 1000
+
+    service:
+      extensions: [basicauth/opensearch, health_check]
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [resource, k8sattributes]
+          exporters: [opensearch/traces]

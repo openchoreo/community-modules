@@ -1,0 +1,17 @@
+apiVersion: openchoreo.dev/v1alpha1
+kind: ClusterComponentType
+metadata:
+  name: external-agent-api
+  annotations:
+    openchoreo.dev/display-name: Externally Deployed Agent API
+    openchoreo.dev/description: Component type for representing externally deployed agent APIs in the AI Agent Management Platform.
+spec:
+  workloadType: proxy
+  resources:
+    - id: proxy
+      template:
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: ${metadata.name}
+          namespace: ${metadata.namespace}

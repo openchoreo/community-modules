@@ -1,0 +1,6 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+# Module manifest used by the CI workflow.
+# This module has no Docker images to build — only a Helm chart to release.
+images: []

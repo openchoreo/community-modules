@@ -1,0 +1,53 @@
+# Values for WSO2 Agent Manager core (PostgreSQL + API + Console).
+# Used with:
+#   helm install amp oci://ghcr.io/wso2/wso2-agent-manager \
+#     --version 0.10.3 -f values/agent-manager.yaml
+
+console:
+  config:
+    # URL of the amp-api backend — must be publicly reachable from the browser.
+    # Set to the hostname configured in resources/httproute-amp-api.yaml.
+    apiBaseUrl: "https://amp-api.<base-domain>"
+
+    # OIDC configuration for the Console SPA.
+    # clientId: noted in Identity Provider Configuration (Console SPA application).
+    # signInRedirectURL / signOutRedirectURL: must match the redirect URI registered in the IdP.
+    auth:
+      clientId: "<AM_CONSOLE_OIDC_CLIENT_ID>"
+      baseUrl: "<IDP_AUTH_URL_BASE>"   # e.g. http://thunder.<base-domain>
+      signInRedirectURL: "https://amp.<base-domain>/login"
+      signOutRedirectURL: "https://amp.<base-domain>/login"
+
+    # OTEL trace ingest URL sent to agents for instrumentation.
+    # Use the obs-gateway LoadBalancer address from Step 1.
+    instrumentationUrl: "http://<OBS_GATEWAY_IP>:22893/otel"
+
+agentManagerService:
+  config:
+    # OIDC client credentials for the amp-api backend to authenticate with the IdP.
+    # clientId / clientSecret: from the "Agent Manager API Client" registered in the IdP.
+    # tokenUrl: IDP_TOKEN_URL of your identity provider.
+    oidc:
+      tokenUrl: "<IDP_TOKEN_URL>"
+      clientId: "<AM_API_CLIENT_ID>"
+      clientSecret: "<AM_API_CLIENT_SECRET>"
+
+    # Key manager configuration for JWT token validation.
+    # issuer: must match the IDP_ISSUER of your identity provider.
+    # jwksUrl: JWKS endpoint of your identity provider (IDP_JWKS_URL).
+    # audience: comma-separated Client IDs of applications that call amp-api (Console SPA and AI Gateway Bootstrap).
+    keyManager:
+      issuer: "<IDP_ISSUER>"
+      jwksUrl: "<IDP_JWKS_URL>"
+      audience: "<AM_CONSOLE_CLIENT_ID>,<AI_GATEWAY_BOOTSTRAP_CLIENT_ID>"
+      defaultIssuer: "Agent Manager"
+
+    publisherApiKey:
+      # This key is shared with the Evaluation Extension.
+      # Must match ampEvaluation.publisher.apiKey in values/evaluation-extension.yaml.
+      value: "<PUBLISHER_API_KEY>"  # Set a unique key; must match ampEvaluation.publisher.apiKey in values/evaluation-extension.yaml
+
+# postgresql:
+#   auth:
+#     postgresPassword: ""   # Set a strong password for production
+#     database: agentmanager

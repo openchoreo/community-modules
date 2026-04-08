@@ -1,0 +1,145 @@
+# ConfigMap for the observability gateway (obs-gateway).
+# Based on: https://github.com/wso2/agent-manager/blob/amp/v0.10.3/deployments/values/api-platform-operator-full-config.yaml
+#
+# BEFORE APPLYING: replace the following placeholders.
+#
+# Required substitutions:
+#   <IDP_ISSUER>    — Issuer claim in tokens from your identity provider
+#                     e.g. https://idp.example.com  or  http://thunder.<base-domain>
+#   <IDP_JWKS_URL>  — JWKS endpoint of your identity provider
+#                     e.g. https://idp.example.com/oauth2/jwks
+#                     or   http://thunder.<base-domain>/oauth2/jwks
+#
+# The agent-manager-service key manager uses the internal amp-api JWKS endpoint.
+# This is resolvable within the data plane cluster in single-cluster deployments.
+# In multi-cluster deployments, replace the uri with the externally reachable
+# address of amp-api (available after Step 3).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: obs-gateway-config
+  namespace: openchoreo-data-plane
+data:
+  values.yaml: |
+    gateway:
+      config:
+        controller:
+          server:
+            api_port: 9090
+            xds_port: 18000
+            shutdown_timeout: 15s
+            gateway_id: "platform-gateway-id"
+          policy_server:
+            port: 18001
+            tls:
+              enabled: false
+          storage:
+            type: sqlite
+            sqlite:
+              path: ./data/gateway.db
+          logging:
+            level: info
+            format: json
+        router:
+          gateway_host: "*"
+          listener_port: 22893
+          https_enabled: true
+          https_port: 22894
+          access_logs:
+            enabled: true
+            format: json
+          policy_engine:
+            mode: uds
+            timeout_ms: 60000
+            failure_mode_allow: false
+            route_cache_action: RETAIN
+            allow_mode_override: true
+            message_timeout_ms: 60000
+            tls:
+              enabled: false
+          logging:
+            level: info
+            format: json
+        policy_engine:
+          server:
+            extproc_port: 9001
+          admin:
+            enabled: true
+            port: 9002
+          config_mode:
+            mode: xds
+          xds:
+            connect_timeout: 10s
+            request_timeout: 5s
+            initial_reconnect_delay: 1s
+            max_reconnect_delay: 60s
+            tls:
+              enabled: false
+          logging:
+            level: info
+            format: json
+        policy_configurations:
+          jwtauth_v0:
+            keymanagers:
+            - name: agent-manager-service
+              issuer: agent-manager-service
+              jwks:
+                remote:
+                  # Single-cluster: use the in-cluster address below.
+                  # Multi-cluster: replace with the externally reachable amp-api address
+                  # and set skipTlsVerify to false to enable TLS verification.
+                  uri: http://amp-api.wso2-amp.svc.cluster.local:9000/auth/external/jwks.json
+                  skipTlsVerify: true
+            - name: external-idp
+              issuer: "<IDP_ISSUER>"
+              jwks:
+                remote:
+                  uri: "<IDP_JWKS_URL>"
+                  skipTlsVerify: false
+            headername: x-amp-api-key
+            authheaderscheme: ""
+            onfailurestatuscode: 401
+            errormessageformat: json
+            errormessage: "Authentication failed"
+            leeway: 30s
+            allowedalgorithms:
+              - RS256
+              - ES256
+            jwkscachettl: 5m
+            jwksfetchtimeout: 5s
+            jwksfetchretrycount: 3
+            jwksfetchretryinterval: 2s
+            validateissuer: true
+
+      controller:
+        image:
+          repository: ghcr.io/wso2/api-platform/gateway-controller
+          tag: "0.9.0"
+          pullPolicy: Always
+        tls:
+          enabled: true
+          certificateProvider: cert-manager
+          certManager:
+            createIssuer: true
+        storage:
+          type: sqlite
+          sqlitePath: ./data/gateway.db
+        persistence:
+          enabled: true
+          size: 100Mi
+        logging:
+          level: info
+
+      gatewayRuntime:
+        image:
+          repository: ghcr.io/wso2/api-platform/gateway-runtime
+          tag: "0.9.0"
+          pullPolicy: Always
+        service:
+          type: LoadBalancer
+          ports:
+            http: 22893
+            https: 22894
+            envoyAdmin: 9901
+            policyEngineAdmin: 9002
+            policyEngineMetrics: 9003

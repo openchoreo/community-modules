@@ -1,0 +1,39 @@
+# RestApi resource that routes OTEL trace ingestion through the obs-gateway
+# to the OpenTelemetry Collector in the observability plane.
+#
+# BEFORE APPLYING: set the correct upstream URL for your deployment topology:
+#
+#   Single-cluster:
+#     url: http://opentelemetry-collector.openchoreo-observability-plane.svc.cluster.local:4318
+#
+#   Multi-cluster (data plane and observability plane are separate clusters):
+#     url: http://<otel-collector-external-address>:4318
+#     The OpenTelemetry Collector must be reachable from the data plane cluster.
+#     Use the collector's LoadBalancer IP or an internal network address depending
+#     on your cluster interconnect setup.
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: RestApi
+metadata:
+  name: traces-api-secure
+  namespace: openchoreo-data-plane
+spec:
+  displayName: traces-api-secure
+  version: v1.0
+  context: /otel
+  upstream:
+    main:
+      url: "<OTEL_COLLECTOR_URL>"  # Set per topology — see comments above
+  policies:
+    - name: jwt-auth
+      version: v0
+      params:
+        issuers:
+          - agent-manager-service
+        claimMappings:
+          sub: x-user-id
+          component_uid: x-user-component
+          environment_uid: x-user-environment
+          project_uid: x-user-project
+  operations:
+    - method: POST
+      path: /v1/traces

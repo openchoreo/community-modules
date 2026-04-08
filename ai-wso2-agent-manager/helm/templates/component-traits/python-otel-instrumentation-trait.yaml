@@ -1,0 +1,91 @@
+apiVersion: openchoreo.dev/v1alpha1
+kind: ClusterTrait
+metadata:
+  name: python-otel-instrumentation-trait
+  annotations:
+    openchoreo.dev/description: "Trait to add an init container for setting up OpenTelemetry instrumentation in Python applications"
+spec:
+  parameters:
+    openAPIV3Schema:
+      type: object
+      properties:
+        instrumentationImage:
+          type: string
+        sdkVolumeName:
+          type: string
+          default: "otel-tracing-sdk-volume"
+        sdkMountPath:
+          type: string
+          default: "/otel-tracing-sdk"
+        otelEndpoint:
+          type: string
+        isTraceContentEnabled:
+          type: string
+          default: "true"
+        agentApiKey:
+          type: string
+          default: ""
+      required:
+        - instrumentationImage
+        - otelEndpoint
+
+  creates:
+    - template:
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: ${metadata.name}-agent-api-key
+          namespace: ${metadata.namespace}
+        type: Opaque
+        stringData:
+          api-key: ${parameters.agentApiKey}
+
+  patches:
+    - target:
+        kind: Deployment
+        group: apps
+        version: v1
+      operations:
+        - op: add
+          path: /spec/template/spec/initContainers/-
+          value:
+            name: setup-instrumentation
+            image: ${parameters.instrumentationImage}
+            imagePullPolicy: IfNotPresent
+            volumeMounts:
+              - name: ${parameters.sdkVolumeName}
+                mountPath: ${parameters.sdkMountPath}
+        - op: add
+          path: /spec/template/spec/volumes/-
+          value:
+            name: ${parameters.sdkVolumeName}
+            emptyDir: {}
+        - op: add
+          path: /spec/template/spec/containers/0/volumeMounts/-
+          value:
+            name: ${parameters.sdkVolumeName}
+            mountPath: ${parameters.sdkMountPath}
+            readOnly: true
+        - op: add
+          path: /spec/template/spec/containers/0/env/-
+          value:
+            name: AMP_OTEL_ENDPOINT
+            value: "${parameters.otelEndpoint}"
+        - op: add
+          path: /spec/template/spec/containers/0/env/-
+          value:
+            name: AMP_TRACE_CONTENT
+            value: "${parameters.isTraceContentEnabled}"
+        - op: add
+          path: /spec/template/spec/containers/0/env/-
+          value:
+            name: AMP_AGENT_API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: ${metadata.name}-agent-api-key
+                key: api-key
+        - op: add
+          path: /spec/template/spec/containers/0/env/-
+          value:
+            name: PYTHONPATH
+            value: "${parameters.sdkMountPath}"

@@ -1,0 +1,26 @@
+# Values for the WSO2 AMP AI Gateway Extension.
+# Used with:
+#   helm install amp-ai-gateway oci://ghcr.io/wso2/wso2-amp-ai-gateway-extension \
+#     --version 0.10.3 -f values/ai-gateway-extension.yaml
+#
+# This extension is OPTIONAL. It connects the WSO2 API Platform Gateway Operator
+# to the Agent Manager control plane to manage LLM provider registration and
+# AI-specific API policies.
+#
+# REQUIRED: set agentManager.idp.tokenUrl to the token endpoint of your identity
+# provider. This is used by the bootstrap job to authenticate with the Agent
+# Manager API during initial setup.
+#
+# If using Thunder: http://thunder.<base-domain>:8080/oauth2/token
+# If using an external IdP: the public token endpoint URL of that IdP (IDP_TOKEN_URL)
+
+apiGateway:
+  controlPlane:
+    # Internal service address of the Agent Manager gateway manager.
+    host: "amp-api-gateway-manager.wso2-amp.svc.cluster.local:9243"
+
+agentManager:
+  apiUrl: "http://amp-api.wso2-amp.svc.cluster.local:9000/api/v1"
+  idp:
+    tokenUrl: "http://thunder-service.thunder.svc.cluster.local:8090/oauth2/token"  # Required — set to your IdP token endpoint
+    existingSecret: "amp-ai-gateway-bootstrap"  # K8s secret containing client-id and client-secret keys

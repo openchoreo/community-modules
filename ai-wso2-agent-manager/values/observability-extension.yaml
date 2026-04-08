@@ -1,0 +1,28 @@
+# Values for the WSO2 AMP Observability Extension.
+# Used with:
+#   helm install amp-observability-traces oci://ghcr.io/wso2/wso2-amp-observability-extension \
+#     --version 0.10.3 -f values/observability-extension.yaml
+#
+# This extension deploys the amp-traces-observer service that serves trace
+# query results from OpenSearch to the Agent Manager console.
+#
+# OpenSearch URL:
+#   The default points to the in-cluster OpenSearch installed by the
+#   observability-tracing-opensearch community module:
+#     https://opensearch.openchoreo-observability-plane.svc.cluster.local:9200
+#   Override tracesObserver.opensearchUrl only if your OpenSearch is at a
+#   different address (e.g. an external managed instance).
+#
+# Credentials:
+#   Set opensearch.username and opensearch.password to the credentials used by your
+#   OpenSearch instance. If you installed OpenSearch via the observability-tracing-opensearch
+#   community module, retrieve them from your secret store (e.g. OpenBao):
+#     kubectl exec -it -n openbao openbao-0 -- bao kv get -field=value secret/opensearch-username
+#     kubectl exec -it -n openbao openbao-0 -- bao kv get -field=value secret/opensearch-password
+
+tracesObserver:
+  opensearchUrl: https://opensearch.openchoreo-observability-plane.svc.cluster.local:9200
+
+opensearch:
+  username: "<OPENSEARCH_USERNAME>"
+  password: "<OPENSEARCH_PASSWORD>"

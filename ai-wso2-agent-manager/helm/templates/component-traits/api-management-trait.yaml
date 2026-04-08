@@ -1,0 +1,113 @@
+apiVersion: openchoreo.dev/v1alpha1
+kind: ClusterTrait
+metadata:
+  name: api-configuration
+spec:
+  parameters:
+    openAPIV3Schema:
+      type: object
+      properties:
+        apiName:
+          type: string
+          description: "API display name"
+        apiVersion:
+          type: string
+          default: "v1.0"
+          description: "API version"
+        context:
+          type: string
+          description: "API context path (e.g., /greeter-api, /checkout-service)"
+        upstreamPort:
+          type: integer
+          default: 80
+          description: "Port on the service to route to"
+        upstreamBasePath:
+          type: string
+          default: "/"
+          description: "Base path on the upstream service"
+        operations:
+          type: array
+          description: "Array of API operations"
+          default:
+            - method: "GET"
+              path: "/*"
+            - method: "POST"
+              path: "/*"
+            - method: "PUT"
+              path: "/*"
+            - method: "DELETE"
+              path: "/*"
+            - method: "PATCH"
+              path: "/*"
+            - method: "OPTIONS"
+              path: "/*"
+          items:
+            type: object
+            properties:
+              method:
+                type: string
+              path:
+                type: string
+        policies:
+          type: array
+          description: "Array of policies to apply"
+          default: []
+          items:
+            type: object
+      required:
+        - apiName
+
+  creates:
+    - template:
+        apiVersion: gateway.kgateway.dev/v1alpha1
+        kind: Backend
+        metadata:
+          name: ${metadata.componentName}-api-gw-backend
+          namespace: ${metadata.namespace}
+        spec:
+          type: Static
+          static:
+            hosts:
+              - host: obs-gateway-gateway-gateway-runtime.openchoreo-data-plane
+                port: 22893
+
+    - template:
+        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        kind: RestApi
+        metadata:
+          name: ${metadata.name}
+          namespace: ${metadata.namespace}
+        spec:
+          displayName: ${parameters.apiName}
+          version: ${parameters.apiVersion}
+          context: ${parameters.?context.orValue('/' + metadata.environmentName + '-' + metadata.componentNamespace + '-' + metadata.componentName)}
+          upstream:
+            main:
+              url: http://${metadata.componentName}.${metadata.namespace}:${parameters.upstreamPort}${parameters.upstreamBasePath}
+          policies: ${parameters.policies}
+          operations: ${parameters.operations}
+
+  patches:
+    - target:
+        group: gateway.networking.k8s.io
+        version: v1
+        kind: HTTPRoute
+      operations:
+        - op: replace
+          path: /spec/rules/0/backendRefs/[?(@.name=='${metadata.componentName}')]
+          value:
+            name: ${metadata.componentName}
+            port: ${parameters.upstreamPort}
+            weight: 0
+        - op: add
+          path: /spec/rules/0/backendRefs/-
+          value:
+            group: gateway.kgateway.dev
+            kind: Backend
+            name: ${metadata.componentName}-api-gw-backend
+            weight: 100
+        - op: replace
+          path: /spec/rules/0/filters/0/urlRewrite/path
+          value:
+            type: ReplacePrefixMatch
+            replacePrefixMatch: ${parameters.?context.orValue('/' + metadata.environmentName + '-' + metadata.componentNamespace + '-' + metadata.componentName)}

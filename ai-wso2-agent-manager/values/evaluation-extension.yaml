@@ -1,0 +1,14 @@
+# Values for the WSO2 AMP Evaluation Extension.
+# Used with:
+#   helm install amp-evaluation-extension oci://ghcr.io/wso2/wso2-amp-evaluation-extension \
+#     --version 0.10.3 -f values/evaluation-extension.yaml
+#
+# This extension is OPTIONAL. It deploys automation workflows for running
+# agent evaluation jobs.
+#
+# REQUIRED: apiKey must match agentManagerService.config.publisherApiKey.value
+# in values/agent-manager.yaml.
+
+ampEvaluation:
+  publisher:
+    apiKey: "<PUBLISHER_API_KEY>"  # Must match agentManagerService.config.publisherApiKey.value in agent-manager.yaml

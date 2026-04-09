@@ -1,7 +1,7 @@
 # Observability Tracing Module for OpenObserve
 
-|               |           |
-| ------------- |-----------|
+|               |                                                                                                                                                                                              |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Code coverage | [![Codecov](https://codecov.io/gh/openchoreo/community-modules/branch/main/graph/badge.svg?component=observability_tracing_openobserve)](https://codecov.io/gh/openchoreo/community-modules) |
 
 This module collects distributed traces using [OpenTelemetry collector](https://opentelemetry.io) and stores them in [OpenObserve](https://openobserve.ai).
@@ -15,7 +15,7 @@ This module collects distributed traces using [OpenTelemetry collector](https://
 ### Pre-requisites
 
 1. OpenObserve credentials are required to configure it during installation and to access it. OpenChoreo uses the External Secrets Operator to manage secrets. Add your OpenObserve credentials (`ZO_ROOT_USER_EMAIL` and `ZO_ROOT_USER_PASSWORD`) to a secret store and use an `ExternalSecret` resource to generate a Kubernetes secret named `openobserve-admin-credentials` from it.
-Refer to the [secret management guide](https://openchoreo.dev/docs/platform-engineer-guide/secret-management/) for more details.
+   Refer to the [secret management guide](https://openchoreo.dev/docs/platform-engineer-guide/secret-management/) for more details.
 
 For example, the commands below add the secrets to OpenBao and pull them from the `ClusterSecretStore` created earlier in the [OpenChoreo installation guide](https://openchoreo.dev/docs).
 
@@ -66,7 +66,7 @@ helm upgrade --install observability-tracing-openobserve \
   oci://ghcr.io/openchoreo/helm-charts/observability-tracing-openobserve \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.2.1
+  --version 0.2.2
 ```
 
 To switch to HA mode, disable the standalone chart and enable the distributed chart:
@@ -75,7 +75,7 @@ To switch to HA mode, disable the standalone chart and enable the distributed ch
 helm upgrade --install observability-tracing-openobserve \
   oci://ghcr.io/openchoreo/helm-charts/observability-tracing-openobserve \
   --namespace openchoreo-observability-plane \
-  --version 0.2.1 \
+  --version 0.2.2 \
   --reuse-values \
   --set openobserve-standalone.enabled=false \
   --set openobserve.enabled=true
@@ -90,6 +90,6 @@ Refer to the [openobserve Helm chart documentation](https://github.com/openobser
 >  oci://ghcr.io/openchoreo/helm-charts/observability-tracing-openobserve \
 >  --create-namespace \
 >  --namespace openchoreo-observability-plane \
->  --version 0.2.1 \
+>  --version 0.2.2 \
 >  --set openobserve-standalone.enabled=false
->```
+> ```

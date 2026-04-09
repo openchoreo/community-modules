@@ -15,6 +15,20 @@ const (
 	Unauthorized        ErrorResponseTitle = "unauthorized"
 )
 
+// Defines values for TraceSpanDetailsResponseStatus.
+const (
+	TraceSpanDetailsResponseStatusError TraceSpanDetailsResponseStatus = "error"
+	TraceSpanDetailsResponseStatusOk    TraceSpanDetailsResponseStatus = "ok"
+	TraceSpanDetailsResponseStatusUnset TraceSpanDetailsResponseStatus = "unset"
+)
+
+// Defines values for TraceSpansListResponseSpansStatus.
+const (
+	TraceSpansListResponseSpansStatusError TraceSpansListResponseSpansStatus = "error"
+	TraceSpansListResponseSpansStatusOk    TraceSpansListResponseSpansStatus = "ok"
+	TraceSpansListResponseSpansStatusUnset TraceSpansListResponseSpansStatus = "unset"
+)
+
 // Defines values for TracesQueryRequestSortOrder.
 const (
 	Asc  TracesQueryRequestSortOrder = "asc"
@@ -81,7 +95,13 @@ type TraceSpanDetailsResponse struct {
 
 	// StartTime The start time of the span
 	StartTime *time.Time `json:"startTime,omitempty"`
+
+	// Status The execution status of the span. One of "ok", "error", or "unset".
+	Status *TraceSpanDetailsResponseStatus `json:"status,omitempty"`
 }
+
+// TraceSpanDetailsResponseStatus The execution status of the span. One of "ok", "error", or "unset".
+type TraceSpanDetailsResponseStatus string
 
 // TraceSpansListResponse defines model for TraceSpansListResponse.
 type TraceSpansListResponse struct {
@@ -107,6 +127,9 @@ type TraceSpansListResponse struct {
 
 		// StartTime The start time of the span
 		StartTime *time.Time `json:"startTime,omitempty"`
+
+		// Status The execution status of the span. One of "ok", "error", or "unset".
+		Status *TraceSpansListResponseSpansStatus `json:"status,omitempty"`
 	} `json:"spans,omitempty"`
 
 	// TookMs The time taken to query the spans in milliseconds
@@ -115,6 +138,9 @@ type TraceSpansListResponse struct {
 	// Total The total number of matching spans, capped at 1000
 	Total *int `json:"total,omitempty"`
 }
+
+// TraceSpansListResponseSpansStatus The execution status of the span. One of "ok", "error", or "unset".
+type TraceSpansListResponseSpansStatus string
 
 // TracesListResponse defines model for TracesListResponse.
 type TracesListResponse struct {
@@ -130,10 +156,13 @@ type TracesListResponse struct {
 		DurationNs *int64 `json:"durationNs,omitempty"`
 
 		// EndTime The end time of the trace
-		EndTime      *time.Time `json:"endTime,omitempty"`
-		RootSpanId   *string    `json:"rootSpanId,omitempty"`
-		RootSpanKind *string    `json:"rootSpanKind,omitempty"`
-		RootSpanName *string    `json:"rootSpanName,omitempty"`
+		EndTime *time.Time `json:"endTime,omitempty"`
+
+		// HasErrors Whether any span in the trace has an error status.
+		HasErrors    *bool   `json:"hasErrors,omitempty"`
+		RootSpanId   *string `json:"rootSpanId,omitempty"`
+		RootSpanKind *string `json:"rootSpanKind,omitempty"`
+		RootSpanName *string `json:"rootSpanName,omitempty"`
 
 		// SpanCount The number of spans in the trace
 		SpanCount *int `json:"spanCount,omitempty"`

@@ -109,6 +109,9 @@ otelTracesIndexTemplate='
         },
         "traceId": {
           "type": "keyword"
+        },
+        "status.code": {
+          "type": "keyword"
         }
       }
     }
@@ -233,8 +236,8 @@ for ((i=0; i<${#ismPolicies[@]}; i+=2)); do
         # Extract and normalize policy definitions for comparison
         # Remove OpenSearch-generated metadata fields that change on every update or are auto-added
         existingPolicy=$(echo "$responseBody" | jq -c -S '
-            .policy | 
-            del(.policy_id, .last_updated_time, .schema_version, .error_notification) | 
+            .policy |
+            del(.policy_id, .last_updated_time, .schema_version, .error_notification) |
             del(.ism_template[]?.last_updated_time) |
             walk(if type == "object" then del(.retry) else . end)
         ')

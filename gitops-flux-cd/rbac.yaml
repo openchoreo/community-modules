@@ -1,0 +1,40 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+# ClusterRole granting Flux's kustomize-controller permissions to manage
+# all OpenChoreo custom resources. Without this, Flux cannot apply OpenChoreo
+# CRDs (Component, ReleaseBinding, Environment, etc.) from the GitOps repository.
+#
+# If Flux is installed in a different namespace or uses a different service account,
+# update the ClusterRoleBinding subjects accordingly.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: flux-openchoreo-module
+  labels:
+    app.kubernetes.io/part-of: openchoreo
+rules:
+  # OpenChoreo CRDs - full management access
+  - apiGroups: ["openchoreo.dev"]
+    resources: ["*"]
+    verbs: ["*"]
+  # Argo Workflows CRDs - needed for ClusterWorkflowTemplate resources
+  # stored in the GitOps repository under platform-shared/
+  - apiGroups: ["argoproj.io"]
+    resources: ["clusterworkflowtemplates", "workflowtemplates"]
+    verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: flux-openchoreo-module
+  labels:
+    app.kubernetes.io/part-of: openchoreo
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: flux-openchoreo-module
+subjects:
+  - kind: ServiceAccount
+    name: kustomize-controller
+    namespace: flux-system

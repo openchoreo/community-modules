@@ -1,0 +1,18 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+# Syncs cluster-scoped platform resources:
+# ClusterComponentType, ClusterTrait, ClusterWorkflow, ClusterDataPlane,
+# ClusterWorkflowPlane, ClusterObservabilityPlane, ClusterAuthzRole, etc.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: platform-shared
+  namespace: flux-system
+spec:
+  interval: 5m
+  path: ./platform-shared
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: openchoreo-gitops

@@ -1,0 +1,19 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+# GitRepository source for Flux CD.
+# Update the url and branch fields to point to your GitOps repository.
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: openchoreo-gitops
+  namespace: flux-system
+spec:
+  interval: 1m
+  url: https://github.com/<your_org>/your_repo
+  ref:
+    branch: main
+  # Uncomment to use credentials for a private repository.
+  # Create the secret first — see the Private Repositories section in README.md.
+  # secretRef:
+  #   name: gitops-repo-credentials

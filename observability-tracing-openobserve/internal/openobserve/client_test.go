@@ -635,6 +635,315 @@ func TestGetSpanDetail_InvalidStream(t *testing.T) {
 	}
 }
 
+func TestExecuteSearchQuery_RequestCreationError(t *testing.T) {
+	// Use an invalid URL scheme to force http.NewRequestWithContext to fail
+	client := NewClient("://invalid-url", "default", "default", "admin", "token", testLogger())
+	_, err := client.GetSpanDetail(context.Background(), TracesQueryParams{
+		TraceID: "trace-1",
+		SpanID:  "span-1",
+	})
+	if err == nil {
+		t.Fatal("expected error for invalid URL")
+	}
+}
+
+func TestExecuteSearchQuery_NetworkError(t *testing.T) {
+	// Point to a port that refuses connections
+	client := NewClient("http://127.0.0.1:1", "default", "default", "admin", "token", testLogger())
+	_, err := client.GetTraces(context.Background(), TracesQueryParams{
+		Scope:     Scope{Namespace: "ns"},
+		StartTime: time.Now().Add(-time.Hour),
+		EndTime:   time.Now(),
+	})
+	if err == nil {
+		t.Fatal("expected error for unreachable server")
+	}
+	if !strings.Contains(err.Error(), "failed to execute request") {
+		t.Errorf("expected 'failed to execute request' error, got: %v", err)
+	}
+}
+
+func TestGetTraces_InvalidStream(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "default", "bad;stream", "admin", "token", testLogger())
+	_, err := client.GetTraces(context.Background(), TracesQueryParams{
+		Scope:     Scope{Namespace: "ns"},
+		StartTime: time.Now().Add(-time.Hour),
+		EndTime:   time.Now(),
+	})
+	if err == nil {
+		t.Fatal("expected error for invalid stream identifier")
+	}
+	if !strings.Contains(err.Error(), "invalid stream identifier") {
+		t.Errorf("expected 'invalid stream identifier' error, got: %v", err)
+	}
+}
+
+func TestGetTraces_CountQueryError(t *testing.T) {
+	callCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		if isCountQuery(r) {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("count error"))
+			return
+		}
+		// Return valid spans response for the list query
+		resp := OpenObserveResponse{Took: 1, Hits: []map[string]interface{}{}}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	client := newTestClient(server.URL)
+	_, err := client.GetTraces(context.Background(), TracesQueryParams{
+		Scope:     Scope{Namespace: "ns"},
+		StartTime: time.Now().Add(-time.Hour),
+		EndTime:   time.Now(),
+	})
+	if err == nil {
+		t.Fatal("expected error when count query fails")
+	}
+}
+
+func TestGetTraces_SpanWithEmptyTraceID(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isCountQuery(r) {
+			resp := OpenObserveResponse{
+				Hits: []map[string]interface{}{{"total": json.Number("0")}},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(resp)
+			return
+		}
+		// Include a hit with empty trace_id — should be skipped
+		resp := OpenObserveResponse{
+			Took: 1,
+			Hits: []map[string]interface{}{
+				{"trace_id": "", "span_id": "span-1", "operation_name": "op"},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	client := newTestClient(server.URL)
+	result, err := client.GetTraces(context.Background(), TracesQueryParams{
+		Scope:     Scope{Namespace: "ns"},
+		StartTime: time.Now().Add(-time.Hour),
+		EndTime:   time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result.Traces) != 0 {
+		t.Errorf("expected spans with empty trace_id to be skipped, got %d traces", len(result.Traces))
+	}
+}
+
+func TestGetTraces_HasErrors(t *testing.T) {
+	startNs := time.Now().Add(-time.Minute).UnixNano()
+	endNs := time.Now().UnixNano()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isCountQuery(r) {
+			resp := OpenObserveResponse{
+				Hits: []map[string]interface{}{{"total": json.Number("1")}},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(resp)
+			return
+		}
+		resp := OpenObserveResponse{
+			Took: 1,
+			Hits: []map[string]interface{}{
+				{
+					"trace_id":                 "trace-err",
+					"span_id":                  "span-root",
+					"operation_name":           "op",
+					"span_kind":                "SERVER",
+					"start_time":               json.Number(fmt.Sprintf("%d", startNs)),
+					"end_time":                 json.Number(fmt.Sprintf("%d", endNs)),
+					"reference_parent_span_id": "",
+					"span_status":              "error",
+				},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		data, _ := json.Marshal(resp)
+		w.Write(data)
+	}))
+	defer server.Close()
+
+	client := newTestClient(server.URL)
+	result, err := client.GetTraces(context.Background(), TracesQueryParams{
+		Scope:     Scope{Namespace: "ns"},
+		StartTime: time.Now().Add(-time.Hour),
+		EndTime:   time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result.Traces) != 1 {
+		t.Fatalf("expected 1 trace, got %d", len(result.Traces))
+	}
+	if !result.Traces[0].HasErrors {
+		t.Error("expected HasErrors=true for trace with error span")
+	}
+}
+
+func TestGetSpans_InvalidStream(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "default", "bad;stream", "admin", "token", testLogger())
+	_, err := client.GetSpans(context.Background(), TracesQueryParams{
+		TraceID:   "trace-1",
+		StartTime: time.Now().Add(-time.Hour),
+		EndTime:   time.Now(),
+	})
+	if err == nil {
+		t.Fatal("expected error for invalid stream identifier")
+	}
+	if !strings.Contains(err.Error(), "invalid stream identifier") {
+		t.Errorf("expected 'invalid stream identifier' error, got: %v", err)
+	}
+}
+
+func TestGetSpans_CountQueryError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isCountQuery(r) {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("count error"))
+			return
+		}
+		resp := OpenObserveResponse{Took: 1, Hits: []map[string]interface{}{}}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	client := newTestClient(server.URL)
+	_, err := client.GetSpans(context.Background(), TracesQueryParams{
+		TraceID:   "trace-1",
+		StartTime: time.Now().Add(-time.Hour),
+		EndTime:   time.Now(),
+	})
+	if err == nil {
+		t.Fatal("expected error when count query fails")
+	}
+}
+
+func TestGetSpanDetail_ExecuteSearchError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("error"))
+	}))
+	defer server.Close()
+
+	client := newTestClient(server.URL)
+	_, err := client.GetSpanDetail(context.Background(), TracesQueryParams{
+		TraceID: "trace-1",
+		SpanID:  "span-1",
+	})
+	if err == nil {
+		t.Fatal("expected error for server error response")
+	}
+}
+
+func TestExtractTotalCount(t *testing.T) {
+	tests := []struct {
+		name     string
+		resp     *OpenObserveResponse
+		expected int
+	}{
+		{
+			name:     "json.Number total",
+			resp:     &OpenObserveResponse{Hits: []map[string]interface{}{{"total": json.Number("42")}}},
+			expected: 42,
+		},
+		{
+			name:     "float64 total",
+			resp:     &OpenObserveResponse{Hits: []map[string]interface{}{{"total": float64(7)}}},
+			expected: 7,
+		},
+		{
+			name:     "no hits",
+			resp:     &OpenObserveResponse{Hits: []map[string]interface{}{}},
+			expected: 0,
+		},
+		{
+			name:     "no total key",
+			resp:     &OpenObserveResponse{Hits: []map[string]interface{}{{"other": "value"}}},
+			expected: 0,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := extractTotalCount(tc.resp)
+			if got != tc.expected {
+				t.Errorf("expected %d, got %d", tc.expected, got)
+			}
+		})
+	}
+}
+
+func TestDetermineSpanStatus(t *testing.T) {
+	tests := []struct {
+		name     string
+		hit      map[string]interface{}
+		expected string
+	}{
+		{
+			name:     "error status",
+			hit:      map[string]interface{}{"span_status": "error"},
+			expected: "error",
+		},
+		{
+			name:     "error status uppercase",
+			hit:      map[string]interface{}{"span_status": "ERROR"},
+			expected: "error",
+		},
+		{
+			name:     "ok status",
+			hit:      map[string]interface{}{"span_status": "ok"},
+			expected: "ok",
+		},
+		{
+			name:     "ok status uppercase",
+			hit:      map[string]interface{}{"span_status": "OK"},
+			expected: "ok",
+		},
+		{
+			name:     "unset when missing",
+			hit:      map[string]interface{}{},
+			expected: "unset",
+		},
+		{
+			name:     "unset for unknown value",
+			hit:      map[string]interface{}{"span_status": "unknown"},
+			expected: "unset",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := determineSpanStatus(tc.hit)
+			if got != tc.expected {
+				t.Errorf("expected %q, got %q", tc.expected, got)
+			}
+		})
+	}
+}
+
 func TestParseSpanDetail_NoExtraAttributes(t *testing.T) {
 	hit := map[string]interface{}{
 		"span_id":                  "span-1",

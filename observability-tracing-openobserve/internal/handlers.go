@@ -158,6 +158,7 @@ func toTracesListResponse(result *openobserve.TracesResult) gen.TracesListRespon
 	traces := make([]struct {
 		DurationNs   *int64     `json:"durationNs,omitempty"`
 		EndTime      *time.Time `json:"endTime,omitempty"`
+		HasErrors    *bool      `json:"hasErrors,omitempty"`
 		RootSpanId   *string    `json:"rootSpanId,omitempty"`
 		RootSpanKind *string    `json:"rootSpanKind,omitempty"`
 		RootSpanName *string    `json:"rootSpanName,omitempty"`
@@ -177,9 +178,11 @@ func toTracesListResponse(result *openobserve.TracesResult) gen.TracesListRespon
 		rootSpanId := t.RootSpanID
 		rootSpanName := t.RootSpanName
 		rootSpanKind := t.RootSpanKind
+		hasErrors := t.HasErrors
 		traces = append(traces, struct {
 			DurationNs   *int64     `json:"durationNs,omitempty"`
 			EndTime      *time.Time `json:"endTime,omitempty"`
+			HasErrors    *bool      `json:"hasErrors,omitempty"`
 			RootSpanId   *string    `json:"rootSpanId,omitempty"`
 			RootSpanKind *string    `json:"rootSpanKind,omitempty"`
 			RootSpanName *string    `json:"rootSpanName,omitempty"`
@@ -197,6 +200,7 @@ func toTracesListResponse(result *openobserve.TracesResult) gen.TracesListRespon
 			RootSpanId:   &rootSpanId,
 			RootSpanName: &rootSpanName,
 			RootSpanKind: &rootSpanKind,
+			HasErrors:    &hasErrors,
 		})
 	}
 
@@ -212,13 +216,14 @@ func toTracesListResponse(result *openobserve.TracesResult) gen.TracesListRespon
 // toSpansListResponse converts the internal result to the generated response model.
 func toSpansListResponse(result *openobserve.SpansResult) gen.TraceSpansListResponse {
 	spans := make([]struct {
-		DurationNs   *int64     `json:"durationNs,omitempty"`
-		EndTime      *time.Time `json:"endTime,omitempty"`
-		ParentSpanId *string    `json:"parentSpanId,omitempty"`
-		SpanId       *string    `json:"spanId,omitempty"`
-		SpanKind     *string    `json:"spanKind,omitempty"`
-		SpanName     *string    `json:"spanName,omitempty"`
-		StartTime    *time.Time `json:"startTime,omitempty"`
+		DurationNs   *int64                                  `json:"durationNs,omitempty"`
+		EndTime      *time.Time                              `json:"endTime,omitempty"`
+		ParentSpanId *string                                 `json:"parentSpanId,omitempty"`
+		SpanId       *string                                 `json:"spanId,omitempty"`
+		SpanKind     *string                                 `json:"spanKind,omitempty"`
+		SpanName     *string                                 `json:"spanName,omitempty"`
+		StartTime    *time.Time                              `json:"startTime,omitempty"`
+		Status       *gen.TraceSpansListResponseSpansStatus  `json:"status,omitempty"`
 	}, 0, len(result.Spans))
 
 	for _, s := range result.Spans {
@@ -229,14 +234,16 @@ func toSpansListResponse(result *openobserve.SpansResult) gen.TraceSpansListResp
 		spanName := s.SpanName
 		spanKind := s.SpanKind
 		parentSpanId := s.ParentSpanID
+		status := gen.TraceSpansListResponseSpansStatus(s.Status)
 		spans = append(spans, struct {
-			DurationNs   *int64     `json:"durationNs,omitempty"`
-			EndTime      *time.Time `json:"endTime,omitempty"`
-			ParentSpanId *string    `json:"parentSpanId,omitempty"`
-			SpanId       *string    `json:"spanId,omitempty"`
-			SpanKind     *string    `json:"spanKind,omitempty"`
-			SpanName     *string    `json:"spanName,omitempty"`
-			StartTime    *time.Time `json:"startTime,omitempty"`
+			DurationNs   *int64                                  `json:"durationNs,omitempty"`
+			EndTime      *time.Time                              `json:"endTime,omitempty"`
+			ParentSpanId *string                                 `json:"parentSpanId,omitempty"`
+			SpanId       *string                                 `json:"spanId,omitempty"`
+			SpanKind     *string                                 `json:"spanKind,omitempty"`
+			SpanName     *string                                 `json:"spanName,omitempty"`
+			StartTime    *time.Time                              `json:"startTime,omitempty"`
+			Status       *gen.TraceSpansListResponseSpansStatus  `json:"status,omitempty"`
 		}{
 			DurationNs:   &dur,
 			StartTime:    &startTime,
@@ -245,6 +252,7 @@ func toSpansListResponse(result *openobserve.SpansResult) gen.TraceSpansListResp
 			SpanName:     &spanName,
 			SpanKind:     &spanKind,
 			ParentSpanId: &parentSpanId,
+			Status:       &status,
 		})
 	}
 
@@ -297,6 +305,7 @@ func toSpanDetailsResponse(span *openobserve.SpanDetail) gen.TraceSpanDetailsRes
 		EndTime:            &endTime,
 		DurationNs:         &dur,
 		ParentSpanId:       &span.ParentSpanID,
+		Status:             ptr(gen.TraceSpanDetailsResponseStatus(span.Status)),
 		Attributes:         &attrs,
 		ResourceAttributes: &resAttrs,
 	}

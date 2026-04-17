@@ -1,0 +1,21 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+{{- if .Values.adapter.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: tracing-adapter
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: tracing-adapter-opensearch
+spec:
+  type: ClusterIP
+  ports:
+  - port: {{ .Values.adapter.serverPort }}
+    targetPort: http
+    protocol: TCP
+    name: http
+  selector:
+    app: tracing-adapter-opensearch
+{{- end }}

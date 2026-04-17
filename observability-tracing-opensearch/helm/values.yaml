@@ -142,6 +142,23 @@ openSearchCluster:
       - "admin"
       description: "Admin user"
 
+adapter:
+  enabled: true
+  image:
+    repository: "ghcr.io/openchoreo/observability-tracing-opensearch-adapter"
+    tag: ""  # Defaults to Chart.AppVersion via the template
+  serverPort: "9100"
+  openSearchAddress: "https://opensearch:9200"
+  openSearchIndexPrefix: "otel-traces-"
+  openSearchSecretName: ""
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 20m
+      memory: 64Mi
+
 openSearchSetup:
   enabled: true
   image:

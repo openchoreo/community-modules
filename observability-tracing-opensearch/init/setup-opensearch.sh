@@ -93,6 +93,9 @@ otelTracesIndexTemplate='
             "openchoreo.dev/environment-uid": {
               "type": "keyword"
             },
+            "openchoreo.dev/namespace": {
+              "type": "keyword"
+            },
             "openchoreo.dev/project-uid": {
               "type": "keyword"
             },

@@ -228,7 +228,7 @@ func (c *Client) GetTraces(ctx context.Context, params TracesQueryParams) (*Trac
 		}
 
 		// Identify root span: the span with no parent
-		parentSpanID, _ := hit["reference_parent_span_id"].(string)
+		parentSpanID, _ := hit["parent_span_id"].(string)
 		if parentSpanID == "" {
 			if v, ok := hit["span_id"].(string); ok {
 				agg.entry.RootSpanID = v
@@ -374,7 +374,7 @@ func parseSpanEntry(hit map[string]interface{}) SpanEntry {
 	if v, ok := hit["duration"].(json.Number); ok {
 		entry.DurationNs, _ = v.Int64()
 	}
-	if v, ok := hit["reference_parent_span_id"].(string); ok {
+	if v, ok := hit["parent_span_id"].(string); ok {
 		entry.ParentSpanID = v
 	}
 	entry.Status = determineSpanStatus(hit)
@@ -409,7 +409,6 @@ var internalFields = []string{
 	"end_time",
 	"duration",
 	"parent_span_id",
-	"reference_parent_span_id",
 	"trace_id",
 	"span_status",
 }
@@ -438,7 +437,7 @@ func parseSpanDetail(hit map[string]interface{}) SpanDetail {
 	if v, ok := hit["duration"].(json.Number); ok {
 		detail.DurationNs, _ = v.Int64()
 	}
-	if v, ok := hit["reference_parent_span_id"].(string); ok {
+	if v, ok := hit["parent_span_id"].(string); ok {
 		detail.ParentSpanID = v
 	}
 	detail.Status = determineSpanStatus(hit)

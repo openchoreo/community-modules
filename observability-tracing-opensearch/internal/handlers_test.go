@@ -289,7 +289,7 @@ func TestToSpansListResponse(t *testing.T) {
 		},
 	}
 
-	resp := toSpansListResponse(spans, 1, 10)
+	resp := toSpansListResponse(spans, 1, 10, false)
 
 	if resp.Total == nil || *resp.Total != 1 {
 		t.Errorf("expected total 1, got %v", resp.Total)
@@ -316,6 +316,82 @@ func TestToSpansListResponse(t *testing.T) {
 	}
 	if span.DurationNs == nil || *span.DurationNs != 1000000000 {
 		t.Errorf("expected durationNs 1000000000, got %v", span.DurationNs)
+	}
+}
+
+func TestToSpansListResponse_WithIncludeAttributes(t *testing.T) {
+	startTime := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	endTime := time.Date(2025, 1, 1, 12, 0, 1, 0, time.UTC)
+
+	spans := []opensearch.Span{
+		{
+			SpanID:              "span-1",
+			Name:                "http.request",
+			SpanKind:            "SERVER",
+			StartTime:           startTime,
+			EndTime:             endTime,
+			DurationNanoseconds: 1000000000,
+			Status:              "ok",
+			Attributes: map[string]interface{}{
+				"http.method": "GET",
+				"http.url":    "http://example.com",
+			},
+			ResourceAttributes: map[string]interface{}{
+				"service.name": "my-service",
+			},
+		},
+	}
+
+	resp := toSpansListResponse(spans, 1, 10, true)
+
+	if resp.Spans == nil || len(*resp.Spans) != 1 {
+		t.Fatalf("expected 1 span, got %v", resp.Spans)
+	}
+	span := (*resp.Spans)[0]
+	if span.Attributes == nil {
+		t.Fatal("expected Attributes to be populated")
+	}
+	if (*span.Attributes)["http.method"] != "GET" {
+		t.Errorf("expected http.method=GET, got %v", (*span.Attributes)["http.method"])
+	}
+	if span.ResourceAttributes == nil {
+		t.Fatal("expected ResourceAttributes to be populated")
+	}
+	if (*span.ResourceAttributes)["service.name"] != "my-service" {
+		t.Errorf("expected service.name=my-service, got %v", (*span.ResourceAttributes)["service.name"])
+	}
+}
+
+func TestToSpansListResponse_ExcludeAttributesWhenFalse(t *testing.T) {
+	startTime := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	endTime := time.Date(2025, 1, 1, 12, 0, 1, 0, time.UTC)
+
+	spans := []opensearch.Span{
+		{
+			SpanID:    "span-1",
+			Name:      "http.request",
+			StartTime: startTime,
+			EndTime:   endTime,
+			Attributes: map[string]interface{}{
+				"http.method": "GET",
+			},
+			ResourceAttributes: map[string]interface{}{
+				"service.name": "my-service",
+			},
+		},
+	}
+
+	resp := toSpansListResponse(spans, 1, 10, false)
+
+	if resp.Spans == nil || len(*resp.Spans) != 1 {
+		t.Fatalf("expected 1 span, got %v", resp.Spans)
+	}
+	span := (*resp.Spans)[0]
+	if span.Attributes != nil {
+		t.Errorf("expected Attributes to be nil, got %v", span.Attributes)
+	}
+	if span.ResourceAttributes != nil {
+		t.Errorf("expected ResourceAttributes to be nil, got %v", span.ResourceAttributes)
 	}
 }
 
@@ -678,7 +754,7 @@ func TestBuildTraceFromBucket_InvalidTimestamps(t *testing.T) {
 }
 
 func TestToSpansListResponse_Empty(t *testing.T) {
-	resp := toSpansListResponse([]opensearch.Span{}, 0, 3)
+	resp := toSpansListResponse([]opensearch.Span{}, 0, 3, false)
 
 	if resp.Total == nil || *resp.Total != 0 {
 		t.Errorf("expected total 0, got %v", resp.Total)

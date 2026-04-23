@@ -83,15 +83,16 @@ type Span struct {
 
 // TracesRequestParams holds request body parameters for traces.
 type TracesRequestParams struct {
-	ComponentUIDs  []string `json:"componentUids,omitempty"`
-	EndTime        string   `json:"endTime"`
-	EnvironmentUID string   `json:"environmentUid,omitempty"`
-	Limit          int      `json:"limit,omitempty"`
-	Namespace      string   `json:"namespace"`
-	ProjectUID     string   `json:"projectUid"`
-	SortOrder      string   `json:"sortOrder,omitempty"`
-	StartTime      string   `json:"startTime"`
-	TraceID        string   `json:"traceId,omitempty"`
+	ComponentUIDs     []string `json:"componentUids,omitempty"`
+	EndTime           string   `json:"endTime"`
+	EnvironmentUID    string   `json:"environmentUid,omitempty"`
+	IncludeAttributes bool     `json:"includeAttributes,omitempty"`
+	Limit             int      `json:"limit,omitempty"`
+	Namespace         string   `json:"namespace"`
+	ProjectUID        string   `json:"projectUid"`
+	SortOrder         string   `json:"sortOrder,omitempty"`
+	StartTime         string   `json:"startTime"`
+	TraceID           string   `json:"traceId,omitempty"`
 }
 
 // buildSearchBody converts a query map to an io.Reader for the search request.

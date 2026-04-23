@@ -111,7 +111,7 @@ func (h *TracingHandler) QuerySpansForTrace(ctx context.Context, request gen.Que
 
 	total := response.Hits.Total.Value
 	tookMs := response.Took
-	return gen.QuerySpansForTrace200JSONResponse(toSpansListResponse(spans, total, tookMs)), nil
+	return gen.QuerySpansForTrace200JSONResponse(toSpansListResponse(spans, total, tookMs, params.IncludeAttributes)), nil
 }
 
 // GetSpanDetailsForTrace implements GET /api/v1alpha1/traces/{traceId}/spans/{spanId}.
@@ -300,6 +300,9 @@ func toTracesRequestParams(req *gen.TracesQueryRequest) opensearch.TracesRequest
 	if req.SearchScope.Environment != nil {
 		params.EnvironmentUID = *req.SearchScope.Environment
 	}
+	if req.IncludeAttributes != nil {
+		params.IncludeAttributes = *req.IncludeAttributes
+	}
 	params.Namespace = req.SearchScope.Namespace
 	return params
 }
@@ -363,16 +366,18 @@ func toTracesListResponse(traces []traceEntry, total int, tookMs int) gen.Traces
 }
 
 // toSpansListResponse converts internal spans to the generated response model.
-func toSpansListResponse(spans []opensearch.Span, total int, tookMs int) gen.TraceSpansListResponse {
+func toSpansListResponse(spans []opensearch.Span, total int, tookMs int, includeAttributes bool) gen.TraceSpansListResponse {
 	apiSpans := make([]struct {
-		DurationNs   *int64                                 `json:"durationNs,omitempty"`
-		EndTime      *time.Time                             `json:"endTime,omitempty"`
-		ParentSpanId *string                                `json:"parentSpanId,omitempty"`
-		SpanId       *string                                `json:"spanId,omitempty"`
-		SpanKind     *string                                `json:"spanKind,omitempty"`
-		SpanName     *string                                `json:"spanName,omitempty"`
-		StartTime    *time.Time                             `json:"startTime,omitempty"`
-		Status       *gen.TraceSpansListResponseSpansStatus `json:"status,omitempty"`
+		Attributes         *map[string]interface{}                `json:"attributes,omitempty"`
+		DurationNs         *int64                                 `json:"durationNs,omitempty"`
+		EndTime            *time.Time                             `json:"endTime,omitempty"`
+		ParentSpanId       *string                                `json:"parentSpanId,omitempty"`
+		ResourceAttributes *map[string]interface{}                `json:"resourceAttributes,omitempty"`
+		SpanId             *string                                `json:"spanId,omitempty"`
+		SpanKind           *string                                `json:"spanKind,omitempty"`
+		SpanName           *string                                `json:"spanName,omitempty"`
+		StartTime          *time.Time                             `json:"startTime,omitempty"`
+		Status             *gen.TraceSpansListResponseSpansStatus `json:"status,omitempty"`
 	}, 0, len(spans))
 
 	for _, s := range spans {
@@ -384,15 +389,17 @@ func toSpansListResponse(spans []opensearch.Span, total int, tookMs int) gen.Tra
 		spanKind := s.SpanKind
 		parentSpanId := s.ParentSpanID
 		status := gen.TraceSpansListResponseSpansStatus(s.Status)
-		apiSpans = append(apiSpans, struct {
-			DurationNs   *int64                                 `json:"durationNs,omitempty"`
-			EndTime      *time.Time                             `json:"endTime,omitempty"`
-			ParentSpanId *string                                `json:"parentSpanId,omitempty"`
-			SpanId       *string                                `json:"spanId,omitempty"`
-			SpanKind     *string                                `json:"spanKind,omitempty"`
-			SpanName     *string                                `json:"spanName,omitempty"`
-			StartTime    *time.Time                             `json:"startTime,omitempty"`
-			Status       *gen.TraceSpansListResponseSpansStatus `json:"status,omitempty"`
+		entry := struct {
+			Attributes         *map[string]interface{}                `json:"attributes,omitempty"`
+			DurationNs         *int64                                 `json:"durationNs,omitempty"`
+			EndTime            *time.Time                             `json:"endTime,omitempty"`
+			ParentSpanId       *string                                `json:"parentSpanId,omitempty"`
+			ResourceAttributes *map[string]interface{}                `json:"resourceAttributes,omitempty"`
+			SpanId             *string                                `json:"spanId,omitempty"`
+			SpanKind           *string                                `json:"spanKind,omitempty"`
+			SpanName           *string                                `json:"spanName,omitempty"`
+			StartTime          *time.Time                             `json:"startTime,omitempty"`
+			Status             *gen.TraceSpansListResponseSpansStatus `json:"status,omitempty"`
 		}{
 			DurationNs:   &dur,
 			StartTime:    &startTime,
@@ -402,7 +409,16 @@ func toSpansListResponse(spans []opensearch.Span, total int, tookMs int) gen.Tra
 			SpanKind:     &spanKind,
 			ParentSpanId: &parentSpanId,
 			Status:       &status,
-		})
+		}
+		if includeAttributes {
+			if s.Attributes != nil {
+				entry.Attributes = &s.Attributes
+			}
+			if s.ResourceAttributes != nil {
+				entry.ResourceAttributes = &s.ResourceAttributes
+			}
+		}
+		apiSpans = append(apiSpans, entry)
 	}
 
 	return gen.TraceSpansListResponse{

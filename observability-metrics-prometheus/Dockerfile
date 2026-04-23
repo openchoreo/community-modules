@@ -1,7 +1,7 @@
 # Copyright 2026 The OpenChoreo Authors
 # SPDX-License-Identifier: Apache-2.0
 
-FROM golang:1.24-alpine AS builder
+FROM golang:1.26.2-alpine3.23 AS builder
 
 WORKDIR /app
 
@@ -21,7 +21,7 @@ RUN apk add --no-cache ca-certificates && \
 
 COPY --from=builder /app/main .
 
-EXPOSE 9098
+EXPOSE 9099
 
 USER 10500:10500
 

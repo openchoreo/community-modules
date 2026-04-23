@@ -12,7 +12,9 @@ import (
 	"time"
 
 	app "github.com/openchoreo/community-modules/observability-metrics-prometheus/internal"
+	"github.com/openchoreo/community-modules/observability-metrics-prometheus/internal/k8s"
 	"github.com/openchoreo/community-modules/observability-metrics-prometheus/internal/observer"
+	"github.com/openchoreo/community-modules/observability-metrics-prometheus/internal/prometheus"
 )
 
 func main() {
@@ -32,10 +34,29 @@ func main() {
 	logger.Info("Configurations loaded from environment variables successfully",
 		slog.String("Log Level", cfg.LogLevel.String()),
 		slog.String("Server Port", cfg.ServerPort),
+		slog.String("Prometheus Address", cfg.PrometheusAddress),
+		slog.String("Alert Rule Namespace", cfg.AlertRuleNamespace),
 	)
 
+	promClient, err := prometheus.NewClient(cfg.PrometheusAddress, logger)
+	if err != nil {
+		logger.Error("Failed to create Prometheus client", slog.Any("error", err))
+		os.Exit(1)
+	}
+
+	if err := promClient.HealthCheck(context.Background()); err != nil {
+		logger.Error("Failed to connect to Prometheus", slog.String("address", cfg.PrometheusAddress), slog.Any("error", err))
+		os.Exit(1)
+	}
+	logger.Info("Successfully connected to Prometheus", slog.String("address", cfg.PrometheusAddress))
+
+	k8sClient, err := k8s.NewClient(cfg.AlertRuleNamespace)
+	if err != nil {
+		logger.Warn("Failed to create Kubernetes client; alert rule management will be unavailable", slog.Any("error", err))
+	}
+
 	observerClient := observer.NewClient(cfg.ObserverAPIInternalURL)
-	metricsHandler := app.NewMetricsHandler(observerClient, logger)
+	metricsHandler := app.NewMetricsHandler(promClient, k8sClient, observerClient, cfg.AlertRuleNamespace, logger)
 	srv := app.NewServer(cfg.ServerPort, metricsHandler, logger)
 
 	serverErrCh := make(chan error, 1)

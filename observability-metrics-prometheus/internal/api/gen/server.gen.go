@@ -18,16 +18,32 @@ import (
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
+	"github.com/oapi-codegen/runtime"
 	strictnethttp "github.com/oapi-codegen/runtime/strictmiddleware/nethttp"
 )
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
-	// Receive Alertmanager webhook payload
-	// (POST /api/alerting/webhook)
-	HandleAlertmanagerWebhook(w http.ResponseWriter, r *http.Request)
+	// Query metrics
+	// (POST /api/v1/metrics/query)
+	QueryMetrics(w http.ResponseWriter, r *http.Request)
+	// Create alert rule
+	// (POST /api/v1alpha1/alerts/rules)
+	CreateAlertRule(w http.ResponseWriter, r *http.Request)
+	// Delete alert rule
+	// (DELETE /api/v1alpha1/alerts/rules/{ruleName})
+	DeleteAlertRule(w http.ResponseWriter, r *http.Request, ruleName string)
+	// Get alert rule
+	// (GET /api/v1alpha1/alerts/rules/{ruleName})
+	GetAlertRule(w http.ResponseWriter, r *http.Request, ruleName string)
+	// Update alert rule
+	// (PUT /api/v1alpha1/alerts/rules/{ruleName})
+	UpdateAlertRule(w http.ResponseWriter, r *http.Request, ruleName string)
+	// Handles triggered alerts from the alerting backend
+	// (POST /api/v1alpha1/alerts/webhook)
+	HandleAlertWebhook(w http.ResponseWriter, r *http.Request)
 	// Health check
-	// (GET /health)
+	// (GET /healthz)
 	Health(w http.ResponseWriter, r *http.Request)
 }
 
@@ -40,11 +56,114 @@ type ServerInterfaceWrapper struct {
 
 type MiddlewareFunc func(http.Handler) http.Handler
 
-// HandleAlertmanagerWebhook operation middleware
-func (siw *ServerInterfaceWrapper) HandleAlertmanagerWebhook(w http.ResponseWriter, r *http.Request) {
+// QueryMetrics operation middleware
+func (siw *ServerInterfaceWrapper) QueryMetrics(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.HandleAlertmanagerWebhook(w, r)
+		siw.Handler.QueryMetrics(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateAlertRule operation middleware
+func (siw *ServerInterfaceWrapper) CreateAlertRule(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateAlertRule(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteAlertRule operation middleware
+func (siw *ServerInterfaceWrapper) DeleteAlertRule(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "ruleName" -------------
+	var ruleName string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "ruleName", r.PathValue("ruleName"), &ruleName, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "ruleName", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteAlertRule(w, r, ruleName)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAlertRule operation middleware
+func (siw *ServerInterfaceWrapper) GetAlertRule(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "ruleName" -------------
+	var ruleName string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "ruleName", r.PathValue("ruleName"), &ruleName, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "ruleName", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAlertRule(w, r, ruleName)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateAlertRule operation middleware
+func (siw *ServerInterfaceWrapper) UpdateAlertRule(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "ruleName" -------------
+	var ruleName string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "ruleName", r.PathValue("ruleName"), &ruleName, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "ruleName", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateAlertRule(w, r, ruleName)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// HandleAlertWebhook operation middleware
+func (siw *ServerInterfaceWrapper) HandleAlertWebhook(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.HandleAlertWebhook(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -188,41 +307,267 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
-	m.HandleFunc("POST "+options.BaseURL+"/api/alerting/webhook", wrapper.HandleAlertmanagerWebhook)
-	m.HandleFunc("GET "+options.BaseURL+"/health", wrapper.Health)
+	m.HandleFunc("POST "+options.BaseURL+"/api/v1/metrics/query", wrapper.QueryMetrics)
+	m.HandleFunc("POST "+options.BaseURL+"/api/v1alpha1/alerts/rules", wrapper.CreateAlertRule)
+	m.HandleFunc("DELETE "+options.BaseURL+"/api/v1alpha1/alerts/rules/{ruleName}", wrapper.DeleteAlertRule)
+	m.HandleFunc("GET "+options.BaseURL+"/api/v1alpha1/alerts/rules/{ruleName}", wrapper.GetAlertRule)
+	m.HandleFunc("PUT "+options.BaseURL+"/api/v1alpha1/alerts/rules/{ruleName}", wrapper.UpdateAlertRule)
+	m.HandleFunc("POST "+options.BaseURL+"/api/v1alpha1/alerts/webhook", wrapper.HandleAlertWebhook)
+	m.HandleFunc("GET "+options.BaseURL+"/healthz", wrapper.Health)
 
 	return m
 }
 
-type HandleAlertmanagerWebhookRequestObject struct {
-	Body *HandleAlertmanagerWebhookJSONRequestBody
+type QueryMetricsRequestObject struct {
+	Body *QueryMetricsJSONRequestBody
 }
 
-type HandleAlertmanagerWebhookResponseObject interface {
-	VisitHandleAlertmanagerWebhookResponse(w http.ResponseWriter) error
+type QueryMetricsResponseObject interface {
+	VisitQueryMetricsResponse(w http.ResponseWriter) error
 }
 
-type HandleAlertmanagerWebhook200JSONResponse WebhookResponse
+type QueryMetrics200JSONResponse MetricsQueryResponse
 
-func (response HandleAlertmanagerWebhook200JSONResponse) VisitHandleAlertmanagerWebhookResponse(w http.ResponseWriter) error {
+func (response QueryMetrics200JSONResponse) VisitQueryMetricsResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type HandleAlertmanagerWebhook400JSONResponse ErrorResponse
+type QueryMetrics400JSONResponse ErrorResponse
 
-func (response HandleAlertmanagerWebhook400JSONResponse) VisitHandleAlertmanagerWebhookResponse(w http.ResponseWriter) error {
+func (response QueryMetrics400JSONResponse) VisitQueryMetricsResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(400)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type HandleAlertmanagerWebhook500JSONResponse ErrorResponse
+type QueryMetrics401JSONResponse ErrorResponse
 
-func (response HandleAlertmanagerWebhook500JSONResponse) VisitHandleAlertmanagerWebhookResponse(w http.ResponseWriter) error {
+func (response QueryMetrics401JSONResponse) VisitQueryMetricsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type QueryMetrics403JSONResponse ErrorResponse
+
+func (response QueryMetrics403JSONResponse) VisitQueryMetricsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type QueryMetrics500JSONResponse ErrorResponse
+
+func (response QueryMetrics500JSONResponse) VisitQueryMetricsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateAlertRuleRequestObject struct {
+	Body *CreateAlertRuleJSONRequestBody
+}
+
+type CreateAlertRuleResponseObject interface {
+	VisitCreateAlertRuleResponse(w http.ResponseWriter) error
+}
+
+type CreateAlertRule201JSONResponse AlertingRuleSyncResponse
+
+func (response CreateAlertRule201JSONResponse) VisitCreateAlertRuleResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateAlertRule400JSONResponse ErrorResponse
+
+func (response CreateAlertRule400JSONResponse) VisitCreateAlertRuleResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateAlertRule409JSONResponse ErrorResponse
+
+func (response CreateAlertRule409JSONResponse) VisitCreateAlertRuleResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateAlertRule500JSONResponse ErrorResponse
+
+func (response CreateAlertRule500JSONResponse) VisitCreateAlertRuleResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteAlertRuleRequestObject struct {
+	RuleName string `json:"ruleName"`
+}
+
+type DeleteAlertRuleResponseObject interface {
+	VisitDeleteAlertRuleResponse(w http.ResponseWriter) error
+}
+
+type DeleteAlertRule200JSONResponse AlertingRuleSyncResponse
+
+func (response DeleteAlertRule200JSONResponse) VisitDeleteAlertRuleResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteAlertRule400JSONResponse ErrorResponse
+
+func (response DeleteAlertRule400JSONResponse) VisitDeleteAlertRuleResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteAlertRule404JSONResponse ErrorResponse
+
+func (response DeleteAlertRule404JSONResponse) VisitDeleteAlertRuleResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteAlertRule500JSONResponse ErrorResponse
+
+func (response DeleteAlertRule500JSONResponse) VisitDeleteAlertRuleResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAlertRuleRequestObject struct {
+	RuleName string `json:"ruleName"`
+}
+
+type GetAlertRuleResponseObject interface {
+	VisitGetAlertRuleResponse(w http.ResponseWriter) error
+}
+
+type GetAlertRule200JSONResponse AlertRuleResponse
+
+func (response GetAlertRule200JSONResponse) VisitGetAlertRuleResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAlertRule400JSONResponse ErrorResponse
+
+func (response GetAlertRule400JSONResponse) VisitGetAlertRuleResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAlertRule404JSONResponse ErrorResponse
+
+func (response GetAlertRule404JSONResponse) VisitGetAlertRuleResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetAlertRule500JSONResponse ErrorResponse
+
+func (response GetAlertRule500JSONResponse) VisitGetAlertRuleResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateAlertRuleRequestObject struct {
+	RuleName string `json:"ruleName"`
+	Body     *UpdateAlertRuleJSONRequestBody
+}
+
+type UpdateAlertRuleResponseObject interface {
+	VisitUpdateAlertRuleResponse(w http.ResponseWriter) error
+}
+
+type UpdateAlertRule200JSONResponse AlertingRuleSyncResponse
+
+func (response UpdateAlertRule200JSONResponse) VisitUpdateAlertRuleResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateAlertRule400JSONResponse ErrorResponse
+
+func (response UpdateAlertRule400JSONResponse) VisitUpdateAlertRuleResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateAlertRule500JSONResponse ErrorResponse
+
+func (response UpdateAlertRule500JSONResponse) VisitUpdateAlertRuleResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type HandleAlertWebhookRequestObject struct {
+	Body *HandleAlertWebhookJSONRequestBody
+}
+
+type HandleAlertWebhookResponseObject interface {
+	VisitHandleAlertWebhookResponse(w http.ResponseWriter) error
+}
+
+type HandleAlertWebhook200JSONResponse AlertWebhookResponse
+
+func (response HandleAlertWebhook200JSONResponse) VisitHandleAlertWebhookResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type HandleAlertWebhook400JSONResponse ErrorResponse
+
+func (response HandleAlertWebhook400JSONResponse) VisitHandleAlertWebhookResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type HandleAlertWebhook500JSONResponse ErrorResponse
+
+func (response HandleAlertWebhook500JSONResponse) VisitHandleAlertWebhookResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
 
@@ -236,7 +581,9 @@ type HealthResponseObject interface {
 	VisitHealthResponse(w http.ResponseWriter) error
 }
 
-type Health200JSONResponse HealthResponse
+type Health200JSONResponse struct {
+	Status *string `json:"status,omitempty"`
+}
 
 func (response Health200JSONResponse) VisitHealthResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
@@ -245,13 +592,40 @@ func (response Health200JSONResponse) VisitHealthResponse(w http.ResponseWriter)
 	return json.NewEncoder(w).Encode(response)
 }
 
+type Health503JSONResponse struct {
+	Error  *string `json:"error,omitempty"`
+	Status *string `json:"status,omitempty"`
+}
+
+func (response Health503JSONResponse) VisitHealthResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
-	// Receive Alertmanager webhook payload
-	// (POST /api/alerting/webhook)
-	HandleAlertmanagerWebhook(ctx context.Context, request HandleAlertmanagerWebhookRequestObject) (HandleAlertmanagerWebhookResponseObject, error)
+	// Query metrics
+	// (POST /api/v1/metrics/query)
+	QueryMetrics(ctx context.Context, request QueryMetricsRequestObject) (QueryMetricsResponseObject, error)
+	// Create alert rule
+	// (POST /api/v1alpha1/alerts/rules)
+	CreateAlertRule(ctx context.Context, request CreateAlertRuleRequestObject) (CreateAlertRuleResponseObject, error)
+	// Delete alert rule
+	// (DELETE /api/v1alpha1/alerts/rules/{ruleName})
+	DeleteAlertRule(ctx context.Context, request DeleteAlertRuleRequestObject) (DeleteAlertRuleResponseObject, error)
+	// Get alert rule
+	// (GET /api/v1alpha1/alerts/rules/{ruleName})
+	GetAlertRule(ctx context.Context, request GetAlertRuleRequestObject) (GetAlertRuleResponseObject, error)
+	// Update alert rule
+	// (PUT /api/v1alpha1/alerts/rules/{ruleName})
+	UpdateAlertRule(ctx context.Context, request UpdateAlertRuleRequestObject) (UpdateAlertRuleResponseObject, error)
+	// Handles triggered alerts from the alerting backend
+	// (POST /api/v1alpha1/alerts/webhook)
+	HandleAlertWebhook(ctx context.Context, request HandleAlertWebhookRequestObject) (HandleAlertWebhookResponseObject, error)
 	// Health check
-	// (GET /health)
+	// (GET /healthz)
 	Health(ctx context.Context, request HealthRequestObject) (HealthResponseObject, error)
 }
 
@@ -284,11 +658,11 @@ type strictHandler struct {
 	options     StrictHTTPServerOptions
 }
 
-// HandleAlertmanagerWebhook operation middleware
-func (sh *strictHandler) HandleAlertmanagerWebhook(w http.ResponseWriter, r *http.Request) {
-	var request HandleAlertmanagerWebhookRequestObject
+// QueryMetrics operation middleware
+func (sh *strictHandler) QueryMetrics(w http.ResponseWriter, r *http.Request) {
+	var request QueryMetricsRequestObject
 
-	var body HandleAlertmanagerWebhookJSONRequestBody
+	var body QueryMetricsJSONRequestBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
 		return
@@ -296,18 +670,165 @@ func (sh *strictHandler) HandleAlertmanagerWebhook(w http.ResponseWriter, r *htt
 	request.Body = &body
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.HandleAlertmanagerWebhook(ctx, request.(HandleAlertmanagerWebhookRequestObject))
+		return sh.ssi.QueryMetrics(ctx, request.(QueryMetricsRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "HandleAlertmanagerWebhook")
+		handler = middleware(handler, "QueryMetrics")
 	}
 
 	response, err := handler(r.Context(), w, r, request)
 
 	if err != nil {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(HandleAlertmanagerWebhookResponseObject); ok {
-		if err := validResponse.VisitHandleAlertmanagerWebhookResponse(w); err != nil {
+	} else if validResponse, ok := response.(QueryMetricsResponseObject); ok {
+		if err := validResponse.VisitQueryMetricsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateAlertRule operation middleware
+func (sh *strictHandler) CreateAlertRule(w http.ResponseWriter, r *http.Request) {
+	var request CreateAlertRuleRequestObject
+
+	var body CreateAlertRuleJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateAlertRule(ctx, request.(CreateAlertRuleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateAlertRule")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateAlertRuleResponseObject); ok {
+		if err := validResponse.VisitCreateAlertRuleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteAlertRule operation middleware
+func (sh *strictHandler) DeleteAlertRule(w http.ResponseWriter, r *http.Request, ruleName string) {
+	var request DeleteAlertRuleRequestObject
+
+	request.RuleName = ruleName
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteAlertRule(ctx, request.(DeleteAlertRuleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteAlertRule")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteAlertRuleResponseObject); ok {
+		if err := validResponse.VisitDeleteAlertRuleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAlertRule operation middleware
+func (sh *strictHandler) GetAlertRule(w http.ResponseWriter, r *http.Request, ruleName string) {
+	var request GetAlertRuleRequestObject
+
+	request.RuleName = ruleName
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAlertRule(ctx, request.(GetAlertRuleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAlertRule")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAlertRuleResponseObject); ok {
+		if err := validResponse.VisitGetAlertRuleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateAlertRule operation middleware
+func (sh *strictHandler) UpdateAlertRule(w http.ResponseWriter, r *http.Request, ruleName string) {
+	var request UpdateAlertRuleRequestObject
+
+	request.RuleName = ruleName
+
+	var body UpdateAlertRuleJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateAlertRule(ctx, request.(UpdateAlertRuleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateAlertRule")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateAlertRuleResponseObject); ok {
+		if err := validResponse.VisitUpdateAlertRuleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// HandleAlertWebhook operation middleware
+func (sh *strictHandler) HandleAlertWebhook(w http.ResponseWriter, r *http.Request) {
+	var request HandleAlertWebhookRequestObject
+
+	var body HandleAlertWebhookJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.HandleAlertWebhook(ctx, request.(HandleAlertWebhookRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "HandleAlertWebhook")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(HandleAlertWebhookResponseObject); ok {
+		if err := validResponse.VisitHandleAlertWebhookResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -342,18 +863,42 @@ func (sh *strictHandler) Health(w http.ResponseWriter, r *http.Request) {
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"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",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

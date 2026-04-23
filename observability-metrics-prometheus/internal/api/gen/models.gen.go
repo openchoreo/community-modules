@@ -5,150 +5,356 @@ package gen
 
 import (
 	"encoding/json"
-	"fmt"
 	"time"
+
+	"github.com/oapi-codegen/runtime"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
-// Defines values for WebhookResponseStatus.
+// Defines values for AlertRuleRequestConditionOperator.
 const (
-	Error   WebhookResponseStatus = "error"
-	Success WebhookResponseStatus = "success"
+	AlertRuleRequestConditionOperatorEq  AlertRuleRequestConditionOperator = "eq"
+	AlertRuleRequestConditionOperatorGt  AlertRuleRequestConditionOperator = "gt"
+	AlertRuleRequestConditionOperatorGte AlertRuleRequestConditionOperator = "gte"
+	AlertRuleRequestConditionOperatorLt  AlertRuleRequestConditionOperator = "lt"
+	AlertRuleRequestConditionOperatorLte AlertRuleRequestConditionOperator = "lte"
+	AlertRuleRequestConditionOperatorNeq AlertRuleRequestConditionOperator = "neq"
 )
 
-// AlertmanagerAlert defines model for AlertmanagerAlert.
-type AlertmanagerAlert struct {
-	Annotations AlertmanagerAlert_Annotations `json:"annotations"`
-	Labels      *map[string]string            `json:"labels,omitempty"`
-	StartsAt    time.Time                     `json:"startsAt"`
-	Status      string                        `json:"status"`
+// Defines values for AlertRuleRequestSourceMetric.
+const (
+	AlertRuleRequestSourceMetricCpuUsage    AlertRuleRequestSourceMetric = "cpu_usage"
+	AlertRuleRequestSourceMetricMemoryUsage AlertRuleRequestSourceMetric = "memory_usage"
+)
+
+// Defines values for AlertRuleResponseConditionOperator.
+const (
+	AlertRuleResponseConditionOperatorEq  AlertRuleResponseConditionOperator = "eq"
+	AlertRuleResponseConditionOperatorGt  AlertRuleResponseConditionOperator = "gt"
+	AlertRuleResponseConditionOperatorGte AlertRuleResponseConditionOperator = "gte"
+	AlertRuleResponseConditionOperatorLt  AlertRuleResponseConditionOperator = "lt"
+	AlertRuleResponseConditionOperatorLte AlertRuleResponseConditionOperator = "lte"
+	AlertRuleResponseConditionOperatorNeq AlertRuleResponseConditionOperator = "neq"
+)
+
+// Defines values for AlertRuleResponseSourceMetric.
+const (
+	AlertRuleResponseSourceMetricCpuUsage    AlertRuleResponseSourceMetric = "cpu_usage"
+	AlertRuleResponseSourceMetricMemoryUsage AlertRuleResponseSourceMetric = "memory_usage"
+)
+
+// Defines values for AlertWebhookResponseStatus.
+const (
+	Error   AlertWebhookResponseStatus = "error"
+	Success AlertWebhookResponseStatus = "success"
+)
+
+// Defines values for AlertingRuleSyncResponseAction.
+const (
+	Created   AlertingRuleSyncResponseAction = "created"
+	Deleted   AlertingRuleSyncResponseAction = "deleted"
+	Unchanged AlertingRuleSyncResponseAction = "unchanged"
+	Updated   AlertingRuleSyncResponseAction = "updated"
+)
+
+// Defines values for AlertingRuleSyncResponseStatus.
+const (
+	Failed AlertingRuleSyncResponseStatus = "failed"
+	Synced AlertingRuleSyncResponseStatus = "synced"
+)
+
+// Defines values for ErrorResponseTitle.
+const (
+	BadRequest          ErrorResponseTitle = "badRequest"
+	Forbidden           ErrorResponseTitle = "forbidden"
+	InternalServerError ErrorResponseTitle = "internalServerError"
+	Unauthorized        ErrorResponseTitle = "unauthorized"
+)
+
+// Defines values for MetricsQueryRequestMetric.
+const (
+	Http     MetricsQueryRequestMetric = "http"
+	Resource MetricsQueryRequestMetric = "resource"
+)
+
+// AlertRuleRequest defines model for AlertRuleRequest.
+type AlertRuleRequest struct {
+	Condition struct {
+		// Enabled Whether the alert rule is enabled
+		Enabled bool `json:"enabled"`
+
+		// Interval The interval of time to query for the alert rule
+		Interval string `json:"interval"`
+
+		// Operator The operator to use for the alert rule
+		Operator AlertRuleRequestConditionOperator `json:"operator"`
+
+		// Threshold The threshold value to use for the alert rule
+		Threshold float32 `json:"threshold"`
+
+		// Window The window of time to query for the alert rule
+		Window string `json:"window"`
+	} `json:"condition"`
+	Metadata struct {
+		// ComponentUid The OpenChoreo component UID to query
+		ComponentUid openapi_types.UUID `json:"componentUid"`
+
+		// EnvironmentUid The OpenChoreo environment UID to query
+		EnvironmentUid openapi_types.UUID `json:"environmentUid"`
+
+		// Name The name of the alert rule
+		Name string `json:"name"`
+
+		// Namespace The namespace of the alert rule CR
+		Namespace string `json:"namespace"`
+
+		// ProjectUid The OpenChoreo project UID to query
+		ProjectUid openapi_types.UUID `json:"projectUid"`
+	} `json:"metadata"`
+	Source struct {
+		// Metric The metric to query for metric based alerts
+		Metric AlertRuleRequestSourceMetric `json:"metric"`
+	} `json:"source"`
 }
 
-// AlertmanagerAlert_Annotations defines model for AlertmanagerAlert.Annotations.
-type AlertmanagerAlert_Annotations struct {
-	AlertValue           string            `json:"alert_value"`
-	RuleName             string            `json:"rule_name"`
-	RuleNamespace        string            `json:"rule_namespace"`
-	AdditionalProperties map[string]string `json:"-"`
+// AlertRuleRequestConditionOperator The operator to use for the alert rule
+type AlertRuleRequestConditionOperator string
+
+// AlertRuleRequestSourceMetric The metric to query for metric based alerts
+type AlertRuleRequestSourceMetric string
+
+// AlertRuleResponse defines model for AlertRuleResponse.
+type AlertRuleResponse struct {
+	Condition *struct {
+		// Enabled Whether the alert rule is enabled
+		Enabled *bool `json:"enabled,omitempty"`
+
+		// Interval The interval of time to query for the alert rule
+		Interval *string `json:"interval,omitempty"`
+
+		// Operator The operator to use for the alert rule
+		Operator *AlertRuleResponseConditionOperator `json:"operator,omitempty"`
+
+		// Threshold The threshold value to use for the alert rule
+		Threshold *float32 `json:"threshold,omitempty"`
+
+		// Window The window of time to query for the alert rule
+		Window *string `json:"window,omitempty"`
+	} `json:"condition,omitempty"`
+	Metadata *struct {
+		// ComponentUid The OpenChoreo component UID to query
+		ComponentUid *openapi_types.UUID `json:"componentUid,omitempty"`
+
+		// EnvironmentUid The OpenChoreo environment UID to query
+		EnvironmentUid *openapi_types.UUID `json:"environmentUid,omitempty"`
+
+		// Name The name of the alert rule
+		Name *string `json:"name,omitempty"`
+
+		// Namespace The namespace of the alert rule CR
+		Namespace *string `json:"namespace,omitempty"`
+
+		// ProjectUid The OpenChoreo project UID to query
+		ProjectUid *openapi_types.UUID `json:"projectUid,omitempty"`
+	} `json:"metadata,omitempty"`
+	Source *struct {
+		// Metric The metric to query for metric based alerts
+		Metric *AlertRuleResponseSourceMetric `json:"metric,omitempty"`
+	} `json:"source,omitempty"`
 }
 
-// AlertmanagerWebhookPayload defines model for AlertmanagerWebhookPayload.
-type AlertmanagerWebhookPayload struct {
-	Alerts   []AlertmanagerAlert `json:"alerts"`
-	Receiver *string             `json:"receiver,omitempty"`
-	Status   *string             `json:"status,omitempty"`
+// AlertRuleResponseConditionOperator The operator to use for the alert rule
+type AlertRuleResponseConditionOperator string
+
+// AlertRuleResponseSourceMetric The metric to query for metric based alerts
+type AlertRuleResponseSourceMetric string
+
+// AlertWebhookResponse defines model for AlertWebhookResponse.
+type AlertWebhookResponse struct {
+	// Message The message of the alert webhook
+	Message *string `json:"message,omitempty"`
+
+	// Status The status of the alert webhook
+	Status *AlertWebhookResponseStatus `json:"status,omitempty"`
+}
+
+// AlertWebhookResponseStatus The status of the alert webhook
+type AlertWebhookResponseStatus string
+
+// AlertingRuleSyncResponse defines model for AlertingRuleSyncResponse.
+type AlertingRuleSyncResponse struct {
+	// Action The action taken on the alert rule
+	Action *AlertingRuleSyncResponseAction `json:"action,omitempty"`
+
+	// LastSyncedAt The timestamp of the last sync
+	LastSyncedAt *string `json:"lastSyncedAt,omitempty"`
+
+	// RuleBackendId The backend ID (UID from observability backend) of the alert rule
+	RuleBackendId *string `json:"ruleBackendId,omitempty"`
+
+	// RuleLogicalId The logical ID (name) of the alert rule
+	RuleLogicalId *string `json:"ruleLogicalId,omitempty"`
+
+	// Status The status of the alert rule
+	Status *AlertingRuleSyncResponseStatus `json:"status,omitempty"`
+}
+
+// AlertingRuleSyncResponseAction The action taken on the alert rule
+type AlertingRuleSyncResponseAction string
+
+// AlertingRuleSyncResponseStatus The status of the alert rule
+type AlertingRuleSyncResponseStatus string
+
+// ComponentSearchScope defines model for ComponentSearchScope.
+type ComponentSearchScope struct {
+	ComponentUid   *string `json:"componentUid,omitempty"`
+	EnvironmentUid *string `json:"environmentUid,omitempty"`
+	Namespace      string  `json:"namespace"`
+	ProjectUid     *string `json:"projectUid,omitempty"`
 }
 
 // ErrorResponse defines model for ErrorResponse.
 type ErrorResponse struct {
-	Message string `json:"message"`
-	Title   string `json:"title"`
+	// Detail The error message
+	Detail *string `json:"detail,omitempty"`
+
+	// ErrorCode The error code from observer service
+	ErrorCode *string `json:"errorCode,omitempty"`
+
+	// Title The error message
+	Title *ErrorResponseTitle `json:"title,omitempty"`
 }
 
-// HealthResponse defines model for HealthResponse.
-type HealthResponse struct {
-	Status string `json:"status"`
+// ErrorResponseTitle The error message
+type ErrorResponseTitle string
+
+// HttpMetricsTimeSeries defines model for HttpMetricsTimeSeries.
+type HttpMetricsTimeSeries struct {
+	LatencyP50               *[]MetricsTimeSeriesItem `json:"latencyP50,omitempty"`
+	LatencyP90               *[]MetricsTimeSeriesItem `json:"latencyP90,omitempty"`
+	LatencyP99               *[]MetricsTimeSeriesItem `json:"latencyP99,omitempty"`
+	MeanLatency              *[]MetricsTimeSeriesItem `json:"meanLatency,omitempty"`
+	RequestCount             *[]MetricsTimeSeriesItem `json:"requestCount,omitempty"`
+	SuccessfulRequestCount   *[]MetricsTimeSeriesItem `json:"successfulRequestCount,omitempty"`
+	UnsuccessfulRequestCount *[]MetricsTimeSeriesItem `json:"unsuccessfulRequestCount,omitempty"`
 }
 
-// WebhookResponse defines model for WebhookResponse.
-type WebhookResponse struct {
-	Message string                `json:"message"`
-	Status  WebhookResponseStatus `json:"status"`
+// MetricsQueryRequest defines model for MetricsQueryRequest.
+type MetricsQueryRequest struct {
+	// EndTime The end time of the query
+	EndTime time.Time `json:"endTime"`
+
+	// Metric The type of query to execute
+	Metric      MetricsQueryRequestMetric `json:"metric"`
+	SearchScope ComponentSearchScope      `json:"searchScope"`
+
+	// StartTime The start time of the query
+	StartTime time.Time `json:"startTime"`
+
+	// Step The step of the query to determine the number of points to return. E.g. 1m, 5m, 15m, 30m, 1h
+	Step *string `json:"step,omitempty"`
 }
 
-// WebhookResponseStatus defines model for WebhookResponse.Status.
-type WebhookResponseStatus string
+// MetricsQueryRequestMetric The type of query to execute
+type MetricsQueryRequestMetric string
 
-// HandleAlertmanagerWebhookJSONRequestBody defines body for HandleAlertmanagerWebhook for application/json ContentType.
-type HandleAlertmanagerWebhookJSONRequestBody = AlertmanagerWebhookPayload
-
-// Getter for additional properties for AlertmanagerAlert_Annotations. Returns the specified
-// element and whether it was found
-func (a AlertmanagerAlert_Annotations) Get(fieldName string) (value string, found bool) {
-	if a.AdditionalProperties != nil {
-		value, found = a.AdditionalProperties[fieldName]
-	}
-	return
+// MetricsQueryResponse defines model for MetricsQueryResponse.
+type MetricsQueryResponse struct {
+	union json.RawMessage
 }
 
-// Setter for additional properties for AlertmanagerAlert_Annotations
-func (a *AlertmanagerAlert_Annotations) Set(fieldName string, value string) {
-	if a.AdditionalProperties == nil {
-		a.AdditionalProperties = make(map[string]string)
-	}
-	a.AdditionalProperties[fieldName] = value
+// MetricsTimeSeriesItem defines model for MetricsTimeSeriesItem.
+type MetricsTimeSeriesItem struct {
+	// Timestamp The timestamp of the time series item
+	Timestamp *time.Time `json:"timestamp,omitempty"`
+
+	// Value The value of the time series item
+	Value *float64 `json:"value,omitempty"`
 }
 
-// Override default JSON handling for AlertmanagerAlert_Annotations to handle AdditionalProperties
-func (a *AlertmanagerAlert_Annotations) UnmarshalJSON(b []byte) error {
-	object := make(map[string]json.RawMessage)
-	err := json.Unmarshal(b, &object)
+// ResourceMetricsTimeSeries defines model for ResourceMetricsTimeSeries.
+type ResourceMetricsTimeSeries struct {
+	CpuLimits      *[]MetricsTimeSeriesItem `json:"cpuLimits,omitempty"`
+	CpuRequests    *[]MetricsTimeSeriesItem `json:"cpuRequests,omitempty"`
+	CpuUsage       *[]MetricsTimeSeriesItem `json:"cpuUsage,omitempty"`
+	MemoryLimits   *[]MetricsTimeSeriesItem `json:"memoryLimits,omitempty"`
+	MemoryRequests *[]MetricsTimeSeriesItem `json:"memoryRequests,omitempty"`
+	MemoryUsage    *[]MetricsTimeSeriesItem `json:"memoryUsage,omitempty"`
+}
+
+// HandleAlertWebhookJSONBody defines parameters for HandleAlertWebhook.
+type HandleAlertWebhookJSONBody = map[string]interface{}
+
+// QueryMetricsJSONRequestBody defines body for QueryMetrics for application/json ContentType.
+type QueryMetricsJSONRequestBody = MetricsQueryRequest
+
+// CreateAlertRuleJSONRequestBody defines body for CreateAlertRule for application/json ContentType.
+type CreateAlertRuleJSONRequestBody = AlertRuleRequest
+
+// UpdateAlertRuleJSONRequestBody defines body for UpdateAlertRule for application/json ContentType.
+type UpdateAlertRuleJSONRequestBody = AlertRuleRequest
+
+// HandleAlertWebhookJSONRequestBody defines body for HandleAlertWebhook for application/json ContentType.
+type HandleAlertWebhookJSONRequestBody = HandleAlertWebhookJSONBody
+
+// AsResourceMetricsTimeSeries returns the union data inside the MetricsQueryResponse as a ResourceMetricsTimeSeries
+func (t MetricsQueryResponse) AsResourceMetricsTimeSeries() (ResourceMetricsTimeSeries, error) {
+	var body ResourceMetricsTimeSeries
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromResourceMetricsTimeSeries overwrites any union data inside the MetricsQueryResponse as the provided ResourceMetricsTimeSeries
+func (t *MetricsQueryResponse) FromResourceMetricsTimeSeries(v ResourceMetricsTimeSeries) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeResourceMetricsTimeSeries performs a merge with any union data inside the MetricsQueryResponse, using the provided ResourceMetricsTimeSeries
+func (t *MetricsQueryResponse) MergeResourceMetricsTimeSeries(v ResourceMetricsTimeSeries) error {
+	b, err := json.Marshal(v)
 	if err != nil {
 		return err
 	}
 
-	if raw, found := object["alert_value"]; found {
-		err = json.Unmarshal(raw, &a.AlertValue)
-		if err != nil {
-			return fmt.Errorf("error reading 'alert_value': %w", err)
-		}
-		delete(object, "alert_value")
-	}
-
-	if raw, found := object["rule_name"]; found {
-		err = json.Unmarshal(raw, &a.RuleName)
-		if err != nil {
-			return fmt.Errorf("error reading 'rule_name': %w", err)
-		}
-		delete(object, "rule_name")
-	}
-
-	if raw, found := object["rule_namespace"]; found {
-		err = json.Unmarshal(raw, &a.RuleNamespace)
-		if err != nil {
-			return fmt.Errorf("error reading 'rule_namespace': %w", err)
-		}
-		delete(object, "rule_namespace")
-	}
-
-	if len(object) != 0 {
-		a.AdditionalProperties = make(map[string]string)
-		for fieldName, fieldBuf := range object {
-			var fieldVal string
-			err := json.Unmarshal(fieldBuf, &fieldVal)
-			if err != nil {
-				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
-			}
-			a.AdditionalProperties[fieldName] = fieldVal
-		}
-	}
-	return nil
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
 }
 
-// Override default JSON handling for AlertmanagerAlert_Annotations to handle AdditionalProperties
-func (a AlertmanagerAlert_Annotations) MarshalJSON() ([]byte, error) {
-	var err error
-	object := make(map[string]json.RawMessage)
+// AsHttpMetricsTimeSeries returns the union data inside the MetricsQueryResponse as a HttpMetricsTimeSeries
+func (t MetricsQueryResponse) AsHttpMetricsTimeSeries() (HttpMetricsTimeSeries, error) {
+	var body HttpMetricsTimeSeries
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
 
-	object["alert_value"], err = json.Marshal(a.AlertValue)
+// FromHttpMetricsTimeSeries overwrites any union data inside the MetricsQueryResponse as the provided HttpMetricsTimeSeries
+func (t *MetricsQueryResponse) FromHttpMetricsTimeSeries(v HttpMetricsTimeSeries) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeHttpMetricsTimeSeries performs a merge with any union data inside the MetricsQueryResponse, using the provided HttpMetricsTimeSeries
+func (t *MetricsQueryResponse) MergeHttpMetricsTimeSeries(v HttpMetricsTimeSeries) error {
+	b, err := json.Marshal(v)
 	if err != nil {
-		return nil, fmt.Errorf("error marshaling 'alert_value': %w", err)
+		return err
 	}
 
-	object["rule_name"], err = json.Marshal(a.RuleName)
-	if err != nil {
-		return nil, fmt.Errorf("error marshaling 'rule_name': %w", err)
-	}
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
 
-	object["rule_namespace"], err = json.Marshal(a.RuleNamespace)
-	if err != nil {
-		return nil, fmt.Errorf("error marshaling 'rule_namespace': %w", err)
-	}
+func (t MetricsQueryResponse) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
 
-	for fieldName, field := range a.AdditionalProperties {
-		object[fieldName], err = json.Marshal(field)
-		if err != nil {
-			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
-		}
-	}
-	return json.Marshal(object)
+func (t *MetricsQueryResponse) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
 }

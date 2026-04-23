@@ -19,7 +19,8 @@ func setEnvVars(t *testing.T, vars map[string]string) {
 // validEnvVars returns the minimal set of environment variables required for LoadConfig.
 func validEnvVars() map[string]string {
 	return map[string]string{
-		"OBSERVER_API_INTERNAL_URL": "http://localhost:8080",
+		"OBSERVER_INTERNAL_URL": "http://localhost:8081",
+		"PROMETHEUS_ADDRESS":    "http://localhost:9090",
 	}
 }
 
@@ -31,11 +32,17 @@ func TestLoadConfig_Success(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if cfg.ServerPort != "9098" {
-		t.Errorf("expected default ServerPort 9098, got %s", cfg.ServerPort)
+	if cfg.ServerPort != "9099" {
+		t.Errorf("expected default ServerPort 9099, got %s", cfg.ServerPort)
 	}
-	if cfg.ObserverAPIInternalURL != "http://localhost:8080" {
+	if cfg.ObserverAPIInternalURL != "http://localhost:8081" {
 		t.Errorf("unexpected ObserverAPIInternalURL: %s", cfg.ObserverAPIInternalURL)
+	}
+	if cfg.PrometheusAddress != "http://localhost:9090" {
+		t.Errorf("unexpected PrometheusAddress: %s", cfg.PrometheusAddress)
+	}
+	if cfg.AlertRuleNamespace != "openchoreo-observability-plane" {
+		t.Errorf("expected default AlertRuleNamespace 'openchoreo-observability-plane', got %s", cfg.AlertRuleNamespace)
 	}
 	if cfg.LogLevel != slog.LevelInfo {
 		t.Errorf("expected default LogLevel Info, got %v", cfg.LogLevel)
@@ -93,12 +100,12 @@ func TestLoadConfig_LogLevels(t *testing.T) {
 }
 
 func TestLoadConfig_MissingObserverURL(t *testing.T) {
-	// Explicitly set OBSERVER_API_INTERNAL_URL to empty to ensure it's treated as missing
-	t.Setenv("OBSERVER_API_INTERNAL_URL", "")
+	// Explicitly set OBSERVER_INTERNAL_URL to empty to ensure it's treated as missing
+	t.Setenv("OBSERVER_INTERNAL_URL", "")
 
 	_, err := LoadConfig()
 	if err == nil {
-		t.Fatal("expected error for missing OBSERVER_API_INTERNAL_URL, got nil")
+		t.Fatal("expected error for missing OBSERVER_INTERNAL_URL, got nil")
 	}
 }
 
@@ -115,12 +122,13 @@ func TestLoadConfig_InvalidObserverURL(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			setEnvVars(t, map[string]string{
-				"OBSERVER_API_INTERNAL_URL": tt.url,
+				"OBSERVER_INTERNAL_URL": tt.url,
+				"PROMETHEUS_ADDRESS":    "http://localhost:9090",
 			})
 
 			_, err := LoadConfig()
 			if err == nil {
-				t.Fatalf("expected error for OBSERVER_API_INTERNAL_URL=%q, got nil", tt.url)
+				t.Fatalf("expected error for OBSERVER_INTERNAL_URL=%q, got nil", tt.url)
 			}
 		})
 	}
@@ -173,5 +181,69 @@ func TestGetEnv(t *testing.T) {
 	}
 	if got := getEnv("TEST_GET_ENV_MISSING", "default"); got != "default" {
 		t.Errorf("expected 'default', got %q", got)
+	}
+}
+
+func TestLoadConfig_MissingPrometheusAddress(t *testing.T) {
+	setEnvVars(t, map[string]string{
+		"OBSERVER_INTERNAL_URL": "http://localhost:8080",
+		"PROMETHEUS_ADDRESS":    "",
+	})
+
+	_, err := LoadConfig()
+	if err == nil {
+		t.Fatal("expected error for missing PROMETHEUS_ADDRESS, got nil")
+	}
+}
+
+func TestLoadConfig_InvalidPrometheusAddress(t *testing.T) {
+	tests := []struct {
+		name string
+		url  string
+	}{
+		{"no scheme", "localhost:9090"},
+		{"no host", "http://"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			setEnvVars(t, map[string]string{
+				"OBSERVER_INTERNAL_URL": "http://localhost:8080",
+				"PROMETHEUS_ADDRESS":    tt.url,
+			})
+
+			_, err := LoadConfig()
+			if err == nil {
+				t.Fatalf("expected error for PROMETHEUS_ADDRESS=%q, got nil", tt.url)
+			}
+		})
+	}
+}
+
+func TestLoadConfig_CustomAlertRuleNamespace(t *testing.T) {
+	vars := validEnvVars()
+	vars["OBSERVABILITY_NAMESPACE"] = "custom-namespace"
+	setEnvVars(t, vars)
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.AlertRuleNamespace != "custom-namespace" {
+		t.Errorf("expected AlertRuleNamespace 'custom-namespace', got %s", cfg.AlertRuleNamespace)
+	}
+}
+
+func TestLoadConfig_CustomPrometheusAddress(t *testing.T) {
+	vars := validEnvVars()
+	vars["PROMETHEUS_ADDRESS"] = "http://prometheus:9091"
+	setEnvVars(t, vars)
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.PrometheusAddress != "http://prometheus:9091" {
+		t.Errorf("expected PrometheusAddress 'http://prometheus:9091', got %s", cfg.PrometheusAddress)
 	}
 }

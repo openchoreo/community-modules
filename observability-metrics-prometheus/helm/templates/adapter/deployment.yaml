@@ -16,9 +16,12 @@ spec:
       app: metrics-adapter-prometheus
   template:
     metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/adapter/configmap.yaml") . | sha256sum }}
       labels:
         app: metrics-adapter-prometheus
     spec:
+      serviceAccountName: metrics-adapter-prometheus
       securityContext:
         runAsUser: 10500
         runAsGroup: 10500
@@ -31,7 +34,7 @@ spec:
         - containerPort: 9099
         readinessProbe:
           httpGet:
-            path: /health
+            path: /healthz
             port: 9099
           initialDelaySeconds: 5
           periodSeconds: 10
@@ -39,19 +42,15 @@ spec:
           failureThreshold: 3
         livenessProbe:
           httpGet:
-            path: /health
+            path: /healthz
             port: 9099
           initialDelaySeconds: 10
           periodSeconds: 15
           timeoutSeconds: 2
           failureThreshold: 3
-        env:
-        - name: SERVER_PORT
-          value: "9099"
-        - name: OBSERVER_API_INTERNAL_URL
-          value: "http://observer-internal.{{ .Release.Namespace }}:8081"
-        - name: LOG_LEVEL
-          value: "INFO"
+        envFrom:
+        - configMapRef:
+            name: metrics-adapter-prometheus
         resources:
           limits:
             cpu: {{ .Values.adapter.resources.limits.cpu }}

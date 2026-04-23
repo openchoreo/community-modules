@@ -1,0 +1,34 @@
+{{- /*
+Copyright 2026 The OpenChoreo Authors
+SPDX-License-Identifier: Apache-2.0
+*/ -}}
+{{- if and .Values.adapter.enabled .Values.adapter.alerting.webhookIngress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: logs-adapter-cloudwatch-webhook
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: logs-adapter-cloudwatch
+  {{- with .Values.adapter.alerting.webhookIngress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  ingressClassName: {{ .Values.adapter.alerting.webhookIngress.className | quote }}
+  tls:
+    - hosts:
+        - {{ .Values.adapter.alerting.webhookIngress.host | quote }}
+      secretName: {{ .Values.adapter.alerting.webhookIngress.tls.secretName | quote }}
+  rules:
+    - host: {{ .Values.adapter.alerting.webhookIngress.host | quote }}
+      http:
+        paths:
+          - path: /api/v1alpha1/alerts/webhook
+            pathType: Exact
+            backend:
+              service:
+                name: observability-logs-cloudwatch-adapter
+                port:
+                  number: {{ .Values.adapter.service.port }}
+{{- end }}

@@ -1,0 +1,49 @@
+{{- /*
+Copyright 2026 The OpenChoreo Authors
+SPDX-License-Identifier: Apache-2.0
+*/ -}}
+{{- include "logs-cloudwatch.validate" . -}}
+{{- if .Values.setup.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cloudwatch-setup-logs
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    # Run after the main release resources (Secret, SA) are applied so the Job
+    # can mount static AWS credentials when that auth mode is used.
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation
+  labels:
+    app: cloudwatch-setup-logs
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: cloudwatch-setup-logs
+    spec:
+      serviceAccountName: cloudwatch-setup
+      restartPolicy: OnFailure
+      containers:
+        - name: cloudwatch-setup-logs
+          image: "{{ .Values.setup.image.repository }}:{{ .Values.setup.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.setup.image.pullPolicy }}
+          env:
+            - name: CLUSTER_NAME
+              value: {{ include "logs-cloudwatch.clusterName" . | quote }}
+            - name: AWS_REGION
+              value: {{ include "logs-cloudwatch.region" . | quote }}
+            - name: LOG_GROUP_PREFIX
+              value: {{ include "logs-cloudwatch.logGroupPrefix" . | quote }}
+            - name: RETENTION_DAYS
+              value: {{ .Values.containerLogs.retentionDays | quote }}
+          {{- if .Values.awsCredentials.name }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.awsCredentials.name }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.setup.resources | nindent 12 }}
+{{- end }}

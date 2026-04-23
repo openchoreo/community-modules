@@ -1,0 +1,22 @@
+{{- /*
+Copyright 2026 The OpenChoreo Authors
+SPDX-License-Identifier: Apache-2.0
+*/ -}}
+{{- if .Values.adapter.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: observability-logs-cloudwatch-adapter
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: logs-adapter-cloudwatch
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.adapter.service.port }}
+      targetPort: {{ .Values.adapter.service.port }}
+      protocol: TCP
+      name: http
+  selector:
+    app: logs-adapter-cloudwatch
+{{- end }}

@@ -1,0 +1,6 @@
+dependencies:
+- name: amazon-cloudwatch-observability
+  repository: https://aws-observability.github.io/helm-charts
+  version: 3.1.0
+digest: sha256:9658c452b5f3692a9f6540c703194a69cbf29ea5d1822c4ad9a28f8a40f18d64
+generated: "2026-04-21T22:43:30.80072+05:30"

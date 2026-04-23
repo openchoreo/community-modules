@@ -1,0 +1,17 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+{{- if ne .Values.global.installationMode "multiClusterExporter" }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: metrics-adapter-prometheus
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: metrics-adapter-prometheus
+data:
+  OBSERVABILITY_NAMESPACE: "{{ .Release.Namespace }}"
+  OBSERVER_INTERNAL_URL: "http://observer-internal.{{ .Release.Namespace }}:8081"
+  PROMETHEUS_ADDRESS: "http://openchoreo-observability-prometheus.{{ .Release.Namespace }}:9091"
+  SERVER_PORT: "9099"
+{{- end }}

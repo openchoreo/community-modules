@@ -14,14 +14,18 @@ import (
 
 type Config struct {
 	ServerPort             string
+	PrometheusAddress      string
 	ObserverAPIInternalURL string
+	AlertRuleNamespace     string
 	LogLevel               slog.Level
 }
 
 // LoadConfig loads configuration from environment variables.
 func LoadConfig() (*Config, error) {
-	serverPort := getEnv("SERVER_PORT", "9098")
-	observerAPIInternalURL := getEnv("OBSERVER_API_INTERNAL_URL", "")
+	serverPort := getEnv("SERVER_PORT", "9099")
+	observerAPIInternalURL := getEnv("OBSERVER_INTERNAL_URL", "")
+	prometheusAddress := getEnv("PROMETHEUS_ADDRESS", "")
+	alertRuleNamespace := getEnv("OBSERVABILITY_NAMESPACE", "openchoreo-observability-plane")
 
 	logLevel := slog.LevelInfo
 	if level := os.Getenv("LOG_LEVEL"); level != "" {
@@ -38,11 +42,19 @@ func LoadConfig() (*Config, error) {
 	}
 
 	if observerAPIInternalURL == "" {
-		return nil, fmt.Errorf("environment variable OBSERVER_API_INTERNAL_URL is required")
+		return nil, fmt.Errorf("environment variable OBSERVER_INTERNAL_URL is required")
 	}
 	parsedURL, err := url.Parse(observerAPIInternalURL)
 	if err != nil || parsedURL.Scheme == "" || parsedURL.Host == "" {
-		return nil, fmt.Errorf("OBSERVER_API_INTERNAL_URL must be a valid URL with scheme and host, got: %q", observerAPIInternalURL)
+		return nil, fmt.Errorf("OBSERVER_INTERNAL_URL must be a valid URL with scheme and host, got: %q", observerAPIInternalURL)
+	}
+
+	if prometheusAddress == "" {
+		return nil, fmt.Errorf("environment variable PROMETHEUS_ADDRESS is required")
+	}
+	parsedPromURL, err := url.Parse(prometheusAddress)
+	if err != nil || parsedPromURL.Scheme == "" || parsedPromURL.Host == "" {
+		return nil, fmt.Errorf("PROMETHEUS_ADDRESS must be a valid URL with scheme and host, got: %q", prometheusAddress)
 	}
 
 	if _, err := strconv.Atoi(serverPort); err != nil {
@@ -51,7 +63,9 @@ func LoadConfig() (*Config, error) {
 
 	return &Config{
 		ServerPort:             serverPort,
+		PrometheusAddress:      prometheusAddress,
 		ObserverAPIInternalURL: observerAPIInternalURL,
+		AlertRuleNamespace:     alertRuleNamespace,
 		LogLevel:               logLevel,
 	}, nil
 }

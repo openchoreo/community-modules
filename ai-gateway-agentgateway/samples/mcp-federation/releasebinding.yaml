@@ -1,0 +1,50 @@
+# =============================================================================
+# ReleaseBindings: Per-Environment Overrides for AI Reading Assistant
+# =============================================================================
+
+# --- Development Environment ---
+apiVersion: openchoreo.dev/v1alpha1
+kind: ReleaseBinding
+metadata:
+  name: ai-reading-assistant-dev
+  namespace: default
+spec:
+  owner:
+    projectName: default
+    componentName: ai-reading-assistant
+  environment: development
+  traitEnvironmentConfigs:
+    # LLM trait overrides (instanceName = llm)
+    llm:
+      guardrails:
+        enabled: false
+      rateLimit:
+        requestsPerMinute: 120
+    # MCP trait overrides (instanceName = tools)
+    tools:
+      rateLimit:
+        requestsPerMinute: 300
+
+---
+
+# --- Production Environment ---
+apiVersion: openchoreo.dev/v1alpha1
+kind: ReleaseBinding
+metadata:
+  name: ai-reading-assistant-prod
+  namespace: default
+spec:
+  owner:
+    projectName: default
+    componentName: ai-reading-assistant
+  environment: production
+  traitEnvironmentConfigs:
+    llm:
+      guardrails:
+        enabled: true
+        builtins: [CreditCard, Ssn, Email]
+      rateLimit:
+        requestsPerMinute: 30
+    tools:
+      rateLimit:
+        requestsPerMinute: 120

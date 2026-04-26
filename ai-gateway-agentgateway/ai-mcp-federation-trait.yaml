@@ -1,0 +1,215 @@
+# ClusterTrait: ai-mcp-federation
+#
+# MCP (Model Context Protocol) federation trait — aggregates multiple MCP
+# servers behind a single gateway endpoint. Agents discover and call tools
+# from many backends without knowing where each tool lives.
+#
+# Features:
+#   - Aggregate remote MCP servers behind one endpoint (tool federation)
+#   - Centralized JWT authentication for all tool access
+#   - Per-environment rate limiting
+#   - Single MCP_GATEWAY_URL env var injected into the component
+#
+# The trait creates an AgentgatewayBackend with all MCP targets,
+# an HTTPRoute, and optional auth/rate-limit AgentgatewayPolicies.
+#
+apiVersion: openchoreo.dev/v1alpha1
+kind: ClusterTrait
+metadata:
+  name: ai-mcp-federation
+spec:
+  parameters:
+    openAPIV3Schema:
+      type: object
+      properties:
+        # Gateway reference — points to the shared Agent Gateway proxy.
+        gatewayName:
+          type: string
+          default: "agentgateway-proxy"
+          description: "Name of the Agent Gateway resource on the data plane"
+        gatewayNamespace:
+          type: string
+          default: "openchoreo-data-plane"
+          description: "Namespace of the Agent Gateway resource"
+        gatewayListenerName:
+          type: string
+          default: "mcp"
+          description: "Gateway listener section name for MCP traffic"
+
+        # --- MCP server targets ---
+        mcpTargets:
+          type: array
+          default: []
+          description: "Remote MCP servers to federate"
+          items:
+            type: object
+            required: [name, host]
+            properties:
+              name:
+                type: string
+                description: "Unique name for this MCP server"
+              host:
+                type: string
+                description: "Hostname or IP of the MCP server (e.g., my-mcp.default.svc)"
+              port:
+                type: integer
+                default: 8080
+                description: "Port of the MCP server"
+              path:
+                type: string
+                default: "/mcp"
+                description: "URL path of the MCP endpoint"
+              protocol:
+                type: string
+                default: "StreamableHTTP"
+                description: "MCP transport protocol"
+                enum:
+                  - StreamableHTTP
+                  - SSE
+
+        # --- Authentication ---
+        authentication:
+          type: object
+          default:
+            enabled: false
+          description: "JWT authentication for incoming MCP clients"
+          properties:
+            enabled:
+              type: boolean
+              default: false
+              description: "Enable JWT authentication for MCP clients"
+            issuer:
+              type: string
+              description: "JWT issuer URL"
+            audiences:
+              type: array
+              items:
+                type: string
+              default: []
+              description: "Accepted JWT audiences"
+            jwksUrl:
+              type: string
+              description: "JWKS endpoint URL for token verification"
+
+  # Per-environment overrides set via ReleaseBinding.spec.traitEnvironmentConfigs.
+  environmentConfigs:
+    openAPIV3Schema:
+      type: object
+      properties:
+        rateLimit:
+          type: object
+          default: {}
+          properties:
+            requestsPerMinute:
+              type: integer
+              default: 120
+              description: "Maximum MCP requests per minute"
+
+  # At least one target must be defined.
+  validations:
+    - rule: "${size(parameters.mcpTargets) > 0}"
+      message: "At least one mcpTarget must be defined"
+
+  creates:
+    # ==================================================================
+    #  AgentgatewayBackend — MCP federation (all targets in one backend)
+    # ==================================================================
+    - targetPlane: dataplane
+      template:
+        apiVersion: agentgateway.dev/v1alpha1
+        kind: AgentgatewayBackend
+        metadata:
+          name: ${metadata.name}-${trait.instanceName}
+          namespace: ${metadata.namespace}
+        spec:
+          mcp:
+            targets: >-
+              ${parameters.mcpTargets.map(t,
+                  {"name": t.name, "static": {"host": t.host, "port": t.port, "path": t.path, "protocol": t.protocol}})}
+
+    # ==================================================================
+    #  HTTPRoute — routes MCP traffic to the federated backend
+    # ==================================================================
+    - targetPlane: dataplane
+      template:
+        apiVersion: gateway.networking.k8s.io/v1
+        kind: HTTPRoute
+        metadata:
+          name: ${metadata.name}-${trait.instanceName}-mcp-route
+          namespace: ${metadata.namespace}
+        spec:
+          parentRefs:
+            - name: ${parameters.gatewayName}
+              namespace: ${parameters.gatewayNamespace}
+              sectionName: ${parameters.gatewayListenerName}
+          rules:
+            - matches:
+                - headers:
+                    - name: x-openchoreo-component
+                      value: ${metadata.componentName}
+              backendRefs:
+                - name: ${metadata.name}-${trait.instanceName}
+                  namespace: ${metadata.namespace}
+                  group: agentgateway.dev
+                  kind: AgentgatewayBackend
+
+    # ==================================================================
+    #  AgentgatewayPolicy — JWT authentication (optional)
+    # ==================================================================
+    - targetPlane: dataplane
+      includeWhen: ${parameters.authentication.enabled}
+      template:
+        apiVersion: agentgateway.dev/v1alpha1
+        kind: AgentgatewayPolicy
+        metadata:
+          name: ${metadata.name}-${trait.instanceName}-auth
+          namespace: ${metadata.namespace}
+        spec:
+          targetRefs:
+            - group: gateway.networking.k8s.io
+              kind: HTTPRoute
+              name: ${metadata.name}-${trait.instanceName}-mcp-route
+          frontend:
+            mcpAuthentication:
+              mode: strict
+              issuer: ${parameters.authentication.issuer}
+              audiences: ${parameters.authentication.audiences}
+              jwks:
+                url: ${parameters.authentication.jwksUrl}
+
+    # ==================================================================
+    #  AgentgatewayPolicy — rate limiting
+    # ==================================================================
+    - targetPlane: dataplane
+      template:
+        apiVersion: agentgateway.dev/v1alpha1
+        kind: AgentgatewayPolicy
+        metadata:
+          name: ${metadata.name}-${trait.instanceName}-rate-limit
+          namespace: ${metadata.namespace}
+        spec:
+          targetRefs:
+            - group: gateway.networking.k8s.io
+              kind: HTTPRoute
+              name: ${metadata.name}-${trait.instanceName}-mcp-route
+          traffic:
+            rateLimit:
+              local:
+                - requests: ${environmentConfigs.rateLimit.requestsPerMinute}
+                  unit: Minutes
+
+  # ------------------------------------------------------------------
+  #  Patches — inject MCP gateway env vars into the component Deployment
+  # ------------------------------------------------------------------
+  patches:
+    - target:
+        group: apps
+        version: v1
+        kind: Deployment
+      operations:
+        # MCP_GATEWAY_URL — the federated MCP endpoint
+        - op: add
+          path: /spec/template/spec/containers/0/env/-
+          value:
+            name: MCP_GATEWAY_URL
+            value: "http://${parameters.gatewayName}.${parameters.gatewayNamespace}:3000"

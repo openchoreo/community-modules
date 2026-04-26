@@ -1,0 +1,443 @@
+# ClusterTrait: ai-llm-routing
+#
+# Unified LLM gateway trait — attach to any component to route LLM API calls
+# through Agent Gateway. Provides a single OpenAI-compatible endpoint that can
+# reach multiple providers (OpenAI, Anthropic, Vertex/Gemini, or any
+# OpenAI-compatible API such as Groq, Together AI, Azure OpenAI, etc.).
+#
+# Features:
+#   - Multi-provider routing via a single OPENAI_BASE_URL endpoint
+#   - Provider switching without code changes (change the model name in request)
+#   - Per-environment rate limiting (requests/minute)
+#   - PII guardrails (credit cards, SSNs, emails) with per-environment toggle
+#   - API key management via OpenBao / External Secrets Operator
+#
+# The trait creates a single AgentgatewayBackend with all enabled providers in
+# one groups block. Agent Gateway uses the "model" field in the request to
+# route to the correct provider automatically.
+#
+apiVersion: openchoreo.dev/v1alpha1
+kind: ClusterTrait
+metadata:
+  name: ai-llm-routing
+spec:
+  parameters:
+    openAPIV3Schema:
+      type: object
+      properties:
+        # Gateway reference — points to the shared Agent Gateway proxy.
+        gatewayName:
+          type: string
+          default: "agentgateway-proxy"
+          description: "Name of the Agent Gateway resource on the data plane"
+        gatewayNamespace:
+          type: string
+          default: "openchoreo-data-plane"
+          description: "Namespace of the Agent Gateway resource"
+
+        # --- Native providers ---
+        openai:
+          type: object
+          default:
+            enabled: false
+            model: "gpt-4o"
+          description: "OpenAI provider (api.openai.com)"
+          properties:
+            enabled:
+              type: boolean
+              default: false
+              description: "Enable this LLM provider"
+            model:
+              type: string
+              description: "Model identifier sent to the provider"
+            apiKeyRef:
+              type: string
+              description: "OpenBao secret key name containing the provider API key"
+
+        anthropic:
+          type: object
+          default:
+            enabled: false
+            model: "claude-sonnet-4-20250514"
+          description: "Anthropic provider (api.anthropic.com)"
+          properties:
+            enabled:
+              type: boolean
+              default: false
+              description: "Enable this LLM provider"
+            model:
+              type: string
+              description: "Model identifier sent to the provider"
+            apiKeyRef:
+              type: string
+              description: "OpenBao secret key name containing the provider API key"
+
+        vertex:
+          type: object
+          default:
+            enabled: false
+            model: "gemini-2.0-flash"
+          description: "Google Vertex AI / Gemini provider"
+          properties:
+            enabled:
+              type: boolean
+              default: false
+              description: "Enable this LLM provider"
+            model:
+              type: string
+              description: "Model identifier sent to the provider"
+            apiKeyRef:
+              type: string
+              description: "OpenBao secret key name containing the provider API key"
+
+        # --- OpenAI-compatible provider (Groq, Together, Azure OpenAI, etc.) ---
+        openaiCompatible:
+          type: object
+          default:
+            enabled: false
+            name: "custom"
+            port: 443
+            pathPrefix: "/openai/v1"
+          description: "Any OpenAI-compatible provider with a custom host"
+          properties:
+            enabled:
+              type: boolean
+              default: false
+              description: "Enable this OpenAI-compatible provider"
+            name:
+              type: string
+              default: "custom"
+              description: "Short identifier for this provider (used in resource names)"
+            model:
+              type: string
+              description: "Model identifier"
+            host:
+              type: string
+              description: "Provider API host (e.g., api.groq.com)"
+            port:
+              type: integer
+              default: 443
+              description: "Provider API port"
+            pathPrefix:
+              type: string
+              default: "/openai/v1"
+              description: "API path prefix on the provider"
+            apiKeyRef:
+              type: string
+              description: "OpenBao secret key name containing the provider API key"
+
+  # Per-environment overrides set via ReleaseBinding.spec.traitEnvironmentConfigs.
+  environmentConfigs:
+    openAPIV3Schema:
+      type: object
+      properties:
+        guardrails:
+          type: object
+          default: {}
+          properties:
+            enabled:
+              type: boolean
+              default: true
+              description: "Enable PII detection and prompt guardrails"
+            builtins:
+              type: array
+              items:
+                type: string
+              default: [CreditCard, Ssn, Email]
+              description: "Built-in PII detectors (CreditCard, Ssn, Email, PhoneNumber)"
+        rateLimit:
+          type: object
+          default: {}
+          properties:
+            requestsPerMinute:
+              type: integer
+              default: 60
+              description: "Maximum LLM requests per minute"
+
+  # At least one provider must be enabled.
+  validations:
+    - rule: >-
+        ${parameters.openai.enabled
+          || parameters.anthropic.enabled
+          || parameters.vertex.enabled
+          || parameters.openaiCompatible.enabled}
+      message: "At least one LLM provider must be enabled"
+    - rule: "${!parameters.openai.enabled || size(parameters.openai.apiKeyRef) > 0}"
+      message: "openai.apiKeyRef must be set when openai.enabled is true"
+    - rule: "${!parameters.anthropic.enabled || size(parameters.anthropic.apiKeyRef) > 0}"
+      message: "anthropic.apiKeyRef must be set when anthropic.enabled is true"
+    - rule: "${!parameters.vertex.enabled || size(parameters.vertex.apiKeyRef) > 0}"
+      message: "vertex.apiKeyRef must be set when vertex.enabled is true"
+    - rule: "${!parameters.openaiCompatible.enabled || size(parameters.openaiCompatible.apiKeyRef) > 0}"
+      message: "openaiCompatible.apiKeyRef must be set when openaiCompatible.enabled is true"
+
+  creates:
+    # ==================================================================
+    #  ExternalSecrets — one per enabled provider (pulls API key from OpenBao)
+    # ==================================================================
+
+    - targetPlane: dataplane
+      includeWhen: ${parameters.openai.enabled}
+      template:
+        apiVersion: external-secrets.io/v1
+        kind: ExternalSecret
+        metadata:
+          name: ${metadata.name}-${trait.instanceName}-openai-auth
+          namespace: ${metadata.namespace}
+        spec:
+          refreshInterval: 1h
+          secretStoreRef:
+            kind: ClusterSecretStore
+            name: ${dataplane.secretStore}
+          target:
+            name: ${metadata.name}-${trait.instanceName}-openai-auth
+            creationPolicy: Owner
+            template:
+              type: Opaque
+              data:
+                Authorization: "Bearer {{ .apikey | toString }}"
+          data:
+            - secretKey: apikey
+              remoteRef:
+                key: ${parameters.openai.apiKeyRef}
+                property: value
+
+    - targetPlane: dataplane
+      includeWhen: ${parameters.anthropic.enabled}
+      template:
+        apiVersion: external-secrets.io/v1
+        kind: ExternalSecret
+        metadata:
+          name: ${metadata.name}-${trait.instanceName}-anthropic-auth
+          namespace: ${metadata.namespace}
+        spec:
+          refreshInterval: 1h
+          secretStoreRef:
+            kind: ClusterSecretStore
+            name: ${dataplane.secretStore}
+          target:
+            name: ${metadata.name}-${trait.instanceName}-anthropic-auth
+            creationPolicy: Owner
+            template:
+              type: Opaque
+              data:
+                Authorization: "Bearer {{ .apikey | toString }}"
+          data:
+            - secretKey: apikey
+              remoteRef:
+                key: ${parameters.anthropic.apiKeyRef}
+                property: value
+
+    - targetPlane: dataplane
+      includeWhen: ${parameters.vertex.enabled}
+      template:
+        apiVersion: external-secrets.io/v1
+        kind: ExternalSecret
+        metadata:
+          name: ${metadata.name}-${trait.instanceName}-vertex-auth
+          namespace: ${metadata.namespace}
+        spec:
+          refreshInterval: 1h
+          secretStoreRef:
+            kind: ClusterSecretStore
+            name: ${dataplane.secretStore}
+          target:
+            name: ${metadata.name}-${trait.instanceName}-vertex-auth
+            creationPolicy: Owner
+            template:
+              type: Opaque
+              data:
+                Authorization: "Bearer {{ .apikey | toString }}"
+          data:
+            - secretKey: apikey
+              remoteRef:
+                key: ${parameters.vertex.apiKeyRef}
+                property: value
+
+    - targetPlane: dataplane
+      includeWhen: ${parameters.openaiCompatible.enabled}
+      template:
+        apiVersion: external-secrets.io/v1
+        kind: ExternalSecret
+        metadata:
+          name: ${metadata.name}-${trait.instanceName}-${parameters.openaiCompatible.name}-auth
+          namespace: ${metadata.namespace}
+        spec:
+          refreshInterval: 1h
+          secretStoreRef:
+            kind: ClusterSecretStore
+            name: ${dataplane.secretStore}
+          target:
+            name: ${metadata.name}-${trait.instanceName}-${parameters.openaiCompatible.name}-auth
+            creationPolicy: Owner
+            template:
+              type: Opaque
+              data:
+                Authorization: "Bearer {{ .apikey | toString }}"
+          data:
+            - secretKey: apikey
+              remoteRef:
+                key: ${parameters.openaiCompatible.apiKeyRef}
+                property: value
+
+    # ==================================================================
+    #  Single AgentgatewayBackend — all enabled providers in one backend
+    #  Agent Gateway routes by "model" field in the request body.
+    # ==================================================================
+
+    - targetPlane: dataplane
+      template:
+        apiVersion: agentgateway.dev/v1alpha1
+        kind: AgentgatewayBackend
+        metadata:
+          name: ${metadata.name}-${trait.instanceName}-llm
+          namespace: ${metadata.namespace}
+        spec:
+          ai:
+            groups: >-
+              ${[
+                parameters.openai.enabled
+                  ? {"providers": [{"name": "openai",
+                       "openai": {"model": parameters.openai.model},
+                       "policies": {"auth": {"secretRef": {"name": metadata.name + "-" + trait.instanceName + "-openai-auth"}}}}]}
+                  : oc_omit(),
+                parameters.anthropic.enabled
+                  ? {"providers": [{"name": "anthropic",
+                       "anthropic": {"model": parameters.anthropic.model},
+                       "policies": {"auth": {"secretRef": {"name": metadata.name + "-" + trait.instanceName + "-anthropic-auth"}}}}]}
+                  : oc_omit(),
+                parameters.vertex.enabled
+                  ? {"providers": [{"name": "vertex",
+                       "vertexai": {"model": parameters.vertex.model},
+                       "policies": {"auth": {"secretRef": {"name": metadata.name + "-" + trait.instanceName + "-vertex-auth"}}}}]}
+                  : oc_omit(),
+                parameters.openaiCompatible.enabled
+                  ? {"providers": [{"name": parameters.openaiCompatible.name,
+                       "openai": {"model": parameters.openaiCompatible.model},
+                       "host": parameters.openaiCompatible.host,
+                       "port": parameters.openaiCompatible.port,
+                       "pathPrefix": parameters.openaiCompatible.pathPrefix,
+                       "policies": {"auth": {"secretRef": {"name": metadata.name + "-" + trait.instanceName + "-" + parameters.openaiCompatible.name + "-auth"}}}}]}
+                  : oc_omit()
+              ]}
+
+    # ==================================================================
+    #  Single HTTPRoute — routes all LLM traffic for this component
+    # ==================================================================
+
+    - targetPlane: dataplane
+      template:
+        apiVersion: gateway.networking.k8s.io/v1
+        kind: HTTPRoute
+        metadata:
+          name: ${metadata.name}-${trait.instanceName}-llm-route
+          namespace: ${metadata.namespace}
+        spec:
+          parentRefs:
+            - name: ${parameters.gatewayName}
+              namespace: ${parameters.gatewayNamespace}
+              sectionName: llm
+          rules:
+            - matches:
+                - headers:
+                    - name: x-openchoreo-component
+                      value: ${metadata.componentName}
+              backendRefs:
+                - name: ${metadata.name}-${trait.instanceName}-llm
+                  namespace: ${metadata.namespace}
+                  group: agentgateway.dev
+                  kind: AgentgatewayBackend
+
+    # ==================================================================
+    #  AgentgatewayPolicy — TLS for openaiCompatible provider
+    # ==================================================================
+
+    - targetPlane: dataplane
+      includeWhen: ${parameters.openaiCompatible.enabled}
+      template:
+        apiVersion: agentgateway.dev/v1alpha1
+        kind: AgentgatewayPolicy
+        metadata:
+          name: ${metadata.name}-${trait.instanceName}-tls
+          namespace: ${metadata.namespace}
+        spec:
+          targetRefs:
+            - group: agentgateway.dev
+              kind: AgentgatewayBackend
+              name: ${metadata.name}-${trait.instanceName}-llm
+              sectionName: ${parameters.openaiCompatible.name}
+          backend:
+            tls: {}
+
+    # ==================================================================
+    #  AgentgatewayPolicy — guardrails (when enabled)
+    # ==================================================================
+
+    - targetPlane: dataplane
+      includeWhen: ${environmentConfigs.guardrails.enabled}
+      template:
+        apiVersion: agentgateway.dev/v1alpha1
+        kind: AgentgatewayPolicy
+        metadata:
+          name: ${metadata.name}-${trait.instanceName}-guardrails
+          namespace: ${metadata.namespace}
+        spec:
+          targetRefs:
+            - group: gateway.networking.k8s.io
+              kind: HTTPRoute
+              name: ${metadata.name}-${trait.instanceName}-llm-route
+          backend:
+            ai:
+              promptGuard:
+                request:
+                  - regex:
+                      action: Reject
+                      builtins: ${environmentConfigs.guardrails.builtins}
+                response:
+                  - regex:
+                      builtins: ${environmentConfigs.guardrails.builtins}
+                      action: Mask
+
+    # ==================================================================
+    #  AgentgatewayPolicy — rate limiting
+    # ==================================================================
+
+    - targetPlane: dataplane
+      template:
+        apiVersion: agentgateway.dev/v1alpha1
+        kind: AgentgatewayPolicy
+        metadata:
+          name: ${metadata.name}-${trait.instanceName}-ratelimit
+          namespace: ${metadata.namespace}
+        spec:
+          targetRefs:
+            - group: gateway.networking.k8s.io
+              kind: HTTPRoute
+              name: ${metadata.name}-${trait.instanceName}-llm-route
+          traffic:
+            rateLimit:
+              local:
+                - requests: ${environmentConfigs.rateLimit.requestsPerMinute}
+                  unit: Minutes
+
+  # ------------------------------------------------------------------
+  #  Patches — inject gateway env vars into the component Deployment
+  # ------------------------------------------------------------------
+  patches:
+    - target:
+        group: apps
+        version: v1
+        kind: Deployment
+      operations:
+        # OPENAI_BASE_URL — the unified LLM endpoint (OpenAI-compatible API)
+        - op: add
+          path: /spec/template/spec/containers/0/env/-
+          value:
+            name: OPENAI_BASE_URL
+            value: "http://${parameters.gatewayName}.${parameters.gatewayNamespace}"
+        # X_OPENCHOREO_COMPONENT — header value for per-component routing
+        - op: add
+          path: /spec/template/spec/containers/0/env/-
+          value:
+            name: X_OPENCHOREO_COMPONENT
+            value: ${metadata.componentName}

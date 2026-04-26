@@ -1,0 +1,98 @@
+# =============================================================================
+# Sample: AI Chat Service with Unified LLM Routing
+# =============================================================================
+#
+# This sample demonstrates the ai-llm-routing ClusterTrait with:
+#   - Multiple LLM providers (OpenAI + Anthropic + Groq via openaiCompatible)
+#   - PII guardrails (credit cards, SSNs, emails blocked/masked)
+#   - Per-component rate limiting (60 req/min default, overridden per environment;
+#     the AgentgatewayPolicy in ai-llm-routing-trait.yaml targets the HTTPRoute,
+#     so the limit is enforced per-component across all providers, not per-provider)
+#   - Provider switching by changing the "model" field in the API request
+#
+# The application code sends requests to OPENAI_BASE_URL (injected by the trait)
+# using the standard OpenAI SDK format. The Agent Gateway routes to the correct
+# provider based on the model name.
+#
+# Prerequisites:
+#   - Agent Gateway installed (CRDs + controller + Gateway resource)
+#   - ai-llm-routing ClusterTrait applied
+#   - API keys stored in OpenBao:
+#       kubectl exec -it -n openbao openbao-0 -- bao kv put secret/openai-api-key value='sk-...'
+#       kubectl exec -it -n openbao openbao-0 -- bao kv put secret/anthropic-api-key value='sk-ant-...'
+#       kubectl exec -it -n openbao openbao-0 -- bao kv put secret/groq-api-key value='gsk_...'
+# =============================================================================
+
+apiVersion: openchoreo.dev/v1alpha1
+kind: Component
+metadata:
+  name: ai-chat-service
+  namespace: default
+spec:
+  owner:
+    projectName: default
+  autoDeploy: true
+  componentType:
+    kind: ClusterComponentType
+    name: deployment/service
+  traits:
+    - kind: ClusterTrait
+      name: ai-llm-routing
+      instanceName: llm
+      parameters:
+        # Enable only providers you have API keys for.
+        # To add more providers, set enabled: true and store
+        # the API key in OpenBao (see README).
+        openai:
+          enabled: false
+          model: gpt-4o
+          apiKeyRef: openai-api-key
+        anthropic:
+          enabled: false
+          model: claude-sonnet-4-20250514
+          apiKeyRef: anthropic-api-key
+        # Groq as an OpenAI-compatible provider with custom host
+        openaiCompatible:
+          enabled: true
+          name: groq
+          model: llama-3.3-70b-versatile
+          host: api.groq.com
+          port: 443
+          pathPrefix: /openai/v1
+          apiKeyRef: groq-api-key
+  workflow:
+    kind: ClusterWorkflow
+    name: dockerfile-builder
+    parameters:
+      repository:
+        url: "https://github.com/openchoreo/sample-workloads"
+        revision:
+          branch: "main"
+        appPath: "/service-go-ai-chat"
+      docker:
+        context: "/service-go-ai-chat"
+        filePath: "/service-go-ai-chat/Dockerfile"
+
+---
+
+apiVersion: openchoreo.dev/v1alpha1
+kind: WorkflowRun
+metadata:
+  name: ai-chat-service-build-01
+  namespace: default
+  labels:
+    openchoreo.dev/project: "default"
+    openchoreo.dev/component: "ai-chat-service"
+spec:
+  workflow:
+    kind: ClusterWorkflow
+    name: dockerfile-builder
+    parameters:
+      repository:
+        url: "https://github.com/openchoreo/sample-workloads"
+        revision:
+          branch: "main"
+        appPath: "/service-go-ai-chat"
+      docker:
+        context: "/service-go-ai-chat"
+        filePath: "/service-go-ai-chat/Dockerfile"

@@ -1,0 +1,170 @@
+# =============================================================================
+# Sample: AI Reading Assistant with MCP Federation
+# =============================================================================
+#
+# Demonstrates the ai-mcp-federation and ai-llm-routing ClusterTraits with
+# two components:
+#
+#   1. reading-notes-mcp     — Native MCP server (Streamable HTTP)
+#                              Registered as an mcpTarget for MCP federation.
+#                              Provides: add_note, list_notes, search_notes.
+#
+#   2. ai-reading-assistant  — AI agent that discovers and calls tools through
+#                              a single MCP_GATEWAY_URL endpoint.
+#                              Uses ai-llm-routing for LLM reasoning and
+#                              ai-mcp-federation for tool access (dual-trait).
+#
+# Features demonstrated:
+#   - MCP server federation (reading-notes-mcp via mcpTarget)
+#   - Dual-trait composition (ai-llm-routing + ai-mcp-federation)
+#   - Dynamic tool discovery (agent calls tools/list, gets all tools merged)
+#
+# Prerequisites:
+#   - Agent Gateway installed (CRDs + controller + Gateway resource)
+#   - ai-llm-routing and ai-mcp-federation ClusterTraits applied
+#   - LLM API key stored in OpenBao:
+#       kubectl exec -it -n openbao openbao-0 -- bao kv put secret/groq-api-key value='gsk_...'
+# =============================================================================
+
+# ==============================================================
+# Component 1: Reading Notes MCP Server
+# A native MCP server exposing add_note, list_notes, search_notes.
+# Built from source via the dockerfile-builder workflow.
+# ==============================================================
+
+apiVersion: openchoreo.dev/v1alpha1
+kind: Component
+metadata:
+  name: reading-notes-mcp
+  namespace: default
+spec:
+  owner:
+    projectName: default
+  autoDeploy: true
+  componentType:
+    kind: ClusterComponentType
+    name: deployment/service
+  workflow:
+    kind: ClusterWorkflow
+    name: dockerfile-builder
+    parameters:
+      repository:
+        url: "https://github.com/openchoreo/sample-workloads"
+        revision:
+          branch: "main"
+        appPath: "/service-go-reading-notes-mcp"
+      docker:
+        context: "/service-go-reading-notes-mcp"
+        filePath: "/service-go-reading-notes-mcp/Dockerfile"
+
+---
+
+apiVersion: openchoreo.dev/v1alpha1
+kind: WorkflowRun
+metadata:
+  name: reading-notes-mcp-build-01
+  namespace: default
+  labels:
+    openchoreo.dev/project: "default"
+    openchoreo.dev/component: "reading-notes-mcp"
+spec:
+  workflow:
+    kind: ClusterWorkflow
+    name: dockerfile-builder
+    parameters:
+      repository:
+        url: "https://github.com/openchoreo/sample-workloads"
+        revision:
+          branch: "main"
+        appPath: "/service-go-reading-notes-mcp"
+      docker:
+        context: "/service-go-reading-notes-mcp"
+        filePath: "/service-go-reading-notes-mcp/Dockerfile"
+
+---
+
+# ==============================================================
+# Component 2: AI Reading Assistant (the agent)
+# Uses BOTH traits:
+#   - ai-llm-routing    → LLM access (OPENAI_BASE_URL)
+#   - ai-mcp-federation → tool federation (MCP_GATEWAY_URL)
+# Built from source via the dockerfile-builder workflow.
+# ==============================================================
+
+apiVersion: openchoreo.dev/v1alpha1
+kind: Component
+metadata:
+  name: ai-reading-assistant
+  namespace: default
+spec:
+  owner:
+    projectName: default
+  autoDeploy: true
+  componentType:
+    kind: ClusterComponentType
+    name: deployment/service
+  traits:
+    # --- LLM access for reasoning and tool selection ---
+    - kind: ClusterTrait
+      name: ai-llm-routing
+      instanceName: llm
+      parameters:
+        openaiCompatible:
+          enabled: true
+          name: groq
+          model: llama-3.3-70b-versatile
+          host: api.groq.com
+          port: 443
+          pathPrefix: /openai/v1
+          apiKeyRef: groq-api-key
+
+    # --- MCP federation for tool access ---
+    - kind: ClusterTrait
+      name: ai-mcp-federation
+      instanceName: tools
+      parameters:
+        mcpTargets:
+          - name: reading-notes
+            host: reading-notes-mcp.dp-default-default-development-f8e58905.svc.cluster.local
+            port: 8081
+            path: /mcp
+
+        # Authentication disabled for this sample
+        authentication:
+          enabled: false
+  workflow:
+    kind: ClusterWorkflow
+    name: dockerfile-builder
+    parameters:
+      repository:
+        url: "https://github.com/openchoreo/sample-workloads"
+        revision:
+          branch: "main"
+        appPath: "/service-go-ai-reading-assistant"
+      docker:
+        context: "/service-go-ai-reading-assistant"
+        filePath: "/service-go-ai-reading-assistant/Dockerfile"
+
+---
+
+apiVersion: openchoreo.dev/v1alpha1
+kind: WorkflowRun
+metadata:
+  name: ai-reading-assistant-build-01
+  namespace: default
+  labels:
+    openchoreo.dev/project: "default"
+    openchoreo.dev/component: "ai-reading-assistant"
+spec:
+  workflow:
+    kind: ClusterWorkflow
+    name: dockerfile-builder
+    parameters:
+      repository:
+        url: "https://github.com/openchoreo/sample-workloads"
+        revision:
+          branch: "main"
+        appPath: "/service-go-ai-reading-assistant"
+      docker:
+        context: "/service-go-ai-reading-assistant"
+        filePath: "/service-go-ai-reading-assistant/Dockerfile"

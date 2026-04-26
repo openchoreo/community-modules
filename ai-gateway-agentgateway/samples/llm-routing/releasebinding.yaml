@@ -1,0 +1,49 @@
+# =============================================================================
+# ReleaseBindings: Per-Environment Overrides for AI Chat Service
+# =============================================================================
+#
+# Demonstrates per-environment configuration:
+#   - Development:  loose rate limits, guardrails ON  (catch PII early)
+#   - Production:   tight rate limits, guardrails ON  (full PII protection)
+# =============================================================================
+
+# --- Development Environment ---
+apiVersion: openchoreo.dev/v1alpha1
+kind: ReleaseBinding
+metadata:
+  name: ai-chat-service-dev
+  namespace: default
+spec:
+  owner:
+    projectName: default
+    componentName: ai-chat-service
+  environment: development
+  traitEnvironmentConfigs:
+    # Key = trait instanceName from Component.spec.traits
+    llm:
+      guardrails:
+        enabled: true
+        builtins: [CreditCard, Ssn, Email]
+      rateLimit:
+        requestsPerMinute: 120
+
+---
+
+# --- Production Environment ---
+apiVersion: openchoreo.dev/v1alpha1
+kind: ReleaseBinding
+metadata:
+  name: ai-chat-service-prod
+  namespace: default
+spec:
+  owner:
+    projectName: default
+    componentName: ai-chat-service
+  environment: production
+  traitEnvironmentConfigs:
+    llm:
+      guardrails:
+        enabled: true
+        builtins: [CreditCard, Ssn, Email, PhoneNumber]
+      rateLimit:
+        requestsPerMinute: 30

@@ -127,7 +127,7 @@ adapter:
   observerUrl: "http://observer-internal.openchoreo-observability-plane:8081"
   image:
     repository: "ghcr.io/openchoreo/observability-logs-openobserve-adapter"
-    tag: "latest"
+    tag: "" # Defaults to Chart.AppVersion via the template
   resources:
     limits:
       cpu: 200m

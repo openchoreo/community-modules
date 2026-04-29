@@ -14,4 +14,5 @@ data:
   OBSERVER_INTERNAL_URL: "http://observer-internal.{{ .Release.Namespace }}:8081"
   PROMETHEUS_ADDRESS: "http://openchoreo-observability-prometheus.{{ .Release.Namespace }}:9091"
   SERVER_PORT: "9099"
+  LOG_LEVEL: "{{ .Values.adapter.logLevel | default "INFO" }}"
 {{- end }}

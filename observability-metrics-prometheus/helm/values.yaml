@@ -155,6 +155,7 @@ adapter:
     repository: "ghcr.io/openchoreo/observability-metrics-prometheus-adapter"
     tag: "" # Defaults to Chart.AppVersion via the template
     pullPolicy: IfNotPresent
+  logLevel: "INFO" # Supports DEBUG, INFO, WARN, ERROR
   resources:
     limits:
       cpu: 100m

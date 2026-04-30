@@ -1,7 +1,3 @@
-{{- /*
-Copyright 2026 The OpenChoreo Authors
-SPDX-License-Identifier: Apache-2.0
-*/ -}}
 {{- include "logs-cloudwatch.validate" . -}}
 {{- if .Values.setup.enabled }}
 apiVersion: batch/v1

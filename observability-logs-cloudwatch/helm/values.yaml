@@ -1,6 +1,3 @@
-# Copyright 2026 The OpenChoreo Authors
-# SPDX-License-Identifier: Apache-2.0
-
 # ---------------------------------------------------------------------------
 # Prefix shared by all log groups this module reads/writes.
 # Must match what the CloudWatch Agent writes to (Container Insights default).
@@ -177,9 +174,9 @@ amazon-cloudwatch-observability:
 setup:
   enabled: true
   image:
-    repository: "docker.io/chalindukodikara/observability-logs-cloudwatch-setup"
-    tag: "dev"
-    pullPolicy: Always
+    repository: "ghcr.io/openchoreo/observability-logs-cloudwatch-setup"
+    tag: ""
+    pullPolicy: IfNotPresent
   resources:
     limits:
       cpu: 100m
@@ -195,9 +192,9 @@ adapter:
   enabled: true
   replicas: 1
   image:
-    repository: "docker.io/chalindukodikara/observability-logs-cloudwatch-adapter"
-    tag: "dev"
-    pullPolicy: Always
+    repository: "ghcr.io/openchoreo/observability-logs-cloudwatch-adapter"
+    tag: ""
+    pullPolicy: IfNotPresent
   service:
     port: 9098
   # Upper bound for how long a single CloudWatch Logs Insights query may run.

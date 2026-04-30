@@ -1,7 +1,4 @@
 {{- /*
-Copyright 2026 The OpenChoreo Authors
-SPDX-License-Identifier: Apache-2.0
-
 Post-install / post-upgrade hook that fixes two upstream amazon-cloudwatch-
 observability shortcomings so the chart works from any namespace and with
 static AWS credentials:

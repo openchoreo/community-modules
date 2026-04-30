@@ -13,6 +13,18 @@ AWS_REGION="${AWS_REGION:?AWS_REGION is required}"
 LOG_GROUP_PREFIX="${LOG_GROUP_PREFIX:-/aws/containerinsights}"
 RETENTION_DAYS="${RETENTION_DAYS:-7}"
 
+# CloudWatch's PutRetentionPolicy only accepts this fixed set of values; any
+# other number is rejected by the API mid-run, leaving log groups created but
+# unconfigured. Fail fast with a clearer message instead.
+case " 1 3 5 7 14 30 60 90 120 150 180 365 400 545 731 1096 1827 2192 2557 2922 3288 3653 " in
+  *" ${RETENTION_DAYS} "*) ;;
+  *)
+    echo "RETENTION_DAYS=${RETENTION_DAYS} is not a valid CloudWatch retention." >&2
+    echo "Allowed: 1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653" >&2
+    exit 1
+    ;;
+esac
+
 # Strip any trailing slash so joining the segments stays predictable.
 LOG_GROUP_PREFIX="${LOG_GROUP_PREFIX%/}"
 

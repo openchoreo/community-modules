@@ -46,6 +46,10 @@ Validate required values and fail fast with a readable message.
 {{- if and .Values.adapter.alerting.webhookIngress.enabled (not .Values.adapter.alerting.webhookIngress.tls.secretName) -}}
 {{- fail "adapter.alerting.webhookIngress.tls.secretName is required when webhookIngress is enabled" -}}
 {{- end -}}
+{{- $validRetentions := list 1 3 5 7 14 30 60 90 120 150 180 365 400 545 731 1096 1827 2192 2557 2922 3288 3653 -}}
+{{- if not (has (.Values.containerLogs.retentionDays | int) $validRetentions) -}}
+{{- fail (printf "containerLogs.retentionDays=%v is not a valid CloudWatch retention. Allowed values: 1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653" .Values.containerLogs.retentionDays) -}}
+{{- end -}}
 {{- end -}}
 
 {{- define "logs-cloudwatch.webhookSecretName" -}}

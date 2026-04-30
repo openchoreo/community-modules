@@ -1,0 +1,10 @@
+# workload.yaml
+apiVersion: openchoreo.dev/v1alpha1
+metadata:
+  name: hello-world-mi
+endpoints:
+  - name: hello-world-mi
+    visibility:
+      - external
+    port: 8290
+    type: HTTP

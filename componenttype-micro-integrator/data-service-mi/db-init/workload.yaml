@@ -1,0 +1,43 @@
+apiVersion: openchoreo.dev/v1alpha1
+
+metadata:
+  name: db-init
+
+container:
+  command:
+    - /bin/sh
+    - -c
+  args:
+    - |
+      until mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" -e "SELECT 1" > /dev/null 2>&1; do
+        echo "Waiting for MySQL to be ready..."
+        sleep 3
+      done
+      echo "MySQL is ready. Running init script..."
+      mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" <<'SQL'
+      CREATE TABLE IF NOT EXISTS `Employees` (
+        `EmployeeNumber` int NOT NULL,
+        `FirstName` varchar(255) NOT NULL,
+        `LastName` varchar(255) DEFAULT NULL,
+        `Email` varchar(255) DEFAULT NULL,
+        `Salary` varchar(255) DEFAULT NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+      INSERT IGNORE INTO `Employees` (`EmployeeNumber`, `FirstName`, `LastName`, `Email`, `Salary`) VALUES (14001, 'Will', 'Smith', 'will@google.com', '12000.0');
+      INSERT IGNORE INTO `Employees` (`EmployeeNumber`, `FirstName`, `LastName`, `Email`, `Salary`) VALUES (14002, 'Sam', 'Rayan', 'sam@google.com', '1600.0');
+      INSERT IGNORE INTO `Employees` (`EmployeeNumber`, `FirstName`, `LastName`, `Email`, `Salary`) VALUES (14003, 'John', 'Ben', 'john@google.com', '18500.0');
+      INSERT IGNORE INTO `Employees` (`EmployeeNumber`, `FirstName`, `LastName`, `Email`, `Salary`) VALUES (14004, 'Mash', 'Sean', 'mash@google.com', '17500.0');
+      SQL
+      echo "Database initialization complete."
+      sleep infinity
+
+configurations:
+  env:
+    - name: DB_HOST
+      value: "mysql"
+    - name: DB_USER
+      value: "misampleuser"
+    - name: DB_PASS
+      value: "misamplepassword"
+    - name: DB_NAME
+      value: "misampledb"

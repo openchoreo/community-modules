@@ -1,0 +1,39 @@
+apiVersion: openchoreo.dev/v1alpha1
+kind: Component
+metadata:
+  name: mi-data-service
+  namespace: default
+spec:
+  owner:
+    projectName: data-service-mi
+  componentType:
+    kind: ClusterComponentType
+    name: micro-integrator
+  autoDeploy: true
+
+---
+apiVersion: openchoreo.dev/v1alpha1
+kind: Workload
+metadata:
+  name: mi-data-service
+  namespace: default
+spec:
+  owner:
+    componentName: mi-data-service
+    projectName: data-service-mi
+  endpoints:
+    http:
+      type: HTTP
+      port: 8290
+      visibility: [external]
+  container:
+    image: ""  # Populated by the micro-integrator-builder workflow
+    env:
+      - key: DB_DRIVER_CLASS
+        value: "com.mysql.cj.jdbc.Driver"
+      - key: DB_CONNECTION_URL
+        value: "jdbc:mysql://mysql:3306/misampledb"
+      - key: DB_USER
+        value: "misampleuser"
+      - key: DB_PASS
+        value: "misamplepassword"

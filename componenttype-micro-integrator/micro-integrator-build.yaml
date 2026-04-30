@@ -1,0 +1,181 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ClusterWorkflowTemplate
+metadata:
+  name: micro-integrator-build
+spec:
+  templates:
+    - name: build-image
+      inputs:
+        parameters:
+          - name: git-revision
+      container:
+        image: ghcr.io/openchoreo/podman-runner:v1.1
+        command:
+          - sh
+          - -c
+        args:
+          - |-
+            set -e
+
+            WORKDIR=/mnt/vol/source
+            APP_PATH="{{workflow.parameters.app-path}}"
+            IMAGE="{{workflow.parameters.image-name}}:{{workflow.parameters.image-tag}}-{{inputs.parameters.git-revision}}"
+            PROJECT_DIR="$WORKDIR/$APP_PATH"
+            DEFAULT_MI_VERSION="4.4.0"
+
+            echo ">> Image: $IMAGE"
+            echo ">> App path: $APP_PATH"
+
+            if [ ! -d "$PROJECT_DIR" ]; then
+              echo ">> Error: The specified application path '$APP_PATH' does not exist in the repository"
+              echo ">> Hint: Verify that the application path points to a valid directory in your repository."
+              echo ">> Repository contents:"
+              ls -la "$WORKDIR/"
+              exit 1
+            fi
+
+            if [ ! -f "$PROJECT_DIR/pom.xml" ]; then
+              echo ">> Error: pom.xml not found at '$APP_PATH/pom.xml'. WSO2 Micro Integrator components must be Maven projects."
+              exit 1
+            fi
+
+            # --- Detect MI runtime version from pom.xml ---
+            PROP="project.runtime.version"
+            MI_VERSION=$(awk -F"[<>]" "/<$PROP>/{print \$3}" "$PROJECT_DIR/pom.xml" | head -n1 | tr -d '[:space:]' || true)
+            if [ -z "$MI_VERSION" ]; then
+              echo ">> 'project.runtime.version' not set in pom.xml; defaulting to $DEFAULT_MI_VERSION"
+              MI_VERSION="$DEFAULT_MI_VERSION"
+            fi
+
+            # Extract product (major.minor.patch); strip any update-level suffix (e.g. 4.4.0.5 -> 4.4.0).
+            PRODUCT_VERSION=$(echo "$MI_VERSION" | awk -F. '{ printf "%s.%s.%s", $1, $2, $3 }')
+
+            case "$PRODUCT_VERSION" in
+              1.1.0|1.2.0|4.0.0|4.1.0|4.2.0|4.3.0|4.4.0|4.5.0)
+                echo ">> Using MI product version: $PRODUCT_VERSION"
+                ;;
+              *)
+                echo ">> Error: Unsupported MI product version '$PRODUCT_VERSION'."
+                echo ">> Supported versions: 1.1.0, 1.2.0, 4.0.0, 4.1.0, 4.2.0, 4.3.0, 4.4.0, 4.5.0"
+                exit 1
+                ;;
+            esac
+
+            MAVEN_IMAGE="docker.io/library/maven:3.6.3-openjdk-11-slim"
+            echo ">> Maven builder image: $MAVEN_IMAGE"
+            echo ">> MI runtime image: wso2/wso2mi:$PRODUCT_VERSION"
+
+            mkdir -p /etc/containers
+            cat > /etc/containers/storage.conf <<EOF
+            [storage]
+            driver = "overlay"
+            runroot = "/run/containers/storage"
+            graphroot = "/var/lib/containers/storage"
+            [storage.options.overlay]
+            mount_program = "/usr/bin/fuse-overlayfs"
+            EOF
+
+            echo ">> Initializing build environment"
+            podman system service --time=0 &
+            until podman info --format '{{.Host.RemoteSocket.Exists}}' 2>/dev/null | grep -q true; do sleep 1; done
+
+            # --- Generate docker-entrypoint.sh alongside the project (baked into the image) ---
+            cat > "$PROJECT_DIR/docker-entrypoint.sh" <<'ENTRYPOINT_EOF'
+            #!/bin/sh
+            set -eu
+
+            # Import trusted certificates from /wso2mi/certs into client-truststore.jks
+            CERT_DIR="/wso2mi/certs"
+            ALIAS_REGEX='^[a-zA-Z0-9_]+$'
+            if [ -d "$CERT_DIR" ]; then
+              for CERT_FILE in $(ls $CERT_DIR/*.pem $CERT_DIR/*.cer $CERT_DIR/*.crt $CERT_DIR/*.der $CERT_DIR/*.p7b $CERT_DIR/*.p7c 2>/dev/null); do
+                CERT_ALIAS=$(basename "$CERT_FILE" | cut -f1 -d'.')
+                if echo "$CERT_ALIAS" | grep -Eq "$ALIAS_REGEX"; then
+                  echo "Importing certificate $CERT_FILE as alias $CERT_ALIAS"
+                  keytool -import -alias "$CERT_ALIAS" \
+                    -keystore "${WSO2_SERVER_HOME}/repository/resources/security/client-truststore.jks" \
+                    -file "$CERT_FILE" -storepass wso2carbon -noprompt || \
+                    echo "Failed to import certificate $CERT_FILE"
+                else
+                  echo "Invalid certificate alias '$CERT_ALIAS'; skipping"
+                fi
+              done
+            fi
+
+            MODE="DEFAULT"
+            CAR_FILE_PARAM="NONE"
+            OTHER_PARAMS=""
+            while [ $# -gt 0 ]; do
+              case "$1" in
+                -m|--mode) MODE="$2"; shift 2 ;;
+                -c|--car) CAR_FILE_PARAM="$2"; shift 2 ;;
+                *) OTHER_PARAMS="$OTHER_PARAMS $1"; shift ;;
+              esac
+            done
+
+            echo "WSO2 Micro Integrator runtime: ${WSO2_SERVER_VERSION:-unknown}"
+            if [ "$MODE" = "TASK" ]; then
+              if [ "$CAR_FILE_PARAM" != "NONE" ] && [ -n "$CAR_FILE_PARAM" ]; then
+                echo "Starting MI in Non-Server mode with CAR: $CAR_FILE_PARAM"
+                exec sh "${WSO2_SERVER_HOME}/bin/micro-integrator.sh" --car "$CAR_FILE_PARAM" $OTHER_PARAMS
+              else
+                echo "Error: TASK mode requires --car <car-file>"
+                exit 1
+              fi
+            else
+              if [ "$CAR_FILE_PARAM" != "NONE" ]; then
+                echo "Error: --car is only valid in TASK mode"
+                exit 1
+              fi
+              exec sh "${WSO2_SERVER_HOME}/bin/micro-integrator.sh" $OTHER_PARAMS
+            fi
+            ENTRYPOINT_EOF
+            chmod +x "$PROJECT_DIR/docker-entrypoint.sh"
+
+            # --- Generate multi-stage Dockerfile ---
+            cat > "$PROJECT_DIR/Dockerfile.mi" <<DOCKERFILE_EOF
+            # syntax=docker/dockerfile:1
+            FROM ${MAVEN_IMAGE} AS builder
+            WORKDIR /src
+            COPY . .
+            RUN mvn clean install -Dmaven.test.skip=true
+            RUN mkdir -p /stage/carbonapps /stage/libs /stage/dropins && \\
+                find . -name '*.car' -exec cp -v {} /stage/carbonapps/ \\; && \\
+                if [ -d /src/libs ]; then cp -r /src/libs/. /stage/libs/; fi && \\
+                if [ -d /src/dropins ]; then cp -r /src/dropins/. /stage/dropins/; fi && \\
+                if [ -f /src/deployment.toml ]; then cp /src/deployment.toml /stage/deployment.toml; fi
+
+            FROM wso2/wso2mi:${PRODUCT_VERSION}
+            ENV WSO2_SERVER_VERSION=${PRODUCT_VERSION}
+            USER root
+            COPY --from=builder /stage /tmp/stage
+            RUN set -eu; \\
+                cp -v /tmp/stage/carbonapps/*.car \${WSO2_SERVER_HOME}/repository/deployment/server/carbonapps/; \\
+                if [ -n "\$(ls -A /tmp/stage/libs 2>/dev/null)" ]; then cp -rv /tmp/stage/libs/. \${WSO2_SERVER_HOME}/lib/; fi; \\
+                if [ -n "\$(ls -A /tmp/stage/dropins 2>/dev/null)" ]; then cp -rv /tmp/stage/dropins/. \${WSO2_SERVER_HOME}/dropins/; fi; \\
+                if [ -f /tmp/stage/deployment.toml ]; then cp -v /tmp/stage/deployment.toml \${WSO2_SERVER_HOME}/conf/deployment.toml; fi; \\
+                rm -rf /tmp/stage
+            COPY docker-entrypoint.sh /home/wso2carbon/docker-entrypoint.sh
+            RUN chmod +x /home/wso2carbon/docker-entrypoint.sh && \\
+                mkdir -p /wso2mi/certs && \\
+                chown -R wso2carbon:wso2 /wso2mi/certs /home/wso2carbon/docker-entrypoint.sh
+            USER wso2carbon
+            EXPOSE 8290 8253
+            ENTRYPOINT ["/home/wso2carbon/docker-entrypoint.sh"]
+            DOCKERFILE_EOF
+
+            echo ">> Building WSO2 Micro Integrator image"
+            podman build \
+              -t "$IMAGE" \
+              -f "$PROJECT_DIR/Dockerfile.mi" \
+              --pull=always \
+              "$PROJECT_DIR"
+
+            echo ">> Image built successfully"
+            echo ">> Saving image"
+            podman save -o /mnt/vol/app-image.tar "$IMAGE"
+        securityContext:
+          privileged: true
+        volumeMounts:
+          - mountPath: /mnt/vol
+            name: workspace

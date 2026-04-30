@@ -1,0 +1,22 @@
+apiVersion: openchoreo.dev/v1alpha1
+
+metadata:
+  name: mi-data-service
+
+endpoints:
+  - name: mi-data-service
+    visibility:
+      - external
+    port: 8290
+    type: HTTP
+
+configurations:
+  env:
+    - name: DB_DRIVER_CLASS
+      value: "com.mysql.cj.jdbc.Driver"
+    - name: DB_CONNECTION_URL
+      value: "jdbc:mysql://mysql:3306/misampledb"
+    - name: DB_USER
+      value: "misampleuser"
+    - name: DB_PASS
+      value: "misamplepassword"

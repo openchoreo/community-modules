@@ -1,0 +1,24 @@
+apiVersion: openchoreo.dev/v1alpha1
+
+metadata:
+  name: mysql
+
+image:
+  name: mysql
+  tag: "8.0"
+
+endpoints:
+  - name: mysql
+    port: 3306
+    type: TCP
+
+configurations:
+  env:
+    - name: MYSQL_ROOT_PASSWORD
+      value: "root"
+    - name: MYSQL_DATABASE
+      value: "misampledb"
+    - name: MYSQL_USER
+      value: "misampleuser"
+    - name: MYSQL_PASSWORD
+      value: "misamplepassword"

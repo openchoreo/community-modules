@@ -1,0 +1,58 @@
+apiVersion: openchoreo.dev/v1alpha1
+kind: Component
+metadata:
+  name: mysql
+  namespace: default
+spec:
+  owner:
+    projectName: default
+  componentType:
+    kind: ClusterComponentType
+    name: deployment/service
+  autoDeploy: true
+
+---
+apiVersion: openchoreo.dev/v1alpha1
+kind: Workload
+metadata:
+  name: mysql
+  namespace: default
+spec:
+  owner:
+    componentName: mysql
+    projectName: default
+  endpoints:
+    mysql:
+      type: TCP
+      port: 3306
+  container:
+    image: docker.io/library/mysql:8.0
+    env:
+      - key: MYSQL_ROOT_PASSWORD
+        value: "root"
+      - key: MYSQL_DATABASE
+        value: "misampledb"
+      - key: MYSQL_USER
+        value: "misampleuser"
+      - key: MYSQL_PASSWORD
+        value: "misamplepassword"
+
+---
+apiVersion: openchoreo.dev/v1alpha1
+kind: ReleaseBinding
+metadata:
+  name: mysql-development
+  namespace: default
+spec:
+  owner:
+    projectName: default
+    componentName: mysql
+  environment: development
+  componentTypeEnvironmentConfigs:
+    resources:
+      requests:
+        cpu: "250m"
+        memory: "512Mi"
+      limits:
+        cpu: "500m"
+        memory: "512Mi"

@@ -174,3 +174,129 @@ func TestValidateAlertParamsRejectsOverlongGeneratedAlarmName(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestReverseMapOperatorAllVariants(t *testing.T) {
+	tests := []struct {
+		input cwtypes.ComparisonOperator
+		want  string
+	}{
+		{cwtypes.ComparisonOperatorGreaterThanThreshold, "gt"},
+		{cwtypes.ComparisonOperatorGreaterThanOrEqualToThreshold, "gte"},
+		{cwtypes.ComparisonOperatorLessThanThreshold, "lt"},
+		{cwtypes.ComparisonOperatorLessThanOrEqualToThreshold, "lte"},
+		{cwtypes.ComparisonOperator("unknown"), ""},
+	}
+	for _, test := range tests {
+		t.Run(string(test.input), func(t *testing.T) {
+			if got := ReverseMapOperator(test.input); got != test.want {
+				t.Fatalf("ReverseMapOperator(%q) = %q, want %q", test.input, got, test.want)
+			}
+		})
+	}
+}
+
+func TestParseAlertIdentityRejectsBadInputs(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{"missing prefix", "foo-bar"},
+		{"too few parts", "oc-logs-alert-ns.cGF5bWVudHM"},
+		{"wrong shape", "oc-logs-alert-x.y.z.q.r"},
+		{"empty hash", "oc-logs-alert-ns.YQ.rn.Yg."},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if _, _, err := ParseAlertIdentityFromAlarmName(test.input); err == nil {
+				t.Fatalf("expected error for %q", test.input)
+			}
+		})
+	}
+}
+
+func TestParseAlertIdentityRejectsBadBase64(t *testing.T) {
+	if _, _, err := ParseAlertIdentityFromAlarmName("oc-logs-alert-ns.???.rn.???.deadbeef0000"); err == nil {
+		t.Fatal("expected base64 decode error")
+	}
+}
+
+func TestValidateAlertParamsRejectsMissingFields(t *testing.T) {
+	cases := []LogAlertParams{
+		{Namespace: "ns", Operator: "gt", Window: time.Minute, Interval: time.Minute},
+		{Name: "rule", Operator: "gt", Window: time.Minute, Interval: time.Minute},
+		{Name: "rule", Namespace: "ns", Operator: "gt"},                                    // missing window/interval
+		{Name: "rule", Namespace: "ns", Operator: "gt", Window: 30 * time.Second, Interval: time.Minute}, // window < interval
+		{Name: "rule", Namespace: "ns", Operator: "??", Window: time.Minute, Interval: time.Minute},     // bad operator
+	}
+	for i, p := range cases {
+		if err := ValidateAlertParams(p); err == nil {
+			t.Fatalf("case %d: expected error for %#v", i, p)
+		}
+	}
+}
+
+func TestValidateAlertParamsAcceptsHappyPath(t *testing.T) {
+	if err := ValidateAlertParams(LogAlertParams{
+		Name:      "rule",
+		Namespace: "ns",
+		Operator:  "gt",
+		Window:    5 * time.Minute,
+		Interval:  time.Minute,
+	}); err != nil {
+		t.Fatalf("ValidateAlertParams() error = %v", err)
+	}
+}
+
+func TestParseDurationStrictRejectsInvalid(t *testing.T) {
+	if _, err := ParseDurationStrict("???"); err == nil {
+		t.Fatal("expected invalid duration to fail")
+	}
+}
+
+func TestFormatDurationRoundTrips(t *testing.T) {
+	got := FormatDuration(90 * time.Second)
+	if d, err := ParseDurationStrict(got); err != nil || d != 90*time.Second {
+		t.Fatalf("FormatDuration(90s) = %q, parsed = %s err = %v", got, d, err)
+	}
+}
+
+func TestEncodeDecodeAlertIdentitySegment(t *testing.T) {
+	encoded := encodeAlertIdentitySegment("payments")
+	decoded, err := decodeAlertIdentitySegment(encoded)
+	if err != nil {
+		t.Fatalf("decodeAlertIdentitySegment() error = %v", err)
+	}
+	if decoded != "payments" {
+		t.Fatalf("round-trip mismatch: %q", decoded)
+	}
+	if _, err := decodeAlertIdentitySegment("???"); err == nil {
+		t.Fatal("expected bad encoding to fail")
+	}
+}
+
+func TestComputePeriodAndEvaluationPeriodsCapsHourlyOK(t *testing.T) {
+	period, eval, err := ComputePeriodAndEvaluationPeriods(6*time.Hour, time.Hour)
+	if err != nil {
+		t.Fatalf("ComputePeriodAndEvaluationPeriods() error = %v", err)
+	}
+	if period != 3600 || eval != 6 {
+		t.Fatalf("unexpected period/eval = %d/%d", period, eval)
+	}
+}
+
+func TestValidateAlertParamsAlsoRejectsOversizedMetricName(t *testing.T) {
+	// The metric name format is `oc_logs_alert_<12 hex chars>`, so the 255-char
+	// metric name validation is only reachable indirectly via the alarm name path.
+	// Use the namespace+name combo that produces an oversized alarm name to
+	// confirm the validation surfaces a useful error.
+	err := ValidateAlertParams(LogAlertParams{
+		Name:      strings.Repeat("a", 200),
+		Namespace: strings.Repeat("b", 200),
+		Operator:  "gt",
+		Window:    time.Minute,
+		Interval:  time.Minute,
+	})
+	if err == nil {
+		t.Fatal("expected oversized identifiers to fail")
+	}
+}

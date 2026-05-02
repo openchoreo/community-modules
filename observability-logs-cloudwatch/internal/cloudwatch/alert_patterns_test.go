@@ -110,3 +110,111 @@ func TestBuildAlertFilterPatternRejectsOversizedPattern(t *testing.T) {
 		t.Fatal("expected oversized pattern error")
 	}
 }
+
+func TestNormaliseUserFilterFragmentJSONEqualityVariants(t *testing.T) {
+	cases := []struct {
+		name    string
+		input   string
+		wantErr bool
+	}{
+		{"valid escaped backslash", `$.log = "\\path\\to\\file"`, false},
+		{"unescaped backslash", `$.log = "raw\zope"`, true},
+		{"trailing backslash", `$.log = "ends\\"`, false}, // \\ is a valid escape sequence
+		{"unsupported selector char", `$.log!!! = "x"`, true},
+		{"missing quotes on rhs", `$.log = unquoted`, true},
+		{"newline rejected", "$.log = \"a\nb\"", true},
+		{"selector without prefix", `log = "x"`, true},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := normaliseUserFilterFragment(c.input)
+			if c.wantErr && err == nil {
+				t.Fatalf("expected error for %q", c.input)
+			}
+			if !c.wantErr && err != nil {
+				t.Fatalf("normaliseUserFilterFragment(%q) error = %v", c.input, err)
+			}
+		})
+	}
+}
+
+func TestNormaliseUserFilterFragmentRejectsRegexQuotesAndBackslash(t *testing.T) {
+	if _, err := normaliseUserFilterFragment(`%"oops%`); err == nil {
+		t.Fatal("expected double-quote in regex to be rejected")
+	}
+	if _, err := normaliseUserFilterFragment(`%back\slash%`); err == nil {
+		t.Fatal("expected backslash in regex to be rejected")
+	}
+}
+
+func TestBuildAlertFilterPatternHonoursMaxLengthAfterAssembly(t *testing.T) {
+	// Build a long but individually-valid pattern that overflows when combined.
+	long := strings.Repeat("a", MaxFilterPatternLen+100)
+	params := LogAlertParams{
+		Namespace:    "payments",
+		ComponentUID: long,
+	}
+	if _, err := BuildAlertFilterPattern(params); err == nil {
+		t.Fatal("expected oversize pattern after assembly to fail")
+	}
+}
+
+func TestBuildAlertFilterPatternRequiresAtLeastOneCondition(t *testing.T) {
+	if _, err := BuildAlertFilterPattern(LogAlertParams{Namespace: "payments"}); err == nil {
+		t.Fatal("expected error when no scope or query is provided")
+	}
+}
+
+func TestNormaliseUserFilterFragmentReservedTokens(t *testing.T) {
+	for _, raw := range []string{"foo | bar", "fields x", "stats avg", "sort y", "parse z", "filter q", "display d", "back`tick"} {
+		t.Run(raw, func(t *testing.T) {
+			if _, err := normaliseUserFilterFragment(raw); err == nil {
+				t.Fatalf("expected reserved token %q to be rejected", raw)
+			}
+		})
+	}
+}
+
+func TestHasUnescapedBackslashTable(t *testing.T) {
+	cases := []struct {
+		input string
+		want  bool
+	}{
+		{`no slashes`, false},
+		{`safe \\ pair`, false},
+		{`safe \" quote`, false},
+		{`safe \n newline`, false},
+		{`safe \t tab`, false},
+		{`safe \r return`, false},
+		{`safe \/ slash`, false},
+		{`bad \z escape`, true},
+		{`trailing \`, true},
+	}
+	for _, c := range cases {
+		t.Run(c.input, func(t *testing.T) {
+			if got := hasUnescapedBackslash(c.input); got != c.want {
+				t.Fatalf("hasUnescapedBackslash(%q) = %v, want %v", c.input, got, c.want)
+			}
+		})
+	}
+}
+
+func TestIsJSONPathChar(t *testing.T) {
+	for _, ok := range []rune{'a', 'Z', '0', '.', '_', '-', '[', ']', '"'} {
+		if !isJSONPathChar(ok) {
+			t.Fatalf("isJSONPathChar(%q) = false, want true", ok)
+		}
+	}
+	for _, bad := range []rune{'!', '@', '#', '$', '*'} {
+		if isJSONPathChar(bad) {
+			t.Fatalf("isJSONPathChar(%q) = true, want false", bad)
+		}
+	}
+}
+
+func TestValidateUnquotedTokenRejectsSpaces(t *testing.T) {
+	if err := validateUnquotedToken("two words"); err == nil {
+		t.Fatal("expected spaces to be rejected")
+	}
+}

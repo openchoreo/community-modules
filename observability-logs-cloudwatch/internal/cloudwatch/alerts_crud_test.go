@@ -14,6 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
 	cwltypes "github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs/types"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
+	"github.com/aws/smithy-go"
 )
 
 type stubLogsAPI struct {
@@ -309,5 +310,249 @@ func TestDeleteAlertReturnsErrAlertNotFoundWhenAlarmMissing(t *testing.T) {
 
 	if _, err := client.DeleteAlert(context.Background(), "payments", "high-error-rate"); !errors.Is(err, ErrAlertNotFound) {
 		t.Fatalf("DeleteAlert() error = %v, want ErrAlertNotFound", err)
+	}
+}
+
+type fakeAPIError struct {
+	code    string
+	message string
+}
+
+func (e *fakeAPIError) Error() string                    { return e.code + ": " + e.message }
+func (e *fakeAPIError) ErrorCode() string                { return e.code }
+func (e *fakeAPIError) ErrorMessage() string             { return e.message }
+func (e *fakeAPIError) ErrorFault() smithy.ErrorFault    { return smithy.FaultClient }
+
+func TestIsAWSNotFound(t *testing.T) {
+	if isAWSNotFound(nil) {
+		t.Fatal("nil error must not be NotFound")
+	}
+	if !isAWSNotFound(&fakeAPIError{code: "ResourceNotFoundException", message: "alarm missing"}) {
+		t.Fatal("ResourceNotFoundException must be NotFound")
+	}
+	if !isAWSNotFound(&fakeAPIError{code: "ResourceNotFound", message: "missing"}) {
+		t.Fatal("ResourceNotFound must be NotFound")
+	}
+	if !isAWSNotFound(&fakeAPIError{code: "NotFound", message: "missing"}) {
+		t.Fatal("NotFound must be NotFound")
+	}
+	if isAWSNotFound(&fakeAPIError{code: "AccessDenied", message: "nope"}) {
+		t.Fatal("unrelated error must not be NotFound")
+	}
+	if isAWSNotFound(errors.New("plain error")) {
+		t.Fatal("plain error must not be NotFound")
+	}
+}
+
+func TestUpdateAlertReturnsErrAlertNotFoundWhenMissing(t *testing.T) {
+	client := newTestClient(&stubLogsAPI{}, &stubAlarmsAPI{})
+	if _, err := client.UpdateAlert(context.Background(), "payments", "high-error-rate", validAlertParams()); !errors.Is(err, ErrAlertNotFound) {
+		t.Fatalf("UpdateAlert() error = %v, want ErrAlertNotFound", err)
+	}
+}
+
+func TestUpdateAlertSucceeds(t *testing.T) {
+	names := BuildAlertResourceNames("payments", "high-error-rate")
+	logs := &stubLogsAPI{
+		describeMetricFiltersOut: &cloudwatchlogs.DescribeMetricFiltersOutput{
+			MetricFilters: []cwltypes.MetricFilter{{
+				FilterName:    aws.String(names.MetricFilterName),
+				FilterPattern: aws.String(`{ ($.kubernetes.labels.* = "env-1") && ($.log = "*ERROR*") }`),
+			}},
+		},
+	}
+	alarms := &stubAlarmsAPI{
+		describeAlarmsOuts: []*sdkcloudwatch.DescribeAlarmsOutput{{
+			MetricAlarms: []cwtypes.MetricAlarm{{
+				AlarmName:          aws.String(names.AlarmName),
+				AlarmArn:           aws.String("arn:test"),
+				ComparisonOperator: cwtypes.ComparisonOperatorGreaterThanThreshold,
+				Threshold:          aws.Float64(5),
+				Period:             aws.Int32(60),
+				EvaluationPeriods:  aws.Int32(5),
+				ActionsEnabled:     aws.Bool(true),
+			}},
+		}},
+		listTagsForResourceOut: &sdkcloudwatch.ListTagsForResourceOutput{Tags: []cwtypes.Tag{
+			{Key: aws.String(TagRuleName), Value: aws.String("high-error-rate")},
+			{Key: aws.String(TagRuleNamespace), Value: aws.String("payments")},
+		}},
+	}
+	client := newTestClient(logs, alarms)
+
+	arn, err := client.UpdateAlert(context.Background(), "payments", "high-error-rate", validAlertParams())
+	if err != nil {
+		t.Fatalf("UpdateAlert() error = %v", err)
+	}
+	if arn == "" {
+		t.Fatal("expected non-empty ARN from UpdateAlert")
+	}
+}
+
+func TestGetAlarmTagsByNameReturnsTags(t *testing.T) {
+	alarms := &stubAlarmsAPI{
+		describeAlarmsOuts: []*sdkcloudwatch.DescribeAlarmsOutput{{
+			MetricAlarms: []cwtypes.MetricAlarm{{
+				AlarmArn: aws.String("arn:test"),
+			}},
+		}},
+		listTagsForResourceOut: &sdkcloudwatch.ListTagsForResourceOutput{
+			Tags: []cwtypes.Tag{
+				{Key: aws.String(TagRuleName), Value: aws.String("rule")},
+				{Key: aws.String(TagRuleNamespace), Value: aws.String("ns")},
+			},
+		},
+	}
+	client := newTestClient(&stubLogsAPI{}, alarms)
+	tags, err := client.GetAlarmTagsByName(context.Background(), "alarm-x")
+	if err != nil {
+		t.Fatalf("GetAlarmTagsByName() error = %v", err)
+	}
+	if tags[TagRuleName] != "rule" || tags[TagRuleNamespace] != "ns" {
+		t.Fatalf("unexpected tags: %v", tags)
+	}
+}
+
+func TestGetAlarmTagsByNameReturnsErrAlertNotFound(t *testing.T) {
+	client := newTestClient(&stubLogsAPI{}, &stubAlarmsAPI{})
+	if _, err := client.GetAlarmTagsByName(context.Background(), "alarm-missing"); !errors.Is(err, ErrAlertNotFound) {
+		t.Fatalf("GetAlarmTagsByName() error = %v, want ErrAlertNotFound", err)
+	}
+}
+
+func TestGetAlarmTagsByNamePropagatesDescribeAlarmsError(t *testing.T) {
+	client := newTestClient(&stubLogsAPI{}, &stubAlarmsAPI{describeAlarmsErr: errors.New("aws boom")})
+	if _, err := client.GetAlarmTagsByName(context.Background(), "alarm-x"); err == nil {
+		t.Fatal("expected describe alarms error to propagate")
+	}
+}
+
+func TestGetAlarmTagsByNamePropagatesListTagsError(t *testing.T) {
+	alarms := &stubAlarmsAPI{
+		describeAlarmsOuts: []*sdkcloudwatch.DescribeAlarmsOutput{{
+			MetricAlarms: []cwtypes.MetricAlarm{{AlarmArn: aws.String("arn:test")}},
+		}},
+		listTagsForResourceErr: errors.New("aws boom"),
+	}
+	client := newTestClient(&stubLogsAPI{}, alarms)
+	if _, err := client.GetAlarmTagsByName(context.Background(), "alarm-x"); err == nil {
+		t.Fatal("expected list tags error to propagate")
+	}
+}
+
+func TestDeleteAlertHappyPath(t *testing.T) {
+	names := BuildAlertResourceNames("payments", "high-error-rate")
+	logs := &stubLogsAPI{}
+	alarms := &stubAlarmsAPI{
+		describeAlarmsOuts: []*sdkcloudwatch.DescribeAlarmsOutput{{
+			MetricAlarms: []cwtypes.MetricAlarm{{
+				AlarmName: aws.String(names.AlarmName),
+				AlarmArn:  aws.String("arn:test"),
+			}},
+		}},
+	}
+	client := newTestClient(logs, alarms)
+	arn, err := client.DeleteAlert(context.Background(), "payments", "high-error-rate")
+	if err != nil {
+		t.Fatalf("DeleteAlert() error = %v", err)
+	}
+	if arn == "" {
+		t.Fatal("expected non-empty ARN")
+	}
+	if alarms.deleteAlarmsInput == nil {
+		t.Fatal("expected DeleteAlarms to be called")
+	}
+	if logs.deleteMetricFilterInput == nil {
+		t.Fatal("expected DeleteMetricFilter to be called")
+	}
+}
+
+func TestDeleteAlertPropagatesDescribeError(t *testing.T) {
+	alarms := &stubAlarmsAPI{describeAlarmsErr: errors.New("aws boom")}
+	client := newTestClient(&stubLogsAPI{}, alarms)
+	if _, err := client.DeleteAlert(context.Background(), "payments", "high-error-rate"); err == nil {
+		t.Fatal("expected describe error to propagate")
+	}
+}
+
+func TestDeleteAlertPropagatesDeleteAlarmsError(t *testing.T) {
+	names := BuildAlertResourceNames("payments", "high-error-rate")
+	alarms := &stubAlarmsAPI{
+		describeAlarmsOuts: []*sdkcloudwatch.DescribeAlarmsOutput{{
+			MetricAlarms: []cwtypes.MetricAlarm{{
+				AlarmName: aws.String(names.AlarmName),
+				AlarmArn:  aws.String("arn:test"),
+			}},
+		}},
+		deleteAlarmsErr: errors.New("aws boom"),
+	}
+	client := newTestClient(&stubLogsAPI{}, alarms)
+	if _, err := client.DeleteAlert(context.Background(), "payments", "high-error-rate"); err == nil {
+		t.Fatal("expected delete alarms error to propagate")
+	}
+}
+
+func TestCreateAlertReturnsValidationError(t *testing.T) {
+	client := newTestClient(&stubLogsAPI{}, &stubAlarmsAPI{})
+	bad := validAlertParams()
+	bad.Operator = "eq"
+	if _, err := client.CreateAlert(context.Background(), bad); err == nil {
+		t.Fatal("expected eq operator to fail validation")
+	}
+}
+
+func TestCreateAlertReturnsPutMetricFilterError(t *testing.T) {
+	logs := &stubLogsAPI{putMetricFilterErr: errors.New("filter boom")}
+	client := newTestClient(logs, &stubAlarmsAPI{})
+	if _, err := client.CreateAlert(context.Background(), validAlertParams()); err == nil {
+		t.Fatal("expected put_metric_filter error")
+	}
+}
+
+func TestResolveAlertResourceNamesByTags(t *testing.T) {
+	// Use a non-managed alarm name so parsing fails and we fall back to tag lookup.
+	logs := &stubLogsAPI{
+		describeMetricFiltersOut: &cloudwatchlogs.DescribeMetricFiltersOutput{
+			MetricFilters: []cwltypes.MetricFilter{{
+				FilterName:    aws.String("oc-logs-alert-legacy"),
+				FilterPattern: aws.String(`{ ($.log = "*ERROR*") }`),
+			}},
+		},
+	}
+	alarms := &stubAlarmsAPI{
+		describeAlarmsOuts: []*sdkcloudwatch.DescribeAlarmsOutput{
+			{
+				MetricAlarms: []cwtypes.MetricAlarm{{
+					AlarmName:  aws.String("oc-logs-alert-legacy"),
+					AlarmArn:   aws.String("arn:legacy"),
+					MetricName: aws.String("oc_logs_alert_legacy"),
+				}},
+			},
+			{
+				MetricAlarms: []cwtypes.MetricAlarm{{
+					AlarmName:          aws.String("oc-logs-alert-legacy"),
+					AlarmArn:           aws.String("arn:legacy"),
+					MetricName:         aws.String("oc_logs_alert_legacy"),
+					ComparisonOperator: cwtypes.ComparisonOperatorGreaterThanThreshold,
+					Threshold:          aws.Float64(5),
+					Period:             aws.Int32(60),
+					EvaluationPeriods:  aws.Int32(5),
+					ActionsEnabled:     aws.Bool(true),
+				}},
+			},
+		},
+		listTagsForResourceOut: &sdkcloudwatch.ListTagsForResourceOutput{Tags: []cwtypes.Tag{
+			{Key: aws.String(TagRuleName), Value: aws.String("legacy-rule")},
+			{Key: aws.String(TagRuleNamespace), Value: aws.String("legacy-ns")},
+		}},
+	}
+	client := newTestClient(logs, alarms)
+
+	got, err := client.GetAlert(context.Background(), "", "legacy-rule")
+	if err != nil {
+		t.Fatalf("GetAlert() error = %v", err)
+	}
+	if got.Namespace != "legacy-ns" {
+		t.Fatalf("expected namespace from tag fallback, got %q", got.Namespace)
 	}
 }

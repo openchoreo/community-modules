@@ -139,3 +139,111 @@ func TestParseEventBridgeEventRejectsUnexpectedSource(t *testing.T) {
 		t.Fatal("expected unexpected source error")
 	}
 }
+
+func TestParseSNSEnvelopeRejectsUnknownType(t *testing.T) {
+	body := []byte(`{"Type":"Mystery","Message":"x"}`)
+	if _, err := ParseSNSEnvelope(body); err == nil {
+		t.Fatal("expected unknown SNS type to error")
+	}
+}
+
+func TestParseSNSEnvelopeRejectsBrokenJSON(t *testing.T) {
+	if _, err := ParseSNSEnvelope([]byte("{not json")); err == nil {
+		t.Fatal("expected broken JSON to error")
+	}
+}
+
+func TestParseSNSEnvelopeReturnsErrorOnBrokenInnerMessage(t *testing.T) {
+	body := []byte(`{"Type":"Notification","Message":"{broken"}`)
+	if _, err := ParseSNSEnvelope(body); err == nil {
+		t.Fatal("expected inner message error to surface")
+	}
+}
+
+func TestParseEventBridgeEventReturnsErrorOnBadJSON(t *testing.T) {
+	if _, err := ParseEventBridgeEvent([]byte("{")); err == nil {
+		t.Fatal("expected JSON error")
+	}
+}
+
+func TestParseLambdaForwarderEventRejectsBadJSON(t *testing.T) {
+	if _, err := ParseLambdaForwarderEvent([]byte("{")); err == nil {
+		t.Fatal("expected JSON error")
+	}
+}
+
+func TestParseLambdaForwarderEventRequiresIdentity(t *testing.T) {
+	body := []byte(`{"state":"ALARM"}`)
+	if _, err := ParseLambdaForwarderEvent(body); err == nil {
+		t.Fatal("expected missing identity to error")
+	}
+}
+
+func TestParseLambdaForwarderEventDefaultsTimestampWhenMissing(t *testing.T) {
+	body := []byte(`{"alarmName":"a","ruleName":"r","state":"ALARM"}`)
+	evt, err := ParseLambdaForwarderEvent(body)
+	if err != nil {
+		t.Fatalf("ParseLambdaForwarderEvent() error = %v", err)
+	}
+	if evt.AlertTimestamp.IsZero() {
+		t.Fatal("expected timestamp default to time.Now()")
+	}
+}
+
+func TestParseLambdaForwarderEventTolersUnparseableTimestamp(t *testing.T) {
+	body := []byte(`{"alarmName":"a","ruleName":"r","state":"ALARM","alertTimestamp":"not-a-time"}`)
+	evt, err := ParseLambdaForwarderEvent(body)
+	if err != nil {
+		t.Fatalf("ParseLambdaForwarderEvent() error = %v", err)
+	}
+	if evt.AlertTimestamp.IsZero() {
+		t.Fatal("expected timestamp to fall back to time.Now()")
+	}
+}
+
+func TestApplyTagsToEventNilSafe(t *testing.T) {
+	ApplyTagsToEvent(nil, map[string]string{TagRuleName: "x"})
+}
+
+func TestApplyTagsToEventIgnoresEmptyValues(t *testing.T) {
+	evt := &ParsedAlertEvent{RuleName: "existing"}
+	ApplyTagsToEvent(evt, map[string]string{TagRuleName: ""})
+	if evt.RuleName != "existing" {
+		t.Fatalf("did not expect empty tag to overwrite existing rule name, got %q", evt.RuleName)
+	}
+}
+
+func TestParseTimestampOrUsesFallback(t *testing.T) {
+	got := parseTimestampOr("", "2026-04-23T10:00:00Z")
+	want := time.Date(2026, 4, 23, 10, 0, 0, 0, time.UTC)
+	if !got.Equal(want) {
+		t.Fatalf("parseTimestampOr() = %s, want %s", got, want)
+	}
+}
+
+func TestParseTimestampOrAcceptsRFC3339Nano(t *testing.T) {
+	got := parseTimestampOr("2026-04-23T10:00:05.123456Z", "")
+	if got.Year() != 2026 {
+		t.Fatalf("unexpected year: %s", got)
+	}
+}
+
+func TestParseTimestampOrFallsBackToNow(t *testing.T) {
+	before := time.Now().UTC().Add(-time.Second)
+	got := parseTimestampOr("garbage", "more-garbage")
+	if got.Before(before) {
+		t.Fatalf("expected current-time fallback, got %s", got)
+	}
+}
+
+func TestExtractDatapointFromReasonHandlesEmpty(t *testing.T) {
+	if got := extractDatapointFromReason(""); got != 0 {
+		t.Fatalf("extractDatapointFromReason(empty) = %v", got)
+	}
+}
+
+func TestExtractDatapointFromReasonHandlesNoBrackets(t *testing.T) {
+	if got := extractDatapointFromReason("threshold crossed"); got != 0 {
+		t.Fatalf("expected 0 when no brackets present, got %v", got)
+	}
+}

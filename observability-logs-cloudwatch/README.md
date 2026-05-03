@@ -527,13 +527,33 @@ export ADAPTER_WEBHOOK_PUBLIC_URL=https://<ngrok-host>/api/v1alpha1/alerts/webho
 
 Then create an EventBridge connection, API destination, and rule that sends CloudWatch alarm state-change events to that URL with the `X-OpenChoreo-Webhook-Token` header.
 
-1. Go to EventBridge Rules: images/1-rules-creation.png
-2. Attach Event and Target: images/2-rules-creation-config.png
-3. Need to add API Destination: images/3-rules-creation-add-api-destination.png
-4. Create API Destination: images/4-create-api-destination.png
-5. Create a Connection: images/5-create-api-destination-add-connection.png
-6. Add the API Key to the Connection: images/6-create-api-destination-add-api-key.png
-7. Create the rule: images/7-rules-creation-select-api-destination.png
+1. Go to EventBridge Rules.
+
+   ![EventBridge rules creation](images/1-rules-creation.png)
+
+2. Attach Event and Target.
+
+   ![Rule event and target configuration](images/2-rules-creation-config.png)
+
+3. Add an API Destination as the target.
+
+   ![Selecting API Destination as the target](images/3-rules-creation-add-api-destination.png)
+
+4. Create the API Destination.
+
+   ![Create API Destination form](images/4-create-api-destination.png)
+
+5. Create a Connection for the API Destination.
+
+   ![Create connection for API Destination](images/5-create-api-destination-add-connection.png)
+
+6. Add the `X-OpenChoreo-Webhook-Token` API key header to the Connection.
+
+   ![Add API key header to the connection](images/6-create-api-destination-add-api-key.png)
+
+7. Finish creating the rule and select the API Destination.
+
+   ![Select the API Destination on the rule](images/7-rules-creation-select-api-destination.png)
 
 ### Test alert delivery
 

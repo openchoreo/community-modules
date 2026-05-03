@@ -1,0 +1,70 @@
+{{- if .Values.adapter.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: logs-adapter-cloudwatch
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: logs-adapter-cloudwatch
+spec:
+  replicas: {{ .Values.adapter.replicas }}
+  selector:
+    matchLabels:
+      app: logs-adapter-cloudwatch
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/adapter/configmap.yaml") . | sha256sum }}
+        {{- if and .Values.adapter.alerting.webhookAuth.enabled (not .Values.adapter.alerting.webhookAuth.sharedSecretRef.name) }}
+        checksum/webhook-secret: {{ include (print $.Template.BasePath "/adapter/webhook-secret.yaml") . | sha256sum }}
+        {{- end }}
+      labels:
+        app: logs-adapter-cloudwatch
+    spec:
+      serviceAccountName: logs-adapter-cloudwatch
+      securityContext:
+        runAsUser: 10500
+        runAsGroup: 10500
+        runAsNonRoot: true
+      containers:
+        - name: logs-adapter-cloudwatch
+          image: "{{ .Values.adapter.image.repository }}:{{ .Values.adapter.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.adapter.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.adapter.service.port }}
+          envFrom:
+            - configMapRef:
+                name: logs-adapter-cloudwatch
+            {{- if .Values.awsCredentials.name }}
+            - secretRef:
+                name: {{ .Values.awsCredentials.name }}
+            {{- end }}
+          env:
+            - name: WEBHOOK_AUTH_ENABLED
+              value: {{ .Values.adapter.alerting.webhookAuth.enabled | quote }}
+            {{- if .Values.adapter.alerting.webhookAuth.enabled }}
+            - name: WEBHOOK_SHARED_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "logs-cloudwatch.webhookSecretName" . }}
+                  key: {{ .Values.adapter.alerting.webhookAuth.sharedSecretRef.key | default "token" | quote }}
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: {{ .Values.adapter.service.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.adapter.service.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.adapter.resources | nindent 12 }}
+{{- end }}

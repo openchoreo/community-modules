@@ -1,0 +1,19 @@
+apiVersion: v2
+name: observability-logs-cloudwatch
+description: A Helm chart for OpenChoreo Logs Module for AWS CloudWatch Logs
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - cloudwatch
+  - aws
+  - openchoreo
+  - logs
+maintainers:
+  - name: OpenChoreo Team
+home: https://github.com/openchoreo/community-modules
+dependencies:
+  - name: amazon-cloudwatch-observability
+    version: "3.1.0"
+    repository: https://aws-observability.github.io/helm-charts
+    condition: cloudWatchAgent.enabled

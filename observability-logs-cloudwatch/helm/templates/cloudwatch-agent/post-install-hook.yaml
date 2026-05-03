@@ -1,0 +1,174 @@
+{{- /*
+Post-install / post-upgrade hook that fixes two upstream amazon-cloudwatch-
+observability shortcomings so the chart works from any namespace and with
+static AWS credentials:
+
+  1. Creates `amazon-cloudwatch` namespace + an ExternalName Service named
+     `cloudwatch-agent` pointing at the real Service in this release. This
+     unblocks Fluent Bit's hard-coded Pod Association upstream
+     (`cloudwatch-agent.amazon-cloudwatch:4311`).
+  2. Patches the upstream `fluent-bit` DaemonSet to `envFrom` the same
+     credentials Secret the adapter consumes, so the cloudwatch_logs output
+     plugin can authenticate. Skipped when `awsCredentials.name` is empty
+     (IRSA / Pod Identity / instance-profile path).
+
+The Job is idempotent (`kubectl apply` / `kubectl patch`) and re-runs on every
+upgrade. It runs at hook-weight `-5` so it lands before the setup-logs Job.
+*/ -}}
+{{- if and .Values.cloudWatchAgent.enabled (or .Values.cloudWatchAgent.bridgeService.enabled .Values.cloudWatchAgent.injectAwsCredentials.enabled) }}
+{{- $patchCreds := and .Values.cloudWatchAgent.injectAwsCredentials.enabled (ne .Values.awsCredentials.name "") }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cloudwatch-agent-post-install
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Release.Name }}-cloudwatch-agent-post-install
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "create", "patch"]
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "create", "patch", "update"]
+  - apiGroups: ["apps"]
+    resources: ["daemonsets"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Release.Name }}-cloudwatch-agent-post-install
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ .Release.Name }}-cloudwatch-agent-post-install
+subjects:
+  - kind: ServiceAccount
+    name: cloudwatch-agent-post-install
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cloudwatch-agent-post-install
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation
+  labels:
+    app.kubernetes.io/name: observability-logs-cloudwatch
+    app.kubernetes.io/component: cloudwatch-agent-post-install
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: observability-logs-cloudwatch
+        app.kubernetes.io/component: cloudwatch-agent-post-install
+    spec:
+      serviceAccountName: cloudwatch-agent-post-install
+      restartPolicy: OnFailure
+      containers:
+        - name: kubectl
+          image: "{{ .Values.cloudWatchAgent.hookImage.repository }}:{{ .Values.cloudWatchAgent.hookImage.tag }}"
+          imagePullPolicy: {{ .Values.cloudWatchAgent.hookImage.pullPolicy }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+
+              {{- if .Values.cloudWatchAgent.bridgeService.enabled }}
+              echo "[bridge] ensuring amazon-cloudwatch namespace"
+              kubectl apply -f - <<'NS'
+              apiVersion: v1
+              kind: Namespace
+              metadata:
+                name: amazon-cloudwatch
+                labels:
+                  app.kubernetes.io/managed-by: observability-logs-cloudwatch
+              NS
+
+              echo "[bridge] applying ExternalName Service amazon-cloudwatch/cloudwatch-agent → cloudwatch-agent.{{ .Release.Namespace }}.svc.cluster.local"
+              kubectl apply -f - <<'SVC'
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: cloudwatch-agent
+                namespace: amazon-cloudwatch
+                labels:
+                  app.kubernetes.io/managed-by: observability-logs-cloudwatch
+                  app.kubernetes.io/component: bridge
+              spec:
+                type: ExternalName
+                externalName: cloudwatch-agent.{{ .Release.Namespace }}.svc.cluster.local
+                ports:
+                  - name: pod-association
+                    port: 4311
+                    targetPort: 4311
+              SVC
+              {{- end }}
+
+              {{- if $patchCreds }}
+              echo "[creds] waiting for fluent-bit DaemonSet in {{ .Release.Namespace }}"
+              for i in $(seq 1 60); do
+                if kubectl -n {{ .Release.Namespace }} get ds fluent-bit >/dev/null 2>&1; then
+                  break
+                fi
+                sleep 2
+              done
+
+              echo "[creds] checking fluent-bit DaemonSet envFrom for Secret/{{ .Values.awsCredentials.name }}"
+              existing_names=$(kubectl -n {{ .Release.Namespace }} get ds fluent-bit \
+                -o jsonpath='{.spec.template.spec.containers[0].envFrom[*].secretRef.name}' 2>/dev/null || true)
+              already=false
+              for name in $existing_names; do
+                if [ "$name" = "{{ .Values.awsCredentials.name }}" ]; then
+                  already=true
+                  break
+                fi
+              done
+
+              if [ "$already" = "true" ]; then
+                echo "[creds] Secret/{{ .Values.awsCredentials.name }} already present in fluent-bit envFrom; skipping"
+              else
+                echo "[creds] patching fluent-bit DaemonSet to envFrom Secret/{{ .Values.awsCredentials.name }}"
+                # Prefer appending to the existing envFrom array so we do not clobber
+                # entries the upstream chart (or another operator) may have added.
+                # Fall back to creating the array only when envFrom is absent on the
+                # container — JSON Patch `add` on a missing key creates it.
+                kubectl -n {{ .Release.Namespace }} patch daemonset fluent-bit \
+                  --type=json \
+                  -p='[{"op":"add","path":"/spec/template/spec/containers/0/envFrom/-","value":{"secretRef":{"name":"{{ .Values.awsCredentials.name }}"}}}]' \
+                  || kubectl -n {{ .Release.Namespace }} patch daemonset fluent-bit \
+                    --type=json \
+                    -p='[{"op":"add","path":"/spec/template/spec/containers/0/envFrom","value":[{"secretRef":{"name":"{{ .Values.awsCredentials.name }}"}}]}]'
+              fi
+              {{- end }}
+
+              echo "done"
+          resources:
+            limits:
+              cpu: 100m
+              memory: 128Mi
+            requests:
+              cpu: 25m
+              memory: 64Mi
+{{- end }}

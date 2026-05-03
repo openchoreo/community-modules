@@ -1,0 +1,29 @@
+{{- include "logs-cloudwatch.validate" . -}}
+{{- if .Values.adapter.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: logs-adapter-cloudwatch
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: logs-adapter-cloudwatch
+data:
+  SERVER_PORT: {{ .Values.adapter.service.port | quote }}
+  CLUSTER_NAME: {{ include "logs-cloudwatch.clusterName" . | quote }}
+  AWS_REGION: {{ include "logs-cloudwatch.region" . | quote }}
+  LOG_GROUP_PREFIX: {{ include "logs-cloudwatch.logGroupPrefix" . | quote }}
+  QUERY_TIMEOUT_SECONDS: {{ .Values.adapter.queryTimeoutSeconds | quote }}
+  QUERY_POLL_MILLISECONDS: {{ .Values.adapter.queryPollMilliseconds | quote }}
+  LOG_LEVEL: {{ .Values.adapter.logLevel | quote }}
+{{- with .Values.adapter.alerting }}
+  {{- if .enabled }}
+  ALERT_METRIC_NAMESPACE: {{ .metricNamespace | quote }}
+  ALARM_ACTION_ARNS: {{ join "," .alarmActionArns | quote }}
+  OK_ACTION_ARNS: {{ join "," .okActionArns | quote }}
+  INSUFFICIENT_DATA_ACTION_ARNS: {{ join "," .insufficientDataActionArns | quote }}
+  OBSERVER_URL: {{ .observerUrl | quote }}
+  SNS_ALLOW_SUBSCRIBE_CONFIRM: {{ .snsAllowSubscribeConfirm | quote }}
+  FORWARD_RECOVERY: {{ .forwardRecovery | quote }}
+  {{- end }}
+{{- end }}
+{{- end }}

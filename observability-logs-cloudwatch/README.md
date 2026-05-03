@@ -26,7 +26,7 @@ This module supports both:
 11. [k3d and kind compatibility](#k3d-and-kind-compatibility)
 12. [Troubleshooting](#troubleshooting)
 
-## How it works
+## Architecture
 
 This module has two main responsibilities:
 

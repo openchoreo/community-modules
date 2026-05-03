@@ -150,13 +150,6 @@ func ValidateAlertParams(p LogAlertParams) error {
 			maxCloudWatchResourceNameLen,
 		)
 	}
-	if len(names.MetricName) > maxCloudWatchResourceNameLen {
-		return fmt.Errorf(
-			"invalid: generated metric name length %d exceeds CloudWatch limit of %d",
-			len(names.MetricName),
-			maxCloudWatchResourceNameLen,
-		)
-	}
 	return nil
 }
 

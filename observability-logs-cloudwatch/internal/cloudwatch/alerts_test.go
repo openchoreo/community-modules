@@ -284,11 +284,7 @@ func TestComputePeriodAndEvaluationPeriodsCapsHourlyOK(t *testing.T) {
 	}
 }
 
-func TestValidateAlertParamsAlsoRejectsOversizedMetricName(t *testing.T) {
-	// The metric name format is `oc_logs_alert_<12 hex chars>`, so the 255-char
-	// metric name validation is only reachable indirectly via the alarm name path.
-	// Use the namespace+name combo that produces an oversized alarm name to
-	// confirm the validation surfaces a useful error.
+func TestValidateAlertParamsRejectsOversizedAlarmName(t *testing.T) {
 	err := ValidateAlertParams(LogAlertParams{
 		Name:      strings.Repeat("a", 200),
 		Namespace: strings.Repeat("b", 200),

@@ -42,18 +42,20 @@ func TestNewServerExposesHealthAndLivezProbes(t *testing.T) {
 }
 
 func TestServerStartAndShutdown(t *testing.T) {
+	// Bind to an ephemeral port and hand the live listener straight to the
+	// server. Closing the listener before re-listening would open a TOCTOU
+	// window in which another process can grab the port and the test flakes.
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
 	port := listener.Addr().(*net.TCPAddr).Port
-	listener.Close()
 
 	handler := NewLogsHandlerWithOptions(&stubLogsClient{}, HandlerOptions{}, discardLogger())
 	srv := NewServer(itoa(port), handler, "", false, discardLogger())
 
 	errCh := make(chan error, 1)
-	go func() { errCh <- srv.Start() }()
+	go func() { errCh <- srv.Serve(listener) }()
 
 	// Poll until the server starts accepting connections.
 	deadline := time.Now().Add(3 * time.Second)
@@ -94,15 +96,21 @@ func TestServerStartAndShutdown(t *testing.T) {
 // --- minimal helpers to avoid pulling httptest into our package -----------
 
 type testRecorder struct {
-	Code int
-	Body string
+	Code    int
+	Body    string
+	headers http.Header
 }
 
 func newTestResponseRecorder() *testRecorder {
 	return &testRecorder{Code: http.StatusOK}
 }
 
-func (r *testRecorder) Header() http.Header { return http.Header{} }
+func (r *testRecorder) Header() http.Header {
+	if r.headers == nil {
+		r.headers = http.Header{}
+	}
+	return r.headers
+}
 
 func (r *testRecorder) Write(p []byte) (int, error) {
 	r.Body += string(p)

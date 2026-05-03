@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"time"
 
@@ -62,6 +63,18 @@ func NewServer(port string, logsHandler *LogsHandler, webhookSecret string, webh
 func (s *Server) Start() error {
 	s.logger.Info("Starting server", slog.String("port", s.port))
 	if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		return fmt.Errorf("failed to start server: %w", err)
+	}
+	return nil
+}
+
+// Serve runs the HTTP server on a listener the caller has already bound. It is
+// the no-port-race variant of Start: tests can pre-bind to 127.0.0.1:0 and pass
+// the resulting listener here without the close-then-relisten window that lets
+// another process steal the ephemeral port.
+func (s *Server) Serve(listener net.Listener) error {
+	s.logger.Info("Starting server", slog.String("addr", listener.Addr().String()))
+	if err := s.httpServer.Serve(listener); err != nil && err != http.ErrServerClosed {
 		return fmt.Errorf("failed to start server: %w", err)
 	}
 	return nil

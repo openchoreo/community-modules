@@ -10,6 +10,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha1" //nolint:gosec // Test covers SNS SignatureVersion=1 behaviour.
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/pem"
@@ -259,6 +260,59 @@ func TestVerifySNSMessageSignatureRejectsUnknownVersion(t *testing.T) {
 	}
 	if err := VerifySNSMessageSignature(env); err == nil {
 		t.Fatal("expected unknown signature version to error")
+	}
+}
+
+func TestVerifySNSMessageSignatureNotificationSHA256(t *testing.T) {
+	privateKey, err := generateTestRSAKey()
+	if err != nil {
+		t.Fatalf("generateTestRSAKey() error = %v", err)
+	}
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+	}
+	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &privateKey.PublicKey, privateKey)
+	if err != nil {
+		t.Fatalf("x509.CreateCertificate() error = %v", err)
+	}
+	cert, err := x509.ParseCertificate(certDER)
+	if err != nil {
+		t.Fatalf("x509.ParseCertificate() error = %v", err)
+	}
+
+	prevFetcher := fetchSigningCertFunc
+	fetchSigningCertFunc = func(string) (*x509.Certificate, error) {
+		return cert, nil
+	}
+	t.Cleanup(func() {
+		fetchSigningCertFunc = prevFetcher
+	})
+
+	env := &SNSEnvelopeResult{
+		EnvelopeType:     "Notification",
+		MessageID:        "msg-2",
+		TopicARN:         "arn:aws:sns:eu-north-1:123456789012:alerts",
+		RawMessage:       `{"AlarmName":"oc-logs-alert-456","NewStateValue":"OK"}`,
+		Subject:          "OK: \"test\" in EU (Stockholm)",
+		Timestamp:        "2026-04-23T11:00:00Z",
+		SignatureVersion: "2",
+		SigningCertURL:   "https://sns.eu-north-1.amazonaws.com/SimpleNotificationService.pem",
+	}
+	msg, err := buildCanonicalMessageToSign(env)
+	if err != nil {
+		t.Fatalf("buildCanonicalMessageToSign() error = %v", err)
+	}
+	sum := sha256.Sum256([]byte(msg))
+	signature, err := rsa.SignPKCS1v15(rand.Reader, privateKey, crypto.SHA256, sum[:])
+	if err != nil {
+		t.Fatalf("rsa.SignPKCS1v15() error = %v", err)
+	}
+	env.Signature = base64.StdEncoding.EncodeToString(signature)
+
+	if err := VerifySNSMessageSignature(env); err != nil {
+		t.Fatalf("VerifySNSMessageSignature() error = %v", err)
 	}
 }
 

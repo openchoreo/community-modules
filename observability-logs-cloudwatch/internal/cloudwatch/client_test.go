@@ -310,14 +310,28 @@ func TestRunQueryCancelledByContext(t *testing.T) {
 
 func TestRunQueryDeadlineExceededTriggersStopQuery(t *testing.T) {
 	api := &queryStubLogsAPI{
-		// Queue enough Running statuses to exceed the (very short) timeout.
-		statusQueue: []cwltypes.QueryStatus{cwltypes.QueryStatusRunning, cwltypes.QueryStatusRunning, cwltypes.QueryStatusRunning, cwltypes.QueryStatusRunning},
+		// PollEvery > QueryTimeout below already guarantees the deadline fires
+		// before the queue is exhausted, but keep enough Running entries so a
+		// future tweak to the timing constants cannot accidentally let the stub
+		// fall through to Complete and skip the StopQuery path.
+		statusQueue: []cwltypes.QueryStatus{
+			cwltypes.QueryStatusRunning,
+			cwltypes.QueryStatusRunning,
+			cwltypes.QueryStatusRunning,
+			cwltypes.QueryStatusRunning,
+			cwltypes.QueryStatusRunning,
+			cwltypes.QueryStatusRunning,
+		},
 	}
 	c := NewClientWithAWS(api, &stubAlarmsAPI{}, &stsStub{}, Config{
 		ClusterName:    "test-cluster",
 		LogGroupPrefix: "/aws/containerinsights",
-		QueryTimeout:   20 * time.Millisecond,
-		PollEvery:      5 * time.Millisecond,
+		// PollEvery is intentionally larger than QueryTimeout: after the first
+		// GetQueryResults returns Running we sleep for PollEvery, so the next
+		// deadline check is guaranteed to be past QueryTimeout regardless of CI
+		// scheduling jitter.
+		QueryTimeout: 5 * time.Millisecond,
+		PollEvery:    50 * time.Millisecond,
 	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	now := time.Now()
 	_, err := c.GetComponentLogs(context.Background(), ComponentLogsParams{

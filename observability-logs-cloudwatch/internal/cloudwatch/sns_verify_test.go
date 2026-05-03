@@ -298,6 +298,23 @@ func TestFetchSigningCertHTTPError(t *testing.T) {
 	}
 }
 
+func TestFetchSigningCertRejectsNonSNSRedirect(t *testing.T) {
+	_, certPEM := generateRSACert(t)
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(certPEM)
+	}))
+	t.Cleanup(target.Close)
+
+	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Redirect(w, &http.Request{}, target.URL, http.StatusFound)
+	}))
+	t.Cleanup(redirector.Close)
+
+	if _, err := fetchSigningCert(redirector.URL + "/?redirect"); err == nil {
+		t.Fatal("expected redirect to non-SNS host to be rejected")
+	}
+}
+
 func TestFetchSigningCertNonPEM(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("not a pem block"))

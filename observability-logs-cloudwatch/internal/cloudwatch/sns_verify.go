@@ -91,7 +91,19 @@ func fetchSigningCert(certURL string) (*x509.Certificate, error) {
 		return cached.(*x509.Certificate), nil
 	}
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+		// Re-validate every redirect destination so a compromised or misconfigured
+		// SNS endpoint cannot bounce us to an arbitrary host. The initial URL is
+		// validated by the caller (VerifySNSMessageSignature); this protects the
+		// final fetched URL after any redirects.
+		CheckRedirect: func(req *http.Request, _ []*http.Request) error {
+			if err := validateSigningCertURL(req.URL.String()); err != nil {
+				return fmt.Errorf("redirected SigningCertURL %s: %w", req.URL.Redacted(), err)
+			}
+			return nil
+		},
+	}
 	req, err := http.NewRequest(http.MethodGet, certURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("build signing cert request: %w", err)
@@ -116,7 +128,11 @@ func fetchSigningCert(certURL string) (*x509.Certificate, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse signing cert: %w", err)
 	}
-	certCache.Store(certURL, cert)
+	finalURL := resp.Request.URL.String()
+	certCache.Store(finalURL, cert)
+	if finalURL != certURL {
+		certCache.Store(certURL, cert)
+	}
 	return cert, nil
 }
 

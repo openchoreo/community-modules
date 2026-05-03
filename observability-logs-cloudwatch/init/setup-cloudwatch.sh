@@ -37,21 +37,25 @@ LOG_GROUPS=(
 echo "Ensuring CloudWatch log groups exist in region ${AWS_REGION} with ${RETENTION_DAYS}-day retention"
 
 for group in "${LOG_GROUPS[@]}"; do
-  echo "Checking log group: ${group}"
+  echo "Ensuring log group: ${group}"
 
-  existing=$(aws logs describe-log-groups \
+  # Attempt creation directly and key off the API's own "already exists" error.
+  # This avoids a describe→create TOCTOU race and stops a real failure
+  # (permissions, throttling, wrong region) from being mistaken for "not found".
+  set +e
+  create_output=$(aws logs create-log-group \
     --region "${AWS_REGION}" \
-    --log-group-name-prefix "${group}" \
-    --query "logGroups[?logGroupName=='${group}'].logGroupName" \
-    --output text 2>/dev/null || true)
+    --log-group-name "${group}" 2>&1)
+  create_status=$?
+  set -e
 
-  if [ -z "${existing}" ] || [ "${existing}" = "None" ]; then
-    echo "Creating log group ${group}"
-    aws logs create-log-group \
-      --region "${AWS_REGION}" \
-      --log-group-name "${group}"
-  else
+  if [ "${create_status}" -eq 0 ]; then
+    echo "Created log group ${group}"
+  elif printf '%s' "${create_output}" | grep -q "ResourceAlreadyExistsException"; then
     echo "Log group ${group} already exists"
+  else
+    echo "Failed to create log group ${group}: ${create_output}" >&2
+    exit "${create_status}"
   fi
 
   echo "Setting retention on ${group} to ${RETENTION_DAYS} days"

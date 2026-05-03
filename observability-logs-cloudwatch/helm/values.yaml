@@ -197,6 +197,11 @@ adapter:
     pullPolicy: IfNotPresent
   service:
     port: 9098
+  # Annotations applied to the adapter ServiceAccount. Use this to attach
+  # IRSA / role-assumption annotations such as
+  # eks.amazonaws.com/role-arn: arn:aws:iam::<account>:role/<role>.
+  serviceAccount:
+    annotations: {}
   # Upper bound for how long a single CloudWatch Logs Insights query may run.
   queryTimeoutSeconds: 30
   # Poll interval between get_query_results calls.

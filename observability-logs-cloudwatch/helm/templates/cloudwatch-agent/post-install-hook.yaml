@@ -135,13 +135,32 @@ spec:
                 sleep 2
               done
 
-              echo "[creds] patching fluent-bit DaemonSet to envFrom Secret/{{ .Values.awsCredentials.name }}"
-              kubectl -n {{ .Release.Namespace }} patch daemonset fluent-bit \
-                --type=json \
-                -p='[{"op":"add","path":"/spec/template/spec/containers/0/envFrom","value":[{"secretRef":{"name":"{{ .Values.awsCredentials.name }}"}}]}]' \
-                || kubectl -n {{ .Release.Namespace }} patch daemonset fluent-bit \
+              echo "[creds] checking fluent-bit DaemonSet envFrom for Secret/{{ .Values.awsCredentials.name }}"
+              existing_names=$(kubectl -n {{ .Release.Namespace }} get ds fluent-bit \
+                -o jsonpath='{.spec.template.spec.containers[0].envFrom[*].secretRef.name}' 2>/dev/null || true)
+              already=false
+              for name in $existing_names; do
+                if [ "$name" = "{{ .Values.awsCredentials.name }}" ]; then
+                  already=true
+                  break
+                fi
+              done
+
+              if [ "$already" = "true" ]; then
+                echo "[creds] Secret/{{ .Values.awsCredentials.name }} already present in fluent-bit envFrom; skipping"
+              else
+                echo "[creds] patching fluent-bit DaemonSet to envFrom Secret/{{ .Values.awsCredentials.name }}"
+                # Prefer appending to the existing envFrom array so we do not clobber
+                # entries the upstream chart (or another operator) may have added.
+                # Fall back to creating the array only when envFrom is absent on the
+                # container — JSON Patch `add` on a missing key creates it.
+                kubectl -n {{ .Release.Namespace }} patch daemonset fluent-bit \
                   --type=json \
-                  -p='[{"op":"replace","path":"/spec/template/spec/containers/0/envFrom","value":[{"secretRef":{"name":"{{ .Values.awsCredentials.name }}"}}]}]'
+                  -p='[{"op":"add","path":"/spec/template/spec/containers/0/envFrom/-","value":{"secretRef":{"name":"{{ .Values.awsCredentials.name }}"}}}]' \
+                  || kubectl -n {{ .Release.Namespace }} patch daemonset fluent-bit \
+                    --type=json \
+                    -p='[{"op":"add","path":"/spec/template/spec/containers/0/envFrom","value":[{"secretRef":{"name":"{{ .Values.awsCredentials.name }}"}}]}]'
+              fi
               {{- end }}
 
               echo "done"

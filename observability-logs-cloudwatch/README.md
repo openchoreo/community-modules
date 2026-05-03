@@ -52,9 +52,9 @@ The CloudWatch adapter is a small Go service that implements the OpenChoreo Logs
 | --- | --- |
 | `POST /api/v1/logs/query` | Runs a CloudWatch Logs Insights query and filters logs by OpenChoreo scope labels. |
 | `POST /api/v1alpha1/alerts/rules` | Creates a CloudWatch Logs metric filter and CloudWatch metric alarm. |
-| `GET /api/v1alpha1/alerts/rules` | Lists alert rules managed by the adapter. |
-| `PUT /api/v1alpha1/alerts/rules` | Updates an existing alert rule. |
-| `DELETE /api/v1alpha1/alerts/rules` | Deletes the metric filter and alarm for an alert rule. |
+| `GET /api/v1alpha1/alerts/rules/{ruleName}` | Gets the alert rule identified by `{ruleName}`. |
+| `PUT /api/v1alpha1/alerts/rules/{ruleName}` | Updates the alert rule identified by `{ruleName}`. |
+| `DELETE /api/v1alpha1/alerts/rules/{ruleName}` | Deletes the metric filter and alarm for the alert rule identified by `{ruleName}`. |
 | `POST /api/v1alpha1/alerts/webhook` | Receives forwarded CloudWatch alarm events from EventBridge and forwards them to the Observer. |
 | `GET /healthz` | Readiness check. Returns `200` once the adapter is ready. |
 | `GET /livez` | Liveness check. Does not call AWS, so transient AWS or DNS issues do not crash-loop the pod. |

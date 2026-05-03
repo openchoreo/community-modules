@@ -100,6 +100,10 @@ type queryStubLogsAPI struct {
 	stopErr      error
 	statusQueue  []cwltypes.QueryStatus
 	resultsQueue [][]cwltypes.ResultField
+	// cancelFunc, when non-nil, is invoked on the first GetQueryResults call so
+	// tests can deterministically trip the parent context's cancellation
+	// without relying on time.Sleep races.
+	cancelFunc context.CancelFunc
 }
 
 func (s *queryStubLogsAPI) StartQuery(_ context.Context, _ *cloudwatchlogs.StartQueryInput, _ ...func(*cloudwatchlogs.Options)) (*cloudwatchlogs.StartQueryOutput, error) {
@@ -111,6 +115,11 @@ func (s *queryStubLogsAPI) StartQuery(_ context.Context, _ *cloudwatchlogs.Start
 }
 
 func (s *queryStubLogsAPI) GetQueryResults(_ context.Context, _ *cloudwatchlogs.GetQueryResultsInput, _ ...func(*cloudwatchlogs.Options)) (*cloudwatchlogs.GetQueryResultsOutput, error) {
+	if s.cancelFunc != nil {
+		cancel := s.cancelFunc
+		s.cancelFunc = nil
+		cancel()
+	}
 	if s.resultsErr != nil {
 		return nil, s.resultsErr
 	}
@@ -289,14 +298,13 @@ func TestRunQueryFailedStatusReturnsError(t *testing.T) {
 }
 
 func TestRunQueryCancelledByContext(t *testing.T) {
-	c := newQueryTestClient(&queryStubLogsAPI{
-		statusQueue: []cwltypes.QueryStatus{cwltypes.QueryStatusRunning, cwltypes.QueryStatusRunning, cwltypes.QueryStatusRunning},
-	})
 	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		time.Sleep(10 * time.Millisecond)
-		cancel()
-	}()
+	defer cancel()
+	api := &queryStubLogsAPI{
+		statusQueue: []cwltypes.QueryStatus{cwltypes.QueryStatusRunning, cwltypes.QueryStatusRunning, cwltypes.QueryStatusRunning},
+		cancelFunc:  cancel,
+	}
+	c := newQueryTestClient(api)
 	now := time.Now()
 	_, err := c.GetComponentLogs(ctx, ComponentLogsParams{
 		Namespace: "default",

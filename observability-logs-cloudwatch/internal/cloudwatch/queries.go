@@ -14,11 +14,11 @@ import (
 const (
 	labelNamespace       = "openchoreo.dev/namespace"
 	labelComponentUID    = "openchoreo.dev/component-uid"
-	labelComponentName   = "openchoreo.dev/component-name"
+	labelComponentName   = "openchoreo.dev/component"
 	labelEnvironmentUID  = "openchoreo.dev/environment-uid"
-	labelEnvironmentName = "openchoreo.dev/environment-name"
+	labelEnvironmentName = "openchoreo.dev/environment"
 	labelProjectUID      = "openchoreo.dev/project-uid"
-	labelProjectName     = "openchoreo.dev/project-name"
+	labelProjectName     = "openchoreo.dev/project"
 
 	// Argo Workflows annotation carrying the workflow node (pod-scoped step) name.
 	annotationWorkflowNodeName = "workflows.argoproj.io/node-name"

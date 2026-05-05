@@ -21,6 +21,22 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 )
 
+const (
+	defaultQueryTimeout = 30 * time.Second
+	defaultPollEvery    = 500 * time.Millisecond
+	stopQueryTimeout    = 5 * time.Second
+)
+
+func normalizeConfig(cfg Config) Config {
+	if cfg.QueryTimeout <= 0 {
+		cfg.QueryTimeout = defaultQueryTimeout
+	}
+	if cfg.PollEvery <= 0 {
+		cfg.PollEvery = defaultPollEvery
+	}
+	return cfg
+}
+
 type logsAPI interface {
 	StartQuery(context.Context, *cloudwatchlogs.StartQueryInput, ...func(*cloudwatchlogs.Options)) (*cloudwatchlogs.StartQueryOutput, error)
 	GetQueryResults(context.Context, *cloudwatchlogs.GetQueryResultsInput, ...func(*cloudwatchlogs.Options)) (*cloudwatchlogs.GetQueryResultsOutput, error)
@@ -77,6 +93,7 @@ func NewClient(ctx context.Context, cfg Config, logger *slog.Logger) (*Client, e
 	if err != nil {
 		return nil, fmt.Errorf("loading AWS config: %w", err)
 	}
+	cfg = normalizeConfig(cfg)
 	return &Client{
 		logs:                       cloudwatchlogs.NewFromConfig(awsCfg),
 		alarms:                     cloudwatch.NewFromConfig(awsCfg),
@@ -95,6 +112,7 @@ func NewClient(ctx context.Context, cfg Config, logger *slog.Logger) (*Client, e
 
 // NewClientWithAWS builds a Client from already-constructed AWS clients. Useful for tests.
 func NewClientWithAWS(logs logsAPI, alarms alarmsAPI, stsClient stsAPI, cfg Config, logger *slog.Logger) *Client {
+	cfg = normalizeConfig(cfg)
 	return &Client{
 		logs:                       logs,
 		alarms:                     alarms,
@@ -286,7 +304,9 @@ func (c *Client) runQuery(ctx context.Context, logGroup, query string, startTime
 	for {
 		if time.Now().After(deadline) {
 			// Best-effort cancel so we stop paying for a query we've abandoned.
-			_, _ = c.logs.StopQuery(context.Background(), &cloudwatchlogs.StopQueryInput{QueryId: aws.String(queryID)})
+			stopCtx, cancel := context.WithTimeout(context.Background(), stopQueryTimeout)
+			_, _ = c.logs.StopQuery(stopCtx, &cloudwatchlogs.StopQueryInput{QueryId: aws.String(queryID)})
+			cancel()
 			return nil, fmt.Errorf("query %s timed out after %s", queryID, c.queryTimeout)
 		}
 
@@ -306,7 +326,9 @@ func (c *Client) runQuery(ctx context.Context, logGroup, query string, startTime
 
 		select {
 		case <-ctx.Done():
-			_, _ = c.logs.StopQuery(context.Background(), &cloudwatchlogs.StopQueryInput{QueryId: aws.String(queryID)})
+			stopCtx, cancel := context.WithTimeout(context.Background(), stopQueryTimeout)
+			_, _ = c.logs.StopQuery(stopCtx, &cloudwatchlogs.StopQueryInput{QueryId: aws.String(queryID)})
+			cancel()
 			return nil, ctx.Err()
 		case <-time.After(c.pollEvery):
 		}

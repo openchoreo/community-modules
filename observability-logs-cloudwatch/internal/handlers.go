@@ -173,16 +173,22 @@ func (h *LogsHandler) CreateAlertRule(ctx context.Context, request gen.CreateAle
 
 	// Detect duplicates before create. AWS PutMetricAlarm is upsert, so we
 	// need an explicit GET to preserve 409 semantics.
-	if existing, err := h.client.GetAlert(ctx, params.Namespace, params.Name); err == nil && existing != nil {
+	existing, err := h.client.GetAlert(ctx, params.Namespace, params.Name)
+	switch {
+	case err == nil && existing != nil:
 		return gen.CreateAlertRule409JSONResponse{
 			Title:   ptr(gen.Conflict),
 			Message: ptr("alert rule already exists"),
 		}, nil
-	} else if err != nil && !errors.Is(err, cloudwatch.ErrAlertNotFound) {
-		h.logger.Warn("Duplicate-check failed for CreateAlertRule",
+	case err != nil && !errors.Is(err, cloudwatch.ErrAlertNotFound):
+		h.logger.Error("Duplicate-check failed for CreateAlertRule",
 			slog.String("ruleName", params.Name),
 			slog.Any("error", err),
 		)
+		return gen.CreateAlertRule500JSONResponse{
+			Title:   ptr(gen.InternalServerError),
+			Message: ptr("internal server error"),
+		}, nil
 	}
 
 	arn, err := h.client.CreateAlert(ctx, params)
@@ -342,12 +348,19 @@ func (h *LogsHandler) HandleAlertWebhook(ctx context.Context, request gen.Handle
 	}
 
 	if confirm != nil {
-		if !h.snsAllowSubscribeConfirm {
+		switch {
+		case !h.snsAllowSubscribeConfirm:
 			h.logger.Warn("SNS subscription confirmation received but SNS_ALLOW_SUBSCRIBE_CONFIRM=false; ignoring",
 				slog.String("topicArn", confirm.TopicARN),
+				slog.String("envelopeType", confirm.EnvelopeType),
 			)
-		} else if confirm.SubscribeURL != "" {
+		case confirm.EnvelopeType == "SubscriptionConfirmation" && confirm.SubscribeURL != "":
 			go h.confirmSNSSubscription(confirm)
+		default:
+			h.logger.Warn("SNS confirmation envelope ignored; only SubscriptionConfirmation with a SubscribeURL is auto-confirmed",
+				slog.String("topicArn", confirm.TopicARN),
+				slog.String("envelopeType", confirm.EnvelopeType),
+			)
 		}
 		return gen.HandleAlertWebhook200JSONResponse{
 			Message: ptr("subscription confirmation received"),
@@ -415,9 +428,19 @@ func (h *LogsHandler) forwardAlertEvent(event *cloudwatch.ParsedAlertEvent) {
 		}
 	}
 
-	if event.RuleName == "" {
-		h.logger.Warn("Dropping alert: could not determine rule name",
+	if event.RuleName == "" || event.RuleNamespace == "" {
+		missing := make([]string, 0, 2)
+		if event.RuleName == "" {
+			missing = append(missing, "ruleName")
+		}
+		if event.RuleNamespace == "" {
+			missing = append(missing, "ruleNamespace")
+		}
+		h.logger.Warn("Dropping alert: missing required rule identifiers",
 			slog.String("alarmName", event.AlarmName),
+			slog.String("ruleName", event.RuleName),
+			slog.String("ruleNamespace", event.RuleNamespace),
+			slog.Any("missing", missing),
 		)
 		return
 	}

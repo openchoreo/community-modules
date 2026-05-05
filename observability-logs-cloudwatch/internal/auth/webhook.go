@@ -63,12 +63,21 @@ func WebhookAuthMiddleware(secret string, secretEnabled bool, logger *slog.Logge
 				return
 			}
 
-			if secretEnabled && !constantTimeStringEqual(r.Header.Get(WebhookAuthHeader), secret) {
-				logger.Warn("Rejecting webhook request: missing or invalid auth token",
-					slog.String("path", r.URL.Path),
-				)
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
-				return
+			if secretEnabled {
+				if secret == "" {
+					logger.Warn("Rejecting webhook request: webhook auth enabled but no shared secret configured",
+						slog.String("path", r.URL.Path),
+					)
+					http.Error(w, "unauthorized", http.StatusUnauthorized)
+					return
+				}
+				if !constantTimeStringEqual(r.Header.Get(WebhookAuthHeader), secret) {
+					logger.Warn("Rejecting webhook request: missing or invalid auth token",
+						slog.String("path", r.URL.Path),
+					)
+					http.Error(w, "unauthorized", http.StatusUnauthorized)
+					return
+				}
 			}
 
 			next.ServeHTTP(w, r)

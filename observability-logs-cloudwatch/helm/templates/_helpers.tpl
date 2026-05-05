@@ -37,14 +37,24 @@ Validate required values and fail fast with a readable message.
 {{- if and .Values.adapter.alerting.webhookAuth.enabled (not (or .Values.adapter.alerting.webhookAuth.sharedSecret .Values.adapter.alerting.webhookAuth.sharedSecretRef.name)) -}}
 {{- fail "adapter.alerting.webhookAuth requires either sharedSecret or sharedSecretRef.name when enabled" -}}
 {{- end -}}
-{{- if and .Values.adapter.alerting.webhookIngress.enabled (not .Values.adapter.alerting.webhookAuth.enabled) -}}
-{{- fail "adapter.alerting.webhookIngress requires adapter.alerting.webhookAuth.enabled=true so the public webhook is not exposed without header auth" -}}
+{{- if .Values.adapter.alerting.enabled -}}
+{{- range $field := list "alarmActionArns" "okActionArns" "insufficientDataActionArns" -}}
+{{- $arns := index $.Values.adapter.alerting $field -}}
+{{- if gt (len $arns) 5 -}}
+{{- fail (printf "adapter.alerting.%s has %d entries; CloudWatch alarms allow at most 5 actions per state" $field (len $arns)) -}}
 {{- end -}}
-{{- if and .Values.adapter.alerting.webhookIngress.enabled (not .Values.adapter.alerting.webhookIngress.host) -}}
-{{- fail "adapter.alerting.webhookIngress.host is required when webhookIngress is enabled" -}}
+{{- range $i, $arn := $arns -}}
+{{- if not (hasPrefix "arn:aws:" $arn) -}}
+{{- fail (printf "adapter.alerting.%s[%d]=%q is not a valid AWS ARN; expected prefix \"arn:aws:\"" $field $i $arn) -}}
 {{- end -}}
-{{- if and .Values.adapter.alerting.webhookIngress.enabled (not .Values.adapter.alerting.webhookIngress.tls.secretName) -}}
-{{- fail "adapter.alerting.webhookIngress.tls.secretName is required when webhookIngress is enabled" -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- if and .Values.adapter.alerting.webhookRoute.enabled (not .Values.adapter.alerting.webhookAuth.enabled) -}}
+{{- fail "adapter.alerting.webhookRoute requires adapter.alerting.webhookAuth.enabled=true so the public webhook is not exposed without header auth" -}}
+{{- end -}}
+{{- if and .Values.adapter.alerting.webhookRoute.enabled (not .Values.adapter.alerting.webhookRoute.parentRef.name) -}}
+{{- fail "adapter.alerting.webhookRoute.parentRef.name is required when webhookRoute is enabled" -}}
 {{- end -}}
 {{- if and .Values.adapter.enabled .Values.adapter.networkPolicy.enabled -}}
 {{- if empty .Values.adapter.networkPolicy.observerNamespaceLabels -}}

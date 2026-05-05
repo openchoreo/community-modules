@@ -359,8 +359,7 @@ helm upgrade --install openchoreo-observability-plane \
   --version 1.0.1-hotfix.1 \
   --namespace "$NS" \
   --reuse-values \
-  --set observer.logsAdapter.enabled=true \
-  --set observer.logsAdapter.url=http://observability-logs-cloudwatch-adapter:9098
+  --set observer.logsAdapter.enabled=true
 ```
 
 After this step, the OpenChoreo Observer uses the CloudWatch adapter for log queries.
@@ -383,7 +382,7 @@ Confirm that the following workloads are running:
 ### Step 2 — Check adapter health
 
 ```bash
-kubectl -n "$NS" port-forward svc/observability-logs-cloudwatch-adapter 9098:9098 &
+kubectl -n "$NS" port-forward svc/logs-adapter 9098:9098 &
 curl -sf http://localhost:9098/healthz | jq .
 ```
 
@@ -501,7 +500,7 @@ Do **not** publicly expose:
 - `/healthz`
 - `/livez`
 
-Use `adapter.alerting.webhookIngress` to create a controlled HTTPS ingress for the webhook.
+Use `adapter.alerting.webhookRoute` to create a Gateway API `HTTPRoute` that exposes only the webhook path through your existing Gateway. TLS termination, rate limiting, and any WAF / auth rules belong on the parent Gateway listener.
 
 ### Development-only webhook test with port-forward and ngrok
 
@@ -510,7 +509,7 @@ For local testing, you can expose the adapter through a temporary public tunnel.
 Start a port-forward:
 
 ```bash
-kubectl -n "$NS" port-forward svc/observability-logs-cloudwatch-adapter 19098:9098 &
+kubectl -n "$NS" port-forward svc/logs-adapter 19098:9098 &
 ```
 
 Start an ngrok tunnel:
@@ -681,15 +680,15 @@ Pass `sharedSecret=""` when switching from inline secret to Secret reference. Ot
 | `adapter.alerting.webhookAuth.sharedSecret` | `""` | Inline shared secret for webhook authentication. Suitable for development only. |
 | `adapter.alerting.webhookAuth.sharedSecretRef.name` | `""` | Existing Kubernetes Secret name containing the webhook token. Recommended for production. |
 | `adapter.alerting.webhookAuth.sharedSecretRef.key` | `token` | Key inside the existing Secret. |
-| `adapter.alerting.webhookIngress.enabled` | `false` | Creates an Ingress exposing only `/api/v1alpha1/alerts/webhook`. |
-| `adapter.alerting.webhookIngress.className` | `nginx` | Ingress class name. |
-| `adapter.alerting.webhookIngress.host` | `""` | Public webhook hostname. Required when webhook ingress is enabled. |
-| `adapter.alerting.webhookIngress.annotations` | `{}` | Optional ingress annotations. |
-| `adapter.alerting.webhookIngress.tls.secretName` | `""` | TLS Secret name. Required when webhook ingress is enabled. |
+| `adapter.alerting.webhookRoute.enabled` | `false` | Creates a Gateway API `HTTPRoute` exposing only `/api/v1alpha1/alerts/webhook`. |
+| `adapter.alerting.webhookRoute.parentRef.name` | `gateway-default` | Name of the Gateway to attach to. |
+| `adapter.alerting.webhookRoute.parentRef.namespace` | `""` | Namespace of the Gateway. Empty defaults to the release namespace. |
+| `adapter.alerting.webhookRoute.parentRef.sectionName` | `""` | Optional listener `sectionName` on the Gateway. |
+| `adapter.alerting.webhookRoute.hostnames` | `[]` | Optional hostnames matched at the route level. Empty inherits the listener hostname. |
 | `adapter.networkPolicy.enabled` | `false` | Creates a NetworkPolicy for adapter ingress traffic. |
 | `adapter.networkPolicy.observerNamespaceLabels` | `{kubernetes.io/metadata.name: openchoreo-observability-plane}` | Namespace labels allowed to call the adapter from the Observer. |
 | `adapter.networkPolicy.observerPodLabels` | `{}` | Pod labels allowed to call the adapter from the Observer. Tune per deployment. |
-| `adapter.networkPolicy.ingressNamespaceLabels` | `{kubernetes.io/metadata.name: ingress-nginx}` | Namespace labels allowed to call the webhook through ingress. |
+| `adapter.networkPolicy.gatewayNamespaceLabels` | `{}` | Namespace labels of the Gateway data-plane pods allowed to proxy the webhook. Set when `webhookRoute` is enabled. |
 | `adapter.networkPolicy.allowProbeIPBlock` | `""` | Optional node CIDR for kubelet probes when required by the CNI. |
 
 ## k3d and kind compatibility

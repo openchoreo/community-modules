@@ -131,8 +131,8 @@ func parseARNList(envKey string) ([]string, error) {
 		if arn == "" {
 			continue
 		}
-		if !strings.HasPrefix(arn, "arn:aws:") {
-			return nil, fmt.Errorf("invalid %s entry %q: must start with arn:aws:", envKey, arn)
+		if !strings.HasPrefix(arn, "arn:") || len(strings.Split(arn, ":")) < 6 {
+			return nil, fmt.Errorf("invalid %s entry %q: must be a well-formed ARN (arn:<partition>:<service>:<region>:<account-id>:<resource>)", envKey, arn)
 		}
 		out = append(out, arn)
 	}

@@ -93,9 +93,9 @@ amazon-cloudwatch-observability:
           #      mounted, so each call wedges Fluent Bit on 10s timeouts and
           #      no logs ever reach CloudWatch. EKS users who want entity
           #      enrichment can restore the upstream defaults by overriding
-          #      this key with the v3.1.0 snippet.
+          #      this key with the v4.10.3 snippet.
           # Everything else here is verbatim from amazon-cloudwatch-
-          # observability v3.1.0; refresh on subchart bumps.
+          # observability v4.10.3; refresh on subchart bumps.
           application-log.conf: |
             [INPUT]
               Name                tail
@@ -229,21 +229,32 @@ adapter:
       sharedSecretRef:
         name: ""
         key: token
-    # Optional ingress that exposes only the public webhook path.
-    webhookIngress:
+    # Optional Gateway API HTTPRoute that exposes only the public webhook path
+    # via an existing Gateway. TLS termination, listener-level auth, and any
+    # rate limiting / WAF rules belong on the parent Gateway listener — this
+    # route only carves out the webhook endpoint.
+    webhookRoute:
       enabled: false
-      className: nginx
-      host: ""
-      annotations: {}
-      tls:
-        secretName: ""
+      # Gateway to attach to. Defaults to OpenChoreo's `gateway-default` in the
+      # release namespace; override to point at a Gateway in another namespace
+      # or a specific listener (sectionName).
+      parentRef:
+        name: gateway-default
+        namespace: ""
+        sectionName: ""
+      # Optional hostnames matched at the route level. Leave empty to inherit
+      # the Gateway listener's hostname.
+      hostnames: []
   networkPolicy:
     enabled: false
     observerNamespaceLabels:
       kubernetes.io/metadata.name: openchoreo-observability-plane
     observerPodLabels: {}
-    ingressNamespaceLabels:
-      kubernetes.io/metadata.name: ingress-nginx
+    # Namespace labels for the Gateway data-plane pods that proxy the webhook
+    # to the adapter. Default empty: when the route is enabled, set this to
+    # match your Gateway controller's data-plane namespace
+    # (e.g. `kubernetes.io/metadata.name: openchoreo-data-plane`).
+    gatewayNamespaceLabels: {}
     allowProbeIPBlock: ""
   resources:
     limits:

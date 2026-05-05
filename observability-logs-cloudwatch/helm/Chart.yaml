@@ -14,6 +14,6 @@ maintainers:
 home: https://github.com/openchoreo/community-modules
 dependencies:
   - name: amazon-cloudwatch-observability
-    version: "3.1.0"
+    version: "4.10.3"
     repository: https://aws-observability.github.io/helm-charts
     condition: cloudWatchAgent.enabled

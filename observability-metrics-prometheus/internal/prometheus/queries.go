@@ -108,19 +108,19 @@ func BuildComponentLabelFilter(componentUID, projectUID, environmentUID string) 
 // BuildCPUUsageQuery builds a PromQL query for CPU usage rate.
 func BuildCPUUsageQuery(labelFilter, sumByClause, groupLeftClause string) string {
 	return fmt.Sprintf(`sum by (%s) (
-    rate(container_cpu_usage_seconds_total{container!=""}[2m]) * on (pod, namespace) %s kube_pod_labels{%s} )`, sumByClause, groupLeftClause, labelFilter)
+    rate(container_cpu_usage_seconds_total{container!=""}[2m]) * on (pod, namespace) %s kube_pod_labels{job="kube-state-metrics",%s} )`, sumByClause, groupLeftClause, labelFilter)
 }
 
 // BuildCPURequestsQuery builds a PromQL query for CPU requests.
 func BuildCPURequestsQuery(labelFilter, sumByClause, groupLeftClause string) string {
 	return fmt.Sprintf(`sum by (%s) (
             (
-                kube_pod_container_resource_requests{resource="cpu"}
+                kube_pod_container_resource_requests{resource="cpu",job="kube-state-metrics"}
                 AND ON (pod, namespace)
                 (kube_pod_status_phase{phase="Running"} == 1)
             )
           * ON (pod, namespace) %s
-            kube_pod_labels{%s}
+            kube_pod_labels{job="kube-state-metrics",%s}
         )`, sumByClause, groupLeftClause, labelFilter)
 }
 
@@ -128,12 +128,12 @@ func BuildCPURequestsQuery(labelFilter, sumByClause, groupLeftClause string) str
 func BuildCPULimitsQuery(labelFilter, sumByClause, groupLeftClause string) string {
 	return fmt.Sprintf(`sum by (%s) (
             (
-                kube_pod_container_resource_limits{resource="cpu"}
+                kube_pod_container_resource_limits{resource="cpu",job="kube-state-metrics"}
                 AND ON (pod, namespace)
                 (kube_pod_status_phase{phase="Running"} == 1)
             )
           * ON (pod, namespace) %s
-            kube_pod_labels{%s}
+            kube_pod_labels{job="kube-state-metrics",%s}
         )`, sumByClause, groupLeftClause, labelFilter)
 }
 
@@ -142,7 +142,7 @@ func BuildMemoryUsageQuery(labelFilter, sumByClause, groupLeftClause string) str
 	return fmt.Sprintf(`sum by (%s) (
               container_memory_working_set_bytes{container!=""}
               * on (pod, namespace) %s
-                kube_pod_labels{%s}
+                kube_pod_labels{job="kube-state-metrics",%s}
             )`, sumByClause, groupLeftClause, labelFilter)
 }
 
@@ -150,12 +150,12 @@ func BuildMemoryUsageQuery(labelFilter, sumByClause, groupLeftClause string) str
 func BuildMemoryRequestsQuery(labelFilter, sumByClause, groupLeftClause string) string {
 	return fmt.Sprintf(`sum by (%s) (
             (
-                kube_pod_container_resource_requests{resource="memory"}
+                kube_pod_container_resource_requests{resource="memory",job="kube-state-metrics"}
                 AND ON (pod, namespace)
                 (kube_pod_status_phase{phase="Running"} == 1)
             )
           * ON (pod, namespace) %s
-            kube_pod_labels{%s}
+            kube_pod_labels{job="kube-state-metrics",%s}
         )`, sumByClause, groupLeftClause, labelFilter)
 }
 
@@ -163,12 +163,12 @@ func BuildMemoryRequestsQuery(labelFilter, sumByClause, groupLeftClause string) 
 func BuildMemoryLimitsQuery(labelFilter, sumByClause, groupLeftClause string) string {
 	return fmt.Sprintf(`sum by (%s) (
             (
-                kube_pod_container_resource_limits{resource="memory"}
+                kube_pod_container_resource_limits{resource="memory",job="kube-state-metrics"}
                 AND ON (pod, namespace)
                 (kube_pod_status_phase{phase="Running"} == 1)
             )
           * ON (pod, namespace) %s
-            kube_pod_labels{%s}
+            kube_pod_labels{job="kube-state-metrics",%s}
         )`, sumByClause, groupLeftClause, labelFilter)
 }
 
@@ -184,7 +184,7 @@ func BuildHTTPRequestCountQuery(labelFilter, sumByClause, groupLeftClause string
 	            * on(destination_pod, destination_namespace) %s
 	            label_replace(
 	                label_replace(
-	                    kube_pod_labels{%s},
+	                    kube_pod_labels{job="kube-state-metrics",%s},
 	                    "destination_pod",
 	                    "$1",
 	                    "pod",
@@ -209,7 +209,7 @@ func BuildSuccessfulHTTPRequestCountQuery(labelFilter, sumByClause, groupLeftCla
 	            * on(destination_pod, destination_namespace) %s
 	            label_replace(
 	                label_replace(
-	                    kube_pod_labels{%s},
+	                    kube_pod_labels{job="kube-state-metrics",%s},
 	                    "destination_pod",
 	                    "$1",
 	                    "pod",
@@ -234,7 +234,7 @@ func BuildUnsuccessfulHTTPRequestCountQuery(labelFilter, sumByClause, groupLeftC
 	            * on(destination_pod, destination_namespace) %s
 	            label_replace(
 	                label_replace(
-	                    kube_pod_labels{%s},
+	                    kube_pod_labels{job="kube-state-metrics",%s},
 	                    "destination_pod",
 	                    "$1",
 	                    "pod",
@@ -259,7 +259,7 @@ func BuildMeanHTTPRequestLatencyQuery(labelFilter, sumByClause, groupLeftClause 
 	                * on(destination_pod, destination_namespace) %s
 	                label_replace(
 	                    label_replace(
-	                        kube_pod_labels{%s},
+	                        kube_pod_labels{job="kube-state-metrics",%s},
 	                        "destination_pod",
 	                        "$1",
 	                        "pod",
@@ -277,7 +277,7 @@ func BuildMeanHTTPRequestLatencyQuery(labelFilter, sumByClause, groupLeftClause 
 	                * on(destination_pod, destination_namespace) %s
 	                label_replace(
 	                    label_replace(
-	                        kube_pod_labels{%s},
+	                        kube_pod_labels{job="kube-state-metrics",%s},
 	                        "destination_pod",
 	                        "$1",
 	                        "pod",
@@ -305,7 +305,7 @@ func Build50thPercentileHTTPRequestLatencyQuery(labelFilter, sumByClause, groupL
 	                * on(destination_pod, destination_namespace) %s
 	                label_replace(
 	                    label_replace(
-	                        kube_pod_labels{%s},
+	                        kube_pod_labels{job="kube-state-metrics",%s},
 	                        "destination_pod",
 	                        "$1",
 	                        "pod",
@@ -333,7 +333,7 @@ func Build90thPercentileHTTPRequestLatencyQuery(labelFilter, sumByClause, groupL
 	                * on(destination_pod, destination_namespace) %s
 	                label_replace(
 	                    label_replace(
-	                        kube_pod_labels{%s},
+	                        kube_pod_labels{job="kube-state-metrics",%s},
 	                        "destination_pod",
 	                        "$1",
 	                        "pod",
@@ -361,7 +361,7 @@ func Build99thPercentileHTTPRequestLatencyQuery(labelFilter, sumByClause, groupL
 	                * on(destination_pod, destination_namespace) %s
 	                label_replace(
 	                    label_replace(
-	                        kube_pod_labels{%s},
+	                        kube_pod_labels{job="kube-state-metrics",%s},
 	                        "destination_pod",
 	                        "$1",
 	                        "pod",

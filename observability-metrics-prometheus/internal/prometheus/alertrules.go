@@ -125,7 +125,7 @@ func buildCPUUsageAlertExpression(componentUID, projectUID, environmentUID, oper
 	rateWindow := ensureMinimumWindow(window, "2m")
 
 	return fmt.Sprintf(
-		`(sum(rate(container_cpu_usage_seconds_total{container!=""}[%s]) * on (pod) group_left(label_openchoreo_dev_component_uid,label_openchoreo_dev_project_uid,label_openchoreo_dev_environment_uid) kube_pod_labels{%s}) / sum(kube_pod_container_resource_limits{resource="cpu"} * on (pod) group_left(label_openchoreo_dev_component_uid,label_openchoreo_dev_project_uid,label_openchoreo_dev_environment_uid) kube_pod_labels{%s})) * 100 %s %v`,
+		`(sum(rate(container_cpu_usage_seconds_total{container!=""}[%s]) * on (pod) group_left(label_openchoreo_dev_component_uid,label_openchoreo_dev_project_uid,label_openchoreo_dev_environment_uid) kube_pod_labels{job="kube-state-metrics",%s}) / sum(kube_pod_container_resource_limits{resource="cpu",job="kube-state-metrics"} * on (pod) group_left(label_openchoreo_dev_component_uid,label_openchoreo_dev_project_uid,label_openchoreo_dev_environment_uid) kube_pod_labels{job="kube-state-metrics",%s})) * 100 %s %v`,
 		rateWindow, labelFilter, labelFilter, operator, threshold,
 	)
 }
@@ -137,7 +137,7 @@ func buildMemoryUsageAlertExpression(componentUID, projectUID, environmentUID, o
 	labelFilter := BuildComponentLabelFilter(componentUID, projectUID, environmentUID)
 
 	return fmt.Sprintf(
-		`(sum(container_memory_working_set_bytes{container!=""} * on (pod) group_left(label_openchoreo_dev_component_uid,label_openchoreo_dev_project_uid,label_openchoreo_dev_environment_uid) kube_pod_labels{%s}) / sum(kube_pod_container_resource_limits{resource="memory"} * on (pod) group_left(label_openchoreo_dev_component_uid,label_openchoreo_dev_project_uid,label_openchoreo_dev_environment_uid) kube_pod_labels{%s})) * 100 %s %v`,
+		`(sum(container_memory_working_set_bytes{container!=""} * on (pod) group_left(label_openchoreo_dev_component_uid,label_openchoreo_dev_project_uid,label_openchoreo_dev_environment_uid) kube_pod_labels{job="kube-state-metrics",%s}) / sum(kube_pod_container_resource_limits{resource="memory",job="kube-state-metrics"} * on (pod) group_left(label_openchoreo_dev_component_uid,label_openchoreo_dev_project_uid,label_openchoreo_dev_environment_uid) kube_pod_labels{job="kube-state-metrics",%s})) * 100 %s %v`,
 		labelFilter, labelFilter, operator, threshold,
 	)
 }

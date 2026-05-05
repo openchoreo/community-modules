@@ -32,10 +32,10 @@ func main() {
 	}))
 
 	logger.Info("Configurations loaded from environment variables successfully",
-		slog.String("Log Level", cfg.LogLevel.String()),
-		slog.String("Server Port", cfg.ServerPort),
-		slog.String("Prometheus Address", cfg.PrometheusAddress),
-		slog.String("Alert Rule Namespace", cfg.AlertRuleNamespace),
+		slog.String("LOG_LEVEL", cfg.LogLevel.String()),
+		slog.String("SERVER_PORT", cfg.ServerPort),
+		slog.String("PROMETHEUS_ADDRESS", cfg.PrometheusAddress),
+		slog.String("OBSERVABILITY_NAMESPACE", cfg.AlertRuleNamespace),
 	)
 
 	promClient, err := prometheus.NewClient(cfg.PrometheusAddress, logger)

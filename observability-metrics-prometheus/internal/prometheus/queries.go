@@ -176,204 +176,99 @@ func BuildMemoryLimitsQuery(labelFilter, sumByClause, groupLeftClause string) st
 // HTTP Request Metrics Queries
 // ----------------------------
 
+// buildHubblePodMappingExpr returns a PromQL expression that exposes
+// kube_pod_labels (filtered by labelFilter) under Hubble's join keys
+// (destination_namespace, destination_pod).
+func buildHubblePodMappingExpr(labelFilter string) string {
+	return fmt.Sprintf(`label_replace(
+            label_replace(
+                kube_pod_labels{job="kube-state-metrics",%s},
+                "destination_namespace", "$1", "namespace", "(.*)"
+            ),
+            "destination_pod", "$1", "pod", "(.*)"
+        )`, labelFilter)
+}
+
+// buildHTTPRequestCountQueryWithStatus builds the request-count PromQL,
+// optionally filtered by an extra `status=~...` matcher.
+func buildHTTPRequestCountQueryWithStatus(labelFilter, sumByClause, groupLeftClause, statusMatcher string) string {
+	mapping := buildHubblePodMappingExpr(labelFilter)
+	return fmt.Sprintf(`
+    sum by (%s) (
+        rate(hubble_http_requests_total{reporter="server"%s}[2m])
+            * on(destination_namespace, destination_pod) %s
+            %s
+    )
+    >= 0
+`, sumByClause, statusMatcher, groupLeftClause, mapping)
+}
+
 // BuildHTTPRequestCountQuery builds a PromQL query for HTTP request count.
 func BuildHTTPRequestCountQuery(labelFilter, sumByClause, groupLeftClause string) string {
-	return fmt.Sprintf(`
-	    sum by (%s) (
-	        rate(hubble_http_requests_total{reporter="server"}[2m])
-	            * on(destination_namespace, destination_workload) %s
-	            label_replace(
-	                label_replace(
-	                    kube_pod_labels{job="kube-state-metrics",%s},
-	                    "destination_namespace",
-	                    "$1",
-	                    "namespace",
-	                    "(.*)"
-	                ),
-	                "destination_workload",
-	                "$1",
-	                "pod",
-	                "^(.*)-[^-]+-[^-]+$"
-	            )
-	    )
-	    >= 0
-	`, sumByClause, groupLeftClause, labelFilter)
+	return buildHTTPRequestCountQueryWithStatus(labelFilter, sumByClause, groupLeftClause, "")
 }
 
 // BuildSuccessfulHTTPRequestCountQuery builds a PromQL query for successful HTTP request count
 // (1xx, 2xx, 3xx).
 func BuildSuccessfulHTTPRequestCountQuery(labelFilter, sumByClause, groupLeftClause string) string {
-	return fmt.Sprintf(`
-	    sum by (%s) (
-	        rate(hubble_http_requests_total{reporter="server", status=~"^[123]..?$"}[2m])
-	            * on(destination_namespace, destination_workload) %s
-	            label_replace(
-	                label_replace(
-	                    kube_pod_labels{job="kube-state-metrics",%s},
-	                    "destination_namespace",
-	                    "$1",
-	                    "namespace",
-	                    "(.*)"
-	                ),
-	                "destination_workload",
-	                "$1",
-	                "pod",
-	                "^(.*)-[^-]+-[^-]+$"
-	            )
-	    )
-	    >= 0
-	`, sumByClause, groupLeftClause, labelFilter)
+	return buildHTTPRequestCountQueryWithStatus(labelFilter, sumByClause, groupLeftClause, `, status=~"^[123]..?$"`)
 }
 
 // BuildUnsuccessfulHTTPRequestCountQuery builds a PromQL query for unsuccessful HTTP request
 // count (4xx, 5xx).
 func BuildUnsuccessfulHTTPRequestCountQuery(labelFilter, sumByClause, groupLeftClause string) string {
-	return fmt.Sprintf(`
-	    sum by (%s) (
-	        rate(hubble_http_requests_total{reporter="server", status=~"^[45]..?$"}[2m])
-	            * on(destination_namespace, destination_workload) %s
-	            label_replace(
-	                label_replace(
-	                    kube_pod_labels{job="kube-state-metrics",%s},
-	                    "destination_namespace",
-	                    "$1",
-	                    "namespace",
-	                    "(.*)"
-	                ),
-	                "destination_workload",
-	                "$1",
-	                "pod",
-	                "^(.*)-[^-]+-[^-]+$"
-	            )
-	    )
-	    >= 0
-	`, sumByClause, groupLeftClause, labelFilter)
+	return buildHTTPRequestCountQueryWithStatus(labelFilter, sumByClause, groupLeftClause, `, status=~"^[45]..?$"`)
 }
 
 // BuildMeanHTTPRequestLatencyQuery builds a PromQL query for mean HTTP request latency.
 func BuildMeanHTTPRequestLatencyQuery(labelFilter, sumByClause, groupLeftClause string) string {
+	mapping := buildHubblePodMappingExpr(labelFilter)
 	return fmt.Sprintf(`
-	    (
-	        sum by (%s) (
-	            rate(hubble_http_request_duration_seconds_sum{reporter="server"}[2m])
-	                * on(destination_namespace, destination_workload) %s
-	                label_replace(
-	                    label_replace(
-	                        kube_pod_labels{job="kube-state-metrics",%s},
-	                        "destination_namespace",
-	                        "$1",
-	                        "namespace",
-	                        "(.*)"
-	                    ),
-	                    "destination_workload",
-	                    "$1",
-	                    "pod",
-	                    "^(.*)-[^-]+-[^-]+$"
-	                )
-	        )
-	        /
-	        sum by (%s) (
-	            rate(hubble_http_requests_total{reporter="server"}[2m])
-	                * on(destination_namespace, destination_workload) %s
-	                label_replace(
-	                    label_replace(
-	                        kube_pod_labels{job="kube-state-metrics",%s},
-	                        "destination_namespace",
-	                        "$1",
-	                        "namespace",
-	                        "(.*)"
-	                    ),
-	                    "destination_workload",
-	                    "$1",
-	                    "pod",
-	                    "^(.*)-[^-]+-[^-]+$"
-	                )
-	        )
-	    )
-	    >= 0
-	`, sumByClause, groupLeftClause, labelFilter, sumByClause, groupLeftClause, labelFilter)
+    (
+        sum by (%s) (
+            rate(hubble_http_request_duration_seconds_sum{reporter="server"}[2m])
+                * on(destination_namespace, destination_pod) %s
+                %s
+        )
+        /
+        sum by (%s) (
+            rate(hubble_http_requests_total{reporter="server"}[2m])
+                * on(destination_namespace, destination_pod) %s
+                %s
+        )
+    )
+    >= 0
+`, sumByClause, groupLeftClause, mapping, sumByClause, groupLeftClause, mapping)
+}
+
+// buildHTTPRequestLatencyPercentileQuery builds a histogram_quantile PromQL
+// expression for the given quantile (e.g. "0.5", "0.9", "0.99").
+func buildHTTPRequestLatencyPercentileQuery(quantile, labelFilter, sumByClause, groupLeftClause string) string {
+	mapping := buildHubblePodMappingExpr(labelFilter)
+	return fmt.Sprintf(`
+    histogram_quantile(
+        %s,
+        sum by (%s) (
+            rate(hubble_http_request_duration_seconds_bucket{reporter="server"}[2m])
+                * on(destination_namespace, destination_pod) %s
+                %s
+        )
+    )
+    >= 0
+`, quantile, BuildHistogramSumByClause(sumByClause), groupLeftClause, mapping)
 }
 
 // Build50thPercentileHTTPRequestLatencyQuery builds a PromQL query for 50th percentile HTTP request latency.
 func Build50thPercentileHTTPRequestLatencyQuery(labelFilter, sumByClause, groupLeftClause string) string {
-	histogramSumByClause := BuildHistogramSumByClause(sumByClause)
-	return fmt.Sprintf(`
-	    histogram_quantile(
-	        0.5,
-	        sum by (%s) (
-	            rate(hubble_http_request_duration_seconds_bucket{reporter="server"}[2m])
-	                * on(destination_namespace, destination_workload) %s
-	                label_replace(
-	                    label_replace(
-	                        kube_pod_labels{job="kube-state-metrics",%s},
-	                        "destination_namespace",
-	                        "$1",
-	                        "namespace",
-	                        "(.*)"
-	                    ),
-	                    "destination_workload",
-	                    "$1",
-	                    "pod",
-	                    "^(.*)-[^-]+-[^-]+$"
-	                )
-	        )
-	    )
-	    >= 0
-	`, histogramSumByClause, groupLeftClause, labelFilter)
+	return buildHTTPRequestLatencyPercentileQuery("0.5", labelFilter, sumByClause, groupLeftClause)
 }
 
 // Build90thPercentileHTTPRequestLatencyQuery builds a PromQL query for 90th percentile HTTP request latency.
 func Build90thPercentileHTTPRequestLatencyQuery(labelFilter, sumByClause, groupLeftClause string) string {
-	histogramSumByClause := BuildHistogramSumByClause(sumByClause)
-	return fmt.Sprintf(`
-	    histogram_quantile(
-	        0.9,
-	        sum by (%s) (
-	            rate(hubble_http_request_duration_seconds_bucket{reporter="server"}[2m])
-	                * on(destination_namespace, destination_workload) %s
-	                label_replace(
-	                    label_replace(
-	                        kube_pod_labels{job="kube-state-metrics",%s},
-	                        "destination_namespace",
-	                        "$1",
-	                        "namespace",
-	                        "(.*)"
-	                    ),
-	                    "destination_workload",
-	                    "$1",
-	                    "pod",
-	                    "^(.*)-[^-]+-[^-]+$"
-	                )
-	        )
-	    )
-	    >= 0
-	`, histogramSumByClause, groupLeftClause, labelFilter)
+	return buildHTTPRequestLatencyPercentileQuery("0.9", labelFilter, sumByClause, groupLeftClause)
 }
 
 // Build99thPercentileHTTPRequestLatencyQuery builds a PromQL query for 99th percentile HTTP request latency.
 func Build99thPercentileHTTPRequestLatencyQuery(labelFilter, sumByClause, groupLeftClause string) string {
-	histogramSumByClause := BuildHistogramSumByClause(sumByClause)
-	return fmt.Sprintf(`
-	    histogram_quantile(
-	        0.99,
-	        sum by (%s) (
-	            rate(hubble_http_request_duration_seconds_bucket{reporter="server"}[2m])
-	                * on(destination_namespace, destination_workload) %s
-	                label_replace(
-	                    label_replace(
-	                        kube_pod_labels{job="kube-state-metrics",%s},
-	                        "destination_namespace",
-	                        "$1",
-	                        "namespace",
-	                        "(.*)"
-	                    ),
-	                    "destination_workload",
-	                    "$1",
-	                    "pod",
-	                    "^(.*)-[^-]+-[^-]+$"
-	                )
-	        )
-	    )
-	    >= 0
-	`, histogramSumByClause, groupLeftClause, labelFilter)
+	return buildHTTPRequestLatencyPercentileQuery("0.99", labelFilter, sumByClause, groupLeftClause)
 }

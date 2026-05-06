@@ -233,21 +233,21 @@ func TestHTTPQueryBuilders(t *testing.T) {
 	groupLeftClause := "group_left (label_openchoreo_dev_component_uid)"
 
 	serverReporter := `reporter="server"`
-	workloadJoin := "destination_namespace, destination_workload"
-	workloadRegex := `^(.*)-[^-]+-[^-]+$`
+	podJoin := "destination_namespace, destination_pod"
+	kubePodLabels := "kube_pod_labels"
 
 	tests := []struct {
 		name     string
 		queryFn  func(string, string, string) string
 		contains []string
 	}{
-		{"HTTPRequestCount", BuildHTTPRequestCountQuery, []string{"hubble_http_requests_total", serverReporter, workloadJoin, workloadRegex, labelFilter}},
-		{"SuccessfulHTTPRequestCount", BuildSuccessfulHTTPRequestCountQuery, []string{"hubble_http_requests_total", serverReporter, `status=~"^[123]..?$"`, workloadJoin, workloadRegex, labelFilter}},
-		{"UnsuccessfulHTTPRequestCount", BuildUnsuccessfulHTTPRequestCountQuery, []string{"hubble_http_requests_total", serverReporter, `status=~"^[45]..?$"`, workloadJoin, workloadRegex, labelFilter}},
-		{"MeanHTTPRequestLatency", BuildMeanHTTPRequestLatencyQuery, []string{"hubble_http_request_duration_seconds_sum", serverReporter, workloadJoin, workloadRegex, labelFilter}},
-		{"P50Latency", Build50thPercentileHTTPRequestLatencyQuery, []string{"histogram_quantile", "0.5", serverReporter, workloadJoin, workloadRegex, labelFilter}},
-		{"P90Latency", Build90thPercentileHTTPRequestLatencyQuery, []string{"histogram_quantile", "0.9", serverReporter, workloadJoin, workloadRegex, labelFilter}},
-		{"P99Latency", Build99thPercentileHTTPRequestLatencyQuery, []string{"histogram_quantile", "0.99", serverReporter, workloadJoin, workloadRegex, labelFilter}},
+		{"HTTPRequestCount", BuildHTTPRequestCountQuery, []string{"hubble_http_requests_total", serverReporter, podJoin, kubePodLabels, labelFilter}},
+		{"SuccessfulHTTPRequestCount", BuildSuccessfulHTTPRequestCountQuery, []string{"hubble_http_requests_total", serverReporter, `status=~"^[123]..?$"`, podJoin, kubePodLabels, labelFilter}},
+		{"UnsuccessfulHTTPRequestCount", BuildUnsuccessfulHTTPRequestCountQuery, []string{"hubble_http_requests_total", serverReporter, `status=~"^[45]..?$"`, podJoin, kubePodLabels, labelFilter}},
+		{"MeanHTTPRequestLatency", BuildMeanHTTPRequestLatencyQuery, []string{"hubble_http_request_duration_seconds_sum", serverReporter, podJoin, kubePodLabels, labelFilter}},
+		{"P50Latency", Build50thPercentileHTTPRequestLatencyQuery, []string{"histogram_quantile", "0.5", serverReporter, podJoin, kubePodLabels, labelFilter}},
+		{"P90Latency", Build90thPercentileHTTPRequestLatencyQuery, []string{"histogram_quantile", "0.9", serverReporter, podJoin, kubePodLabels, labelFilter}},
+		{"P99Latency", Build99thPercentileHTTPRequestLatencyQuery, []string{"histogram_quantile", "0.99", serverReporter, podJoin, kubePodLabels, labelFilter}},
 	}
 
 	for _, tt := range tests {

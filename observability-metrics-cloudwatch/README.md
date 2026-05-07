@@ -19,13 +19,6 @@ This module supports both:
 - **Non-EKS Kubernetes clusters** such as **k3d**, **kind**, or Kubernetes
   running outside AWS, using static AWS credentials.
 
-Current status: this is a v0 module. The Go adapter and Helm chart are in
-place. The metric ingestion path (CPU/memory usage plus request/limit
-series), alert CRUD against real CloudWatch, and the EventBridge / Lambda
-webhook handler have been verified end-to-end on a k3d cluster against
-AWS. See [`CONTEXT.md`](./CONTEXT.md) for the detailed implementation
-state and §6 for the latest spike results.
-
 ## Table of contents
 
 1. [Architecture](#architecture)
@@ -68,7 +61,7 @@ log group:
 ```
 
 Each collector DaemonSet pod writes to a node-named log stream such as
-`k3d-openchoreo-server-0`.
+`ip-10-0-3-168.us-east-1.compute.internal`.
 
 CloudWatch then promotes those EMF records into metrics under this namespace:
 
@@ -81,27 +74,6 @@ The intended metric dimensions are:
 - `ComponentUID`
 - `EnvironmentUID`
 - `Namespace`
-
-The adapter queries CloudWatch Metrics by those dimensions.
-
-```text
-kubeletstats / kube-state-metrics
-    |
-    v
-OpenTelemetry Collector DaemonSet
-    |
-    v
-CloudWatch Logs EMF
-    |
-    v
-CloudWatch Metrics: OpenChoreo/Metrics
-    |
-    v
-CloudWatch Metrics Adapter
-    |
-    v
-OpenChoreo Observer
-```
 
 | Endpoint | Purpose |
 | --- | --- |
@@ -233,16 +205,6 @@ principal when using separate EKS identities.
   ]
 }
 ```
-
-Notes:
-
-- CloudWatch metric APIs generally require `"Resource": "*"`.
-- `cloudwatch:TagResource` is required because the adapter adds tags when
-  creating alarms.
-- `cloudwatch:UntagResource` is not required because the adapter does not
-  remove tags.
-- Leave `adapter.alerting.alarmActionArns` empty when using EventBridge to
-  forward alarm state-change events.
 
 ### OpenTelemetry collector and log-retention IAM policy
 
@@ -417,16 +379,17 @@ helm upgrade --install observability-metrics-cloudwatch \
 
 ### Step 4 - Create Pod Identity associations
 
-Create two Pod Identity associations in the `$NS` namespace.
+Create three Pod Identity associations in the `$NS` namespace.
 
-| ServiceAccount | Used by |
-| --- | --- |
-| `metrics-adapter-cloudwatch` | Adapter metric queries, alert CRUD, and webhook handling. |
-| `observability-metrics-cloudwatch-adotcollector` | OpenTelemetry collector metric export to CloudWatch Logs. |
+| ServiceAccount | Used by | IAM policy |
+| --- | --- | --- |
+| `metrics-adapter-cloudwatch` | Adapter metric queries, alert CRUD, and webhook handling. | [Adapter IAM policy](#adapter-iam-policy) |
+| `observability-metrics-cloudwatch-adotcollector` | OpenTelemetry collector metric export to CloudWatch Logs. | [OpenTelemetry collector and log-retention IAM policy](#opentelemetry-collector-and-log-retention-iam-policy) |
+| `metrics-cloudwatch-log-retention` | Helm post-install/post-upgrade Job that creates the EMF log group and applies `metrics.logRetentionDays`. | [OpenTelemetry collector and log-retention IAM policy](#opentelemetry-collector-and-log-retention-iam-policy) |
 
-Both service account names must match the rendered Helm release. If you install
-with a release name other than `observability-metrics-cloudwatch`, render the
-chart and confirm the OpenTelemetry collector ServiceAccount name:
+All three service account names must match the rendered Helm release. If you
+install with a release name other than `observability-metrics-cloudwatch`,
+render the chart and confirm the OpenTelemetry collector ServiceAccount name:
 
 ```bash
 helm template observability-metrics-cloudwatch \
@@ -444,7 +407,7 @@ You can create these associations from the AWS Console:
 EKS -> Cluster -> Access -> Pod Identity associations -> Create
 ```
 
-### Step 5 - Restart workloads if associations were created late
+### Step 5 - Restart workloads
 
 EKS Pod Identity injects credentials only at pod creation time.
 
@@ -453,6 +416,37 @@ Recreate the workloads so new pods receive Pod Identity credentials:
 ```bash
 kubectl -n "$NS" rollout restart deploy/metrics-adapter-cloudwatch
 kubectl -n "$NS" rollout restart ds/observability-metrics-cloudwatch-adotcollector-agent
+```
+
+If the log-retention Job already failed because its Pod Identity association
+was created late, you must rerun it manually — `helm upgrade` re-fires the
+post-upgrade hook, but the failed Job has a fixed name and a new one cannot
+be created until it is deleted.
+
+Confirm the Pod Identity association for
+`metrics-cloudwatch-log-retention` is attached **before** rerunning the
+upgrade. Otherwise the new Job pod will fail with the same
+`no EC2 IMDS role found` error and the upgrade will fail again with
+`BackoffLimitExceeded`.
+
+```bash
+# 1. Delete the failed Job so a new one can be created with the same name.
+kubectl -n "$NS" delete job metrics-cloudwatch-log-retention --ignore-not-found
+
+# 2. Re-fire the post-upgrade hook.
+helm upgrade observability-metrics-cloudwatch \
+  oci://ghcr.io/openchoreo/helm-charts/observability-metrics-cloudwatch \
+  --namespace "$NS" --reset-then-reuse-values
+
+# 3. Watch the new Job complete (Ctrl+C once COMPLETIONS shows 1/1).
+kubectl -n "$NS" get job metrics-cloudwatch-log-retention -w
+```
+
+If the new Job pod fails again, inspect its logs to confirm credentials are
+being injected:
+
+```bash
+kubectl -n "$NS" logs -l job-name=metrics-cloudwatch-log-retention --tail=100
 ```
 
 If the OpenTelemetry collector DaemonSet name differs because of your Helm release name, inspect
@@ -472,6 +466,30 @@ kubectl -n "$NS" get pod -l app=metrics-adapter-cloudwatch -o name | head -1 \
 
 If these values are missing, check that the namespace and ServiceAccount names
 in the Pod Identity associations exactly match the table above.
+
+
+### Wire the Observer to the adapter
+
+After installing the CloudWatch metrics module, configure the OpenChoreo
+Observer to call this adapter.
+
+```bash
+helm upgrade --install openchoreo-observability-plane \
+  oci://ghcr.io/openchoreo/helm-charts/openchoreo-observability-plane \
+  --version 1.0.1-hotfix.1 \
+  --namespace "$NS" \
+  --reuse-values \
+  --set observer.metricsAdapter.enabled=true
+```
+
+The adapter service inside the observability namespace is:
+
+```text
+http://metrics-adapter:9099
+```
+
+After this step, the OpenChoreo Observer uses the CloudWatch adapter for
+metrics queries.
 
 ## Installation on non-EKS clusters with static credentials
 
@@ -549,12 +567,6 @@ The adapter service inside the observability namespace is:
 
 ```text
 http://metrics-adapter:9099
-```
-
-If your Observer chart requires an explicit adapter URL, point it to:
-
-```text
-http://metrics-adapter.<namespace>:9099
 ```
 
 After this step, the OpenChoreo Observer uses the CloudWatch adapter for
@@ -722,17 +734,11 @@ helm upgrade observability-metrics-cloudwatch \
 
 The alert CRUD endpoints work even when `adapter.alerting.enabled=false`,
 but the webhook handler silently drops every forwarded event in that mode
-because `OBSERVER_URL` is not injected into the adapter pod. Enabling
-alerting also sets `SNS_ALLOW_SUBSCRIBE_CONFIRM` and `FORWARD_RECOVERY`
-env from chart values. `adapter.alerting.observerUrl` defaults to
-`http://observer-internal:8081`, which matches the Service the Observer
-chart deploys in the same namespace. Override it with
-`--set adapter.alerting.observerUrl=http://observer-internal.<ns>:8081`
-if your Observer runs in a different namespace.
+because `OBSERVER_URL` is not injected into the adapter pod. 
 
 If `adapter.alerting.webhookAuth.enabled=true` and
 `adapter.alerting.webhookAuth.sharedSecret` were set during installation, the
-adapter now requires the following header on non-SNS alert webhook calls:
+adapter now requires the following header on alert webhook calls:
 
 ```text
 X-OpenChoreo-Webhook-Token
@@ -802,147 +808,59 @@ CloudWatch Metrics Adapter
 OpenChoreo Observer
 ```
 
-For production, expose only the alert webhook endpoint:
+Setting up EventBridge requires three resources: a **connection** (carries the
+authentication header), an **API destination** (the adapter webhook URL), and a
+**rule** (matches CloudWatch alarm events and routes them to the destination).
+
+#### Step 1 — Create an EventBridge connection
+
+The connection stores the `X-OpenChoreo-Webhook-Token` header that the adapter
+requires when `adapter.alerting.webhookAuth.enabled=true`.
+
+#### Step 2 — Create an API destination
+
+Point the destination at the adapter's public webhook URL. 
+
+`$ADAPTER_WEBHOOK_PUBLIC_URL` must include the full path, for example:
 
 ```text
-/api/v1alpha1/alerts/webhook
+https://metrics-webhook.example.com/api/v1alpha1/alerts/webhook
 ```
 
-Do **not** publicly expose:
+#### Step 3 — Create an EventBridge rule
 
-- `/api/v1/metrics/query`
-- `/api/v1alpha1/alerts/rules/*`
-- `/healthz`
-- `/livez`
-
-Use `adapter.alerting.webhookIngress` to create an Ingress that exposes only
-the webhook path through your existing ingress controller. TLS termination,
-rate limiting, and any WAF or auth rules belong on the ingress layer.
+Use a custom event pattern so only managed metric alarms reach the adapter.
+The `alarmName` prefix filter ensures log-module alarms (`oc-logs-alert`)
+are not routed here.
 
 ```bash
-helm upgrade observability-metrics-cloudwatch \
-  oci://ghcr.io/openchoreo/helm-charts/observability-metrics-cloudwatch \
-  --namespace "$NS" \
-  --reuse-values \
-  --set adapter.alerting.webhookIngress.enabled=true \
-  --set adapter.alerting.webhookIngress.host=metrics-webhook.example.com \
-  --set adapter.alerting.webhookIngress.tls.secretName=metrics-webhook-tls
+{
+  "source": ["aws.cloudwatch"],
+  "detail-type": ["CloudWatch Alarm State Change"],
+  "detail": {
+    "state": {
+      "value": ["ALARM"]
+    },
+    "alarmName": [{
+      "prefix": "oc-metrics-alert"
+    }]
+  }
+}
 ```
+
+#### Step 4 — Attach the API destination as a target
+
+EventBridge needs an IAM role that allows it to invoke the API destination.
 
 ### Development-only webhook test with port-forward and ngrok
 
 For local testing, you can expose the adapter through a temporary public
-tunnel.
-
-Start a port-forward:
-
-```bash
-kubectl -n "$NS" port-forward svc/metrics-adapter 19099:9099 &
-```
-
-Start an ngrok tunnel:
-
-```bash
-ngrok http 19099
-```
-
-Set the public webhook URL:
-
-```bash
-export ADAPTER_WEBHOOK_PUBLIC_URL=https://<ngrok-host>/api/v1alpha1/alerts/webhook
-```
-
-Then create an EventBridge connection, API destination, and rule that sends
-CloudWatch alarm state-change events to that URL with the
-`X-OpenChoreo-Webhook-Token` header.
-
-### Test alert delivery
-
-After an alarm transitions to `ALARM`, check the adapter logs:
-
-```bash
-kubectl -n "$NS" logs deploy/metrics-adapter-cloudwatch --tail=100 | grep -Ei 'webhook|forward'
-```
-
-Expected log messages should show that the webhook was received and forwarded
-to the Observer.
-
-## Alerting behavior
-
-The module implements metric alerts using native CloudWatch resources:
-
-1. A CloudWatch **metric math alarm** in `OpenChoreo/Metrics` that evaluates
-   `(pod_<resource>_usage / pod_<resource>_limit) * 100` against the rule's
-   threshold.
-2. CloudWatch alarm tags that store the OpenChoreo rule identity.
-3. An EventBridge rule that forwards CloudWatch alarm state changes to the
-   adapter webhook.
-
-Threshold semantics:
-
-- `condition.threshold` is a **percentage of the pod's resource limit**
-  (0–100), not raw CPU cores or bytes. For `cpu_usage` the alarm evaluates
-  `(pod_cpu_usage / pod_cpu_limit) * 100`; for `memory_usage` it evaluates
-  `(pod_memory_usage / pod_memory_limit) * 100`.
-- If the pod has no CPU/memory limit set, the corresponding `pod_*_limit`
-  series is missing from CloudWatch, the math expression returns no data,
-  and the alarm sits in `INSUFFICIENT_DATA`. With
-  `TreatMissingData=notBreaching` it does not fire. Set pod limits if you
-  want these alerts to evaluate.
-
-Important constraints:
-
-- CloudWatch metric alarms evaluate only metrics that already exist with the
-  exact dimension set used by the alarm.
-- `source.metric` currently supports `cpu_usage` and `memory_usage`.
-- `eq` and `neq` operators are rejected because CloudWatch metric alarms do not
-  support equality comparisons directly.
-
-### Alert identity mapping
-
-The adapter stores the logical OpenChoreo rule identity in CloudWatch alarm
-tags:
-
-- `openchoreo.rule.name`
-- `openchoreo.rule.namespace`
-
-The adapter also encodes the rule identity into the alarm name for fast lookup.
-
-Managed alarm names use this format:
-
-```text
-oc-metrics-alert-ns.<namespace>.rn.<name>.<hash>
-```
-
-`<namespace>` and `<name>` are base64url-encoded without padding.
-
-### Alarm shape
-
-Each managed alarm is a CloudWatch **metric math alarm** with three
-`Metrics` entries:
-
-| Id | Role | Returns data |
-| --- | --- | --- |
-| `m1` | usage series — `pod_cpu_usage` or `pod_memory_usage` | no |
-| `m2` | limit series — `pod_cpu_limit` or `pod_memory_limit` | no |
-| `e1` | math expression `(m1 / m2) * 100` | yes (alarm evaluates this) |
-
-`m1` and `m2` share the same `(ComponentUID, EnvironmentUID, Namespace)`
-dimensions, period (= `condition.interval`), and `Average` statistic. The
-top-level alarm fields `Threshold` and `ComparisonOperator` apply to `e1`.
-
-Inspect a created alarm with:
-
-```bash
-aws cloudwatch describe-alarms \
-  --region "$AWS_REGION" \
-  --alarm-name-prefix oc-metrics-alert- \
-  --query 'MetricAlarms[].{Name:AlarmName,Threshold:Threshold,Op:ComparisonOperator,Metrics:Metrics}'
-```
+tunnel using ngrok.
+Docs: https://openchoreo.dev/docs/tutorials/component-alerts-and-incidents/
 
 ## Shared webhook secret
 
-When webhook authentication is enabled, the adapter rejects non-SNS webhook
+When webhook authentication is enabled, the adapter rejects webhook
 requests that do not include the configured token in this header:
 
 ```text
@@ -951,9 +869,6 @@ X-OpenChoreo-Webhook-Token
 
 The same token must be configured in the EventBridge API destination
 connection.
-
-SNS envelopes are authenticated separately through AWS SNS signature
-verification.
 
 ### Option 1 - Inline secret
 
@@ -1051,104 +966,3 @@ reference.
 If you override `metrics.logGroup`, update the CloudWatch Logs IAM policy
 resource ARN to match that log group. The examples above use
 `/aws/openchoreo/*/metrics` so the default cluster-scoped groups are covered.
-
-## k3d and kind compatibility
-
-### 1. Static credential injection
-
-On non-EKS clusters, enable `awsCredentials.create=true` and pass the same
-Secret to the OpenTelemetry collector:
-
-```bash
---set awsCredentials.create=true \
---set awsCredentials.name=metrics-cloudwatch-aws-credentials \
---set "adotcollector.extraEnvsFrom[0].configMapRef.name=metrics-cloudwatch-cluster-env" \
---set "adotcollector.extraEnvsFrom[1].secretRef.name=metrics-cloudwatch-aws-credentials"
-```
-
-Unlike the logs module, this chart does not include a post-install hook to
-patch the collector. The upstream OpenTelemetry Collector chart already exposes
-`extraEnvsFrom`, so the credential Secret must be wired through values. When
-setting `extraEnvsFrom` from the CLI, include both entries: index `0` is the
-chart-managed `metrics-cloudwatch-cluster-env` ConfigMap that supplies
-`EMF_LOG_GROUP_NAME`, and index `1` is the AWS credentials Secret.
-
-### 2. kube-state-metrics Service discovery
-
-The bundled ADOT config discovers `kube-state-metrics` through Kubernetes
-endpoint discovery and keeps endpoints whose Service name is
-`kube-state-metrics` and whose endpoint port name is `http-metrics`.
-
-If your cluster uses a different Service name or port name, override the
-Prometheus receiver scrape config under `adotcollector.config.receivers`.
-
-### 3. Kubelet stats access
-
-The OpenTelemetry collector uses the node IP and service account credentials to scrape
-kubelet stats:
-
-```text
-${env:K8S_NODE_IP}:10250
-```
-
-If the collector logs kubelet TLS or authorization errors, check the rendered
-RBAC and the node kubelet endpoint behavior in your Kubernetes distribution.
-
-### 4. IMDS timeouts outside AWS
-
-On k3d or kind, the EC2 Instance Metadata Service does not exist. Use static
-credentials as shown above so the AWS SDK and the OpenTelemetry exporter do not rely on
-instance metadata.
-
-## Limitations
-
-- HTTP RED metrics are not implemented in v0. Requests with `metric=http`
-  return empty arrays and this response header:
-
-```text
-X-OpenChoreo-Adapter-Notice: http-metrics-not-implemented
-```
-
-- `eq` and `neq` alert operators are not supported. CloudWatch metric alarms do
-  not natively support equality comparisons, so the adapter returns
-  `400 Bad Request`.
-- No integration tests against a fake AWS endpoint have been wired in CI yet.
-  Live `GetMetricData`, `PutMetricAlarm`, and EventBridge / Lambda webhook
-  flows have been verified against real AWS, but a `httptest`-style
-  harness like the logs module's is still TODO.
-- The ADOT image tag and collector transform pipeline should be revalidated
-  against the target AWS Distro for OpenTelemetry release before production
-  use.
-
-## Troubleshooting
-
-### Start with these logs
-
-```bash
-kubectl -n "$NS" logs deploy/metrics-adapter-cloudwatch --tail=200
-kubectl -n "$NS" logs ds/observability-metrics-cloudwatch-adotcollector-agent --tail=200
-```
-
-If the OpenTelemetry collector DaemonSet name differs because of your Helm release name, list the
-DaemonSets:
-
-```bash
-kubectl -n "$NS" get ds
-```
-
-### Common issues
-
-| Symptom | Likely cause | What to check |
-| --- | --- | --- |
-| Adapter pod does not start | Missing or invalid AWS credentials | Check Pod Identity association, IRSA annotation, or static Secret values. |
-| Adapter logs `Failed to verify AWS credentials` | `sts:GetCallerIdentity` failed | Check adapter IAM policy and credential injection. |
-| OpenTelemetry collector logs CloudWatch export errors | Missing CloudWatch Logs permissions or credentials | Check the OpenTelemetry collector IAM policy and `adotcollector.extraEnvsFrom` on non-EKS clusters. |
-| OpenTelemetry collector crash-loops with `NoAwsRegion: Cannot fetch region variable from config file, environment variables and ec2 metadata` | `AWS_REGION` not injected into the collector pod | On non-EKS clusters, confirm `awsCredentials.create=true` and that `adotcollector.extraEnvsFrom[1].secretRef.name` points at the same Secret. Index `0` is reserved for `metrics-cloudwatch-cluster-env`. The subchart alias is **case-sensitive** — it must be `adotcollector` (all lowercase), not `adotCollector`. Verify with `kubectl -n "$NS" get ds observability-metrics-cloudwatch-adotcollector-agent -o yaml \| grep -A4 envFrom`. |
-| Query returns empty arrays | Metrics not promoted to CloudWatch or dimensions do not match | Check `aws cloudwatch list-metrics` for `OpenChoreo/Metrics` and the expected dimensions. |
-| Query fails with `MetricStat.Period must be a value in the set [ 1, 5, 10, 20, 30 ]` | A sub-minute UI step was sent directly to CloudWatch | Use an adapter version that normalizes `step` to a valid CloudWatch period. Regular CloudWatch metrics require a minimum `60s` period and multiples of `60s`. |
-| `cpuUsage` and `memoryUsage` exist but request/limit arrays are empty | v0 request/limit transform gap | Check `CONTEXT.md`; this path needs additional kube-state-metrics transform work. |
-| Webhook returns unauthorized | Missing or incorrect `X-OpenChoreo-Webhook-Token` | Check EventBridge connection header and chart webhook secret values. |
-| Alerts do not fire | No metric exists with the alarm dimension set | Confirm the target metric exists with `ComponentUID`, `EnvironmentUID`, and `Namespace`. |
-| Alarm sits in `INSUFFICIENT_DATA` | Pod has no CPU/memory limit set, so `pod_cpu_limit` / `pod_memory_limit` is missing and `(m1 / m2) * 100` returns no data | Set a CPU/memory `limits` on the workload's PodSpec. The percentage alarm only evaluates when both the usage and limit series exist. |
-| Alarm fires the moment it is created and never recovers | Alarm was created with the previous (raw-units) shape: threshold compared against bytes/cores | Delete the legacy alarm (`aws cloudwatch delete-alarms --alarm-names …`); the adapter recreates it as a math alarm with a percentage threshold on the next CRUD call. |
-| `eq` or `neq` alert creation returns 400 | Unsupported CloudWatch operator | Use `gt`, `gte`, `lt`, or `lte`. |

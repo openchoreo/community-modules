@@ -235,8 +235,8 @@ adapter:
   enabled: true
   replicas: 1
   image:
-    repository: docker.io/chalindukodikara/observability-metrics-cloudwatch-adapter 
-    tag: "dev"
+    repository: ghcr.io/openchoreo/observability-metrics-cloudwatch-adapter 
+    tag: ""
     pullPolicy: IfNotPresent
   service:
     port: 9099

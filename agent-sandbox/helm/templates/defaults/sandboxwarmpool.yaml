@@ -1,25 +1,31 @@
-{{- if and .Values.upstream.install .Values.installDefaultPolicies }}
+{{- if .Values.installDefaultPolicies }}
 # Default SandboxWarmPool resources (extensions.agents.x-k8s.io/v1alpha1).
 #
 # Each warm pool keeps a number of Sandbox pods pre-created and ready so that
 # SandboxClaims are fulfilled without the cold-start penalty of spinning up a new pod.
+#
+# These are post-install hooks so they run after the pre-install Job has installed
+# the upstream kubernetes-sigs/agent-sandbox CRDs.
 ---
-# Warm pool for the standard isolation tier (runc).
+# Warm pool for the runc tier.
 apiVersion: extensions.agents.x-k8s.io/v1alpha1
 kind: SandboxWarmPool
 metadata:
-  name: openchoreo-agent-standard
+  name: openchoreo-agent-runc
   namespace: {{ .Values.namespace }}
   labels:
     app.kubernetes.io/managed-by: agent-sandbox-controller
-    agent.openchoreo.dev/isolation-tier: standard
+    agent.openchoreo.dev/isolation-tier: runc
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "20"
 spec:
-  replicas: {{ .Values.warmPool.standardReplicas | default 2 }}
+  replicas: {{ .Values.warmPool.runcReplicas | default 2 }}
   sandboxTemplateRef:
-    name: openchoreo-agent-standard
+    name: openchoreo-agent-runc
 ---
 {{- if has "gvisor" .Values.runtimeClasses }}
-# Warm pool for the enhanced tier (gVisor).
+# Warm pool for the gvisor tier.
 apiVersion: extensions.agents.x-k8s.io/v1alpha1
 kind: SandboxWarmPool
 metadata:
@@ -27,15 +33,18 @@ metadata:
   namespace: {{ .Values.namespace }}
   labels:
     app.kubernetes.io/managed-by: agent-sandbox-controller
-    agent.openchoreo.dev/isolation-tier: enhanced
+    agent.openchoreo.dev/isolation-tier: gvisor
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "20"
 spec:
-  replicas: {{ .Values.warmPool.enhancedReplicas | default 2 }}
+  replicas: {{ .Values.warmPool.gvisorReplicas | default 2 }}
   sandboxTemplateRef:
     name: openchoreo-agent-enhanced
 ---
 {{- end }}
 {{- if has "kata" .Values.runtimeClasses }}
-# Warm pool for the maximum tier (Kata Containers).
+# Warm pool for the kata tier.
 apiVersion: extensions.agents.x-k8s.io/v1alpha1
 kind: SandboxWarmPool
 metadata:
@@ -43,9 +52,12 @@ metadata:
   namespace: {{ .Values.namespace }}
   labels:
     app.kubernetes.io/managed-by: agent-sandbox-controller
-    agent.openchoreo.dev/isolation-tier: maximum
+    agent.openchoreo.dev/isolation-tier: kata
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "20"
 spec:
-  replicas: {{ .Values.warmPool.maximumReplicas | default 1 }}
+  replicas: {{ .Values.warmPool.kataReplicas | default 1 }}
   sandboxTemplateRef:
     name: openchoreo-agent-maximum
 {{- end }}

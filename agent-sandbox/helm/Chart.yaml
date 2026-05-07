@@ -2,7 +2,7 @@ apiVersion: v2
 name: agent-sandbox
 description: |
   OpenChoreo Agent Sandbox module. Provides kernel-level isolation for AI agent
-  workloads using gVisor (enhanced tier) or Kata Containers (maximum tier), plus
+  workloads using gVisor (gvisor tier) or Kata Containers (kata tier), plus
   network egress controls via SandboxPolicy.
 type: application
 version: 0.1.0

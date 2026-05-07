@@ -37,9 +37,9 @@ runtimeClasses:
 
 # warmPool controls the number of pre-warmed Sandbox pods kept ready per isolation tier.
 warmPool:
-  standardReplicas: 2
-  enhancedReplicas: 2
-  maximumReplicas: 1
+  runcReplicas: 2
+  gvisorReplicas: 2
+  kataReplicas: 1
 
 # upstream controls the installation of the kubernetes-sigs/agent-sandbox controller,
 # which provides pre-warmed sandbox pools (SandboxTemplate/SandboxClaim/SandboxWarmPool).

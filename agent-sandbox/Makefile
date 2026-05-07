@@ -7,6 +7,7 @@ MODULE_NAME := $(notdir $(CURDIR))
 
 ## Build the manager binary locally.
 build:
+	mkdir -p bin
 	go build -o bin/manager ./cmd
 
 ## Run unit tests and emit a coverage file named <module>-coverage.out

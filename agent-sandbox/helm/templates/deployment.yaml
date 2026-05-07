@@ -15,7 +15,7 @@ spec:
       labels:
         app: agent-sandbox-controller
     spec:
-      serviceAccountName: agent-sandbox-controller
+      serviceAccountName: agent-sandbox-module-controller
       containers:
         - name: manager
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"

@@ -10,33 +10,35 @@ import (
 	openchoreov1alpha1 "github.com/openchoreo/openchoreo/api/v1alpha1"
 )
 
-// IsolationTier defines the sandbox isolation level for an agent workload.
+// IsolationTier defines the container runtime for sandbox isolation.
 type IsolationTier string
 
 const (
-	// IsolationStandard uses hardened Linux namespaces (runc). No extra node requirement.
-	IsolationStandard IsolationTier = "standard"
-	// IsolationEnhanced uses gVisor for syscall interception via a user-space kernel.
-	// Requires the "gvisor" RuntimeClass on data-plane nodes.
-	IsolationEnhanced IsolationTier = "enhanced"
-	// IsolationMaximum uses Kata Containers for full VM isolation via Firecracker/QEMU.
-	// Requires the "kata" RuntimeClass on data-plane nodes.
-	IsolationMaximum IsolationTier = "maximum"
+	// IsolationRunc uses standard Linux container isolation (namespaces + cgroups).
+	IsolationRunc IsolationTier = "runc"
+	// IsolationGVisor uses gVisor for syscall interception via a user-space kernel.
+	IsolationGVisor IsolationTier = "gvisor"
+	// IsolationKata uses Kata Containers for full VM isolation via Firecracker/QEMU.
+	IsolationKata IsolationTier = "kata"
 )
 
 // agentParams holds the validated, typed parameters for an agent Component.
 type agentParams struct {
-	// IsolationTier controls the sandbox runtime (standard | enhanced | maximum).
+	// IsolationTier controls the sandbox runtime (runc | gvisor | kata).
 	IsolationTier IsolationTier `json:"isolationTier,omitempty"`
 	// SandboxPolicyRef is the name of the SandboxPolicy to use for network egress control.
 	SandboxPolicyRef string `json:"sandboxPolicyRef,omitempty"`
+	// WarmPoolSize is the number of pre-warmed sandbox instances. 0 means no warm pool.
+	WarmPoolSize int32 `json:"warmPoolSize,omitempty"`
+	// TTLSeconds is the time-to-live for the sandbox after being claimed. 0 means no expiry.
+	TTLSeconds int32 `json:"ttlSeconds,omitempty"`
 }
 
 // parseAgentParams unmarshals the Component's raw parameters into an agentParams struct.
-// Missing fields default to: IsolationTier → "standard".
+// Missing fields default to: IsolationTier → "runc".
 func parseAgentParams(comp *openchoreov1alpha1.Component) (*agentParams, error) {
 	p := &agentParams{
-		IsolationTier: IsolationStandard,
+		IsolationTier: IsolationRunc,
 	}
 	if comp.Spec.Parameters == nil {
 		return p, nil
@@ -45,18 +47,24 @@ func parseAgentParams(comp *openchoreov1alpha1.Component) (*agentParams, error) 
 		return nil, fmt.Errorf("invalid agent parameters: %w", err)
 	}
 	if p.IsolationTier == "" {
-		p.IsolationTier = IsolationStandard
+		p.IsolationTier = IsolationRunc
+	}
+	switch p.IsolationTier {
+	case IsolationRunc, IsolationGVisor, IsolationKata:
+		// valid
+	default:
+		return nil, fmt.Errorf("unsupported isolationTier %q: must be one of runc, gvisor, kata", p.IsolationTier)
 	}
 	return p, nil
 }
 
 // runtimeClassName maps an IsolationTier to the Kubernetes runtimeClassName.
-// Returns an empty string for IsolationStandard (no explicit runtimeClassName needed).
+// Returns an empty string for IsolationRunc (uses the cluster default runtime).
 func runtimeClassName(tier IsolationTier) string {
 	switch tier {
-	case IsolationEnhanced:
+	case IsolationGVisor:
 		return "gvisor"
-	case IsolationMaximum:
+	case IsolationKata:
 		return "kata"
 	default:
 		return ""

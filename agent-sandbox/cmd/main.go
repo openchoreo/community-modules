@@ -3,7 +3,7 @@
 
 // main.go is the entry point for the agent-sandbox module controller manager.
 // It registers two controllers:
-//   - agent.Reconciler   — watches agent-typed Components, drives ComponentRelease + ReleaseBinding
+//   - agent.Reconciler   — watches agent-typed Components, creates RenderedRelease with sandbox resources
 //   - policy.Reconciler  — watches SandboxPolicy, generates NetworkPolicy
 package main
 

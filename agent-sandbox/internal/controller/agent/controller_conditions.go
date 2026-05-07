@@ -15,16 +15,13 @@ const (
 
 // Condition reasons.
 const (
-	// ReasonSandboxClaimBound indicates the SandboxClaim was fulfilled and the Sandbox is running.
-	ReasonSandboxClaimBound = "SandboxClaimBound"
+	// ReasonSandboxClaimBound indicates the RenderedRelease has been applied and
+	// sandbox resources are running on the data plane.
+	ReasonSandboxClaimBound = "SandboxResourcesApplied"
 
-	// ReasonSandboxClaimPending indicates the SandboxClaim exists but has not yet been
-	// bound to a Sandbox by the upstream controller.
-	ReasonSandboxClaimPending = "SandboxClaimPending"
-
-	// ReasonUpstreamNotInstalled indicates the kubernetes-sigs/agent-sandbox CRDs are not
-	// yet registered on the cluster (upstream pre-install Job may still be running).
-	ReasonUpstreamNotInstalled = "UpstreamNotInstalled"
+	// ReasonSandboxClaimPending indicates the RenderedRelease has been created but
+	// the resources have not yet been applied to the data plane.
+	ReasonSandboxClaimPending = "SandboxResourcesPending"
 
 	// ReasonWorkloadNotFound indicates no Workload resource exists for this Component yet.
 	ReasonWorkloadNotFound = "WorkloadNotFound"

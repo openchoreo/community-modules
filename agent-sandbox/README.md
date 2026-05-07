@@ -1,6 +1,6 @@
 # Agent Sandbox Module for OpenChoreo
 
-This module extends OpenChoreo with kernel-level isolation and network egress controls for AI agent workloads. It introduces the `agent` ClusterComponentType which runs workloads inside hardened sandboxes — standard Linux containers (runc), [gVisor](https://gvisor.dev) (`enhanced`), or [Kata Containers](https://katacontainers.io) (`maximum`) — and enforces outbound network policy via the `SandboxPolicy` CRD.
+This module extends OpenChoreo with kernel-level isolation and network egress controls for AI agent workloads. It introduces the `agent` ClusterComponentType which runs workloads inside hardened sandboxes — [runc](https://github.com/opencontainers/runc) (`runc`), [gVisor](https://gvisor.dev) (`gvisor`), or [Kata Containers](https://katacontainers.io) (`kata`) — and enforces outbound network policy via the `SandboxPolicy` CRD.
 
 ## How it works
 
@@ -15,9 +15,9 @@ The module also installs the upstream [kubernetes-sigs/agent-sandbox](https://gi
 
 | Tier | Runtime | `runtimeClassName` | Use case |
 |---|---|---|---|
-| `standard` | runc (hardened) | — (omitted) | Default — standard Linux namespace isolation |
-| `enhanced` | gVisor | `gvisor` | Syscall interception via user-space kernel |
-| `maximum` | Kata Containers | `kata` | Full VM isolation via Firecracker/QEMU |
+| `runc` | runc | — (omitted) | Default — standard Linux namespace isolation |
+| `gvisor` | gVisor | `gvisor` | Syscall interception via user-space kernel |
+| `kata` | Kata Containers | `kata` | Full VM isolation via Firecracker/QEMU |
 
 ### What gets installed
 
@@ -37,8 +37,8 @@ The module also installs the upstream [kubernetes-sigs/agent-sandbox](https://gi
 - OpenChoreo **v1.1.0 or later** installed and running
 - `kubectl` configured to point at your cluster
 - `helm` v3.16+
-- For `enhanced` tier: gVisor RuntimeClass installed on data-plane nodes (`runtimeClassName: gvisor`)
-- For `maximum` tier: Kata Containers RuntimeClass installed on data-plane nodes (`runtimeClassName: kata`)
+- For `gvisor` tier: gVisor RuntimeClass installed on data-plane nodes (`runtimeClassName: gvisor`)
+- For `kata` tier: Kata Containers RuntimeClass installed on data-plane nodes (`runtimeClassName: kata`)
 
 ---
 
@@ -133,7 +133,7 @@ spec:
   autoDeploy: true
 
   parameters:
-    isolationTier: standard       # standard | enhanced | maximum
+    isolationTier: runc            # runc | gvisor | kata
     sandboxPolicyRef: production  # name of the SandboxPolicy to apply
 
   workflow:
@@ -263,10 +263,10 @@ upstream:
 | Isolation tier | Node requirement | RuntimeClass name |
 |---|---|---|
 | `standard` | Any node | — |
-| `enhanced` | gVisor installed ([setup guide](https://gvisor.dev/docs/user_guide/quick_start/kubernetes/)) | `gvisor` |
-| `maximum` | Kata Containers installed ([setup guide](https://katacontainers.io/docs/)) | `kata` |
+| `gvisor` | gVisor installed ([setup guide](https://gvisor.dev/docs/user_guide/quick_start/kubernetes/)) | `gvisor` |
+| `kata` | Kata Containers installed ([setup guide](https://katacontainers.io/docs/)) | `kata` |
 
-For EKS, use `c5.metal` or `i3.metal` instance types for `maximum` tier (hardware virtualisation required). Install Kata via the [kata-deploy DaemonSet](https://github.com/kata-containers/kata-containers/tree/main/tools/packaging/kata-deploy).
+For EKS, use `c5.metal` or `i3.metal` instance types for `kata` tier (hardware virtualisation required). Install Kata via the [kata-deploy DaemonSet](https://github.com/kata-containers/kata-containers/tree/main/tools/packaging/kata-deploy).
 
 ---
 

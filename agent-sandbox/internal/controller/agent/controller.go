@@ -3,18 +3,10 @@
 
 // Package agent implements the agent-sandbox module controller.
 // It watches Component resources whose componentType resolves to the cluster-scoped
-// "agent" ClusterComponentType and reconciles them by:
-//
-//  1. Creating/updating a SandboxTemplate (extensions.agents.x-k8s.io/v1alpha1) that
-//     encodes the isolation tier (runtimeClassName) and the container spec from the
-//     Component's Workload resource.
-//  2. Creating/updating a SandboxClaim that references the template and carries the
-//     sandbox-policy label so the generated NetworkPolicy targets the Sandbox pod.
-//  3. Polling the SandboxClaim status and reflecting the bound/pending state back as
-//     a condition on the Component.
-//
-// The upstream kubernetes-sigs/agent-sandbox controller fulfils the SandboxClaim from
-// its pre-warmed pool and manages the Sandbox pod lifecycle.
+// "agent" ClusterComponentType and reconciles them by creating a RenderedRelease
+// containing SandboxTemplate and SandboxClaim manifests.  The core's renderedrelease
+// controller then applies those resources to the data-plane cluster via the
+// cluster-gateway, ensuring multi-cluster support.
 package agent
 
 import (
@@ -23,12 +15,9 @@ import (
 	"strings"
 	"time"
 
-	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -51,9 +40,9 @@ const (
 	// workloadOwnerIndex is the field index key for Workload → owner lookup.
 	workloadOwnerIndex = ".spec.owner.projectName_componentName"
 
-	// sandboxClaimPollInterval is how often to requeue while waiting for a SandboxClaim
-	// to be fulfilled by the upstream controller.
-	sandboxClaimPollInterval = 15 * time.Second
+	// sandboxPollInterval is how often to requeue while waiting for the
+	// RenderedRelease to be applied to the data plane.
+	sandboxPollInterval = 15 * time.Second
 )
 
 // Reconciler reconciles Component resources that use the "agent" ComponentType.
@@ -61,17 +50,15 @@ type Reconciler struct {
 	client.Client
 }
 
-// +kubebuilder:rbac:groups=openchoreo.dev,resources=components,verbs=get;list;watch
+// +kubebuilder:rbac:groups=openchoreo.dev,resources=components,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=openchoreo.dev,resources=components/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=openchoreo.dev,resources=components/finalizers,verbs=update
 // +kubebuilder:rbac:groups=openchoreo.dev,resources=clustercomponenttypes,verbs=get;list;watch
 // +kubebuilder:rbac:groups=openchoreo.dev,resources=workloads,verbs=get;list;watch
 // +kubebuilder:rbac:groups=openchoreo.dev,resources=projects,verbs=get;list;watch
 // +kubebuilder:rbac:groups=openchoreo.dev,resources=deploymentpipelines,verbs=get;list;watch
+// +kubebuilder:rbac:groups=openchoreo.dev,resources=renderedreleases,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=agent.openchoreo.dev,resources=sandboxpolicies,verbs=get;list;watch
-// +kubebuilder:rbac:groups=extensions.agents.x-k8s.io,resources=sandboxtemplates,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=extensions.agents.x-k8s.io,resources=sandboxclaims,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=extensions.agents.x-k8s.io,resources=sandboxclaims/status,verbs=get
 
 // Reconcile is the main reconciliation loop for agent Components.
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -142,50 +129,28 @@ func (r *Reconciler) reconcileAgentComponent(
 		return ctrl.Result{}, nil // condition already set
 	}
 
-	// 4. Ensure SandboxTemplate exists and is up-to-date.
-	if err := r.ensureSandboxTemplate(ctx, comp, params, &workload.Spec.WorkloadTemplateSpec.Container); err != nil {
-		if apimeta.IsNoMatchError(err) {
-			// Upstream kubernetes-sigs/agent-sandbox CRDs not yet installed.
-			msg := "SandboxTemplate CRD not found; waiting for upstream controller to be installed"
-			r.setReadyFalse(comp, ReasonUpstreamNotInstalled, msg)
-			logger.Info(msg)
-			return ctrl.Result{RequeueAfter: sandboxClaimPollInterval}, nil
-		}
+	// 4. Create/update the RenderedRelease with SandboxTemplate + SandboxClaim
+	//    targeting the data-plane namespace.
+	if err := r.ensureRenderedRelease(ctx, comp, params, &workload.Spec.WorkloadTemplateSpec.Container, env); err != nil {
 		r.setReadyFalse(comp, ReasonReconcileError,
-			fmt.Sprintf("Failed to ensure SandboxTemplate: %v", err))
+			fmt.Sprintf("Failed to ensure RenderedRelease: %v", err))
 		return ctrl.Result{}, err
 	}
 
-	// 5. Ensure SandboxClaim exists for this environment.
-	if err := r.ensureSandboxClaim(ctx, comp, params, env); err != nil {
-		if apimeta.IsNoMatchError(err) {
-			msg := "SandboxClaim CRD not found; waiting for upstream controller to be installed"
-			r.setReadyFalse(comp, ReasonUpstreamNotInstalled, msg)
-			logger.Info(msg)
-			return ctrl.Result{RequeueAfter: sandboxClaimPollInterval}, nil
-		}
-		r.setReadyFalse(comp, ReasonReconcileError,
-			fmt.Sprintf("Failed to ensure SandboxClaim: %v", err))
+	// 5. Check whether the RenderedRelease has been applied to the data plane.
+	ready, msg, err := r.isRenderedReleaseReady(ctx, comp, env)
+	if err != nil {
 		return ctrl.Result{}, err
 	}
-
-	// 6. Check whether the SandboxClaim has been fulfilled.
-	sc, err := r.fetchSandboxClaim(ctx, comp.Name, comp.Namespace, env)
-	if err != nil && !apierrors.IsNotFound(err) {
-		return ctrl.Result{}, err
-	}
-	if sc == nil || !isSandboxClaimBound(sc) {
-		msg := fmt.Sprintf("SandboxClaim %q is pending; waiting for upstream controller to bind a Sandbox",
-			sandboxClaimName(comp.Name, env))
+	if !ready {
 		r.setReadyFalse(comp, ReasonSandboxClaimPending, msg)
-		logger.Info(msg)
-		return ctrl.Result{RequeueAfter: sandboxClaimPollInterval}, nil
+		logger.Info(msg, "component", comp.Name)
+		return ctrl.Result{RequeueAfter: sandboxPollInterval}, nil
 	}
 
-	// 7. Sandbox is running — mark the Component as ready.
-	msg := fmt.Sprintf("SandboxClaim %q is bound; agent Sandbox is running in environment %q",
-		sandboxClaimName(comp.Name, env), env)
-	r.setReadyTrue(comp, ReasonSandboxClaimBound, msg)
+	// 6. Resources applied — mark the Component as ready.
+	readyMsg := fmt.Sprintf("Agent sandbox resources applied to data plane for environment %q", env)
+	r.setReadyTrue(comp, ReasonSandboxClaimBound, readyMsg)
 	logger.Info("Agent Component reconciled", "component", comp.Name,
 		"env", env, "isolationTier", params.IsolationTier)
 
@@ -267,8 +232,6 @@ func (r *Reconciler) fetchFirstEnvironment(
 	return firstEnv, nil
 }
 
-// findRootEnvironment returns the environment that is a source but never a target
-// (i.e., the entry point of the promotion chain).
 func findRootEnvironment(pipeline *openchoreov1alpha1.DeploymentPipeline) (string, error) {
 	if len(pipeline.Spec.PromotionPaths) == 0 {
 		return "", fmt.Errorf("deployment pipeline %s has no promotion paths", pipeline.Name)
@@ -318,8 +281,9 @@ func (r *Reconciler) finalize(ctx context.Context, comp *openchoreov1alpha1.Comp
 
 	logger.Info("Finalizing agent Component", "component", comp.Name)
 
-	// Clean up SandboxClaim and SandboxTemplate. Ignore NoMatchError — upstream may be uninstalled.
-	if err := r.cleanupSandboxResources(ctx, comp); err != nil && !apimeta.IsNoMatchError(err) {
+	// Clean up the RenderedRelease — the renderedrelease controller will handle
+	// deleting the data-plane resources.
+	if err := r.cleanupRenderedRelease(ctx, comp); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -339,7 +303,6 @@ func (r *Reconciler) finalize(ctx context.Context, comp *openchoreov1alpha1.Comp
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-// isAgentComponent returns true when the Component references the "agent" ClusterComponentType.
 func isAgentComponent(comp *openchoreov1alpha1.Component) bool {
 	name := comp.Spec.ComponentType.Name
 	kind := comp.Spec.ComponentType.Kind
@@ -359,10 +322,8 @@ func (r *Reconciler) setReadyFalse(comp *openchoreov1alpha1.Component, reason, m
 
 // ─── SetupWithManager ─────────────────────────────────────────────────────────
 
-// SetupWithManager registers the controller and sets up required field indexes.
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	ctx := context.Background()
-	logger := log.FromContext(ctx)
 
 	// Index Workloads by "projectName/componentName" for fast owner lookup.
 	if err := mgr.GetFieldIndexer().IndexField(ctx,
@@ -377,44 +338,26 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return fmt.Errorf("failed to set up workload owner index: %w", err)
 	}
 
-	builder := ctrl.NewControllerManagedBy(mgr).
+	return ctrl.NewControllerManagedBy(mgr).
 		For(&openchoreov1alpha1.Component{}).
-		// Requeue when the "agent" ClusterComponentType changes.
 		Watches(&openchoreov1alpha1.ClusterComponentType{},
 			handler.EnqueueRequestsFromMapFunc(r.findComponentsForClusterComponentType)).
-		// Requeue when a Workload (container image source) changes.
 		Watches(&openchoreov1alpha1.Workload{},
 			handler.EnqueueRequestsFromMapFunc(r.findComponentsForWorkload)).
-		// Requeue when a referenced SandboxPolicy changes.
 		Watches(&sandboxv1alpha1.SandboxPolicy{},
 			handler.EnqueueRequestsFromMapFunc(r.findComponentsForSandboxPolicy)).
-		// Only process Components that use the "agent" type.
+		// Requeue when the RenderedRelease status changes (resources applied).
+		Watches(&openchoreov1alpha1.RenderedRelease{},
+			handler.EnqueueRequestsFromMapFunc(r.findComponentsForRenderedRelease)).
 		WithEventFilter(predicate.NewPredicateFuncs(func(obj client.Object) bool {
 			comp, ok := obj.(*openchoreov1alpha1.Component)
 			if !ok {
-				return true // pass through non-Component watch events
+				return true
 			}
 			return isAgentComponent(comp)
-		}))
-
-	// Conditionally register a SandboxClaim watch if the upstream CRD is already installed.
-	// If not (fresh cluster before helm install completes), skip it — the controller will
-	// converge via the RequeueAfter poll on the next reconcile.
-	_, mapErr := mgr.GetRESTMapper().RESTMapping(
-		schema.GroupKind{Group: "extensions.agents.x-k8s.io", Kind: "SandboxClaim"},
-		"v1alpha1",
-	)
-	if mapErr == nil {
-		scObj := &unstructured.Unstructured{}
-		scObj.SetGroupVersionKind(sandboxClaimGVK)
-		builder = builder.Watches(scObj,
-			handler.EnqueueRequestsFromMapFunc(r.findComponentsForSandboxClaim))
-		logger.Info("Registered SandboxClaim watch (upstream CRDs installed)")
-	} else {
-		logger.Info("SandboxClaim CRD not available at startup; relying on RequeueAfter polling")
-	}
-
-	return builder.Named("agent-sandbox").Complete(r)
+		})).
+		Named("agent-sandbox").
+		Complete(r)
 }
 
 // ─── Watch mappers ────────────────────────────────────────────────────────────
@@ -489,9 +432,6 @@ func (r *Reconciler) findComponentsForSandboxPolicy(
 	return reqs
 }
 
-// sandboxPolicyRefFromComp extracts parameters.sandboxPolicyRef from a Component's
-// raw JSON parameters using a lightweight string scan to avoid a full unmarshal on
-// the hot path.
 func sandboxPolicyRefFromComp(comp *openchoreov1alpha1.Component) string {
 	if comp.Spec.Parameters == nil {
 		return ""

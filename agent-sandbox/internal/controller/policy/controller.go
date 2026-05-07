@@ -136,6 +136,14 @@ func (r *Reconciler) buildNetworkPolicy(sp *sandboxv1alpha1.SandboxPolicy) *netw
 				labelManagedBy: "agent-sandbox-controller",
 				labelPolicyRef: sp.Name,
 			},
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: sp.APIVersion,
+					Kind:       sp.Kind,
+					Name:       sp.Name,
+					UID:        sp.UID,
+				},
+			},
 		},
 		Spec: networkingv1.NetworkPolicySpec{
 			PodSelector: podSelector,

@@ -9,6 +9,7 @@
 {{- if eq $manifestURL "" }}
   {{- $manifestURL = printf "https://github.com/kubernetes-sigs/agent-sandbox/releases/download/%s/manifest.yaml" .Values.upstream.version }}
 {{- end }}
+{{- $extensionsURL := printf "https://github.com/kubernetes-sigs/agent-sandbox/releases/download/%s/extensions.yaml" .Values.upstream.version }}
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -29,22 +30,33 @@ metadata:
     "helm.sh/hook-weight": "-10"
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 rules:
-  # The upstream manifest creates CRDs, RBAC, ServiceAccounts, and a Deployment.
+  # The upstream manifest creates CRDs, RBAC, ServiceAccounts, Deployment, and Services.
   - apiGroups: ["apiextensions.k8s.io"]
     resources: ["customresourcedefinitions"]
     verbs: ["get", "list", "watch", "create", "update", "patch"]
   - apiGroups: ["rbac.authorization.k8s.io"]
     resources: ["clusterroles", "clusterrolebindings"]
-    verbs: ["get", "list", "watch", "create", "update", "patch"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "escalate", "bind"]
   - apiGroups: [""]
-    resources: ["serviceaccounts", "namespaces"]
+    resources: ["serviceaccounts", "namespaces", "services"]
     verbs: ["get", "list", "watch", "create", "update", "patch"]
   - apiGroups: ["apps"]
     resources: ["deployments"]
     verbs: ["get", "list", "watch", "create", "update", "patch"]
-  - apiGroups: ["agents.x-k8s.io"]
+  - apiGroups: ["agents.x-k8s.io", "extensions.agents.x-k8s.io"]
     resources: ["*"]
     verbs: ["*"]
+  # The upstream controller's ClusterRole needs these — the installer must hold
+  # them too to avoid RBAC escalation denial when creating that ClusterRole.
+  - apiGroups: [""]
+    resources: ["pods", "persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: ["events.k8s.io"]
+    resources: ["events"]
+    verbs: ["create", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -71,28 +83,30 @@ metadata:
   annotations:
     "helm.sh/hook": pre-install,pre-upgrade
     "helm.sh/hook-weight": "-5"
-    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    "helm.sh/hook-delete-policy": before-hook-creation
 spec:
-  ttlSecondsAfterFinished: 300
-  backoffLimit: 3
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 1
   template:
     spec:
       serviceAccountName: agent-sandbox-upstream-installer
-      restartPolicy: OnFailure
+      restartPolicy: Never
       containers:
         - name: kubectl
-          image: bitnami/kubectl:1.30
+          image: bitnami/kubectl:latest
           command:
             - /bin/sh
             - -c
             - |
               set -e
               echo "Installing kubernetes-sigs/agent-sandbox {{ .Values.upstream.version }}..."
+              echo "Applying core manifest..."
               kubectl apply --server-side -f {{ $manifestURL | quote }}
+              echo "Applying extensions manifest..."
+              kubectl apply --server-side -f {{ $extensionsURL | quote }}
               echo "Upstream controller installed successfully."
           securityContext:
             allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
             runAsNonRoot: true
             runAsUser: 1000
             capabilities:

@@ -1,4 +1,4 @@
-{{- if and .Values.upstream.install .Values.installDefaultPolicies }}
+{{- if .Values.installDefaultPolicies }}
 # Default SandboxTemplate for agent workloads (extensions.agents.x-k8s.io/v1alpha1).
 #
 # This template defines isolation tiers for the three standard OpenChoreo runtime classes.
@@ -6,19 +6,21 @@
 # at runtime and encode the actual container image.  These global defaults are used by
 # the SandboxWarmPool to keep pre-warmed sandboxes ready for fast claiming.
 ---
-# standard tier — runc (default), no runtimeClassName override.
+# runc tier — default Linux container isolation, no runtimeClassName override.
 apiVersion: extensions.agents.x-k8s.io/v1alpha1
 kind: SandboxTemplate
 metadata:
-  name: openchoreo-agent-standard
+  name: openchoreo-agent-runc
   namespace: {{ .Values.namespace }}
   labels:
     app.kubernetes.io/managed-by: agent-sandbox-controller
-    agent.openchoreo.dev/isolation-tier: standard
+    agent.openchoreo.dev/isolation-tier: runc
   annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "10"
     openchoreo.dev/description: |
-      Standard isolation using hardened Linux namespaces (runc).
-      No extra node requirement. Used as the default tier.
+      Default isolation using runc (standard Linux namespaces + cgroups).
+      No extra node requirement.
 spec:
   podTemplate:
     spec:
@@ -29,14 +31,14 @@ spec:
           type: RuntimeDefault
       containers:
         - name: agent
-          image: scratch  # overridden per-component by the agent controller
+          image: registry.k8s.io/pause:3.10  # lightweight placeholder; overridden per-component
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
               drop: [ALL]
 ---
 {{- if has "gvisor" .Values.runtimeClasses }}
-# enhanced tier — gVisor (syscall interception via user-space kernel).
+# gvisor tier — syscall interception via user-space kernel.
 # Only created when "gvisor" is listed in .Values.runtimeClasses.
 apiVersion: extensions.agents.x-k8s.io/v1alpha1
 kind: SandboxTemplate
@@ -45,8 +47,10 @@ metadata:
   namespace: {{ .Values.namespace }}
   labels:
     app.kubernetes.io/managed-by: agent-sandbox-controller
-    agent.openchoreo.dev/isolation-tier: enhanced
+    agent.openchoreo.dev/isolation-tier: gvisor
   annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "10"
     openchoreo.dev/description: |
       Enhanced isolation using gVisor. Requires runtimeClassName "gvisor" on nodes.
 spec:
@@ -60,7 +64,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: agent
-          image: scratch  # overridden per-component by the agent controller
+          image: registry.k8s.io/pause:3.10  # lightweight placeholder; overridden per-component
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -68,7 +72,7 @@ spec:
 ---
 {{- end }}
 {{- if has "kata" .Values.runtimeClasses }}
-# maximum tier — Kata Containers (full VM isolation via Firecracker/QEMU).
+# kata tier — full VM isolation via Firecracker/QEMU.
 # Only created when "kata" is listed in .Values.runtimeClasses.
 apiVersion: extensions.agents.x-k8s.io/v1alpha1
 kind: SandboxTemplate
@@ -77,8 +81,10 @@ metadata:
   namespace: {{ .Values.namespace }}
   labels:
     app.kubernetes.io/managed-by: agent-sandbox-controller
-    agent.openchoreo.dev/isolation-tier: maximum
+    agent.openchoreo.dev/isolation-tier: kata
   annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "10"
     openchoreo.dev/description: |
       Maximum isolation using Kata Containers. Requires runtimeClassName "kata" on nodes.
 spec:
@@ -92,7 +98,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: agent
-          image: scratch  # overridden per-component by the agent controller
+          image: registry.k8s.io/pause:3.10  # lightweight placeholder; overridden per-component
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:

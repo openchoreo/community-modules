@@ -1,0 +1,283 @@
+# ---------------------------------------------------------------------------
+# Cluster identity. Both clusterName and region are required and propagate to
+# the OpenTelemetry collector and the adapter.
+# ---------------------------------------------------------------------------
+clusterName: ""
+region: ""
+
+# AWS authentication.
+#
+# Default: EKS Pod Identity / IRSA / EC2 instance-profile via the AWS SDK
+# default credentials chain. No chart-managed Secret is created.
+#
+# For k3d / kind / non-EKS targets, flip `create: true` and supply
+# `accessKeyId` / `secretAccessKey`. The chart will create a Secret and the
+# adapter envFrom's it. The OpenTelemetry collector also envFrom's it via the
+# `adotcollector.extraEnvsFrom` block (see below).
+awsCredentials:
+  create: false
+  name: ""
+  accessKeyId: ""
+  secretAccessKey: ""
+
+# ---------------------------------------------------------------------------
+# ADOT collector subchart (alias: adotcollector)
+# ---------------------------------------------------------------------------
+adotcollector:
+  enabled: true
+  mode: daemonset
+  image:
+    # ADOT v0.41.0 omits the kubeletstats receiver. Use the upstream
+    # opentelemetry-collector-contrib image which bundles kubeletstats and
+    # the AWS exporters/receivers we need (awsemf, awsxray).
+    repository: otel/opentelemetry-collector-contrib
+    tag: 0.109.0
+  serviceAccount:
+    create: true
+    # Annotations applied to the OpenTelemetry collector ServiceAccount. Use this to
+    # attach IRSA / Pod Identity:
+    #   eks.amazonaws.com/role-arn: arn:aws:iam::<account>:role/<role>
+    annotations: {}
+  clusterRole:
+    create: false
+  # Extra environment variables consumed by the ADOT collector ConfigMap.
+  # AWS_REGION is sourced by awsemfexporter; K8S_NODE_NAME is used for the
+  # CloudWatch Logs stream name.
+  extraEnvs:
+    - name: K8S_NODE_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: spec.nodeName
+    - name: K8S_NODE_IP
+      valueFrom:
+        fieldRef:
+          fieldPath: status.hostIP
+  # Override at install time on k3d/kind to pull static credentials in:
+  #   --set "adotcollector.extraEnvsFrom[1].secretRef.name=<awsCredentials.name>"
+  extraEnvsFrom:
+    - configMapRef:
+        name: metrics-cloudwatch-cluster-env
+  hostNetwork: true
+  presets:
+    kubernetesAttributes:
+      enabled: false # we render our own k8sattributes processor
+  config:
+    receivers:
+      kubeletstats:
+        collection_interval: 30s
+        auth_type: serviceAccount
+        endpoint: ${env:K8S_NODE_IP}:10250
+        insecure_skip_verify: true
+        metric_groups: [pod, container]
+      prometheus:
+        config:
+          scrape_configs:
+            - job_name: kube-state-metrics
+              scrape_interval: 30s
+              kubernetes_sd_configs:
+                - role: endpoints
+              relabel_configs:
+                - source_labels: [__meta_kubernetes_service_name]
+                  regex: kube-state-metrics
+                  action: keep
+                - source_labels: [__meta_kubernetes_endpoint_port_name]
+                  regex: http(-metrics)?
+                  action: keep
+    processors:
+      k8sattributes:
+        auth_type: serviceAccount
+        extract:
+          labels:
+            - tag_name: ComponentUID
+              key: openchoreo.dev/component-uid
+              from: pod
+            - tag_name: ProjectUID
+              key: openchoreo.dev/project-uid
+              from: pod
+            - tag_name: EnvironmentUID
+              key: openchoreo.dev/environment-uid
+              from: pod
+          metadata:
+            - k8s.pod.name
+            - k8s.namespace.name
+        pod_association:
+          - sources:
+              - from: resource_attribute
+                name: k8s.pod.uid
+          - sources:
+              - from: resource_attribute
+                name: k8s.pod.name
+              - from: resource_attribute
+                name: k8s.namespace.name
+      metricstransform:
+        transforms:
+          # kubeletstats v0.109 emits the deprecated `k8s.pod.cpu.utilization`
+          # by default (a gauge: fraction of node CPU). The newer
+          # `k8s.pod.cpu.usage` is gated and not on by default in this build.
+          - include: k8s.pod.cpu.utilization
+            action: update
+            new_name: pod_cpu_usage
+          - include: k8s.pod.memory.working_set
+            action: update
+            new_name: pod_memory_usage
+          # kube-state-metrics emits one series per resource type, distinguished
+          # by a `resource` label. Split into named cpu/memory variants.
+          - include: kube_pod_container_resource_requests
+            match_type: strict
+            experimental_match_labels: {resource: cpu}
+            action: insert
+            new_name: pod_cpu_request
+          - include: kube_pod_container_resource_requests
+            match_type: strict
+            experimental_match_labels: {resource: memory}
+            action: insert
+            new_name: pod_memory_request
+          - include: kube_pod_container_resource_limits
+            match_type: strict
+            experimental_match_labels: {resource: cpu}
+            action: insert
+            new_name: pod_cpu_limit
+          - include: kube_pod_container_resource_limits
+            match_type: strict
+            experimental_match_labels: {resource: memory}
+            action: insert
+            new_name: pod_memory_limit
+      groupbyattrs:
+        # KSM-scraped series carry `pod` and `namespace` as data point
+        # attributes. Promote them to resource attributes so k8sattributes
+        # can match the workload pod (not the KSM pod).
+        keys: [pod, namespace]
+      resource/promlabels:
+        # After groupbyattrs lifts `pod`/`namespace` to resource level,
+        # overwrite the scrape target's pod identity with the workload pod
+        # identity that k8sattributes uses for pod_association matching.
+        attributes:
+          - action: delete
+            key: k8s.pod.uid
+          - action: upsert
+            key: k8s.pod.name
+            from_attribute: pod
+          - action: upsert
+            key: k8s.namespace.name
+            from_attribute: namespace
+      resource/inject_namespace:
+        attributes:
+          - action: upsert
+            key: Namespace
+            from_attribute: k8s.namespace.name
+      batch:
+        timeout: 30s
+        send_batch_size: 8192
+    exporters:
+      debug:
+        verbosity: detailed
+      awsemf:
+        region: ${env:AWS_REGION}
+        namespace: OpenChoreo/Metrics
+        log_group_name: ${env:EMF_LOG_GROUP_NAME}
+        log_stream_name: ${env:K8S_NODE_NAME}
+        # Retention applied by the awsemfexporter itself whenever it creates
+        # the log group, so retention survives manual log-group deletion.
+        # Sourced from metrics.logRetentionDays via the env-configmap. The
+        # post-install Job in metrics-log-retention.yaml is belt-and-suspenders.
+        log_retention: ${env:EMF_LOG_RETENTION_DAYS}
+        dimension_rollup_option: NoDimensionRollup
+        resource_to_telemetry_conversion:
+          enabled: true
+        metric_declarations:
+          - dimensions:
+              - [ComponentUID, EnvironmentUID, Namespace]
+            metric_name_selectors:
+              - "pod_cpu_usage"
+              - "pod_memory_usage"
+              - "pod_cpu_request"
+              - "pod_cpu_limit"
+              - "pod_memory_request"
+              - "pod_memory_limit"
+    extensions:
+      health_check: {}
+    service:
+      telemetry:
+        metrics:
+          readers: []
+      extensions: [health_check]
+      pipelines:
+        metrics:
+          receivers: [kubeletstats, prometheus]
+          processors: [groupbyattrs, resource/promlabels, k8sattributes, metricstransform, resource/inject_namespace, batch]
+          exporters: [awsemf, debug]
+
+# ---------------------------------------------------------------------------
+# Metric storage settings.
+# ---------------------------------------------------------------------------
+metrics:
+  namespace: OpenChoreo/Metrics
+  # Empty means /aws/openchoreo/<clusterName>/metrics.
+  logGroup: ""
+  logRetentionDays: 7
+  logRetention:
+    enabled: true
+    image:
+      repository: public.ecr.aws/aws-cli/aws-cli
+      tag: "2.15.57"
+      pullPolicy: IfNotPresent
+    serviceAccount:
+      create: true
+      name: ""
+      annotations: {}
+    backoffLimit: 3
+    ttlSecondsAfterFinished: 300
+
+# ---------------------------------------------------------------------------
+# Adapter — Go service that answers Observer metrics queries
+# ---------------------------------------------------------------------------
+adapter:
+  enabled: true
+  replicas: 1
+  image:
+    repository: docker.io/chalindukodikara/observability-metrics-cloudwatch-adapter 
+    tag: "dev"
+    pullPolicy: IfNotPresent
+  service:
+    port: 9099
+  serviceAccount:
+    annotations: {}
+  logLevel: INFO
+  queryTimeoutSeconds: 30
+
+  alerting:
+    enabled: false
+    alarmActionArns: []
+    okActionArns: []
+    insufficientDataActionArns: []
+    observerUrl: "http://observer-internal:8081"
+    snsAllowSubscribeConfirm: false
+    forwardRecovery: false
+    webhookAuth:
+      enabled: false
+      sharedSecret: ""
+      sharedSecretRef:
+        name: ""
+        key: token
+    webhookIngress:
+      enabled: false
+      className: nginx
+      host: ""
+      annotations: {}
+      tls:
+        secretName: ""
+  networkPolicy:
+    enabled: false
+    observerNamespaceLabels:
+      kubernetes.io/metadata.name: openchoreo-observability-plane
+    observerPodLabels: {}
+    ingressNamespaceLabels:
+      kubernetes.io/metadata.name: ingress-nginx
+    allowProbeIPBlock: ""
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 128Mi

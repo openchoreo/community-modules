@@ -1,0 +1,22 @@
+apiVersion: v2
+name: observability-metrics-cloudwatch
+description: A Helm chart for OpenChoreo Metrics Module for AWS CloudWatch (ADOT-based)
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - cloudwatch
+  - aws
+  - openchoreo
+  - metrics
+  - otel
+  - adot
+maintainers:
+  - name: OpenChoreo Team
+home: https://github.com/openchoreo/community-modules
+dependencies:
+  - name: opentelemetry-collector
+    version: "0.150.1"
+    repository: https://open-telemetry.github.io/opentelemetry-helm-charts
+    alias: adotcollector
+    condition: adotcollector.enabled

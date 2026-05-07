@@ -1,0 +1,4 @@
+helm/
+TASKS/
+*.md
+!README.md

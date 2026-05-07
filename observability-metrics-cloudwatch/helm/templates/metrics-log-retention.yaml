@@ -1,0 +1,71 @@
+{{- $metrics := .Values.metrics | default dict -}}
+{{- $logRetention := (get $metrics "logRetention") | default dict -}}
+{{- $image := (get $logRetention "image") | default dict -}}
+{{- $serviceAccount := (get $logRetention "serviceAccount") | default dict -}}
+{{- $enabled := true -}}
+{{- if hasKey $logRetention "enabled" -}}{{- $enabled = get $logRetention "enabled" -}}{{- end -}}
+{{- $serviceAccountCreate := true -}}
+{{- if hasKey $serviceAccount "create" -}}{{- $serviceAccountCreate = get $serviceAccount "create" -}}{{- end -}}
+{{- if $enabled }}
+{{- include "metrics-cloudwatch.validate" . -}}
+{{- if $serviceAccountCreate }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "metrics-cloudwatch.logRetentionServiceAccountName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: metrics-cloudwatch-log-retention
+  {{- with (get $serviceAccount "annotations") }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+---
+{{- end }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: metrics-cloudwatch-log-retention
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: metrics-cloudwatch-log-retention
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: {{ get $logRetention "backoffLimit" | default 3 }}
+  ttlSecondsAfterFinished: {{ get $logRetention "ttlSecondsAfterFinished" | default 300 }}
+  template:
+    metadata:
+      labels:
+        app: metrics-cloudwatch-log-retention
+    spec:
+      serviceAccountName: {{ include "metrics-cloudwatch.logRetentionServiceAccountName" . }}
+      restartPolicy: OnFailure
+      containers:
+        - name: aws-cli
+          image: "{{ get $image "repository" | default "public.ecr.aws/aws-cli/aws-cli" }}:{{ get $image "tag" | default "2.15.57" }}"
+          imagePullPolicy: {{ get $image "pullPolicy" | default "IfNotPresent" }}
+          env:
+            - name: AWS_REGION
+              value: {{ include "metrics-cloudwatch.region" . | quote }}
+            - name: LOG_GROUP_NAME
+              value: {{ include "metrics-cloudwatch.logGroup" . | quote }}
+            - name: LOG_RETENTION_DAYS
+              value: {{ .Values.metrics.logRetentionDays | quote }}
+          {{- if .Values.awsCredentials.name }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.awsCredentials.name }}
+          {{- end }}
+          command:
+            - /bin/sh
+            - -ec
+          args:
+            - |
+              aws logs create-log-group --log-group-name "${LOG_GROUP_NAME}" 2>/dev/null || true
+              aws logs put-retention-policy \
+                --log-group-name "${LOG_GROUP_NAME}" \
+                --retention-in-days "${LOG_RETENTION_DAYS}"
+{{- end }}

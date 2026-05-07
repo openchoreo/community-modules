@@ -1,0 +1,102 @@
+{{- if .Values.adapter.enabled }}
+{{- include "metrics-cloudwatch.validate" . -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: metrics-adapter-cloudwatch
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: metrics-adapter-cloudwatch
+spec:
+  replicas: {{ .Values.adapter.replicas }}
+  selector:
+    matchLabels:
+      app: metrics-adapter-cloudwatch
+  template:
+    metadata:
+      annotations:
+        {{- if and .Values.adapter.alerting.webhookAuth.enabled (not .Values.adapter.alerting.webhookAuth.sharedSecretRef.name) }}
+        checksum/webhook-secret: {{ include (print $.Template.BasePath "/adapter/webhook-secret.yaml") . | sha256sum }}
+        {{- end }}
+      labels:
+        app: metrics-adapter-cloudwatch
+    spec:
+      serviceAccountName: metrics-adapter-cloudwatch
+      securityContext:
+        runAsUser: 10500
+        runAsGroup: 10500
+        runAsNonRoot: true
+      containers:
+        - name: metrics-adapter-cloudwatch
+          image: "{{ .Values.adapter.image.repository }}:{{ .Values.adapter.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.adapter.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.adapter.service.port }}
+          env:
+            - name: SERVER_PORT
+              value: {{ .Values.adapter.service.port | quote }}
+            - name: AWS_REGION
+              value: {{ include "metrics-cloudwatch.region" . | quote }}
+            - name: CLUSTER_NAME
+              value: {{ include "metrics-cloudwatch.clusterName" . | quote }}
+            - name: METRIC_NAMESPACE
+              value: {{ include "metrics-cloudwatch.metricNamespace" . | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.adapter.logLevel | quote }}
+            - name: QUERY_TIMEOUT_SECONDS
+              value: {{ .Values.adapter.queryTimeoutSeconds | quote }}
+            {{- if .Values.adapter.alerting.enabled }}
+            {{- with .Values.adapter.alerting.alarmActionArns }}
+            - name: ALARM_ACTION_ARNS
+              value: {{ join "," . | quote }}
+            {{- end }}
+            {{- with .Values.adapter.alerting.okActionArns }}
+            - name: OK_ACTION_ARNS
+              value: {{ join "," . | quote }}
+            {{- end }}
+            {{- with .Values.adapter.alerting.insufficientDataActionArns }}
+            - name: INSUFFICIENT_DATA_ACTION_ARNS
+              value: {{ join "," . | quote }}
+            {{- end }}
+            {{- with .Values.adapter.alerting.observerUrl }}
+            - name: OBSERVER_URL
+              value: {{ . | quote }}
+            {{- end }}
+            - name: SNS_ALLOW_SUBSCRIBE_CONFIRM
+              value: {{ .Values.adapter.alerting.snsAllowSubscribeConfirm | quote }}
+            - name: FORWARD_RECOVERY
+              value: {{ .Values.adapter.alerting.forwardRecovery | quote }}
+            {{- end }}
+            - name: WEBHOOK_AUTH_ENABLED
+              value: {{ .Values.adapter.alerting.webhookAuth.enabled | quote }}
+            {{- if .Values.adapter.alerting.webhookAuth.enabled }}
+            - name: WEBHOOK_SHARED_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "metrics-cloudwatch.webhookSecretName" . }}
+                  key: {{ .Values.adapter.alerting.webhookAuth.sharedSecretRef.key | default "token" | quote }}
+            {{- end }}
+          {{- if .Values.awsCredentials.name }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.awsCredentials.name }}
+          {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: {{ .Values.adapter.service.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.adapter.service.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.adapter.resources | nindent 12 }}
+{{- end }}

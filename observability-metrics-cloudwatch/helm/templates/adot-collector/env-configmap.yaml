@@ -1,0 +1,12 @@
+{{- include "metrics-cloudwatch.validate" . -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: metrics-cloudwatch-cluster-env
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: observability-metrics-cloudwatch
+data:
+  CLUSTER_NAME: {{ include "metrics-cloudwatch.clusterName" . | quote }}
+  EMF_LOG_GROUP_NAME: {{ include "metrics-cloudwatch.logGroup" . | quote }}
+  EMF_LOG_RETENTION_DAYS: {{ .Values.metrics.logRetentionDays | quote }}

@@ -1,0 +1,33 @@
+{{- if .Values.adotcollector.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Release.Name }}-adot-collector
+  labels:
+    app.kubernetes.io/name: observability-metrics-cloudwatch
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "endpoints", "namespaces", "nodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["nodes/proxy", "nodes/stats"]
+    verbs: ["get", "list"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Release.Name }}-adot-collector
+  labels:
+    app.kubernetes.io/name: observability-metrics-cloudwatch
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ .Release.Name }}-adot-collector
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Release.Name }}-adotcollector
+    namespace: {{ .Release.Namespace }}
+{{- end }}

@@ -31,7 +31,7 @@ adotcollector:
     # opentelemetry-collector-contrib image which bundles kubeletstats and
     # the AWS exporters/receivers we need (awsemf, awsxray).
     repository: otel/opentelemetry-collector-contrib
-    tag: 0.109.0
+    tag: 0.149.0
   serviceAccount:
     create: true
     # Annotations applied to the OpenTelemetry collector ServiceAccount. Use this to
@@ -219,7 +219,7 @@ metrics:
     enabled: true
     image:
       repository: public.ecr.aws/aws-cli/aws-cli
-      tag: "2.15.57"
+      tag: "2.34.44"
       pullPolicy: IfNotPresent
     serviceAccount:
       create: true

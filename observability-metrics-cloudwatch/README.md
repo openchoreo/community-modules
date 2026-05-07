@@ -953,14 +953,15 @@ reference.
 | `adapter.alerting.webhookAuth.sharedSecret` | `""` | Inline shared secret for webhook authentication. Suitable for development only. |
 | `adapter.alerting.webhookAuth.sharedSecretRef.name` | `""` | Existing Kubernetes Secret name containing the webhook token. Recommended for production. |
 | `adapter.alerting.webhookAuth.sharedSecretRef.key` | `token` | Key inside the existing Secret. |
-| `adapter.alerting.webhookIngress.enabled` | `false` | Creates an Ingress exposing only `/api/v1alpha1/alerts/webhook`. |
-| `adapter.alerting.webhookIngress.className` | `nginx` | Ingress class name. |
-| `adapter.alerting.webhookIngress.host` | `""` | Hostname for the webhook Ingress. Required when webhook Ingress is enabled. |
-| `adapter.alerting.webhookIngress.tls.secretName` | `""` | TLS Secret for the webhook Ingress. Required when webhook Ingress is enabled. |
+| `adapter.alerting.webhookRoute.enabled` | `false` | Creates a Gateway API HTTPRoute exposing only `/api/v1alpha1/alerts/webhook`. |
+| `adapter.alerting.webhookRoute.parentRef.name` | `gateway-default` | Gateway to attach to. Required when webhookRoute is enabled. |
+| `adapter.alerting.webhookRoute.parentRef.namespace` | `""` | Namespace of the parent Gateway. Leave empty for the release namespace. |
+| `adapter.alerting.webhookRoute.parentRef.sectionName` | `""` | Optional Gateway listener section name. |
+| `adapter.alerting.webhookRoute.hostnames` | `[]` | Optional hostnames matched at the route level. Leave empty to inherit the Gateway listener's hostname. |
 | `adapter.networkPolicy.enabled` | `false` | Creates a NetworkPolicy for adapter ingress traffic. |
 | `adapter.networkPolicy.observerNamespaceLabels` | `{kubernetes.io/metadata.name: openchoreo-observability-plane}` | Namespace labels allowed to call the adapter from the Observer. |
 | `adapter.networkPolicy.observerPodLabels` | `{}` | Pod labels allowed to call the adapter from the Observer. Tune per deployment. |
-| `adapter.networkPolicy.ingressNamespaceLabels` | `{kubernetes.io/metadata.name: ingress-nginx}` | Namespace labels of the ingress controller pods allowed to proxy the webhook. |
+| `adapter.networkPolicy.gatewayNamespaceLabels` | `{}` | Namespace labels of the Gateway data-plane pods allowed to proxy the webhook. Set when webhookRoute is enabled. |
 | `adapter.networkPolicy.allowProbeIPBlock` | `""` | Optional node CIDR for kubelet probes when required by the CNI. |
 
 If you override `metrics.logGroup`, update the CloudWatch Logs IAM policy

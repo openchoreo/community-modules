@@ -66,14 +66,11 @@ metrics-adapter-cloudwatch-webhook-token
 {{- if and .Values.adapter.alerting.webhookAuth.enabled (not (or .Values.adapter.alerting.webhookAuth.sharedSecret .Values.adapter.alerting.webhookAuth.sharedSecretRef.name)) -}}
 {{- fail "adapter.alerting.webhookAuth requires either sharedSecret or sharedSecretRef.name when enabled" -}}
 {{- end -}}
-{{- if and .Values.adapter.alerting.webhookIngress.enabled (not .Values.adapter.alerting.webhookAuth.enabled) -}}
-{{- fail "adapter.alerting.webhookIngress requires adapter.alerting.webhookAuth.enabled=true" -}}
+{{- if and .Values.adapter.alerting.webhookRoute.enabled (not .Values.adapter.alerting.webhookAuth.enabled) -}}
+{{- fail "adapter.alerting.webhookRoute requires adapter.alerting.webhookAuth.enabled=true so the public webhook is not exposed without header auth" -}}
 {{- end -}}
-{{- if and .Values.adapter.alerting.webhookIngress.enabled (not .Values.adapter.alerting.webhookIngress.host) -}}
-{{- fail "adapter.alerting.webhookIngress.host is required when webhookIngress is enabled" -}}
-{{- end -}}
-{{- if and .Values.adapter.alerting.webhookIngress.enabled (not .Values.adapter.alerting.webhookIngress.tls.secretName) -}}
-{{- fail "adapter.alerting.webhookIngress.tls.secretName is required when webhookIngress is enabled" -}}
+{{- if and .Values.adapter.alerting.webhookRoute.enabled (not .Values.adapter.alerting.webhookRoute.parentRef.name) -}}
+{{- fail "adapter.alerting.webhookRoute.parentRef.name is required when webhookRoute is enabled" -}}
 {{- end -}}
 {{- if and .Values.adapter.enabled .Values.adapter.networkPolicy.enabled -}}
 {{- if empty .Values.adapter.networkPolicy.observerNamespaceLabels -}}

@@ -21,10 +21,10 @@ spec:
           podSelector:
             matchLabels:
               {{- toYaml .Values.adapter.networkPolicy.observerPodLabels | nindent 14 }}
-        {{- if .Values.adapter.alerting.webhookIngress.enabled }}
+        {{- if and .Values.adapter.alerting.webhookRoute.enabled .Values.adapter.networkPolicy.gatewayNamespaceLabels }}
         - namespaceSelector:
             matchLabels:
-              {{- toYaml .Values.adapter.networkPolicy.ingressNamespaceLabels | nindent 14 }}
+              {{- toYaml .Values.adapter.networkPolicy.gatewayNamespaceLabels | nindent 14 }}
         {{- end }}
         {{- if .Values.adapter.networkPolicy.allowProbeIPBlock }}
         - ipBlock:

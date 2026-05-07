@@ -259,20 +259,28 @@ adapter:
       sharedSecretRef:
         name: ""
         key: token
-    webhookIngress:
+    webhookRoute:
       enabled: false
-      className: nginx
-      host: ""
-      annotations: {}
-      tls:
-        secretName: ""
+      # Gateway to attach to. Defaults to OpenChoreo's `gateway-default` in the
+      # release namespace; override to point at a Gateway in another namespace
+      # or a specific listener (sectionName).
+      parentRef:
+        name: gateway-default
+        namespace: ""
+        sectionName: ""
+      # Optional hostnames matched at the route level. Leave empty to inherit
+      # the Gateway listener's hostname.
+      hostnames: []
   networkPolicy:
     enabled: false
     observerNamespaceLabels:
       kubernetes.io/metadata.name: openchoreo-observability-plane
     observerPodLabels: {}
-    ingressNamespaceLabels:
-      kubernetes.io/metadata.name: ingress-nginx
+    # Namespace labels for the Gateway data-plane pods that proxy the webhook
+    # to the adapter. Default empty: when the route is enabled, set this to
+    # match your Gateway controller's data-plane namespace
+    # (e.g. `kubernetes.io/metadata.name: openchoreo-data-plane`).
+    gatewayNamespaceLabels: {}
     allowProbeIPBlock: ""
   resources:
     limits:

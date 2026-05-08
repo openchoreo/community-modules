@@ -1,0 +1,115 @@
+{{- if .Values.upstream.install }}
+# Pre-install Job that installs the upstream kubernetes-sigs/agent-sandbox
+# controller on the cluster. It applies both the core manifest (Sandbox CRD +
+# controller) and extensions manifest (SandboxTemplate, SandboxClaim,
+# SandboxWarmPool CRDs + controller).
+{{- $manifestURL := .Values.upstream.manifestURL }}
+{{- if eq $manifestURL "" }}
+  {{- $manifestURL = printf "https://github.com/kubernetes-sigs/agent-sandbox/releases/download/%s/manifest.yaml" .Values.upstream.version }}
+{{- end }}
+{{- $extensionsURL := printf "https://github.com/kubernetes-sigs/agent-sandbox/releases/download/%s/extensions.yaml" .Values.upstream.version }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: agent-sandbox-upstream-installer
+  namespace: {{ .Values.namespace }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: agent-sandbox-upstream-installer
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+rules:
+  - apiGroups: ["apiextensions.k8s.io"]
+    resources: ["customresourcedefinitions"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["clusterroles", "clusterrolebindings"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "escalate", "bind"]
+  - apiGroups: [""]
+    resources: ["serviceaccounts", "namespaces", "services"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: ["agents.x-k8s.io", "extensions.agents.x-k8s.io"]
+    resources: ["*"]
+    verbs: ["*"]
+  # Required to avoid RBAC escalation denial when the upstream manifest
+  # creates its own ClusterRole with these permissions.
+  - apiGroups: [""]
+    resources: ["pods", "persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: ["events.k8s.io"]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: agent-sandbox-upstream-installer
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: agent-sandbox-upstream-installer
+subjects:
+  - kind: ServiceAccount
+    name: agent-sandbox-upstream-installer
+    namespace: {{ .Values.namespace }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: agent-sandbox-upstream-install
+  namespace: {{ .Values.namespace }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 3
+  template:
+    spec:
+      serviceAccountName: agent-sandbox-upstream-installer
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: kubectl
+          image: bitnami/kubectl:latest
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              echo "Installing kubernetes-sigs/agent-sandbox {{ .Values.upstream.version }}..."
+              echo "Applying core manifest..."
+              kubectl apply --server-side -f {{ $manifestURL | quote }}
+              echo "Applying extensions manifest..."
+              kubectl apply --server-side -f {{ $extensionsURL | quote }}
+              echo "Upstream controller installed successfully."
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities:
+              drop: ["ALL"]
+{{- end }}

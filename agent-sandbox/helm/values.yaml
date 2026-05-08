@@ -1,0 +1,23 @@
+# Default values for agent-sandbox.
+
+# Namespace where OpenChoreo control plane runs.
+namespace: openchoreo-control-plane
+
+# Namespace where the data plane cluster-agent runs.
+dataPlaneNamespace: openchoreo-data-plane
+
+# Data plane service account name (used for RBAC binding).
+dataPlaneServiceAccount: cluster-agent-dataplane
+
+# upstream controls the installation of the kubernetes-sigs/agent-sandbox
+# controller, which manages Sandbox, SandboxTemplate, SandboxClaim, and
+# SandboxWarmPool resources on the data plane.
+upstream:
+  # install: when true, a pre-install Helm hook Job applies the upstream
+  # manifests before the rest of the chart is deployed.
+  install: true
+  # version: the kubernetes-sigs/agent-sandbox release tag to install.
+  version: "v0.4.3"
+  # manifestURL: override the full URL for the core manifest; leave empty
+  # to auto-build from the version.
+  manifestURL: ""

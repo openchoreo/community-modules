@@ -1,0 +1,24 @@
+apiVersion: v2
+name: agent-sandbox
+description: |
+  Installs the kubernetes-sigs/agent-sandbox controller on the data plane,
+  enabling SandboxTemplate, SandboxClaim, and SandboxWarmPool support for
+  OpenChoreo agent workloads with kernel-level isolation (runc/gvisor/kata).
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - openchoreo
+  - agent
+  - sandbox
+  - gvisor
+  - kata
+  - security
+home: https://github.com/openchoreo/community-modules/tree/main/agent-sandbox
+sources:
+  - https://github.com/openchoreo/community-modules
+  - https://github.com/kubernetes-sigs/agent-sandbox
+annotations:
+  openchoreo.dev/module-category: AI
+  openchoreo.dev/upstream-controller: "kubernetes-sigs/agent-sandbox"
+  openchoreo.dev/upstream-version: "v0.4.3"

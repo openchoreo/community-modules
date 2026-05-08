@@ -62,7 +62,7 @@ helm upgrade --install observability-logs-opensearch \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.3.11 \
+  --version 0.4.0 \
   --set openSearchSetup.openSearchSecretName="opensearch-admin-credentials"
 ```
 
@@ -73,7 +73,7 @@ helm upgrade --install observability-logs-opensearch \
 >   oci://ghcr.io/openchoreo/helm-charts/observability-logs-opensearch \
 >   --create-namespace \
 >   --namespace openchoreo-observability-plane \
->   --version 0.3.11 \
+>   --version 0.4.0 \
 >   --set openSearch.enabled=false \
 >   --set openSearchSetup.openSearchSecretName="opensearch-admin-credentials"
 > ```
@@ -90,7 +90,7 @@ helm upgrade observability-logs-opensearch \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.3.11 \
+  --version 0.4.0 \
   --reuse-values \
   --set fluent-bit.enabled=true
 ```
@@ -105,7 +105,7 @@ helm upgrade --install observability-logs-opensearch \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.3.11 \
+  --version 0.4.0 \
   --set openSearch.enabled=false \
   --set openSearchCluster.enabled=false \
   --set openSearchSetup.enabled=false \
@@ -119,3 +119,11 @@ helm upgrade --install observability-logs-opensearch \
 > and `fluent-bit.openSearchHost`, `fluent-bit.openSearchPort` and `fluent-bit.openSearchVHost` values are set to the OpenSearch endpoint exposed from the observability plane cluster.
 > Also, set `fluent-bit.openSearchVHost` if openSearchHost differs from gateway domain
 
+## Compatibility
+
+> **Note:** The Helm chart versions specified in the installation commands above are for the latest module version compatible with the development version of OpenChoreo. Refer to the compatibility table below to determine the appropriate module version for your OpenChoreo installation.
+
+| Module Version | OpenChoreo Version |
+|----------------|--------------------|
+| v0.4.x         | v1.1.x             |
+| v0.3.x         | v1.0.x             |

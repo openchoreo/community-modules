@@ -93,3 +93,12 @@ Refer to the [openobserve Helm chart documentation](https://github.com/openobser
 >  --version 0.2.2 \
 >  --set openobserve-standalone.enabled=false
 > ```
+
+
+## Compatibility
+
+> **Note:** The Helm chart versions specified in the installation commands above are for the latest module version compatible with the development version of OpenChoreo. Refer to the compatibility table below to determine the appropriate module version for your OpenChoreo installation.
+
+| Module Version | OpenChoreo Version |
+|----------------|--------------------|
+| >= v0.2.x      | >= v1.0.x          |

@@ -73,7 +73,7 @@ helm upgrade --install observability-tracing-opensearch \
   oci://ghcr.io/openchoreo/helm-charts/observability-tracing-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.3.11 \
+  --version 0.4.1 \
   --set openSearchSetup.openSearchSecretName="opensearch-admin-credentials"
 ```
 
@@ -84,7 +84,7 @@ helm upgrade --install observability-tracing-opensearch \
 >   oci://ghcr.io/openchoreo/helm-charts/observability-tracing-opensearch \
 >   --create-namespace \
 >   --namespace openchoreo-observability-plane \
->   --version 0.3.11 \
+>   --version 0.4.1 \
 >   --set openSearch.enabled=false \
 >   --set openSearchSetup.openSearchSecretName="opensearch-admin-credentials"
 > ```
@@ -105,7 +105,7 @@ helm upgrade --install observability-tracing-opensearch \
   oci://ghcr.io/openchoreo/helm-charts/observability-tracing-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.3.11 \
+  --version 0.4.1 \
   --set global.installationMode="multiClusterReceiver" \
   --set openSearchSetup.openSearchSecretName="opensearch-admin-credentials"
 ```
@@ -122,7 +122,7 @@ helm upgrade --install observability-tracing-opensearch \
   oci://ghcr.io/openchoreo/helm-charts/observability-tracing-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.3.11 \
+  --version 0.4.1 \
   --set global.installationMode="multiClusterExporter" \
   --set openSearch.enabled=false \
   --set openSearchCluster.enabled=false \
@@ -131,3 +131,13 @@ helm upgrade --install observability-tracing-opensearch \
   --set opentelemetryCollectorCustomizations.http.observabilityPlaneUrl="http://opentelemetry.<gateway-domain>:<port>" \
   --set opentelemetryCollectorCustomizations.http.observabilityPlaneVirtualHost="opentelemetry.<gateway-domain>"
 ```
+
+
+## Compatibility
+
+> **Note:** The Helm chart versions specified in the installation commands above are for the latest module version compatible with the development version of OpenChoreo. Refer to the compatibility table below to determine the appropriate module version for your OpenChoreo installation.
+
+| Module Version | OpenChoreo Version |
+|----------------|--------------------|
+| v0.4.x         | v1.1.x             |
+| v0.3.x         | v1.0.x             |

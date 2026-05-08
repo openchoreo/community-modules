@@ -121,3 +121,12 @@ helm upgrade --install observability-logs-openobserve \
 > Make sure the `openobserve-admin-credentials` secret is available in the data-plane / workflow-plane clusters as well,
 > and `fluent-bit.openObserveHost` and `fluent-bit.openObservePort` values are set to the OpenObserve endpoint exposed from the observability plane cluster,
 > while `common.openObserveOrg` and `common.openObserveStream` match the organization and stream configured in the observability plane cluster.
+
+
+## Compatibility
+
+> **Note:** The Helm chart versions specified in the installation commands above are for the latest module version compatible with the development version of OpenChoreo. Refer to the compatibility table below to determine the appropriate module version for your OpenChoreo installation.
+
+| Module Version | OpenChoreo Version |
+|----------------|--------------------|
+| >= v0.4.x      | >= v1.0.x          |

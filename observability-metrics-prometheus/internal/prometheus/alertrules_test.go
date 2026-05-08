@@ -90,6 +90,94 @@ func TestBuildPrometheusRule_MemoryUsage(t *testing.T) {
 	}
 }
 
+func TestBuildPrometheusRule_Budget(t *testing.T) {
+	params := AlertRuleParams{
+		Name:           "test-budget-alert",
+		Namespace:      "test-ns",
+		ComponentUID:   "c5f0a8d3-7e2b-4d9c-a1f4-6b8e3c0d5a7f",
+		ProjectUID:     "d6a1b9e4-8f3c-4e0d-b2a5-7c9f4d1e6b8a",
+		EnvironmentUID: "e7b2c0f5-9a4d-4f1e-c3b6-8d0a5e2f7c9b",
+		Metric:         MetricTypeBudget,
+		Enabled:        true,
+		Window:         "1h",
+		Interval:       "5m",
+		Operator:       "gt",
+		Threshold:      5.0, // $5.00 USD
+	}
+
+	rule, err := BuildPrometheusRule(params, "monitoring")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if rule.Name != "test-budget-alert" {
+		t.Errorf("expected name %q, got %q", "test-budget-alert", rule.Name)
+	}
+
+	alertRule := rule.Spec.Groups[0].Rules[0]
+	expr := alertRule.Expr.String()
+
+	// Verify the expression contains both CPU and RAM cost calculations
+	if !strings.Contains(expr, "node_cpu_hourly_cost") {
+		t.Errorf("expected CPU cost metric in expression, got %q", expr)
+	}
+	if !strings.Contains(expr, "node_ram_hourly_cost") {
+		t.Errorf("expected RAM cost metric in expression, got %q", expr)
+	}
+	if !strings.Contains(expr, "container_cpu_usage_seconds_total") {
+		t.Errorf("expected CPU usage metric in expression, got %q", expr)
+	}
+	if !strings.Contains(expr, "container_memory_working_set_bytes") {
+		t.Errorf("expected memory usage metric in expression, got %q", expr)
+	}
+	if !strings.Contains(expr, "> 5") {
+		t.Errorf("expected threshold in expression, got %q", expr)
+	}
+	if !strings.Contains(expr, "[1h]") {
+		t.Errorf("expected window in expression, got %q", expr)
+	}
+}
+
+func TestBuildPrometheusRule_Budget_DifferentOperators(t *testing.T) {
+	tests := []struct {
+		operator string
+		expected string
+	}{
+		{"gt", "> 10"},
+		{"gte", ">= 10"},
+		{"lt", "< 10"},
+		{"lte", "<= 10"},
+		{"eq", "== 10"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.operator, func(t *testing.T) {
+			params := AlertRuleParams{
+				Name:           "test-budget",
+				Namespace:      "test-ns",
+				ComponentUID:   "comp-uid",
+				ProjectUID:     "proj-uid",
+				EnvironmentUID: "env-uid",
+				Metric:         MetricTypeBudget,
+				Window:         "1h",
+				Interval:       "5m",
+				Operator:       tt.operator,
+				Threshold:      10.0,
+			}
+
+			rule, err := BuildPrometheusRule(params, "monitoring")
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			expr := rule.Spec.Groups[0].Rules[0].Expr.String()
+			if !strings.Contains(expr, tt.expected) {
+				t.Errorf("expected %q in expression, got %q", tt.expected, expr)
+			}
+		})
+	}
+}
+
 func TestBuildPrometheusRule_UnsupportedMetric(t *testing.T) {
 	params := AlertRuleParams{
 		Name:     "test-invalid",

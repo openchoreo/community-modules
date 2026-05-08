@@ -462,6 +462,7 @@ func TestDetectMetricType(t *testing.T) {
 		expr string
 		want gen.AlertRuleResponseSourceMetric
 	}{
+		{"budget", `sum(increase(container_cpu_usage_seconds_total{container!=""}[1h]) / 3600 * on(node) group_left node_cpu_hourly_cost)`, gen.AlertRuleResponseSourceMetricBudget},
 		{"cpu", `sum(rate(container_cpu_usage_seconds_total{container!=""}[2m]))`, gen.AlertRuleResponseSourceMetricCpuUsage},
 		{"memory", `sum(container_memory_working_set_bytes{container!=""})`, gen.AlertRuleResponseSourceMetricMemoryUsage},
 		{"unknown", `some_other_metric`, gen.AlertRuleResponseSourceMetricCpuUsage},
@@ -501,6 +502,18 @@ func TestExtractPromOperatorAndThreshold(t *testing.T) {
 			expr:          `(sum(...) / sum(...)) * 100 < 50`,
 			wantOperator:  "lt",
 			wantThreshold: float32Ptr(50),
+		},
+		{
+			name:          "budget greater than (raw value)",
+			expr:          `(sum(...) + sum(...)) > 5`,
+			wantOperator:  "gt",
+			wantThreshold: float32Ptr(5),
+		},
+		{
+			name:          "budget greater than or equal (raw value)",
+			expr:          `(sum(...) + sum(...)) >= 0.5`,
+			wantOperator:  "gte",
+			wantThreshold: float32Ptr(0.5),
 		},
 		{
 			name:          "no match",

@@ -23,6 +23,7 @@ const (
 
 // Defines values for AlertRuleRequestSourceMetric.
 const (
+	AlertRuleRequestSourceMetricBudget      AlertRuleRequestSourceMetric = "budget"
 	AlertRuleRequestSourceMetricCpuUsage    AlertRuleRequestSourceMetric = "cpu_usage"
 	AlertRuleRequestSourceMetricMemoryUsage AlertRuleRequestSourceMetric = "memory_usage"
 )
@@ -39,6 +40,7 @@ const (
 
 // Defines values for AlertRuleResponseSourceMetric.
 const (
+	AlertRuleResponseSourceMetricBudget      AlertRuleResponseSourceMetric = "budget"
 	AlertRuleResponseSourceMetricCpuUsage    AlertRuleResponseSourceMetric = "cpu_usage"
 	AlertRuleResponseSourceMetricMemoryUsage AlertRuleResponseSourceMetric = "memory_usage"
 )

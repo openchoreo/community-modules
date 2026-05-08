@@ -713,6 +713,9 @@ func extractPromLabelValue(expr, labelName string) string {
 }
 
 func detectMetricType(expr string) gen.AlertRuleResponseSourceMetric {
+	if strings.Contains(expr, "node_cpu_hourly_cost") {
+		return gen.AlertRuleResponseSourceMetricBudget
+	}
 	if strings.Contains(expr, "container_cpu_usage_seconds_total") {
 		return gen.AlertRuleResponseSourceMetricCpuUsage
 	}
@@ -734,6 +737,7 @@ func extractPromOperatorAndThreshold(expr string) (string, *float32) {
 		{"==", "eq"},
 	}
 
+	// Try percentage-based pattern first (cpu_usage, memory_usage: "* 100 > 80")
 	for _, op := range operators {
 		pattern := "* 100 " + op.symbol + " "
 		idx := strings.LastIndex(expr, pattern)
@@ -747,6 +751,22 @@ func extractPromOperatorAndThreshold(expr string) (string, *float32) {
 			return op.name, &f32
 		}
 	}
+
+	// Try raw value pattern (budget: ") > 5")
+	for _, op := range operators {
+		pattern := ") " + op.symbol + " "
+		idx := strings.LastIndex(expr, pattern)
+		if idx < 0 {
+			continue
+		}
+		valueStr := strings.TrimSpace(expr[idx+len(pattern):])
+		var value float64
+		if _, err := fmt.Sscanf(valueStr, "%f", &value); err == nil {
+			f32 := float32(value)
+			return op.name, &f32
+		}
+	}
+
 	return "", nil
 }
 

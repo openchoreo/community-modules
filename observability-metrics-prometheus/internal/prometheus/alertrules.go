@@ -17,6 +17,8 @@ const (
 	MetricTypeCPUUsage = "cpu_usage"
 	// MetricTypeMemoryUsage is the metric type for memory usage alerts.
 	MetricTypeMemoryUsage = "memory_usage"
+	// MetricTypeBudget is the metric type for budget alerts.
+	MetricTypeBudget = "budget"
 )
 
 // AlertRuleParams contains the parameters needed to build a PrometheusRule CR.
@@ -36,8 +38,8 @@ type AlertRuleParams struct {
 
 // BuildPrometheusRule builds a PrometheusRule CR from alert rule parameters.
 func BuildPrometheusRule(rule AlertRuleParams, namespace string) (*monitoringv1.PrometheusRule, error) {
-	if rule.Metric != MetricTypeCPUUsage && rule.Metric != MetricTypeMemoryUsage {
-		return nil, fmt.Errorf("unsupported metric type: %s (supported: %s, %s)", rule.Metric, MetricTypeCPUUsage, MetricTypeMemoryUsage)
+	if rule.Metric != MetricTypeCPUUsage && rule.Metric != MetricTypeMemoryUsage && rule.Metric != MetricTypeBudget {
+		return nil, fmt.Errorf("unsupported metric type: %s (supported: %s, %s, %s)", rule.Metric, MetricTypeCPUUsage, MetricTypeMemoryUsage, MetricTypeBudget)
 	}
 
 	expr, err := buildAlertExpression(rule)
@@ -110,6 +112,8 @@ func buildAlertExpression(rule AlertRuleParams) (string, error) {
 		return buildCPUUsageAlertExpression(rule.ComponentUID, rule.ProjectUID, rule.EnvironmentUID, operator, rule.Threshold, rule.Window), nil
 	case MetricTypeMemoryUsage:
 		return buildMemoryUsageAlertExpression(rule.ComponentUID, rule.ProjectUID, rule.EnvironmentUID, operator, rule.Threshold, rule.Window), nil
+	case MetricTypeBudget:
+		return buildBudgetAlertExpression(rule.ComponentUID, rule.ProjectUID, rule.EnvironmentUID, operator, rule.Threshold, rule.Window), nil
 	default:
 		return "", fmt.Errorf("unsupported metric type: %s", rule.Metric)
 	}
@@ -140,6 +144,43 @@ func buildMemoryUsageAlertExpression(componentUID, projectUID, environmentUID, o
 		`(sum(container_memory_working_set_bytes{container!=""} * on (pod) group_left(label_openchoreo_dev_component_uid,label_openchoreo_dev_project_uid,label_openchoreo_dev_environment_uid) kube_pod_labels{job="kube-state-metrics",%s}) / sum(kube_pod_container_resource_limits{resource="memory",job="kube-state-metrics"} * on (pod) group_left(label_openchoreo_dev_component_uid,label_openchoreo_dev_project_uid,label_openchoreo_dev_environment_uid) kube_pod_labels{job="kube-state-metrics",%s})) * 100 %s %v`,
 		labelFilter, labelFilter, operator, threshold,
 	)
+}
+
+// buildBudgetAlertExpression builds a PromQL expression for budget alerts.
+// The window parameter is used for both increase() and avg_over_time() calculations.
+// The threshold is in USD and represents the total cost for the window period.
+func buildBudgetAlertExpression(componentUID, projectUID, environmentUID, operator string, threshold float64, window string) string {
+	labelFilter := BuildComponentLabelFilter(componentUID, projectUID, environmentUID)
+
+	// CPU Cost = (CPU seconds used / 3600) * CPU hourly cost
+	cpuCostExpr := fmt.Sprintf(`sum(
+        (
+            increase(container_cpu_usage_seconds_total{container!=""}[%s]) / 3600
+        )
+        * on(node) group_left
+        node_cpu_hourly_cost
+        * on(pod, namespace) group_left(label_openchoreo_dev_component_uid,label_openchoreo_dev_project_uid,label_openchoreo_dev_environment_uid)
+        kube_pod_labels{job="kube-state-metrics",%s}
+    )`, window, labelFilter)
+
+	// RAM Cost = (Avg memory in GB) * RAM hourly cost * window duration in hours
+	// Parse window duration to calculate the scale factor
+	windowDuration, _ := time.ParseDuration(window)
+	windowSeconds := windowDuration.Seconds()
+	scale := windowSeconds / 3600.0
+
+	ramCostExpr := fmt.Sprintf(`sum(
+        (
+            avg_over_time(container_memory_working_set_bytes{container!=""}[%s]) / (1024*1024*1024)
+        )
+        * on(node) group_left
+        node_ram_hourly_cost
+        * on(pod, namespace) group_left(label_openchoreo_dev_component_uid,label_openchoreo_dev_project_uid,label_openchoreo_dev_environment_uid)
+        kube_pod_labels{job="kube-state-metrics",%s}
+        * %f
+    )`, window, labelFilter, scale)
+
+	return fmt.Sprintf(`(%s + %s) %s %v`, cpuCostExpr, ramCostExpr, operator, threshold)
 }
 
 // convertOperator converts the alert rule operator to PromQL comparison operator.

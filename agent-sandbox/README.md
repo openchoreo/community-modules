@@ -2,11 +2,13 @@
 
 This module installs the [kubernetes-sigs/agent-sandbox](https://github.com/kubernetes-sigs/agent-sandbox) controller on the data plane, enabling kernel-level isolation for AI agent workloads deployed through OpenChoreo.
 
+> **Important:** This module must be installed on each data plane cluster where agent workloads will run. In a multi-cluster setup, install it on every data plane cluster separately.
+
 ## What it does
 
-- Installs the upstream `kubernetes-sigs/agent-sandbox` controller and CRDs via a Helm pre-install hook
+- Installs the upstream `kubernetes-sigs/agent-sandbox` controller and CRDs on the data plane cluster via a Helm pre-install hook
 - Grants the data plane `cluster-agent` service account permissions to manage `SandboxTemplate`, `SandboxClaim`, `SandboxWarmPool`, and `Sandbox` resources
-- The core OpenChoreo `agent` ClusterComponentType renders the sandbox resources; this module provides the upstream controller that fulfills them
+- The core OpenChoreo `agent` ClusterComponentType renders the sandbox resources; this module provides the upstream controller that fulfills them on the data plane
 
 ## Upstream CRDs installed
 
@@ -20,25 +22,39 @@ This module installs the [kubernetes-sigs/agent-sandbox](https://github.com/kube
 ## Prerequisites
 
 - OpenChoreo installed and running
-- `kubectl` configured to point at your cluster
+- `kubectl` configured to point at the **data plane cluster**
 - `helm` v3.16+
 
 ## Installation
+
+Install on each data plane cluster:
 
 ```bash
 helm repo add openchoreo-community https://openchoreo.github.io/community-modules
 helm repo update openchoreo-community
 
+# Point kubectl at your data plane cluster, then:
 helm upgrade --install agent-sandbox \
   openchoreo-community/agent-sandbox \
-  --namespace openchoreo-control-plane \
+  --namespace openchoreo-data-plane \
+  --wait --timeout 10m
+```
+
+For multi-cluster setups, repeat for each data plane cluster:
+```bash
+# Switch context to each data plane cluster
+kubectl config use-context <data-plane-cluster>
+
+helm upgrade --install agent-sandbox \
+  openchoreo-community/agent-sandbox \
+  --namespace openchoreo-data-plane \
   --wait --timeout 10m
 ```
 
 ## Verify
 
 ```bash
-# Upstream controller running
+# Upstream controller running on the data plane
 kubectl get pods -n agent-sandbox-system
 
 # CRDs registered
@@ -52,8 +68,8 @@ kubectl get clusterrole openchoreo-agent-sandbox-access
 
 | Value | Default | Description |
 |---|---|---|
-| `namespace` | `openchoreo-control-plane` | Control plane namespace |
-| `dataPlaneNamespace` | `openchoreo-data-plane` | Data plane namespace |
+| `namespace` | `openchoreo-control-plane` | Namespace for the installer Job |
+| `dataPlaneNamespace` | `openchoreo-data-plane` | Data plane namespace (for RBAC binding) |
 | `dataPlaneServiceAccount` | `cluster-agent-dataplane` | Data plane SA for RBAC |
 | `upstream.install` | `true` | Install upstream controller via pre-install Job |
 | `upstream.version` | `v0.4.3` | Upstream release version |
@@ -62,7 +78,7 @@ kubectl get clusterrole openchoreo-agent-sandbox-access
 ## Uninstall
 
 ```bash
-helm uninstall agent-sandbox -n openchoreo-control-plane
+helm uninstall agent-sandbox -n openchoreo-data-plane
 ```
 
 Note: Helm does not delete CRDs on uninstall. To fully remove:

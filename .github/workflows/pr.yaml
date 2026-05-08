@@ -51,13 +51,14 @@ jobs:
               continue
             fi
 
-            # Check if any files in this module were changed (init/ or helm/)
+            # Check if any files in this module were changed
             if ! echo "$CHANGED_FILES" | grep -q "^${module}/"; then
               continue
             fi
 
-            # Skip if only non-helm, non-init files changed (e.g., README.md)
-            if ! echo "$CHANGED_FILES" | grep -qE "^${module}/(init/|helm/|module\.yaml)"; then
+            # Skip if only non-substantive files changed (e.g., README.md, docs)
+            # Require version bump for: init/, helm/, module.yaml, .go files, go.mod/sum, Dockerfile, Makefile
+            if ! echo "$CHANGED_FILES" | grep -qE "^${module}/(init/|helm/|module\.yaml$|.*\.go$|(.*/)?go\.mod$|(.*/)?go\.sum$|(.*/)?Dockerfile$|(.*/)?Makefile$)"; then
               continue
             fi
 

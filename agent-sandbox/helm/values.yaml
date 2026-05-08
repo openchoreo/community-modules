@@ -21,3 +21,6 @@ upstream:
   # manifestURL: override the full URL for the core manifest; leave empty
   # to auto-build from the version.
   manifestURL: ""
+  # extensionsManifestURL: override the full URL for the extensions manifest;
+  # leave empty to auto-build from the version.
+  extensionsManifestURL: ""

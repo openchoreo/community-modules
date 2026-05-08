@@ -7,7 +7,10 @@
 {{- if eq $manifestURL "" }}
   {{- $manifestURL = printf "https://github.com/kubernetes-sigs/agent-sandbox/releases/download/%s/manifest.yaml" .Values.upstream.version }}
 {{- end }}
-{{- $extensionsURL := printf "https://github.com/kubernetes-sigs/agent-sandbox/releases/download/%s/extensions.yaml" .Values.upstream.version }}
+{{- $extensionsURL := .Values.upstream.extensionsManifestURL }}
+{{- if eq $extensionsURL "" }}
+  {{- $extensionsURL = printf "https://github.com/kubernetes-sigs/agent-sandbox/releases/download/%s/extensions.yaml" .Values.upstream.version }}
+{{- end }}
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -94,7 +97,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: kubectl
-          image: bitnami/kubectl:latest
+          image: bitnami/kubectl:1.32
           command:
             - /bin/sh
             - -c

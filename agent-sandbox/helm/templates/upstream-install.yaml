@@ -97,7 +97,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: kubectl
-          image: bitnami/kubectl:1.32
+          image: bitnami/kubectl:latest
           command:
             - /bin/sh
             - -c

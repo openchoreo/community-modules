@@ -378,7 +378,7 @@ export AWS_SECRET_ACCESS_KEY="..."
 ### Step 2 - Create an IAM user
 
 Create an IAM user and attach the custom
-[combined static-credentials IAM policy](#combined-static-credentials-iam-policy).
+[combined IAM policy](#combined-static-credentials-iam-policy).
 
 Create access keys for this IAM user and export them as shown above.
 
@@ -399,13 +399,6 @@ helm upgrade --install observability-tracing-cloudwatch \
   --set "opentelemetry-collector.extraEnvsFrom[0].configMapRef.name=tracing-cloudwatch-instance-env" \
   --set "opentelemetry-collector.extraEnvsFrom[1].secretRef.name=tracing-cloudwatch-aws-credentials"
 ```
-
-This enables the static-credentials path:
-
-- The chart creates a Kubernetes Secret.
-- The adapter reads credentials from that Secret.
-- The OpenTelemetry collector reads credentials from the same Secret through
-  `opentelemetry-collector.extraEnvsFrom`.
 
 ## Wire the Observer to the adapter
 
@@ -467,12 +460,50 @@ Configure an instrumented application to send OTLP traces to the collector.
 Point the OTLP exporter at the collector's in-cluster Service:
 
 ```text
-http://tracing-cloudwatch-collector:4318   (HTTP)
-tracing-cloudwatch-collector:4317          (gRPC)
+http://opentelemetry-collector.openchoreo-observability-plane.svc.cluster.local:4318   (HTTP)
+opentelemetry-collector.openchoreo-observability-plane.svc.cluster.local:4317          (gRPC)
 ```
 
-Alternatively, port-forward the collector and send a synthetic trace using
-a local OpenTelemetry tool.
+Alternatively, port-forward the collector and send synthetic traces with
+realistic OpenChoreo resource attributes:
+
+```bash
+kubectl -n "$NS" port-forward svc/opentelemetry-collector 4318:4318 &
+```
+
+```bash
+TRACE_ID=$(openssl rand -hex 16)
+SPAN_ID=$(openssl rand -hex 8)
+NOW_NS=$(date +%s)000000000
+
+curl -s http://localhost:4318/v1/traces \
+  -H 'Content-Type: application/json' \
+  -d '{
+  "resourceSpans": [{
+    "resource": {
+      "attributes": [
+        {"key": "service.name", "value": {"stringValue": "snip-api-service"}},
+        {"key": "openchoreo.dev/namespace", "value": {"stringValue": "default"}},
+        {"key": "openchoreo.dev/component-uid", "value": {"stringValue": "ce2e8126-595a-4402-afc5-8017c4ac9f69"}},
+        {"key": "openchoreo.dev/project-uid", "value": {"stringValue": "3d473b0a-5116-4b99-ae2b-c6ac3dc3e747"}},
+        {"key": "openchoreo.dev/environment-uid", "value": {"stringValue": "1e228fd5-5f40-488b-aecb-ff0d5f68fa87"}}
+      ]
+    },
+    "scopeSpans": [{
+      "scope": {"name": "test"},
+      "spans": [{
+        "traceId": "'"$TRACE_ID"'",
+        "spanId": "'"$SPAN_ID"'",
+        "name": "GET /api/v1/urls",
+        "kind": 2,
+        "startTimeUnixNano": "'"$NOW_NS"'",
+        "endTimeUnixNano": "'"$(( $(date +%s) + 1 ))"'000000000",
+        "status": {"code": 1}
+      }]
+    }]
+  }]
+}'
+```
 
 Wait for traces to be exported to X-Ray:
 
@@ -490,7 +521,7 @@ aws xray get-trace-summaries \
   | jq '.TraceSummaries | length'
 ```
 
-You should see at least one trace summary.
+You should see at least one trace summary from UI.
 
 ### Step 4 - Query the adapter
 
@@ -526,29 +557,6 @@ Expected result:
 ```
 
 The exact values will vary.
-
-### Step 5 - Query spans for a trace
-
-```bash
-TRACE_ID=$(curl -s http://localhost:9100/api/v1alpha1/traces/query \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "startTime": "'"$(date -u -v-30M +%FT%TZ 2>/dev/null || date -u -d '-30 minutes' +%FT%TZ)"'",
-    "endTime": "'"$(date -u +%FT%TZ)"'",
-    "searchScope": {"namespace": "default"}
-  }' | jq -r '.traces[0].traceId')
-
-curl -s http://localhost:9100/api/v1alpha1/traces/$TRACE_ID/spans/query \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "startTime": "'"$(date -u -v-30M +%FT%TZ 2>/dev/null || date -u -d '-30 minutes' +%FT%TZ)"'",
-    "endTime": "'"$(date -u +%FT%TZ)"'",
-    "searchScope": {"namespace": "default"}
-  }' | jq .
-```
-
-Expected result: a flat list of spans with `spanId`, `spanName`,
-`spanKind`, `parentSpanId`, and `status` fields.
 
 ## Configuration reference
 
@@ -590,57 +598,3 @@ Unlike the logs and metrics CloudWatch modules, this tracing module does not
 expose a retention value. AWS X-Ray trace retention is service-managed and fixed
 at 30 days; it is not backed by a customer-managed CloudWatch Logs log group
 with a configurable retention policy.
-
-## k3d and kind compatibility
-
-When deploying on k3d, kind, or other non-EKS clusters:
-
-1. Set `awsCredentials.create=true` and supply your access keys.
-2. Override `opentelemetry-collector.extraEnvsFrom` to include both the
-   instance-env ConfigMap and the credentials Secret:
-
-```bash
---set "opentelemetry-collector.extraEnvsFrom[0].configMapRef.name=tracing-cloudwatch-instance-env" \
---set "opentelemetry-collector.extraEnvsFrom[1].secretRef.name=tracing-cloudwatch-aws-credentials"
-```
-
-Helm replaces list values rather than merging them, so both entries must
-be set together.
-
-## Limitations
-
-- **No alerting or webhook support.** The tracing adapter is read-only.
-  There is no alarm CRUD or webhook forwarding for trace-based alerts.
-- **No multi-cluster mode.** The `k8sattributes` processor requires
-  Kubernetes API access in the same cluster as the collector. For
-  multi-cluster deployments, traces would need to be forwarded with
-  labels already attached.
-- **X-Ray annotation limits.** X-Ray allows up to 50 annotations per
-  segment. The `indexed_attributes` configuration uses 4 annotation slots
-  for OpenChoreo labels.
-- **No configurable trace retention.** AWS X-Ray retains trace data and service
-  graph data for 30 days. The tracing module cannot set a shorter or longer
-  retention period like the logs and metrics modules do for their CloudWatch
-  Logs log groups.
-- **Trace ID epoch assumption.** The adapter derives trace start times
-  from the first 8 hex characters of the X-Ray trace ID, which represent
-  a Unix epoch. This is the standard X-Ray trace ID format, but traces
-  generated by non-standard producers may have incorrect start times.
-- **Tail sampling is best-effort.** The `tail_sampling` processor
-  operates on a time window (`decisionWait`) and may not capture all
-  spans of a trace if they arrive after the decision window closes.
-
-## Troubleshooting
-
-| Symptom | Cause | Fix |
-| --- | --- | --- |
-| Adapter pod fails to start with `Failed to verify AWS credentials` | Missing or invalid AWS credentials. | Verify the IAM policy is attached. For static credentials, check the Secret contents. For Pod Identity, verify the association exists and restart the pod. |
-| Adapter returns empty traces | No traces in X-Ray for the given time range or scope. | Check X-Ray directly with `aws xray get-trace-summaries`. Verify the collector is running and exporting traces. |
-| Adapter returns empty traces but X-Ray has data | Filter expression mismatch. OpenChoreo labels are not indexed as annotations. | Verify that `indexed_attributes` in the collector ConfigMap lists the OpenChoreo label keys. Check that workload pods carry the expected `openchoreo.dev/*` labels. |
-| Collector pod CrashLoopBackOff | Missing AWS credentials or region. | Check `AWS_REGION` and `INSTANCE_NAME` in the `tracing-cloudwatch-instance-env` ConfigMap. For static credentials, verify the Secret is referenced in `extraEnvsFrom`. |
-| Collector logs show `PutTraceSegments` permission errors | Collector IAM policy missing X-Ray write permissions. | Attach the [OpenTelemetry collector IAM policy](#opentelemetry-collector-iam-policy). |
-| Collector logs show `k8sattributes` errors | Missing RBAC permissions for the collector ServiceAccount. | Verify the collector ClusterRole includes `list` and `watch` on pods and replicasets. |
-| Spans list is empty for a valid trace | `BatchGetTraces` returned no segments. | The trace may still be processing in X-Ray. Wait a few seconds and retry. |
-| `helm install` fails with `instanceName is required` | Missing required chart value. | Add `--set instanceName=<name>`. |
-| `helm install` fails with `region is required` | Missing required chart value. | Add `--set region=<region>`. |
-| Pod Identity not injected | Pod Identity association created after pod started. | Restart the pod: `kubectl rollout restart deploy/<name>`. |

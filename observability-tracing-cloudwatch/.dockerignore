@@ -1,0 +1,6 @@
+.git
+helm/
+TASKS/
+*.md
+.dockerignore
+.gitignore

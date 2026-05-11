@@ -1,0 +1,64 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+{{- if .Values.adapter.enabled }}
+{{- include "tracing-cloudwatch.validate" . }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tracing-adapter-cloudwatch
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: tracing-adapter-cloudwatch
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tracing-adapter-cloudwatch
+  template:
+    metadata:
+      labels:
+        app: tracing-adapter-cloudwatch
+    spec:
+      serviceAccountName: tracing-adapter-cloudwatch
+      securityContext:
+        runAsUser: 10500
+        runAsGroup: 10500
+        runAsNonRoot: true
+      containers:
+        - name: tracing-adapter-cloudwatch
+          image: "{{ .Values.adapter.image.repository }}:{{ .Values.adapter.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.adapter.image.pullPolicy | default "IfNotPresent" }}
+          ports:
+            - containerPort: {{ .Values.adapter.service.port }}
+          env:
+            - name: SERVER_PORT
+              value: {{ .Values.adapter.service.port | quote }}
+            - name: AWS_REGION
+              value: {{ include "tracing-cloudwatch.region" . | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.adapter.logLevel | quote }}
+          {{- if .Values.awsCredentials.create }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.awsCredentials.name }}
+          {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.adapter.service.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.adapter.service.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.adapter.resources | nindent 12 }}
+{{- end }}

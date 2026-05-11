@@ -1,0 +1,110 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+# ---------------------------------------------------------------------------
+# Cluster identity. Both clusterName and region are required and propagate to
+# the OpenTelemetry collector and the adapter.
+# ---------------------------------------------------------------------------
+clusterName: ""
+region: ""
+
+# AWS authentication.
+#
+# Default: EKS Pod Identity / IRSA / EC2 instance-profile via the AWS SDK
+# default credentials chain. No chart-managed Secret is created.
+#
+# For k3d / kind / non-EKS targets, flip `create: true` and supply
+# `accessKeyId` / `secretAccessKey`. The chart will create a Secret and the
+# adapter envFrom's it. The OpenTelemetry collector also envFrom's it via the
+# `opentelemetry-collector.extraEnvsFrom` block (see below).
+awsCredentials:
+  create: false
+  name: "aws-xray-credentials"
+  accessKeyId: ""
+  secretAccessKey: ""
+
+# ---------------------------------------------------------------------------
+# OpenTelemetry Collector (Deployment mode for traces)
+# ---------------------------------------------------------------------------
+opentelemetry-collector:
+  enabled: true
+  mode: deployment
+
+  image:
+    repository: otel/opentelemetry-collector-contrib
+    tag: 0.151.0
+
+  serviceAccount:
+    create: true
+    annotations: {}
+
+  clusterRole:
+    create: true
+    rules:
+      - apiGroups: [""]
+        resources: ["pods"]
+        verbs: ["list", "watch"]
+      - apiGroups: ["apps"]
+        resources: ["replicasets"]
+        verbs: ["list", "watch"]
+
+  configMap:
+    create: false
+    existingName: "tracing-cloudwatch-collector-config"
+
+  extraEnvsFrom:
+    - configMapRef:
+        name: tracing-cloudwatch-cluster-env
+    - secretRef:
+        name: aws-xray-credentials
+        optional: true
+
+  fullnameOverride: "opentelemetry-collector"
+
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 128Mi
+
+  service:
+    type: ClusterIP
+
+# ---------------------------------------------------------------------------
+# Adapter — Go service that answers Observer tracing queries via AWS X-Ray
+# ---------------------------------------------------------------------------
+adapter:
+  enabled: true
+  image:
+    repository: ghcr.io/openchoreo/observability-tracing-cloudwatch-adapter
+    tag: ""
+    pullPolicy: IfNotPresent
+  service:
+    port: 9100
+  serviceAccount:
+    annotations: {}
+  logLevel: INFO
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 128Mi
+
+# ---------------------------------------------------------------------------
+# Collector pipeline customizations
+# ---------------------------------------------------------------------------
+tracingCollectorCustomizations:
+  installationMode: "singleCluster"
+  tailSampling:
+    enabled: true
+    decisionWait: 10s
+    numTraces: 100
+    expectedNewTracesPerSec: 10
+    decisionCache:
+      sampledCacheSize: 10000
+      nonSampledCacheSize: 1000
+    spansPerSecond: 10

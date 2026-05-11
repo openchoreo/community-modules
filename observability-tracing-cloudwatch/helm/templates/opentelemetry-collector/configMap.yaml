@@ -1,0 +1,100 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+{{- include "tracing-cloudwatch.validate" . }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tracing-cloudwatch-collector-config
+  namespace: {{ .Release.Namespace }}
+data:
+  relay: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+    exporters:
+      awsxray:
+        region: ${env:AWS_REGION}
+        indexed_attributes:
+          - openchoreo.dev/namespace
+          - openchoreo.dev/component-uid
+          - openchoreo.dev/project-uid
+          - openchoreo.dev/environment-uid
+          - openchoreo-instance-name
+
+    extensions:
+      health_check:
+        endpoint: ${env:MY_POD_IP}:13133
+
+    processors:
+      resource/instance:
+        attributes:
+          - key: openchoreo-instance-name
+            value: ${env:CLUSTER_NAME}
+            action: upsert
+      {{- if eq .Values.tracingCollectorCustomizations.installationMode "singleCluster" }}
+      k8sattributes:
+        auth_type: "serviceAccount"
+        passthrough: false
+
+        extract:
+          labels:
+            - tag_name: $$1
+              key_regex: (.*)
+              from: pod
+
+          metadata:
+            - k8s.pod.name
+            - k8s.pod.uid
+            - k8s.deployment.name
+            - k8s.namespace.name
+            - k8s.node.name
+      {{- end }}
+      transform/openchoreo_annotations:
+        trace_statements:
+          - context: span
+            statements:
+              - set(span.attributes["openchoreo.dev/namespace"], resource.attributes["openchoreo.dev/namespace"]) where resource.attributes["openchoreo.dev/namespace"] != nil
+              - set(span.attributes["openchoreo.dev/component-uid"], resource.attributes["openchoreo.dev/component-uid"]) where resource.attributes["openchoreo.dev/component-uid"] != nil
+              - set(span.attributes["openchoreo.dev/project-uid"], resource.attributes["openchoreo.dev/project-uid"]) where resource.attributes["openchoreo.dev/project-uid"] != nil
+              - set(span.attributes["openchoreo.dev/environment-uid"], resource.attributes["openchoreo.dev/environment-uid"]) where resource.attributes["openchoreo.dev/environment-uid"] != nil
+              - set(span.attributes["openchoreo-instance-name"], resource.attributes["openchoreo-instance-name"]) where resource.attributes["openchoreo-instance-name"] != nil
+      {{- if .Values.tracingCollectorCustomizations.tailSampling.enabled }}
+      tail_sampling:
+        decision_wait: {{ .Values.tracingCollectorCustomizations.tailSampling.decisionWait }}
+        num_traces: {{ .Values.tracingCollectorCustomizations.tailSampling.numTraces }}
+        expected_new_traces_per_sec: {{ .Values.tracingCollectorCustomizations.tailSampling.expectedNewTracesPerSec }}
+        decision_cache:
+          sampled_cache_size: {{ .Values.tracingCollectorCustomizations.tailSampling.decisionCache.sampledCacheSize }}
+          non_sampled_cache_size: {{ .Values.tracingCollectorCustomizations.tailSampling.decisionCache.nonSampledCacheSize }}
+        policies: [
+            {
+              name: rate_limiting,
+              type: rate_limiting,
+              rate_limiting: {spans_per_second: {{ .Values.tracingCollectorCustomizations.tailSampling.spansPerSecond }} }
+            },
+        ]
+      {{- end }}
+
+    service:
+      extensions: [health_check]
+      pipelines:
+        traces:
+          receivers: [otlp]
+          {{- $processors := list "resource/instance" }}
+          {{- if eq .Values.tracingCollectorCustomizations.installationMode "singleCluster" }}
+          {{- $processors = append $processors "k8sattributes" }}
+          {{- end }}
+          {{- $processors = append $processors "transform/openchoreo_annotations" }}
+          {{- if .Values.tracingCollectorCustomizations.tailSampling.enabled }}
+          {{- $processors = append $processors "tail_sampling" }}
+          {{- end }}
+          {{- if $processors }}
+          processors: [{{ join ", " $processors }}]
+          {{- end }}
+          exporters: [awsxray]

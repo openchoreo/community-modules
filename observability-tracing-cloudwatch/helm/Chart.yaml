@@ -1,0 +1,24 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v2
+name: observability-tracing-cloudwatch
+description: A Helm chart for OpenChoreo Tracing Module for AWS X-Ray (CloudWatch)
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - xray
+  - aws
+  - cloudwatch
+  - openchoreo
+  - tracing
+  - otel
+maintainers:
+  - name: OpenChoreo Team
+home: https://github.com/openchoreo/community-modules
+dependencies:
+  - name: opentelemetry-collector
+    version: "0.153.0"
+    repository: https://open-telemetry.github.io/opentelemetry-helm-charts
+    condition: opentelemetry-collector.enabled

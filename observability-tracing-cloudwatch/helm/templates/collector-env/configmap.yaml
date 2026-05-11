@@ -1,0 +1,14 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+{{- include "tracing-cloudwatch.validate" . }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tracing-cloudwatch-cluster-env
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: observability-tracing-cloudwatch
+data:
+  CLUSTER_NAME: {{ include "tracing-cloudwatch.clusterName" . | quote }}
+  AWS_REGION: {{ include "tracing-cloudwatch.region" . | quote }}

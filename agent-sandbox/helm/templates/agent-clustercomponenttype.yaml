@@ -40,7 +40,7 @@ spec:
           minimum: 0
         ttlSeconds:
           type: integer
-          description: "Time-to-live in seconds for the sandbox after being claimed. 0 means no expiry."
+          description: "Time-to-live in seconds after the sandbox finishes execution. 0 means no automatic cleanup."
           default: 0
           minimum: 0
 
@@ -79,10 +79,6 @@ spec:
               $ref: "#/$defs/ResourceQuantity"
           default: {}
       properties:
-        replicas:
-          type: integer
-          default: 1
-          minimum: 0
         resources:
           $ref: "#/$defs/ResourceRequirements"
         imagePullPolicy:

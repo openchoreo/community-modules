@@ -69,7 +69,7 @@ kube-prometheus-stack:
       receivers:
         - name: 'openchoreo-alerts'
           webhook_configs:
-            - url: 'http://metrics-adapter:9099/api/alerting/webhook'
+            - url: 'http://metrics-adapter:9099/api/v1alpha1/alerts/webhook'
               send_resolved: false
         - name: 'null'
 

@@ -63,6 +63,7 @@ helm upgrade --install observability-logs-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
   --version 0.4.0 \
+  --set adapter.openSearchSecretName="opensearch-admin-credentials" \
   --set openSearchSetup.openSearchSecretName="opensearch-admin-credentials"
 ```
 
@@ -74,6 +75,7 @@ helm upgrade --install observability-logs-opensearch \
 >   --create-namespace \
 >   --namespace openchoreo-observability-plane \
 >   --version 0.4.0 \
+>   --set adapter.openSearchSecretName="opensearch-admin-credentials" \
 >   --set openSearch.enabled=false \
 >   --set openSearchSetup.openSearchSecretName="opensearch-admin-credentials"
 > ```
@@ -106,6 +108,7 @@ helm upgrade --install observability-logs-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
   --version 0.4.0 \
+  --set adapter.openSearchSecretName="opensearch-admin-credentials" \
   --set openSearch.enabled=false \
   --set openSearchCluster.enabled=false \
   --set openSearchSetup.enabled=false \

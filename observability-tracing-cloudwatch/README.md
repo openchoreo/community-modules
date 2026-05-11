@@ -56,9 +56,9 @@ enabling scope-based trace retrieval.
 
 | Endpoint | Purpose |
 | --- | --- |
-| `POST /api/v1/traces/query` | Queries X-Ray `GetTraceSummaries` for traces matching the search scope. |
-| `POST /api/v1/traces/{traceId}/spans` | Fetches all spans (segments + subsegments) for a trace via `BatchGetTraces` and flattens the segment tree. |
-| `GET /api/v1/traces/{traceId}/spans/{spanId}` | Returns full detail for a specific span within a trace, including attributes and resource attributes. |
+| `POST /api/v1alpha1/traces/query` | Queries X-Ray `GetTraceSummaries` for traces matching the search scope. |
+| `POST /api/v1alpha1/traces/{traceId}/spans/query` | Fetches all spans (segments + subsegments) for a trace via `BatchGetTraces` and flattens the segment tree. |
+| `GET /api/v1alpha1/traces/{traceId}/spans/{spanId}` | Returns full detail for a specific span within a trace, including attributes and resource attributes. |
 | `GET /healthz` | Readiness and liveness check. Returns `200` once the adapter is ready. |
 
 ## Prerequisites
@@ -102,7 +102,9 @@ You need:
 
 - An AWS account.
 - An AWS region, for example `eu-north-1`.
-- A cluster name, for example `openchoreo-dev`.
+- An OpenChoreo instance name, for example `openchoreo-dev`.
+  This is the identifier for this OpenChoreo installation and is exported to
+  X-Ray as the `openchoreo-instance-name` annotation.
 - An IAM principal with the permissions described in [IAM permissions](#iam-permissions).
 
 For EKS, use IAM roles with **EKS Pod Identity** or IRSA. For non-EKS clusters
@@ -223,7 +225,7 @@ This is the recommended installation path for EKS clusters.
 
 ```bash
 export AWS_REGION=eu-north-1
-export CLUSTER_NAME=openchoreo-dev
+export INSTANCE_NAME=openchoreo-dev
 export NS=openchoreo-observability-plane
 ```
 
@@ -288,7 +290,7 @@ helm upgrade --install observability-tracing-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
   --version 0.1.0 \
-  --set clusterName="$CLUSTER_NAME" \
+  --set instanceName="$INSTANCE_NAME" \
   --set region="$AWS_REGION"
 ```
 
@@ -310,7 +312,7 @@ helm template observability-tracing-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-tracing-cloudwatch \
   --namespace "$NS" \
   --version 0.1.0 \
-  --set clusterName="$CLUSTER_NAME" \
+  --set instanceName="$INSTANCE_NAME" \
   --set region="$AWS_REGION" \
   | grep -A5 'kind: ServiceAccount'
 ```
@@ -329,7 +331,7 @@ Recreate the workloads so new pods receive Pod Identity credentials:
 
 ```bash
 kubectl -n "$NS" rollout restart deploy/tracing-adapter-cloudwatch
-kubectl -n "$NS" rollout restart deploy/tracing-cloudwatch-collector
+kubectl -n "$NS" rollout restart deploy/opentelemetry-collector
 ```
 
 If the collector Deployment name differs because of your Helm release name,
@@ -367,7 +369,7 @@ pointed at the same Secret through `opentelemetry-collector.extraEnvsFrom`.
 
 ```bash
 export AWS_REGION=eu-north-1
-export CLUSTER_NAME=openchoreo-test-dev
+export INSTANCE_NAME=openchoreo-dev
 export NS=openchoreo-observability-plane
 export AWS_ACCESS_KEY_ID="AKIA..."
 export AWS_SECRET_ACCESS_KEY="..."
@@ -388,13 +390,13 @@ helm upgrade --install observability-tracing-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
   --version 0.1.0 \
-  --set clusterName="$CLUSTER_NAME" \
+  --set instanceName="$INSTANCE_NAME" \
   --set region="$AWS_REGION" \
   --set awsCredentials.create=true \
   --set awsCredentials.name=tracing-cloudwatch-aws-credentials \
   --set awsCredentials.accessKeyId="$AWS_ACCESS_KEY_ID" \
   --set awsCredentials.secretAccessKey="$AWS_SECRET_ACCESS_KEY" \
-  --set "opentelemetry-collector.extraEnvsFrom[0].configMapRef.name=tracing-cloudwatch-cluster-env" \
+  --set "opentelemetry-collector.extraEnvsFrom[0].configMapRef.name=tracing-cloudwatch-instance-env" \
   --set "opentelemetry-collector.extraEnvsFrom[1].secretRef.name=tracing-cloudwatch-aws-credentials"
 ```
 
@@ -493,7 +495,7 @@ You should see at least one trace summary.
 ### Step 4 - Query the adapter
 
 ```bash
-curl -s http://localhost:9100/api/v1/traces/query \
+curl -s http://localhost:9100/api/v1alpha1/traces/query \
   -H 'Content-Type: application/json' \
   -d '{
     "startTime": "'"$(date -u -v-30M +%FT%TZ 2>/dev/null || date -u -d '-30 minutes' +%FT%TZ)"'",
@@ -528,7 +530,7 @@ The exact values will vary.
 ### Step 5 - Query spans for a trace
 
 ```bash
-TRACE_ID=$(curl -s http://localhost:9100/api/v1/traces/query \
+TRACE_ID=$(curl -s http://localhost:9100/api/v1alpha1/traces/query \
   -H 'Content-Type: application/json' \
   -d '{
     "startTime": "'"$(date -u -v-30M +%FT%TZ 2>/dev/null || date -u -d '-30 minutes' +%FT%TZ)"'",
@@ -536,7 +538,7 @@ TRACE_ID=$(curl -s http://localhost:9100/api/v1/traces/query \
     "searchScope": {"namespace": "default"}
   }' | jq -r '.traces[0].traceId')
 
-curl -s http://localhost:9100/api/v1/traces/$TRACE_ID/spans \
+curl -s http://localhost:9100/api/v1alpha1/traces/$TRACE_ID/spans/query \
   -H 'Content-Type: application/json' \
   -d '{
     "startTime": "'"$(date -u -v-30M +%FT%TZ 2>/dev/null || date -u -d '-30 minutes' +%FT%TZ)"'",
@@ -552,7 +554,7 @@ Expected result: a flat list of spans with `spanId`, `spanName`,
 
 | Value | Default | Description |
 | --- | --- | --- |
-| `clusterName` | Required | OpenChoreo or EKS cluster name. Propagated to the OpenTelemetry collector and adapter. |
+| `instanceName` | Required | Identifier for this OpenChoreo installation. Propagated to the OpenTelemetry collector and exported to X-Ray as the `openchoreo-instance-name` annotation. |
 | `region` | Required | AWS region for X-Ray API calls. |
 | `awsCredentials.create` | `false` | Creates a static AWS credentials Secret. Keep `false` for Pod Identity, IRSA, or instance-profile based auth. Set to `true` for k3d, kind, or non-EKS clusters. |
 | `awsCredentials.name` | `""` | Name of the AWS credentials Secret. Required when `awsCredentials.create=true`. |
@@ -563,7 +565,7 @@ Expected result: a flat list of spans with `spanId`, `spanName`,
 | `opentelemetry-collector.image.repository` | `otel/opentelemetry-collector-contrib` | Collector image repository. The contrib image includes `awsxray` exporter and `k8sattributes` processor. |
 | `opentelemetry-collector.image.tag` | `0.151.0` | Collector image tag. |
 | `opentelemetry-collector.serviceAccount.annotations` | `{}` | ServiceAccount annotations for IRSA or other identity integrations. |
-| `opentelemetry-collector.extraEnvsFrom` | `[{configMapRef: {name: tracing-cloudwatch-cluster-env}}]` | Extra `envFrom` entries for the collector. The default ConfigMap supplies `CLUSTER_NAME` and `AWS_REGION`. Append the static AWS credentials Secret at index `1` on non-EKS clusters. |
+| `opentelemetry-collector.extraEnvsFrom` | `[{configMapRef: {name: tracing-cloudwatch-instance-env}}]` | Extra `envFrom` entries for the collector. The default ConfigMap supplies `INSTANCE_NAME` and `AWS_REGION`. Append the static AWS credentials Secret at index `1` on non-EKS clusters. |
 | `adapter.enabled` | `true` | Deploys the X-Ray Tracing Adapter Deployment and Service. |
 | `adapter.image.repository` | `ghcr.io/openchoreo/observability-tracing-cloudwatch-adapter` | Adapter image repository. |
 | `adapter.image.tag` | `""` | Adapter image tag. Empty defaults to chart `appVersion`. |
@@ -584,16 +586,21 @@ Expected result: a flat list of spans with `spanId`, `spanName`,
 | `tracingCollectorCustomizations.tailSampling.decisionCache.nonSampledCacheSize` | `1000` | Size of the non-sampled decisions cache. |
 | `tracingCollectorCustomizations.tailSampling.spansPerSecond` | `10` | Maximum spans per second for the rate limiting policy. |
 
+Unlike the logs and metrics CloudWatch modules, this tracing module does not
+expose a retention value. AWS X-Ray trace retention is service-managed and fixed
+at 30 days; it is not backed by a customer-managed CloudWatch Logs log group
+with a configurable retention policy.
+
 ## k3d and kind compatibility
 
 When deploying on k3d, kind, or other non-EKS clusters:
 
 1. Set `awsCredentials.create=true` and supply your access keys.
 2. Override `opentelemetry-collector.extraEnvsFrom` to include both the
-   cluster-env ConfigMap and the credentials Secret:
+   instance-env ConfigMap and the credentials Secret:
 
 ```bash
---set "opentelemetry-collector.extraEnvsFrom[0].configMapRef.name=tracing-cloudwatch-cluster-env" \
+--set "opentelemetry-collector.extraEnvsFrom[0].configMapRef.name=tracing-cloudwatch-instance-env" \
 --set "opentelemetry-collector.extraEnvsFrom[1].secretRef.name=tracing-cloudwatch-aws-credentials"
 ```
 
@@ -611,6 +618,10 @@ be set together.
 - **X-Ray annotation limits.** X-Ray allows up to 50 annotations per
   segment. The `indexed_attributes` configuration uses 4 annotation slots
   for OpenChoreo labels.
+- **No configurable trace retention.** AWS X-Ray retains trace data and service
+  graph data for 30 days. The tracing module cannot set a shorter or longer
+  retention period like the logs and metrics modules do for their CloudWatch
+  Logs log groups.
 - **Trace ID epoch assumption.** The adapter derives trace start times
   from the first 8 hex characters of the X-Ray trace ID, which represent
   a Unix epoch. This is the standard X-Ray trace ID format, but traces
@@ -626,10 +637,10 @@ be set together.
 | Adapter pod fails to start with `Failed to verify AWS credentials` | Missing or invalid AWS credentials. | Verify the IAM policy is attached. For static credentials, check the Secret contents. For Pod Identity, verify the association exists and restart the pod. |
 | Adapter returns empty traces | No traces in X-Ray for the given time range or scope. | Check X-Ray directly with `aws xray get-trace-summaries`. Verify the collector is running and exporting traces. |
 | Adapter returns empty traces but X-Ray has data | Filter expression mismatch. OpenChoreo labels are not indexed as annotations. | Verify that `indexed_attributes` in the collector ConfigMap lists the OpenChoreo label keys. Check that workload pods carry the expected `openchoreo.dev/*` labels. |
-| Collector pod CrashLoopBackOff | Missing AWS credentials or region. | Check `AWS_REGION` in the `tracing-cloudwatch-cluster-env` ConfigMap. For static credentials, verify the Secret is referenced in `extraEnvsFrom`. |
+| Collector pod CrashLoopBackOff | Missing AWS credentials or region. | Check `AWS_REGION` and `INSTANCE_NAME` in the `tracing-cloudwatch-instance-env` ConfigMap. For static credentials, verify the Secret is referenced in `extraEnvsFrom`. |
 | Collector logs show `PutTraceSegments` permission errors | Collector IAM policy missing X-Ray write permissions. | Attach the [OpenTelemetry collector IAM policy](#opentelemetry-collector-iam-policy). |
 | Collector logs show `k8sattributes` errors | Missing RBAC permissions for the collector ServiceAccount. | Verify the collector ClusterRole includes `list` and `watch` on pods and replicasets. |
 | Spans list is empty for a valid trace | `BatchGetTraces` returned no segments. | The trace may still be processing in X-Ray. Wait a few seconds and retry. |
-| `helm install` fails with `clusterName is required` | Missing required chart value. | Add `--set clusterName=<name>`. |
+| `helm install` fails with `instanceName is required` | Missing required chart value. | Add `--set instanceName=<name>`. |
 | `helm install` fails with `region is required` | Missing required chart value. | Add `--set region=<region>`. |
 | Pod Identity not injected | Pod Identity association created after pod started. | Restart the pod: `kubectl rollout restart deploy/<name>`. |

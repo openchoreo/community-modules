@@ -5,10 +5,10 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: tracing-cloudwatch-cluster-env
+  name: tracing-cloudwatch-instance-env
   namespace: {{ .Release.Namespace }}
   labels:
     app.kubernetes.io/name: observability-tracing-cloudwatch
 data:
-  CLUSTER_NAME: {{ include "tracing-cloudwatch.clusterName" . | quote }}
+  INSTANCE_NAME: {{ include "tracing-cloudwatch.instanceName" . | quote }}
   AWS_REGION: {{ include "tracing-cloudwatch.region" . | quote }}

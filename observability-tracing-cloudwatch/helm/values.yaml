@@ -2,10 +2,13 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # ---------------------------------------------------------------------------
-# Cluster identity. Both clusterName and region are required and propagate to
-# the OpenTelemetry collector and the adapter.
+# Instance identity. Both instanceName and region are required and propagate to
+# the OpenTelemetry collector.
+#
+# instanceName identifies this OpenChoreo installation in exported traces. It is
+# written to X-Ray as the openchoreo-instance-name annotation.
 # ---------------------------------------------------------------------------
-clusterName: ""
+instanceName: ""
 region: ""
 
 # AWS authentication.
@@ -54,7 +57,7 @@ opentelemetry-collector:
 
   extraEnvsFrom:
     - configMapRef:
-        name: tracing-cloudwatch-cluster-env
+        name: tracing-cloudwatch-instance-env
     - secretRef:
         name: aws-xray-credentials
         optional: true
@@ -78,9 +81,9 @@ opentelemetry-collector:
 adapter:
   enabled: true
   image:
-    repository: ghcr.io/openchoreo/observability-tracing-cloudwatch-adapter
-    tag: ""
-    pullPolicy: IfNotPresent
+    repository: docker.io/chalindukodikara/observability-tracing-cloudwatch-adapter
+    tag: "dev"
+    pullPolicy: Always
   service:
     port: 9100
   serviceAccount:

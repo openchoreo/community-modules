@@ -62,7 +62,7 @@ helm upgrade --install observability-logs-opensearch \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.4.0 \
+  --version 0.4.1 \
   --set adapter.openSearchSecretName="opensearch-admin-credentials" \
   --set openSearchSetup.openSearchSecretName="opensearch-admin-credentials"
 ```
@@ -74,7 +74,7 @@ helm upgrade --install observability-logs-opensearch \
 >   oci://ghcr.io/openchoreo/helm-charts/observability-logs-opensearch \
 >   --create-namespace \
 >   --namespace openchoreo-observability-plane \
->   --version 0.4.0 \
+>   --version 0.4.1 \
 >   --set adapter.openSearchSecretName="opensearch-admin-credentials" \
 >   --set openSearch.enabled=false \
 >   --set openSearchSetup.openSearchSecretName="opensearch-admin-credentials"
@@ -92,7 +92,7 @@ helm upgrade observability-logs-opensearch \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.4.0 \
+  --version 0.4.1 \
   --reuse-values \
   --set fluent-bit.enabled=true
 ```
@@ -114,7 +114,7 @@ helm upgrade --install observability-logs-opensearch \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.4.0 \
+  --version 0.4.1 \
   --set adapter.openSearchSecretName="opensearch-admin-credentials" \
   --set openSearch.enabled=false \
   --set openSearchCluster.enabled=true \
@@ -142,7 +142,7 @@ helm upgrade --install observability-logs-opensearch \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.4.0 \
+  --version 0.4.1 \
   --set adapter.enabled=false \
   --set openSearch.enabled=false \
   --set openSearchCluster.enabled=false \

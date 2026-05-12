@@ -15,6 +15,10 @@ spec:
   podMonitorNamespaceSelector: {}
   remoteWrite:
     - url: {{ .Values.prometheusCustomizations.http.observabilityPlaneUrl | quote }}
+      {{- if .Values.prometheusCustomizations.remoteWrite.tlsInsecureSkipVerify }}
+      tlsConfig:
+        insecureSkipVerify: true
+      {{- end }}
       queueConfig:
         capacity: 2500
         maxShards: 200

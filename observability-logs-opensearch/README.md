@@ -98,9 +98,16 @@ helm upgrade observability-logs-opensearch \
 ```
 
 ### Multi-cluster topology
+
 In a **multi-cluster topology**, where the observability plane runs in a separate cluster
-from the data-plane / workflow-plane clusters, install the Helm chart in those clusters with Fluent Bit enabled and OpenSearch disabled
-to start collecting logs from the cluster and publish them to the observability plane cluster's OpenSearch endpoint.
+from the data-plane / workflow-plane clusters, you need two things:
+
+1. **On the observability plane cluster**: expose OpenSearch through the gateway via TLS passthrough so remote fluent-bit instances can reach it.
+2. **On each remote cluster**: install this chart with only fluent-bit enabled, pointed at the obs cluster's OpenSearch endpoint.
+
+#### Observability plane cluster setup
+
+The recommended approach is the **OpenSearch Operator** (`openSearchCluster.enabled=true`), which automatically creates the TLSRoute needed for gateway passthrough. Install the operator first (see [Prerequisites](#pre-requisites)), then install the chart with:
 
 ```bash
 helm upgrade --install observability-logs-opensearch \
@@ -110,17 +117,48 @@ helm upgrade --install observability-logs-opensearch \
   --version 0.4.0 \
   --set adapter.openSearchSecretName="opensearch-admin-credentials" \
   --set openSearch.enabled=false \
+  --set openSearchCluster.enabled=true \
+  --set openSearchCluster.credentialsSecretName="opensearch-admin-credentials" \
+  --set openSearchSetup.openSearchSecretName="opensearch-admin-credentials"
+```
+
+You also need TLS passthrough enabled on the observability plane gateway. When installing the `openchoreo-observability-plane` chart, include:
+
+```yaml
+gateway:
+  tlsPassthrough:
+    enabled: true
+    hostname: "opensearch.<OBS_BASE_DOMAIN>"
+```
+
+> **Note:** If you use the helm subchart OpenSearch (`openSearch.enabled=true`) instead of the operator, the TLSRoute is not auto-generated and the `BackendConfigPolicy` on the default `opensearch` Service conflicts with TLS passthrough (causes double-TLS). You would need to create a separate passthrough Service and TLSRoute manually. The operator approach avoids this complexity.
+
+#### Remote cluster setup (data-plane / workflow-plane clusters)
+
+Install the chart with only fluent-bit enabled:
+
+```bash
+helm upgrade --install observability-logs-opensearch \
+  oci://ghcr.io/openchoreo/helm-charts/observability-logs-opensearch \
+  --create-namespace \
+  --namespace openchoreo-observability-plane \
+  --version 0.4.0 \
+  --set adapter.enabled=false \
+  --set openSearch.enabled=false \
   --set openSearchCluster.enabled=false \
   --set openSearchSetup.enabled=false \
   --set fluent-bit.enabled=true \
-  --set fluent-bit.openSearchHost=opensearch.<gateway-domain> \
-  --set fluent-bit.openSearchPort=<gateway-port>
+  --set fluent-bit.openSearchHost=opensearch.<OBS_BASE_DOMAIN> \
+  --set fluent-bit.openSearchPort=<gateway-tls-passthrough-port> \
+  --set fluent-bit.openSearchVHost=opensearch.<OBS_BASE_DOMAIN>
 ```
+
 > **Note:**
 >
-> Make sure the `opensearch-admin-credentials` secret is available in the data-plane / workflow-plane clusters as well,
-> and `fluent-bit.openSearchHost`, `fluent-bit.openSearchPort` and `fluent-bit.openSearchVHost` values are set to the OpenSearch endpoint exposed from the observability plane cluster.
-> Also, set `fluent-bit.openSearchVHost` if openSearchHost differs from gateway domain
+> - The `opensearch-admin-credentials` secret must exist on the remote cluster. If you don't have a shared secret backend, create it manually (see the [Multi-Cluster Connectivity](https://openchoreo.dev/docs/platform-engineer-guide/multi-cluster-connectivity/) guide).
+> - `fluent-bit.openSearchHost` and `fluent-bit.openSearchVHost` should match the TLS passthrough hostname on the obs gateway.
+> - `fluent-bit.openSearchPort` should match the passthrough listener port (commonly `11443` if the obs gateway uses non-standard ports).
+> - The adapter and setup job are disabled because they only need to run on the observability plane cluster.
 
 ## Compatibility
 

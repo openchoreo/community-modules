@@ -60,11 +60,14 @@ helm upgrade --install observability-metrics-prometheus \
   --set kube-prometheus-stack.alertmanager.enabled=false
 ```
 
+> **Note:** If the observability plane gateway uses self-signed certificates, remote write will fail with `x509: certificate signed by unknown authority`. Add `--set prometheusCustomizations.remoteWrite.tlsInsecureSkipVerify=true` to skip TLS verification.
+
 #### Exporter configuration options
 
-| Option                                                | Default    | Description                                                                           |
-| ----------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------- |
-| `prometheusCustomizations.http.observabilityPlaneUrl` | (required) | Central receiver URL for remote write. The URL hostname is used as the `Host` header. |
+| Option                                                          | Default    | Description                                                                           |
+| --------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------- |
+| `prometheusCustomizations.http.observabilityPlaneUrl`           | (required) | Central receiver URL for remote write. The URL hostname is used as the `Host` header. |
+| `prometheusCustomizations.remoteWrite.tlsInsecureSkipVerify`    | `false`    | Skip TLS certificate verification for self-signed certs on the receiver.              |
 
 ## Verification
 

@@ -172,3 +172,5 @@ prometheusCustomizations:
   http:
     observabilityPlaneUrl: ""         # multiClusterExporter: remote write receiver URL (e.g., http://prometheus.<gateway-domain>:9091/api/v1/write)
     hostnames: []                     # multiClusterReceiver: hostnames for the gateway HTTPRoute
+  remoteWrite:
+    tlsInsecureSkipVerify: false      # multiClusterExporter: skip TLS verification for self-signed certs on the receiver

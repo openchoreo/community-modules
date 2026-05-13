@@ -498,37 +498,40 @@ func (c *Client) resolveAlarmName(ctx context.Context, ruleNamespace, ruleName s
 		return BuildAlarmName(ruleNamespace, ruleName), ruleNamespace, nil
 	}
 
-	out, err := c.cw.DescribeAlarms(ctx, &cloudwatch.DescribeAlarmsInput{
+	paginator := cloudwatch.NewDescribeAlarmsPaginator(c.cw, &cloudwatch.DescribeAlarmsInput{
 		AlarmNamePrefix: aws.String(alertAlarmPrefix),
 		AlarmTypes:      []cwtypes.AlarmType{cwtypes.AlarmTypeMetricAlarm},
 	})
-	if err != nil {
-		return "", "", fmt.Errorf("describe_alarms: %w", err)
-	}
-	for _, alarm := range out.MetricAlarms {
-		name := aws.ToString(alarm.AlarmName)
-		if name == "" {
-			continue
-		}
-		ns, rn, parseErr := ParseAlertIdentityFromAlarmName(name)
-		if parseErr == nil && rn == ruleName {
-			return name, ns, nil
-		}
-		if alarm.AlarmArn == nil {
-			continue
-		}
-		tagsOut, err := c.cw.ListTagsForResource(ctx, &cloudwatch.ListTagsForResourceInput{
-			ResourceARN: alarm.AlarmArn,
-		})
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			continue
+			return "", "", fmt.Errorf("describe_alarms: %w", err)
 		}
-		tags := tagMap(tagsOut.Tags)
-		if tags[TagRuleSource] != "" && tags[TagRuleSource] != TagRuleSourceVal {
-			continue
-		}
-		if tags[TagRuleName] == ruleName {
-			return name, tags[TagRuleNamespace], nil
+		for _, alarm := range page.MetricAlarms {
+			name := aws.ToString(alarm.AlarmName)
+			if name == "" {
+				continue
+			}
+			ns, rn, parseErr := ParseAlertIdentityFromAlarmName(name)
+			if parseErr == nil && rn == ruleName {
+				return name, ns, nil
+			}
+			if alarm.AlarmArn == nil {
+				continue
+			}
+			tagsOut, err := c.cw.ListTagsForResource(ctx, &cloudwatch.ListTagsForResourceInput{
+				ResourceARN: alarm.AlarmArn,
+			})
+			if err != nil {
+				continue
+			}
+			tags := tagMap(tagsOut.Tags)
+			if tags[TagRuleSource] != "" && tags[TagRuleSource] != TagRuleSourceVal {
+				continue
+			}
+			if tags[TagRuleName] == ruleName {
+				return name, tags[TagRuleNamespace], nil
+			}
 		}
 	}
 	return "", "", ErrAlertNotFound

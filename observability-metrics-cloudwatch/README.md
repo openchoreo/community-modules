@@ -240,7 +240,7 @@ Replace:
         "logs:DescribeLogStreams",
         "logs:PutRetentionPolicy"
       ],
-      "Resource": "arn:aws:logs:ap-southeast-1:447777059444:log-group:/aws/openchoreo/*/metrics:*"
+      "Resource": "arn:aws:logs:<region>:<account-id>:log-group:/aws/openchoreo/*/metrics:*"
     }
   ]
 }

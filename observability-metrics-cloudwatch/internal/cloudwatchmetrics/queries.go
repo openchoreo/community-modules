@@ -109,9 +109,11 @@ func (c *Client) GetResourceMetrics(ctx context.Context, p MetricsQueryParams) (
 	return res, nil
 }
 
-// getMetricDataAll issues GetMetricData with NextToken pagination.
+// getMetricDataAll issues GetMetricData with NextToken pagination, merging
+// results by Id across pages so each query produces a single MetricDataResult.
 func (c *Client) getMetricDataAll(ctx context.Context, queries []cwtypes.MetricDataQuery, start, end time.Time) ([]cwtypes.MetricDataResult, error) {
-	var all []cwtypes.MetricDataResult
+	merged := make(map[string]int) // Id -> index in results
+	var results []cwtypes.MetricDataResult
 	var nextToken *string
 	for {
 		out, err := c.cw.GetMetricData(ctx, &cloudwatch.GetMetricDataInput{
@@ -124,13 +126,28 @@ func (c *Client) getMetricDataAll(ctx context.Context, queries []cwtypes.MetricD
 		if err != nil {
 			return nil, fmt.Errorf("get_metric_data: %w", err)
 		}
-		all = append(all, out.MetricDataResults...)
+		for _, r := range out.MetricDataResults {
+			id := aws.ToString(r.Id)
+			if idx, ok := merged[id]; ok {
+				results[idx].Timestamps = append(results[idx].Timestamps, r.Timestamps...)
+				results[idx].Values = append(results[idx].Values, r.Values...)
+				if r.StatusCode != "" {
+					results[idx].StatusCode = r.StatusCode
+				}
+				if r.Label != nil {
+					results[idx].Label = r.Label
+				}
+			} else {
+				merged[id] = len(results)
+				results = append(results, r)
+			}
+		}
 		if out.NextToken == nil || aws.ToString(out.NextToken) == "" {
 			break
 		}
 		nextToken = out.NextToken
 	}
-	return all, nil
+	return results, nil
 }
 
 // buildScopeDimensions returns the EMF dimensions for the requested scope.

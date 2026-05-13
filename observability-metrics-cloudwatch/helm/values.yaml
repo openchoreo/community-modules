@@ -170,7 +170,7 @@ adotcollector:
         send_batch_size: 8192
     exporters:
       debug:
-        verbosity: detailed
+        verbosity: basic
       awsemf:
         region: ${env:AWS_REGION}
         namespace: OpenChoreo/Metrics
@@ -205,7 +205,7 @@ adotcollector:
         metrics:
           receivers: [kubeletstats, prometheus]
           processors: [groupbyattrs, resource/promlabels, k8sattributes, metricstransform, resource/inject_namespace, batch]
-          exporters: [awsemf, debug]
+          exporters: [awsemf]
 
 # ---------------------------------------------------------------------------
 # Metric storage settings.

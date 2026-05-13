@@ -5,6 +5,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -28,7 +29,7 @@ func newTestServer(t *testing.T) (*Server, string) {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 		_ = srv.Shutdown(ctx)
-		if err := <-serveErr; err != nil {
+		if err := <-serveErr; err != nil && !errors.Is(err, http.ErrServerClosed) {
 			t.Errorf("Serve() returned %v", err)
 		}
 	})
@@ -94,7 +95,7 @@ func TestServerShutdownStopsListener(t *testing.T) {
 	}
 	select {
 	case err := <-done:
-		if err != nil {
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			t.Fatalf("Serve() error = %v", err)
 		}
 	case <-time.After(2 * time.Second):

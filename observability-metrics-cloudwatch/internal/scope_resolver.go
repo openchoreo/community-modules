@@ -48,7 +48,6 @@ type scopeResolver interface {
 
 type KubernetesScopeResolver struct {
 	baseURL    string
-	token      string
 	httpClient *http.Client
 	logger     *slog.Logger
 }
@@ -59,9 +58,8 @@ func NewKubernetesScopeResolver(logger *slog.Logger) (*KubernetesScopeResolver, 
 	if host == "" || port == "" {
 		return nil, nil
 	}
-	tokenBytes, err := os.ReadFile(k8sSATokenPath)
-	if err != nil {
-		return nil, fmt.Errorf("read service account token: %w", err)
+	if _, err := os.Stat(k8sSATokenPath); err != nil {
+		return nil, fmt.Errorf("service account token not available: %w", err)
 	}
 	caBytes, err := os.ReadFile(k8sCACertPath)
 	if err != nil {
@@ -73,7 +71,6 @@ func NewKubernetesScopeResolver(logger *slog.Logger) (*KubernetesScopeResolver, 
 	}
 	return &KubernetesScopeResolver{
 		baseURL: "https://" + host + ":" + port,
-		token:   strings.TrimSpace(string(tokenBytes)),
 		httpClient: &http.Client{
 			Timeout: 5 * time.Second,
 			Transport: &http.Transport{
@@ -105,12 +102,18 @@ func (r *KubernetesScopeResolver) Resolve(ctx context.Context, p ScopeResolution
 		return ScopeResolutionResult{}, false, nil
 	}
 
+	tokenBytes, err := os.ReadFile(k8sSATokenPath)
+	if err != nil {
+		return ScopeResolutionResult{}, false, fmt.Errorf("read service account token: %w", err)
+	}
+	token := strings.TrimSpace(string(tokenBytes))
+
 	u := r.baseURL + "/api/v1/pods?labelSelector=" + url.QueryEscape(strings.Join(selectorParts, ","))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return ScopeResolutionResult{}, false, err
 	}
-	req.Header.Set("Authorization", "Bearer "+r.token)
+	req.Header.Set("Authorization", "Bearer "+token)
 	resp, err := r.httpClient.Do(req)
 	if err != nil {
 		return ScopeResolutionResult{}, false, err

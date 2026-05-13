@@ -5,7 +5,6 @@ package app
 
 import (
 	"log/slog"
-	"os"
 	"testing"
 )
 
@@ -13,13 +12,6 @@ func setEnvs(t *testing.T, envs map[string]string) {
 	t.Helper()
 	for k, v := range envs {
 		t.Setenv(k, v)
-	}
-}
-
-func clearEnvs(t *testing.T, keys []string) {
-	t.Helper()
-	for _, k := range keys {
-		os.Unsetenv(k)
 	}
 }
 
@@ -66,7 +58,7 @@ func TestLoadConfig_CustomValues(t *testing.T) {
 }
 
 func TestLoadConfig_MissingRegion(t *testing.T) {
-	clearEnvs(t, []string{"AWS_REGION"})
+	t.Setenv("AWS_REGION", "")
 
 	_, err := LoadConfig()
 	if err == nil {

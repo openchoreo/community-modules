@@ -1,6 +1,6 @@
 CFG_DIR := internal/api
 OAPI_CODEGEN_VERSION ?= v2.5.1
-SPEC := https://raw.githubusercontent.com/openchoreo/openchoreo.github.io/refs/heads/main/static/api-specs/observability-tracing-adapter-api.yaml
+SPEC := https://raw.githubusercontent.com/openchoreo/openchoreo.github.io/ac623d6153db633fe78ce25fb649635e96b24361/static/api-specs/observability-tracing-adapter-api.yaml
 
 .PHONY: oapi-codegen-install openapi-codegen unit-test
 

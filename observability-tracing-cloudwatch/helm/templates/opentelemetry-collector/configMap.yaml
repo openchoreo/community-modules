@@ -45,7 +45,7 @@ data:
         extract:
           labels:
             - tag_name: $$1
-              key_regex: (.*)
+              key_regex: (openchoreo\.dev/.*)
               from: pod
 
           metadata:

@@ -14,6 +14,9 @@ const (
 	LabelProjectUID     = "openchoreo.dev/project-uid"
 	LabelEnvironmentUID = "openchoreo.dev/environment-uid"
 	LabelNamespace      = "openchoreo.dev/namespace"
+	LabelComponent      = "openchoreo.dev/component"
+	LabelProject        = "openchoreo.dev/project"
+	LabelEnvironment    = "openchoreo.dev/environment"
 )
 
 // prometheusLabelName converts a Kubernetes label name to a Prometheus metric label name.
@@ -271,4 +274,143 @@ func Build90thPercentileHTTPRequestLatencyQuery(labelFilter, sumByClause, groupL
 // Build99thPercentileHTTPRequestLatencyQuery builds a PromQL query for 99th percentile HTTP request latency.
 func Build99thPercentileHTTPRequestLatencyQuery(labelFilter, sumByClause, groupLeftClause string) string {
 	return buildHTTPRequestLatencyPercentileQuery("0.99", labelFilter, sumByClause, groupLeftClause)
+}
+
+// ----------------------------
+// Runtime topology queries
+// ----------------------------
+
+// Output label names used by runtime topology queries to carry the resolved
+// OpenChoreo component names and UIDs after the kube_pod_labels join.
+const (
+	RuntimeTopologySrcComponentNameLabel = "src_component"
+	RuntimeTopologyDstComponentNameLabel = "dst_component"
+	RuntimeTopologySrcComponentUIDLabel  = "src_component_uid"
+	RuntimeTopologyDstComponentUIDLabel  = "dst_component_uid"
+)
+
+// BuildRuntimeTopologyLabelFilter builds a Prometheus label filter for runtime
+// topology queries using UID labels (same convention as BuildLabelFilter).
+func BuildRuntimeTopologyLabelFilter(namespace, componentUID, projectUID, environmentUID string) string {
+	namespaceLabel := prometheusLabelName(LabelNamespace)
+	componentLabel := prometheusLabelName(LabelComponentUID)
+	projectLabel := prometheusLabelName(LabelProjectUID)
+	environmentLabel := prometheusLabelName(LabelEnvironmentUID)
+
+	filter := fmt.Sprintf("%s=%q", namespaceLabel, namespace)
+	if componentUID != "" {
+		filter = fmt.Sprintf("%s,%s=%q", filter, componentLabel, componentUID)
+	}
+	if projectUID != "" {
+		filter = fmt.Sprintf("%s,%s=%q", filter, projectLabel, projectUID)
+	}
+	if environmentUID != "" {
+		filter = fmt.Sprintf("%s,%s=%q", filter, environmentLabel, environmentUID)
+	}
+	return filter
+}
+
+// buildHubblePodMappingExprWithSide returns a PromQL expression that joins
+// kube_pod_labels (filtered by labelFilter) onto Hubble's per-side keys.
+// `side` is either "source" or "destination". The resulting series carries
+// both a name label (`outputNameLabel`) and a UID label (`outputUIDLabel`)
+// for the OpenChoreo component.
+func buildHubblePodMappingExprWithSide(side, outputNameLabel, outputUIDLabel, labelFilter string) string {
+	nsLabel := side + "_namespace"
+	podLabel := side + "_pod"
+	componentNameLabel := prometheusLabelName(LabelComponent)
+	componentUIDLabel := prometheusLabelName(LabelComponentUID)
+	return fmt.Sprintf(`label_replace(
+            label_replace(
+                label_replace(
+                    label_replace(
+                        kube_pod_labels{job="kube-state-metrics",%s},
+                        "%s", "$1", "namespace", "(.*)"
+                    ),
+                    "%s", "$1", "pod", "(.*)"
+                ),
+                "%s", "$1", "%s", "(.*)"
+            ),
+            "%s", "$1", "%s", "(.*)"
+        )`, labelFilter, nsLabel, podLabel, outputNameLabel, componentNameLabel, outputUIDLabel, componentUIDLabel)
+}
+
+// buildRuntimeTopologyIncreaseQuery builds a PromQL sum-by expression that
+// aggregates the total increase of a Hubble metric over the given duration by
+// (src_component, dst_component, src_component_uid, dst_component_uid).
+// extraMatcher is an optional additional Hubble label selector.
+// duration must be a valid PromQL duration string (e.g. "3600s").
+func buildRuntimeTopologyIncreaseQuery(metric, extraMatcher, labelFilter, duration string) string {
+	src := RuntimeTopologySrcComponentNameLabel
+	dst := RuntimeTopologyDstComponentNameLabel
+	srcUID := RuntimeTopologySrcComponentUIDLabel
+	dstUID := RuntimeTopologyDstComponentUIDLabel
+	srcMapping := buildHubblePodMappingExprWithSide("source", src, srcUID, labelFilter)
+	dstMapping := buildHubblePodMappingExprWithSide("destination", dst, dstUID, labelFilter)
+
+	// Join dst side first (server reporter), then join src side.
+	withDst := fmt.Sprintf(
+		`increase(%s{reporter="server"%s}[%s])
+            * on(destination_namespace, destination_pod) group_left(%s, %s) %s`,
+		metric, extraMatcher, duration, dst, dstUID, dstMapping)
+
+	return fmt.Sprintf(`
+    sum by (%s, %s, %s, %s) (
+        (%s)
+        * on(source_namespace, source_pod) group_left(%s, %s) %s
+    )`, src, dst, srcUID, dstUID, withDst, src, srcUID, srcMapping)
+}
+
+// BuildRuntimeTopologyComponentEdgeRequestCountQuery builds a PromQL instant query
+// returning the total HTTP request count per (src_component_uid, dst_component_uid)
+// edge over the given duration window.
+func BuildRuntimeTopologyComponentEdgeRequestCountQuery(duration, labelFilter string) string {
+	return buildRuntimeTopologyIncreaseQuery("hubble_http_requests_total", "", labelFilter, duration) + "\n    > 0"
+}
+
+// BuildRuntimeTopologyComponentEdgeErrorCountQuery builds a PromQL instant query
+// returning the total 4xx/5xx error count per (src_component_uid, dst_component_uid)
+// edge over the given duration window.
+func BuildRuntimeTopologyComponentEdgeErrorCountQuery(duration, labelFilter string) string {
+	return buildRuntimeTopologyIncreaseQuery(
+		"hubble_http_requests_total", `,status=~"^[45]..?$"`, labelFilter, duration,
+	) + "\n    > 0"
+}
+
+// BuildRuntimeTopologyComponentEdgeMeanLatencyQuery builds a PromQL instant query
+// for mean HTTP request latency per (src_component_uid, dst_component_uid) edge
+// over the given duration window. Result is in seconds.
+func BuildRuntimeTopologyComponentEdgeMeanLatencyQuery(duration, labelFilter string) string {
+	durationSum := buildRuntimeTopologyIncreaseQuery("hubble_http_request_duration_seconds_sum", "", labelFilter, duration)
+	requestCount := buildRuntimeTopologyIncreaseQuery("hubble_http_requests_total", "", labelFilter, duration)
+	return fmt.Sprintf("(%s\n    /\n%s)\n    >= 0", durationSum, requestCount)
+}
+
+// buildRuntimeTopologyBucketQuery returns the histogram bucket increase expression
+// keyed by (src_component, dst_component, src_component_uid, dst_component_uid, le).
+func buildRuntimeTopologyBucketQuery(duration, labelFilter string) string {
+	src := RuntimeTopologySrcComponentNameLabel
+	dst := RuntimeTopologyDstComponentNameLabel
+	srcUID := RuntimeTopologySrcComponentUIDLabel
+	dstUID := RuntimeTopologyDstComponentUIDLabel
+	srcMapping := buildHubblePodMappingExprWithSide("source", src, srcUID, labelFilter)
+	dstMapping := buildHubblePodMappingExprWithSide("destination", dst, dstUID, labelFilter)
+
+	withDst := fmt.Sprintf(
+		`increase(hubble_http_request_duration_seconds_bucket{reporter="server"}[%s])
+            * on(destination_namespace, destination_pod) group_left(%s, %s) %s`,
+		duration, dst, dstUID, dstMapping)
+
+	return fmt.Sprintf(`
+    sum by (%s, %s, %s, %s, le) (
+        (%s)
+        * on(source_namespace, source_pod) group_left(%s, %s) %s
+    )`, src, dst, srcUID, dstUID, withDst, src, srcUID, srcMapping)
+}
+
+// BuildRuntimeTopologyComponentEdgeLatencyPercentileQuery builds a PromQL instant
+// query using histogram_quantile for the given quantile (e.g. "0.5", "0.9", "0.99")
+// over the given duration window. Result is in seconds.
+func BuildRuntimeTopologyComponentEdgeLatencyPercentileQuery(quantile, duration, labelFilter string) string {
+	return fmt.Sprintf("histogram_quantile(%s,\n%s)\n    >= 0", quantile, buildRuntimeTopologyBucketQuery(duration, labelFilter))
 }

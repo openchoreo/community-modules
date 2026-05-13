@@ -118,7 +118,7 @@ kube-prometheus-stack:
       - kube_pod_start_time
       - kube_pod_status_phase
     metricLabelsAllowlist:
-      - pods=[openchoreo.dev/component-uid,openchoreo.dev/project-uid,openchoreo.dev/environment-uid,openchoreo.dev/namespace]
+      - pods=[openchoreo.dev/component-uid,openchoreo.dev/project-uid,openchoreo.dev/environment-uid,openchoreo.dev/namespace,openchoreo.dev/component,openchoreo.dev/project,openchoreo.dev/environment]
 
   thanosRuler:
     enabled: false

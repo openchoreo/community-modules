@@ -5,6 +5,7 @@ package gen
 
 import (
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/oapi-codegen/runtime"
@@ -75,8 +76,43 @@ const (
 
 // Defines values for MetricsQueryRequestMetric.
 const (
-	Http     MetricsQueryRequestMetric = "http"
-	Resource MetricsQueryRequestMetric = "resource"
+	MetricsQueryRequestMetricHttp     MetricsQueryRequestMetric = "http"
+	MetricsQueryRequestMetricResource MetricsQueryRequestMetric = "resource"
+)
+
+// Defines values for RuntimeTopologyEdgeProtocol.
+const (
+	RuntimeTopologyEdgeProtocolHttp RuntimeTopologyEdgeProtocol = "http"
+)
+
+// Defines values for RuntimeTopologyNodeComponentKind.
+const (
+	RuntimeTopologyNodeComponentKindComponent RuntimeTopologyNodeComponentKind = "component"
+)
+
+// Defines values for RuntimeTopologyNodeExternalKind.
+const (
+	RuntimeTopologyNodeExternalKindExternal RuntimeTopologyNodeExternalKind = "external"
+)
+
+// Defines values for RuntimeTopologyNodeGatewayKind.
+const (
+	RuntimeTopologyNodeGatewayKindGateway RuntimeTopologyNodeGatewayKind = "gateway"
+)
+
+// Defines values for RuntimeTopologyNodeRefComponentKind.
+const (
+	RuntimeTopologyNodeRefComponentKindComponent RuntimeTopologyNodeRefComponentKind = "component"
+)
+
+// Defines values for RuntimeTopologyNodeRefExternalKind.
+const (
+	RuntimeTopologyNodeRefExternalKindExternal RuntimeTopologyNodeRefExternalKind = "external"
+)
+
+// Defines values for RuntimeTopologyNodeRefGatewayKind.
+const (
+	RuntimeTopologyNodeRefGatewayKindGateway RuntimeTopologyNodeRefGatewayKind = "gateway"
 )
 
 // AlertRuleRequest defines model for AlertRuleRequest.
@@ -284,6 +320,190 @@ type ResourceMetricsTimeSeries struct {
 	MemoryUsage    *[]MetricsTimeSeriesItem `json:"memoryUsage,omitempty"`
 }
 
+// RuntimeTopologyEdge An observed traffic flow from a source node to a target node.
+type RuntimeTopologyEdge struct {
+	// Id Stable identifier for the edge. Convention:
+	//   - component->component: `${srcComponentUid}->${dstComponentUid}`
+	//   - gateway->component:   `gateway:${gatewayName}->${dstComponentUid}`
+	//   - component->external:  `${srcComponentUid}->external:${externalHost}`
+	Id string `json:"id"`
+
+	// Metrics Aggregate HTTP metrics over the requested window. Latency values are
+	// in seconds, matching /api/v1/metrics/query.
+	Metrics  *RuntimeTopologyMetrics     `json:"metrics,omitempty"`
+	Protocol RuntimeTopologyEdgeProtocol `json:"protocol"`
+	Source   RuntimeTopologyNodeRef      `json:"source"`
+	Target   RuntimeTopologyNodeRef      `json:"target"`
+}
+
+// RuntimeTopologyEdgeProtocol defines model for RuntimeTopologyEdge.Protocol.
+type RuntimeTopologyEdgeProtocol string
+
+// RuntimeTopologyMetrics Aggregate HTTP metrics over the requested window. Latency values are
+// in seconds, matching /api/v1/metrics/query.
+type RuntimeTopologyMetrics struct {
+	LatencyP50               *float64 `json:"latencyP50,omitempty"`
+	LatencyP90               *float64 `json:"latencyP90,omitempty"`
+	LatencyP99               *float64 `json:"latencyP99,omitempty"`
+	MeanLatency              *float64 `json:"meanLatency,omitempty"`
+	RequestCount             *float64 `json:"requestCount,omitempty"`
+	UnsuccessfulRequestCount *float64 `json:"unsuccessfulRequestCount,omitempty"`
+}
+
+// RuntimeTopologyNode defines model for RuntimeTopologyNode.
+type RuntimeTopologyNode struct {
+	union json.RawMessage
+}
+
+// RuntimeTopologyNodeComponent A component node observed in the runtime topology with its aggregated metrics.
+type RuntimeTopologyNodeComponent struct {
+	// Component The component name (from pod label).
+	Component string `json:"component"`
+
+	// ComponentUid The component UID (from pod label).
+	ComponentUid openapi_types.UUID               `json:"componentUid"`
+	Kind         RuntimeTopologyNodeComponentKind `json:"kind"`
+
+	// Metrics Aggregate HTTP metrics over the requested window. Latency values are
+	// in seconds, matching /api/v1/metrics/query.
+	Metrics   *RuntimeTopologyMetrics `json:"metrics,omitempty"`
+	Namespace *string                 `json:"namespace,omitempty"`
+
+	// Project The project name (from pod label).
+	Project *string `json:"project,omitempty"`
+
+	// ProjectUid The project UID.
+	ProjectUid *openapi_types.UUID `json:"projectUid,omitempty"`
+}
+
+// RuntimeTopologyNodeComponentKind defines model for RuntimeTopologyNodeComponent.Kind.
+type RuntimeTopologyNodeComponentKind string
+
+// RuntimeTopologyNodeExternal An external node observed in the runtime topology with its aggregated metrics.
+type RuntimeTopologyNodeExternal struct {
+	Component    *string                         `json:"component,omitempty"`
+	ComponentUid *openapi_types.UUID             `json:"componentUid,omitempty"`
+	ExternalHost *string                         `json:"externalHost,omitempty"`
+	Kind         RuntimeTopologyNodeExternalKind `json:"kind"`
+
+	// Metrics Aggregate HTTP metrics over the requested window. Latency values are
+	// in seconds, matching /api/v1/metrics/query.
+	Metrics    *RuntimeTopologyMetrics `json:"metrics,omitempty"`
+	Namespace  *string                 `json:"namespace,omitempty"`
+	ProjectUid *openapi_types.UUID     `json:"projectUid,omitempty"`
+}
+
+// RuntimeTopologyNodeExternalKind defines model for RuntimeTopologyNodeExternal.Kind.
+type RuntimeTopologyNodeExternalKind string
+
+// RuntimeTopologyNodeGateway A gateway node observed in the runtime topology with its aggregated metrics.
+type RuntimeTopologyNodeGateway struct {
+	GatewayName string                         `json:"gatewayName"`
+	Kind        RuntimeTopologyNodeGatewayKind `json:"kind"`
+
+	// Metrics Aggregate HTTP metrics over the requested window. Latency values are
+	// in seconds, matching /api/v1/metrics/query.
+	Metrics    *RuntimeTopologyMetrics `json:"metrics,omitempty"`
+	Namespace  *string                 `json:"namespace,omitempty"`
+	ProjectUid *openapi_types.UUID     `json:"projectUid,omitempty"`
+}
+
+// RuntimeTopologyNodeGatewayKind defines model for RuntimeTopologyNodeGateway.Kind.
+type RuntimeTopologyNodeGatewayKind string
+
+// RuntimeTopologyNodeRef defines model for RuntimeTopologyNodeRef.
+type RuntimeTopologyNodeRef struct {
+	union json.RawMessage
+}
+
+// RuntimeTopologyNodeRefComponent Reference to a component node in the runtime topology.
+type RuntimeTopologyNodeRefComponent struct {
+	// Component The component name (from pod label).
+	Component string `json:"component"`
+
+	// ComponentUid The component UID (from pod label).
+	ComponentUid string                              `json:"componentUid"`
+	Kind         RuntimeTopologyNodeRefComponentKind `json:"kind"`
+
+	// Namespace The namespace name (from pod label).
+	Namespace *string `json:"namespace,omitempty"`
+
+	// Project The project name (from pod label).
+	Project *string `json:"project,omitempty"`
+
+	// ProjectUid The project UID.
+	ProjectUid *string `json:"projectUid,omitempty"`
+}
+
+// RuntimeTopologyNodeRefComponentKind defines model for RuntimeTopologyNodeRefComponent.Kind.
+type RuntimeTopologyNodeRefComponentKind string
+
+// RuntimeTopologyNodeRefExternal Reference to an external node in the runtime topology.
+type RuntimeTopologyNodeRefExternal struct {
+	Component    *string                            `json:"component,omitempty"`
+	ComponentUid *openapi_types.UUID                `json:"componentUid,omitempty"`
+	ExternalHost *string                            `json:"externalHost,omitempty"`
+	Kind         RuntimeTopologyNodeRefExternalKind `json:"kind"`
+	Namespace    *string                            `json:"namespace,omitempty"`
+
+	// ProjectUid Included when the source is in a different project
+	ProjectUid *openapi_types.UUID `json:"projectUid,omitempty"`
+}
+
+// RuntimeTopologyNodeRefExternalKind defines model for RuntimeTopologyNodeRefExternal.Kind.
+type RuntimeTopologyNodeRefExternalKind string
+
+// RuntimeTopologyNodeRefGateway Reference to a gateway node in the runtime topology.
+type RuntimeTopologyNodeRefGateway struct {
+	// GatewayName Gateway name (e.g., internet, intranet)
+	GatewayName string                            `json:"gatewayName"`
+	Kind        RuntimeTopologyNodeRefGatewayKind `json:"kind"`
+	Namespace   *string                           `json:"namespace,omitempty"`
+	ProjectUid  *openapi_types.UUID               `json:"projectUid,omitempty"`
+}
+
+// RuntimeTopologyNodeRefGatewayKind defines model for RuntimeTopologyNodeRefGateway.Kind.
+type RuntimeTopologyNodeRefGatewayKind string
+
+// RuntimeTopologyRequest Request body for POST /api/v1alpha1/metrics/runtime-topology.
+// searchScope must include namespace, projectUid, and environmentUid —
+// runtime topology is project- and environment-scoped. The optional
+// componentUid, if set, restricts results to edges that touch that
+// component.
+type RuntimeTopologyRequest struct {
+	// EndTime The end time of the query window
+	EndTime time.Time `json:"endTime"`
+
+	// IncludeExternal Whether to include edges to/from components outside the requested
+	// project. Defaults to true.
+	IncludeExternal *bool `json:"includeExternal,omitempty"`
+
+	// IncludeGateways Whether to include gateway -> component edges. Defaults to true.
+	IncludeGateways *bool                `json:"includeGateways,omitempty"`
+	SearchScope     ComponentSearchScope `json:"searchScope"`
+
+	// StartTime The start time of the query window
+	StartTime time.Time `json:"startTime"`
+}
+
+// RuntimeTopologyResponse Runtime topology response. Nodes and edges only include entities for
+// which traffic was observed in the window — static topology comes from
+// a separate source.
+type RuntimeTopologyResponse struct {
+	Edges *[]RuntimeTopologyEdge `json:"edges,omitempty"`
+	Nodes *[]RuntimeTopologyNode `json:"nodes,omitempty"`
+
+	// Summary Metadata describing the query window.
+	Summary RuntimeTopologySummary `json:"summary"`
+}
+
+// RuntimeTopologySummary Metadata describing the query window.
+type RuntimeTopologySummary struct {
+	EndTime     time.Time `json:"endTime"`
+	GeneratedAt time.Time `json:"generatedAt"`
+	StartTime   time.Time `json:"startTime"`
+}
+
 // HandleAlertWebhookJSONBody defines parameters for HandleAlertWebhook.
 type HandleAlertWebhookJSONBody = map[string]interface{}
 
@@ -298,6 +518,9 @@ type UpdateAlertRuleJSONRequestBody = AlertRuleRequest
 
 // HandleAlertWebhookJSONRequestBody defines body for HandleAlertWebhook for application/json ContentType.
 type HandleAlertWebhookJSONRequestBody = HandleAlertWebhookJSONBody
+
+// QueryRuntimeTopologyJSONRequestBody defines body for QueryRuntimeTopology for application/json ContentType.
+type QueryRuntimeTopologyJSONRequestBody = RuntimeTopologyRequest
 
 // AsResourceMetricsTimeSeries returns the union data inside the MetricsQueryResponse as a ResourceMetricsTimeSeries
 func (t MetricsQueryResponse) AsResourceMetricsTimeSeries() (ResourceMetricsTimeSeries, error) {
@@ -357,6 +580,244 @@ func (t MetricsQueryResponse) MarshalJSON() ([]byte, error) {
 }
 
 func (t *MetricsQueryResponse) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsRuntimeTopologyNodeComponent returns the union data inside the RuntimeTopologyNode as a RuntimeTopologyNodeComponent
+func (t RuntimeTopologyNode) AsRuntimeTopologyNodeComponent() (RuntimeTopologyNodeComponent, error) {
+	var body RuntimeTopologyNodeComponent
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromRuntimeTopologyNodeComponent overwrites any union data inside the RuntimeTopologyNode as the provided RuntimeTopologyNodeComponent
+func (t *RuntimeTopologyNode) FromRuntimeTopologyNodeComponent(v RuntimeTopologyNodeComponent) error {
+	v.Kind = "component"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeRuntimeTopologyNodeComponent performs a merge with any union data inside the RuntimeTopologyNode, using the provided RuntimeTopologyNodeComponent
+func (t *RuntimeTopologyNode) MergeRuntimeTopologyNodeComponent(v RuntimeTopologyNodeComponent) error {
+	v.Kind = "component"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsRuntimeTopologyNodeGateway returns the union data inside the RuntimeTopologyNode as a RuntimeTopologyNodeGateway
+func (t RuntimeTopologyNode) AsRuntimeTopologyNodeGateway() (RuntimeTopologyNodeGateway, error) {
+	var body RuntimeTopologyNodeGateway
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromRuntimeTopologyNodeGateway overwrites any union data inside the RuntimeTopologyNode as the provided RuntimeTopologyNodeGateway
+func (t *RuntimeTopologyNode) FromRuntimeTopologyNodeGateway(v RuntimeTopologyNodeGateway) error {
+	v.Kind = "gateway"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeRuntimeTopologyNodeGateway performs a merge with any union data inside the RuntimeTopologyNode, using the provided RuntimeTopologyNodeGateway
+func (t *RuntimeTopologyNode) MergeRuntimeTopologyNodeGateway(v RuntimeTopologyNodeGateway) error {
+	v.Kind = "gateway"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsRuntimeTopologyNodeExternal returns the union data inside the RuntimeTopologyNode as a RuntimeTopologyNodeExternal
+func (t RuntimeTopologyNode) AsRuntimeTopologyNodeExternal() (RuntimeTopologyNodeExternal, error) {
+	var body RuntimeTopologyNodeExternal
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromRuntimeTopologyNodeExternal overwrites any union data inside the RuntimeTopologyNode as the provided RuntimeTopologyNodeExternal
+func (t *RuntimeTopologyNode) FromRuntimeTopologyNodeExternal(v RuntimeTopologyNodeExternal) error {
+	v.Kind = "external"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeRuntimeTopologyNodeExternal performs a merge with any union data inside the RuntimeTopologyNode, using the provided RuntimeTopologyNodeExternal
+func (t *RuntimeTopologyNode) MergeRuntimeTopologyNodeExternal(v RuntimeTopologyNodeExternal) error {
+	v.Kind = "external"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t RuntimeTopologyNode) Discriminator() (string, error) {
+	var discriminator struct {
+		Discriminator string `json:"kind"`
+	}
+	err := json.Unmarshal(t.union, &discriminator)
+	return discriminator.Discriminator, err
+}
+
+func (t RuntimeTopologyNode) ValueByDiscriminator() (interface{}, error) {
+	discriminator, err := t.Discriminator()
+	if err != nil {
+		return nil, err
+	}
+	switch discriminator {
+	case "component":
+		return t.AsRuntimeTopologyNodeComponent()
+	case "external":
+		return t.AsRuntimeTopologyNodeExternal()
+	case "gateway":
+		return t.AsRuntimeTopologyNodeGateway()
+	default:
+		return nil, errors.New("unknown discriminator value: " + discriminator)
+	}
+}
+
+func (t RuntimeTopologyNode) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *RuntimeTopologyNode) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsRuntimeTopologyNodeRefComponent returns the union data inside the RuntimeTopologyNodeRef as a RuntimeTopologyNodeRefComponent
+func (t RuntimeTopologyNodeRef) AsRuntimeTopologyNodeRefComponent() (RuntimeTopologyNodeRefComponent, error) {
+	var body RuntimeTopologyNodeRefComponent
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromRuntimeTopologyNodeRefComponent overwrites any union data inside the RuntimeTopologyNodeRef as the provided RuntimeTopologyNodeRefComponent
+func (t *RuntimeTopologyNodeRef) FromRuntimeTopologyNodeRefComponent(v RuntimeTopologyNodeRefComponent) error {
+	v.Kind = "component"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeRuntimeTopologyNodeRefComponent performs a merge with any union data inside the RuntimeTopologyNodeRef, using the provided RuntimeTopologyNodeRefComponent
+func (t *RuntimeTopologyNodeRef) MergeRuntimeTopologyNodeRefComponent(v RuntimeTopologyNodeRefComponent) error {
+	v.Kind = "component"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsRuntimeTopologyNodeRefGateway returns the union data inside the RuntimeTopologyNodeRef as a RuntimeTopologyNodeRefGateway
+func (t RuntimeTopologyNodeRef) AsRuntimeTopologyNodeRefGateway() (RuntimeTopologyNodeRefGateway, error) {
+	var body RuntimeTopologyNodeRefGateway
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromRuntimeTopologyNodeRefGateway overwrites any union data inside the RuntimeTopologyNodeRef as the provided RuntimeTopologyNodeRefGateway
+func (t *RuntimeTopologyNodeRef) FromRuntimeTopologyNodeRefGateway(v RuntimeTopologyNodeRefGateway) error {
+	v.Kind = "gateway"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeRuntimeTopologyNodeRefGateway performs a merge with any union data inside the RuntimeTopologyNodeRef, using the provided RuntimeTopologyNodeRefGateway
+func (t *RuntimeTopologyNodeRef) MergeRuntimeTopologyNodeRefGateway(v RuntimeTopologyNodeRefGateway) error {
+	v.Kind = "gateway"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsRuntimeTopologyNodeRefExternal returns the union data inside the RuntimeTopologyNodeRef as a RuntimeTopologyNodeRefExternal
+func (t RuntimeTopologyNodeRef) AsRuntimeTopologyNodeRefExternal() (RuntimeTopologyNodeRefExternal, error) {
+	var body RuntimeTopologyNodeRefExternal
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromRuntimeTopologyNodeRefExternal overwrites any union data inside the RuntimeTopologyNodeRef as the provided RuntimeTopologyNodeRefExternal
+func (t *RuntimeTopologyNodeRef) FromRuntimeTopologyNodeRefExternal(v RuntimeTopologyNodeRefExternal) error {
+	v.Kind = "external"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeRuntimeTopologyNodeRefExternal performs a merge with any union data inside the RuntimeTopologyNodeRef, using the provided RuntimeTopologyNodeRefExternal
+func (t *RuntimeTopologyNodeRef) MergeRuntimeTopologyNodeRefExternal(v RuntimeTopologyNodeRefExternal) error {
+	v.Kind = "external"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t RuntimeTopologyNodeRef) Discriminator() (string, error) {
+	var discriminator struct {
+		Discriminator string `json:"kind"`
+	}
+	err := json.Unmarshal(t.union, &discriminator)
+	return discriminator.Discriminator, err
+}
+
+func (t RuntimeTopologyNodeRef) ValueByDiscriminator() (interface{}, error) {
+	discriminator, err := t.Discriminator()
+	if err != nil {
+		return nil, err
+	}
+	switch discriminator {
+	case "component":
+		return t.AsRuntimeTopologyNodeRefComponent()
+	case "external":
+		return t.AsRuntimeTopologyNodeRefExternal()
+	case "gateway":
+		return t.AsRuntimeTopologyNodeRefGateway()
+	default:
+		return nil, errors.New("unknown discriminator value: " + discriminator)
+	}
+}
+
+func (t RuntimeTopologyNodeRef) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *RuntimeTopologyNodeRef) UnmarshalJSON(b []byte) error {
 	err := t.union.UnmarshalJSON(b)
 	return err
 }

@@ -96,7 +96,7 @@ func TestQueryMetrics_MissingNamespace(t *testing.T) {
 	defer mockServer.Close()
 
 	body := gen.MetricsQueryRequest{
-		Metric:      gen.Resource,
+		Metric:      gen.MetricsQueryRequestMetricResource,
 		StartTime:   time.Now().Add(-1 * time.Hour),
 		EndTime:     time.Now(),
 		SearchScope: gen.ComponentSearchScope{Namespace: ""},
@@ -117,7 +117,7 @@ func TestQueryMetrics_InvalidStep(t *testing.T) {
 
 	invalidStep := "invalid"
 	body := gen.MetricsQueryRequest{
-		Metric:      gen.Resource,
+		Metric:      gen.MetricsQueryRequestMetricResource,
 		StartTime:   time.Now().Add(-1 * time.Hour),
 		EndTime:     time.Now(),
 		Step:        &invalidStep,
@@ -139,7 +139,7 @@ func TestQueryMetrics_NegativeStep(t *testing.T) {
 
 	negStep := "-5m"
 	body := gen.MetricsQueryRequest{
-		Metric:      gen.Resource,
+		Metric:      gen.MetricsQueryRequestMetricResource,
 		StartTime:   time.Now().Add(-1 * time.Hour),
 		EndTime:     time.Now(),
 		Step:        &negStep,

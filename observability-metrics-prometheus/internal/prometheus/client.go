@@ -113,6 +113,28 @@ func (c *Client) QueryRangeTimeSeries(ctx context.Context, query string, start, 
 	return tsResp, nil
 }
 
+// QueryInstant executes a PromQL instant query at the given time and returns results
+// in the same TimeSeriesResponse format as QueryRangeTimeSeries.
+func (c *Client) QueryInstant(ctx context.Context, query string, t time.Time) (*TimeSeriesResponse, error) {
+	c.logger.Debug("Executing Prometheus instant query", "time", t)
+
+	result, warnings, err := c.api.Query(ctx, query, t)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute instant query: %w", err)
+	}
+
+	if len(warnings) > 0 {
+		c.logger.Warn("Prometheus instant query returned warnings", "warnings", warnings)
+	}
+
+	tsResp := convertToTimeSeriesResponse(result)
+
+	c.logger.Debug("Prometheus instant query executed successfully",
+		"series_count", len(tsResp.Data.Result))
+
+	return tsResp, nil
+}
+
 func convertToTimeSeriesResponse(result model.Value) *TimeSeriesResponse {
 	tsResp := &TimeSeriesResponse{
 		Status: "success",

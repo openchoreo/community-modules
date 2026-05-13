@@ -126,7 +126,7 @@ func TestQueryResourceMetrics_Success(t *testing.T) {
 	handler := NewMetricsHandler(promClient, nil, nil, "test-ns", testLogger())
 
 	body := gen.MetricsQueryRequest{
-		Metric:    gen.Resource,
+		Metric:    gen.MetricsQueryRequestMetricResource,
 		StartTime: time.Now().Add(-1 * time.Hour),
 		EndTime:   time.Now(),
 		SearchScope: gen.ComponentSearchScope{
@@ -157,7 +157,7 @@ func TestQueryHTTPMetrics_Success(t *testing.T) {
 	handler := NewMetricsHandler(promClient, nil, nil, "test-ns", testLogger())
 
 	body := gen.MetricsQueryRequest{
-		Metric:    gen.Http,
+		Metric:    gen.MetricsQueryRequestMetricHttp,
 		StartTime: time.Now().Add(-1 * time.Hour),
 		EndTime:   time.Now(),
 		SearchScope: gen.ComponentSearchScope{
@@ -222,7 +222,7 @@ func TestQueryMetrics_PrometheusError(t *testing.T) {
 	handler := NewMetricsHandler(promClient, nil, nil, "test-ns", testLogger())
 
 	body := gen.MetricsQueryRequest{
-		Metric:    gen.Resource,
+		Metric:    gen.MetricsQueryRequestMetricResource,
 		StartTime: time.Now().Add(-1 * time.Hour),
 		EndTime:   time.Now(),
 		SearchScope: gen.ComponentSearchScope{
@@ -291,7 +291,7 @@ func TestQueryMetrics_WithCustomStep(t *testing.T) {
 
 	step := "10m"
 	body := gen.MetricsQueryRequest{
-		Metric:    gen.Resource,
+		Metric:    gen.MetricsQueryRequestMetricResource,
 		StartTime: time.Now().Add(-1 * time.Hour),
 		EndTime:   time.Now(),
 		Step:      &step,

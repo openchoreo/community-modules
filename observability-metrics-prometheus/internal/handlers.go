@@ -120,9 +120,9 @@ func (h *MetricsHandler) QueryMetrics(ctx context.Context, request gen.QueryMetr
 	endTime := request.Body.EndTime
 
 	switch request.Body.Metric {
-	case gen.Resource:
+	case gen.MetricsQueryRequestMetricResource:
 		return h.queryResourceMetrics(ctx, labelFilter, sumByClause, groupLeftClause, startTime, endTime, step)
-	case gen.Http:
+	case gen.MetricsQueryRequestMetricHttp:
 		return h.queryHTTPMetrics(ctx, labelFilter, sumByClause, groupLeftClause, startTime, endTime, step)
 	default:
 		return badRequestMetrics(fmt.Sprintf("unknown metric type: %s", request.Body.Metric)), nil
@@ -393,7 +393,7 @@ func (h *MetricsHandler) UpdateAlertRule(ctx context.Context, request gen.Update
 			Detail: strPtr(fmt.Sprintf("metadata.name %q must match ruleName %q", params.Name, request.RuleName)),
 		}, nil
 	}
-	
+
 	newRule, err := prometheus.BuildPrometheusRule(params, h.alertNamespace)
 	if err != nil {
 		return gen.UpdateAlertRule400JSONResponse{
@@ -671,11 +671,11 @@ func mapPrometheusRuleToAlertRuleResponse(pr *monitoringv1.PrometheusRule, ruleN
 	operator, threshold := extractPromOperatorAndThreshold(expr)
 	enabled := true
 	resp.Condition = &struct {
-		Enabled   *bool                                  `json:"enabled,omitempty"`
-		Interval  *string                                `json:"interval,omitempty"`
+		Enabled   *bool                                   `json:"enabled,omitempty"`
+		Interval  *string                                 `json:"interval,omitempty"`
 		Operator  *gen.AlertRuleResponseConditionOperator `json:"operator,omitempty"`
-		Threshold *float32                               `json:"threshold,omitempty"`
-		Window    *string                                `json:"window,omitempty"`
+		Threshold *float32                                `json:"threshold,omitempty"`
+		Window    *string                                 `json:"window,omitempty"`
 	}{
 		Enabled: &enabled,
 	}
@@ -846,6 +846,255 @@ func badRequestMetrics(detail string) gen.QueryMetrics400JSONResponse {
 
 func serverErrorMetrics(detail string) gen.QueryMetrics500JSONResponse {
 	return gen.QueryMetrics500JSONResponse{
+		Title:  errorTitle(gen.InternalServerError),
+		Detail: strPtr(detail),
+	}
+}
+
+// ----------------------------
+// Runtime topoloy
+// ----------------------------
+
+// QueryRuntimeTopology returns the live HTTP traffic topology (nodes + edges
+// with aggregated metrics) for a project in a given environment.
+//
+// Current implementation scope (minimal scaffolding):
+//   - component -> component edges via Hubble's hubble_http_requests_total,
+//     aggregated by (source component UID, destination component UID).
+//   - request count only — error count and latency percentiles are TODO.
+//   - gateway -> component and component -> external edges are TODO.
+//   - per-node aggregates are TODO.
+func (h *MetricsHandler) QueryRuntimeTopology(
+	ctx context.Context,
+	request gen.QueryRuntimeTopologyRequestObject,
+) (gen.QueryRuntimeTopologyResponseObject, error) {
+	if h.promClient == nil {
+		return badOrServerErrorRuntimeTopology500("Prometheus client not configured"), nil
+	}
+	if request.Body == nil {
+		return badOrServerErrorRuntimeTopology400("request body is required"), nil
+	}
+
+	scope := request.Body.SearchScope
+	if scope.Namespace == "" {
+		return badOrServerErrorRuntimeTopology400("searchScope.namespace is required"), nil
+	}
+	projectUID := derefString(scope.ProjectUid)
+	environmentUID := derefString(scope.EnvironmentUid)
+	if projectUID == "" {
+		return badOrServerErrorRuntimeTopology400("searchScope.projectUid is required"), nil
+	}
+	if environmentUID == "" {
+		return badOrServerErrorRuntimeTopology400("searchScope.environmentUid is required"), nil
+	}
+	componentUIDFilter := derefString(scope.ComponentUid)
+
+	startTime := request.Body.StartTime
+	endTime := request.Body.EndTime
+	durationSec := endTime.Sub(startTime).Seconds()
+	if durationSec <= 0 {
+		return badOrServerErrorRuntimeTopology400("endTime must be after startTime"), nil
+	}
+
+	durationStr := fmt.Sprintf("%.0fs", durationSec)
+
+	// Filter by project + environment UIDs. Component UID filter is applied in
+	// buildEdgeMetricMap so edges touching the component on either side are included.
+	labelFilter := prometheus.BuildRuntimeTopologyLabelFilter(scope.Namespace, "", projectUID, environmentUID)
+
+	type runtimeTopologyQuerySpec struct {
+		name    string
+		queryFn func(string) string
+		dest    *map[edgeKey]float64
+	}
+
+	var (
+		mu              sync.Mutex
+		firstErr        error
+		requestCountMap = map[edgeKey]float64{}
+		errorCountMap   = map[edgeKey]float64{}
+		avgLatencyMap   = map[edgeKey]float64{}
+		p50LatencyMap   = map[edgeKey]float64{}
+		p90LatencyMap   = map[edgeKey]float64{}
+		p99LatencyMap   = map[edgeKey]float64{}
+	)
+
+	queries := []runtimeTopologyQuerySpec{
+		{"requestCount", func(f string) string {
+			return prometheus.BuildRuntimeTopologyComponentEdgeRequestCountQuery(durationStr, f)
+		}, &requestCountMap},
+		{"errorCount", func(f string) string {
+			return prometheus.BuildRuntimeTopologyComponentEdgeErrorCountQuery(durationStr, f)
+		}, &errorCountMap},
+		{"avgLatency", func(f string) string {
+			return prometheus.BuildRuntimeTopologyComponentEdgeMeanLatencyQuery(durationStr, f)
+		}, &avgLatencyMap},
+		{"p50Latency", func(f string) string {
+			return prometheus.BuildRuntimeTopologyComponentEdgeLatencyPercentileQuery("0.5", durationStr, f)
+		}, &p50LatencyMap},
+		{"p90Latency", func(f string) string {
+			return prometheus.BuildRuntimeTopologyComponentEdgeLatencyPercentileQuery("0.9", durationStr, f)
+		}, &p90LatencyMap},
+		{"p99Latency", func(f string) string {
+			return prometheus.BuildRuntimeTopologyComponentEdgeLatencyPercentileQuery("0.99", durationStr, f)
+		}, &p99LatencyMap},
+	}
+
+	var wg sync.WaitGroup
+	for _, q := range queries {
+		wg.Add(1)
+		go func(q runtimeTopologyQuerySpec) {
+			defer wg.Done()
+			query := q.queryFn(labelFilter)
+			h.logger.Debug("Runtime topology query", "name", q.name, "query", query)
+			resp, err := h.promClient.QueryInstant(ctx, query, endTime)
+			if err != nil {
+				h.logger.Error("Runtime topology sub-query failed", "metric", q.name, "error", err)
+				mu.Lock()
+				if firstErr == nil {
+					firstErr = fmt.Errorf("sub-query %q failed: %w", q.name, err)
+				}
+				mu.Unlock()
+				return
+			}
+			m := buildEdgeMetricMap(resp.Data.Result, componentUIDFilter)
+			mu.Lock()
+			*q.dest = m
+			mu.Unlock()
+		}(q)
+	}
+	wg.Wait()
+
+	if firstErr != nil {
+		h.logger.Error("Runtime topology query failed", "error", firstErr)
+		return badOrServerErrorRuntimeTopology500(fmt.Sprintf("query failed: %v", firstErr)), nil
+	}
+
+	edges := buildRuntimeTopologyEdges(
+		scope.Namespace, projectUID,
+		requestCountMap, errorCountMap, avgLatencyMap, p50LatencyMap, p90LatencyMap, p99LatencyMap,
+	)
+
+	response := gen.RuntimeTopologyResponse{
+		Edges: &edges,
+		// TODO: populate Nodes once per-node aggregate queries are implemented.
+		Nodes: nil,
+		Summary: gen.RuntimeTopologySummary{
+			StartTime:   startTime,
+			EndTime:     endTime,
+			GeneratedAt: time.Now().UTC(),
+		},
+	}
+	return runtimeTopologyOKResponse(response), nil
+}
+
+// edgeKey identifies a directed HTTP edge between two components. UIDs are the
+// stable identity; names come from the same pod labels and are carried for the response.
+type edgeKey struct {
+	srcUID  string
+	dstUID  string
+	srcName string
+	dstName string
+}
+
+// buildEdgeMetricMap converts Prometheus instant query results into a map from
+// edge key to metric value. UIDs are required; names are included when present.
+func buildEdgeMetricMap(
+	series []prometheus.TimeSeries,
+	componentUIDFilter string,
+) map[edgeKey]float64 {
+	m := make(map[edgeKey]float64, len(series))
+	for _, ts := range series {
+		srcUID := ts.Metric[prometheus.RuntimeTopologySrcComponentUIDLabel]
+		dstUID := ts.Metric[prometheus.RuntimeTopologyDstComponentUIDLabel]
+		if srcUID == "" || dstUID == "" {
+			continue
+		}
+		if componentUIDFilter != "" && srcUID != componentUIDFilter && dstUID != componentUIDFilter {
+			continue
+		}
+		srcName := ts.Metric[prometheus.RuntimeTopologySrcComponentNameLabel]
+		dstName := ts.Metric[prometheus.RuntimeTopologyDstComponentNameLabel]
+		points := prometheus.ConvertTimeSeriesToTimeValuePoints(ts)
+		if len(points) == 0 || points[0].Value <= 0 {
+			continue
+		}
+		m[edgeKey{srcUID, dstUID, srcName, dstName}] += points[0].Value
+	}
+	return m
+}
+
+// buildRuntimeTopologyEdges assembles RuntimeTopologyEdge values from per-metric
+// maps. Request count drives which edges exist; other maps default to zero when absent.
+func buildRuntimeTopologyEdges(
+	namespace string,
+	projectUID string,
+	requestCountMap, errorCountMap, avgLatencyMap, p50LatencyMap, p90LatencyMap, p99LatencyMap map[edgeKey]float64,
+) []gen.RuntimeTopologyEdge {
+	edges := make([]gen.RuntimeTopologyEdge, 0, len(requestCountMap))
+	for key, requestCount := range requestCountMap {
+		if requestCount <= 0 {
+			continue
+		}
+
+		ns := namespace
+		proj := projectUID
+		errorCount := errorCountMap[key]
+		avgLatency := avgLatencyMap[key]
+		p50Latency := p50LatencyMap[key]
+		p90Latency := p90LatencyMap[key]
+		p99Latency := p99LatencyMap[key]
+
+		var source, target gen.RuntimeTopologyNodeRef
+		_ = source.FromRuntimeTopologyNodeRefComponent(gen.RuntimeTopologyNodeRefComponent{
+			Kind:         gen.RuntimeTopologyNodeRefComponentKindComponent,
+			Component:    key.srcName,
+			ComponentUid: key.srcUID,
+			ProjectUid:   &proj,
+			Namespace:    &ns,
+		})
+		_ = target.FromRuntimeTopologyNodeRefComponent(gen.RuntimeTopologyNodeRefComponent{
+			Kind:         gen.RuntimeTopologyNodeRefComponentKindComponent,
+			Component:    key.dstName,
+			ComponentUid: key.dstUID,
+			ProjectUid:   &proj,
+			Namespace:    &ns,
+		})
+		edges = append(edges, gen.RuntimeTopologyEdge{
+			Id:       fmt.Sprintf("%s->%s", key.srcUID, key.dstUID),
+			Source:   source,
+			Target:   target,
+			Protocol: gen.RuntimeTopologyEdgeProtocolHttp,
+			Metrics: &gen.RuntimeTopologyMetrics{
+				RequestCount:             &requestCount,
+				UnsuccessfulRequestCount: &errorCount,
+				MeanLatency:              &avgLatency,
+				LatencyP50:               &p50Latency,
+				LatencyP90:               &p90Latency,
+				LatencyP99:               &p99Latency,
+			},
+		})
+	}
+	return edges
+}
+
+// runtimeTopologyOKResponse wraps the 200 response so the strict-server
+// codegen accepts the value. Unlike MetricsQueryResponse (which is a oneOf
+// union), RuntimeTopologyResponse is a plain object — but we keep a thin
+// helper for symmetry.
+func runtimeTopologyOKResponse(r gen.RuntimeTopologyResponse) gen.QueryRuntimeTopology200JSONResponse {
+	return gen.QueryRuntimeTopology200JSONResponse(r)
+}
+
+func badOrServerErrorRuntimeTopology400(detail string) gen.QueryRuntimeTopology400JSONResponse {
+	return gen.QueryRuntimeTopology400JSONResponse{
+		Title:  errorTitle(gen.BadRequest),
+		Detail: strPtr(detail),
+	}
+}
+
+func badOrServerErrorRuntimeTopology500(detail string) gen.QueryRuntimeTopology500JSONResponse {
+	return gen.QueryRuntimeTopology500JSONResponse{
 		Title:  errorTitle(gen.InternalServerError),
 		Detail: strPtr(detail),
 	}

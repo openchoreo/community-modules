@@ -110,11 +110,25 @@ helm upgrade --install observability-tracing-opensearch \
   --set openSearchSetup.openSearchSecretName="opensearch-admin-credentials"
 ```
 
+> **Note:** If OpenSearch is already installed by another module (e.g., `observability-logs-opensearch`), disable it to avoid conflicts:
+>
+> ```bash
+> helm upgrade --install observability-tracing-opensearch \
+>   oci://ghcr.io/openchoreo/helm-charts/observability-tracing-opensearch \
+>   --create-namespace \
+>   --namespace openchoreo-observability-plane \
+>   --version 0.4.1 \
+>   --set openSearch.enabled=false \
+>   --set global.installationMode="multiClusterReceiver" \
+>   --set openSearchSetup.openSearchSecretName="opensearch-admin-credentials"
+> ```
+
 ### 2) Install an exporter (each dataplane cluster)
 
 Install the chart in each dataplane cluster. The exporter does **not** need OpenSearch or the OpenSearch setup job; it only needs to export OTLP to the receiver.
 
 Set `opentelemetryCollectorCustomizations.http.observabilityPlaneUrl` to the receiver endpoint (for example: `http://opentelemetry.<gateway-domain>:<port>`).
+If the observability plane gateway is exposed over a TLS/HTTPS listener, use the `https://` scheme instead (for example: `https://opentelemetry.<gateway-domain>:<port>`).
 Also set `opentelemetryCollectorCustomizations.http.observabilityPlaneVirtualHost` if observabilityPlaneUrl differs from the gateway hostname.
 
 ```bash
@@ -127,7 +141,8 @@ helm upgrade --install observability-tracing-opensearch \
   --set openSearch.enabled=false \
   --set openSearchCluster.enabled=false \
   --set openSearchSetup.enabled=false \
-  --set opentelemetry-collector.extraEnvs=[] \
+  --set adapter.enabled=false \
+  --set-json opentelemetry-collector.extraEnvs="[]" \
   --set opentelemetryCollectorCustomizations.http.observabilityPlaneUrl="http://opentelemetry.<gateway-domain>:<port>" \
   --set opentelemetryCollectorCustomizations.http.observabilityPlaneVirtualHost="opentelemetry.<gateway-domain>"
 ```

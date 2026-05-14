@@ -807,12 +807,12 @@ Setting up EventBridge requires three resources: a **connection** (carries the
 authentication header), an **API destination** (the adapter webhook URL), and a
 **rule** (matches CloudWatch alarm events and routes them to the destination).
 
-#### Step 1 — Create an EventBridge connection
+### Step 1 — Create an EventBridge connection
 
 The connection stores the `X-OpenChoreo-Webhook-Token` header that the adapter
 requires when `adapter.alerting.webhookAuth.enabled=true`.
 
-#### Step 2 — Create an API destination
+### Step 2 — Create an API destination
 
 Point the destination at the adapter's public webhook URL. 
 
@@ -822,7 +822,7 @@ Point the destination at the adapter's public webhook URL.
 https://metrics-webhook.example.com/api/v1alpha1/alerts/webhook
 ```
 
-#### Step 3 — Create an EventBridge rule
+### Step 3 — Create an EventBridge rule
 
 Use a custom event pattern so only managed metric alarms reach the adapter.
 The `alarmName` prefix filter ensures log-module alarms (`oc-logs-alert`)
@@ -843,7 +843,7 @@ are not routed here.
 }
 ```
 
-#### Step 4 — Attach the API destination as a target
+### Step 4 — Attach the API destination as a target
 
 EventBridge needs an IAM role that allows it to invoke the API destination.
 

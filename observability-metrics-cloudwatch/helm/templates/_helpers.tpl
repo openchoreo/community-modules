@@ -33,7 +33,7 @@ SPDX-License-Identifier: Apache-2.0
 {{- if $create -}}
 {{- default "metrics-cloudwatch-log-retention" $name -}}
 {{- else -}}
-{{- default "default" $name -}}
+{{- required "metrics.logRetention.serviceAccount.name is required when metrics.logRetention.serviceAccount.create=false" $name -}}
 {{- end -}}
 {{- end -}}
 

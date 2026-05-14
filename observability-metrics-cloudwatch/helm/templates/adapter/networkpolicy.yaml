@@ -25,6 +25,11 @@ spec:
         - namespaceSelector:
             matchLabels:
               {{- toYaml .Values.adapter.networkPolicy.gatewayNamespaceLabels | nindent 14 }}
+          {{- if .Values.adapter.networkPolicy.gatewayPodLabels }}
+          podSelector:
+            matchLabels:
+              {{- toYaml .Values.adapter.networkPolicy.gatewayPodLabels | nindent 14 }}
+          {{- end }}
         {{- end }}
         {{- if .Values.adapter.networkPolicy.allowProbeIPBlock }}
         - ipBlock:

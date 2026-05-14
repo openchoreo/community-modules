@@ -30,12 +30,8 @@ This module supports both:
 7. [Verify metric ingestion and querying](#verify-metric-ingestion-and-querying)
 8. [Enable metric alerting](#enable-metric-alerting)
 9. [Expose the alert webhook through EventBridge](#expose-the-alert-webhook-through-eventbridge)
-10. [Alerting behavior](#alerting-behavior)
-11. [Shared webhook secret](#shared-webhook-secret)
-12. [Configuration reference](#configuration-reference)
-13. [k3d and kind compatibility](#k3d-and-kind-compatibility)
-14. [Limitations](#limitations)
-15. [Troubleshooting](#troubleshooting)
+10. [Shared webhook secret](#shared-webhook-secret)
+11. [Configuration reference](#configuration-reference)
 
 ## Architecture
 
@@ -341,7 +337,7 @@ Create another IAM role for the OpenTelemetry collector, for example:
 OpenChoreoCloudWatchMetricsRoleForAdot
 ```
 
-Attach the custom [OpenTelemetry collector IAM policy](#adot-collector-iam-policy).
+Attach the custom [OpenTelemetry collector and log-retention IAM policy](#opentelemetry-collector-and-log-retention-iam-policy).
 
 Use the following trust policy for both roles when using EKS Pod Identity:
 
@@ -717,8 +713,7 @@ kubectl -n default delete pod metrics-cloudwatch-smoke-test --ignore-not-found
 ```
 
 If all arrays remain empty after waiting another few minutes, the problem is
-usually in the ingestion path rather than the adapter. Check
-[Troubleshooting](#troubleshooting).
+usually in the ingestion path rather than the adapter.
 
 ## Enable metric alerting
 

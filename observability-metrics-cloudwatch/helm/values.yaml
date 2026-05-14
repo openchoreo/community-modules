@@ -281,6 +281,7 @@ adapter:
     # match your Gateway controller's data-plane namespace
     # (e.g. `kubernetes.io/metadata.name: openchoreo-data-plane`).
     gatewayNamespaceLabels: {}
+    gatewayPodLabels: {}
     allowProbeIPBlock: ""
   resources:
     limits:

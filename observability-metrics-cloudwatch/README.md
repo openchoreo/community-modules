@@ -27,12 +27,11 @@ This module supports both:
 4. [IAM permissions](#iam-permissions)
 5. [Installation on EKS with Pod Identity](#installation-on-eks-with-pod-identity)
 6. [Installation on non-EKS clusters with static credentials](#installation-on-non-eks-clusters-with-static-credentials)
-7. [Verify metric ingestion and querying](#verify-metric-ingestion-and-querying)
-8. [Metric alerting](#metric-alerting)
-9. [Expose the alert webhook through EventBridge](#expose-the-alert-webhook-through-eventbridge)
-10. [Shared webhook secret](#shared-webhook-secret)
-11. [Troubleshooting](#troubleshooting)
-12. [Configuration reference](#configuration-reference)
+7. [Metric alerting](#metric-alerting)
+8. [Expose the alert webhook through EventBridge](#expose-the-alert-webhook-through-eventbridge)
+9. [Shared webhook secret](#shared-webhook-secret)
+10. [Troubleshooting](#troubleshooting)
+11. [Configuration reference](#configuration-reference)
 
 ## Architecture
 
@@ -610,159 +609,6 @@ This enables the static-credentials path:
 
 In an observability-plane-only install, the collector is disabled, so the
 created Secret is used only by the adapter.
-
-## Verify metric ingestion and querying
-
-These checks assume a topology where both the adapter and ingestion components
-are installed in the current cluster. In a split multi-cluster setup, run the
-collector and smoke-pod checks in a data-plane / workflow-plane cluster, and
-run the adapter health/query checks in the observability plane cluster.
-
-### Step 1 - Check pod status
-
-```bash
-kubectl -n "$NS" rollout status deployment/metrics-adapter-cloudwatch
-kubectl -n "$NS" get pods
-```
-
-Confirm that the following workloads are running:
-
-- `metrics-adapter-cloudwatch`
-- The OpenTelemetry collector DaemonSet from the `adotcollector` subchart.
-
-### Step 2 - Check adapter health
-
-```bash
-kubectl -n "$NS" port-forward service/metrics-adapter 9099:9099 &
-curl -sf http://localhost:9099/healthz | jq .
-```
-
-Expected response:
-
-```json
-{
-  "status": "healthy"
-}
-```
-
-AWS credentials are checked during adapter startup. If the adapter starts
-successfully, most credential or STS issues have already been caught.
-
-### Step 3 - Run a smoke test pod
-
-Create a temporary pod with synthetic OpenChoreo labels and CPU activity:
-
-```bash
-kubectl run metrics-cloudwatch-smoke-test --restart=Never \
-  --namespace default \
-  --labels='openchoreo.dev/namespace=default,openchoreo.dev/component-uid=smoke-comp-1,openchoreo.dev/environment-uid=smoke-env-1,openchoreo.dev/project-uid=smoke-proj-1' \
-  --image=busybox:1.36 \
-  -- sh -c 'while true; do :; done'
-```
-
-Wait for OpenTelemetry collector to scrape and CloudWatch to promote EMF metrics:
-
-```bash
-sleep 120
-```
-
-Check CloudWatch directly:
-
-```bash
-aws cloudwatch list-metrics \
-  --region "$AWS_REGION" \
-  --namespace OpenChoreo/Metrics \
-  --dimensions Name=ComponentUID,Value=smoke-comp-1 Name=InstanceName,Value="$INSTANCE_NAME"
-```
-
-You should see metrics such as:
-
-- `pod_cpu_usage`
-- `pod_memory_usage`
-- `pod_cpu_request`
-- `pod_cpu_limit`
-- `pod_memory_request`
-- `pod_memory_limit`
-
-### Step 4 - Query the adapter
-
-```bash
-curl -s http://localhost:9099/api/v1/metrics/query \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "metric": "resource",
-    "startTime": "'"$(date -u -v-30M +%FT%TZ 2>/dev/null || date -u -d '-30 minutes' +%FT%TZ)"'",
-    "endTime": "'"$(date -u +%FT%TZ)"'",
-    "step": "1m",
-    "searchScope": {
-      "namespace": "default",
-      "componentUid": "smoke-comp-1",
-      "environmentUid": "smoke-env-1"
-    }
-  }' | jq .
-```
-
-Expected result:
-
-```json
-{
-  "cpuUsage": [
-    {
-      "timestamp": "...",
-      "value": 0.12
-    }
-  ],
-  "cpuRequests": [],
-  "cpuLimits": [],
-  "memoryUsage": [
-    {
-      "timestamp": "...",
-      "value": 12345678
-    }
-  ],
-  "memoryRequests": [],
-  "memoryLimits": []
-}
-```
-
-The exact values will vary.
-
-#### Step and CloudWatch period
-
-The `step` field is accepted as an Observer/UI display interval, but the
-CloudWatch adapter must query with a period that CloudWatch supports for the
-stored metric resolution.
-
-OpenChoreo resource metrics exported through this module are regular
-CloudWatch metrics. Recent datapoints are available at a minimum granularity
-of one minute, and older datapoints follow CloudWatch retention tiers. The
-adapter normalizes the requested step before calling `GetMetricData`:
-
-| Query age from `startTime` | Requested `step` | CloudWatch `Period` used |
-| --- | --- | --- |
-| Recent data | `15s` | `60` |
-| Recent data | `30s` | `60` |
-| Recent data | `1m` | `60` |
-| Recent data | `61s` | `120` |
-| Recent data | `15m` | `900` |
-| Older than 15 days | `1m` | `300` |
-| Older than 15 days | `15m` | `900` |
-| Older than 63 days | `5m` | `3600` |
-| Older than 63 days | `6h` | `21600` |
-
-This lets the UI choose a step based on the selected time window without
-causing CloudWatch validation errors. The response contains CloudWatch's actual
-period-aligned datapoints; the adapter does not interpolate missing sub-minute
-points.
-
-Clean up the smoke pod:
-
-```bash
-kubectl -n default delete pod metrics-cloudwatch-smoke-test --ignore-not-found
-```
-
-If all arrays remain empty after waiting another few minutes, the problem is
-usually in the ingestion path rather than the adapter.
 
 ## Metric alerting
 

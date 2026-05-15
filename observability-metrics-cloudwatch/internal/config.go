@@ -54,8 +54,12 @@ func LoadConfig() (*Config, error) {
 	if instanceName == "" {
 		return nil, fmt.Errorf("environment variable INSTANCE_NAME is required")
 	}
-	if _, err := strconv.Atoi(serverPort); err != nil {
+	port, err := strconv.Atoi(serverPort)
+	if err != nil {
 		return nil, fmt.Errorf("invalid SERVER_PORT: %w", err)
+	}
+	if port < 1 || port > 65535 {
+		return nil, fmt.Errorf("invalid SERVER_PORT: %d out of range", port)
 	}
 
 	alarmActionARNs, err := parseARNList("ALARM_ACTION_ARNS")

@@ -29,6 +29,15 @@ spec:
         - name: metrics-adapter-cloudwatch
           image: "{{ .Values.adapter.image.repository }}:{{ .Values.adapter.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.adapter.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
           ports:
             - containerPort: {{ .Values.adapter.service.port }}
           env:

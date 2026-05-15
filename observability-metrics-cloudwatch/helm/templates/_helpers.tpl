@@ -46,12 +46,8 @@ metrics-adapter-cloudwatch-webhook-token
 {{- end -}}
 
 {{- define "metrics-cloudwatch.validate" -}}
-{{- if not (include "metrics-cloudwatch.instanceName" .) -}}
-{{- fail "instanceName (OpenChoreo instance name) is required. Example: --set instanceName=openchoreo-dev" -}}
-{{- end -}}
-{{- if not (include "metrics-cloudwatch.region" .) -}}
-{{- fail "region is required. Example: --set region=us-east-1" -}}
-{{- end -}}
+{{- $_ := required "instanceName (OpenChoreo instance name) is required. Example: --set instanceName=openchoreo-dev" .Values.instanceName -}}
+{{- $_ := required "region is required. Example: --set region=us-east-1" .Values.region -}}
 {{- $metrics := .Values.metrics | default dict -}}
 {{- $retention := (get $metrics "retention") | default dict -}}
 {{- $retentionEnabled := true -}}

@@ -839,7 +839,7 @@ Use a custom event pattern so only managed metric alarms reach the adapter.
 The `alarmName` prefix filter ensures log-module alarms (`oc-logs-alert`)
 are not routed here.
 
-```bash
+```json
 {
   "source": ["aws.cloudwatch"],
   "detail-type": ["CloudWatch Alarm State Change"],

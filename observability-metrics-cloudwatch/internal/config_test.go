@@ -96,6 +96,22 @@ func TestLoadConfigRejectsNonNumericPort(t *testing.T) {
 	}
 }
 
+func TestLoadConfigRejectsPortOutOfRange(t *testing.T) {
+	cases := []string{"0", "65536"}
+	for _, serverPort := range cases {
+		t.Run(serverPort, func(t *testing.T) {
+			clearConfigEnv(t)
+			t.Setenv("AWS_REGION", "eu-north-1")
+			t.Setenv("INSTANCE_NAME", "openchoreo-dev")
+			t.Setenv("SERVER_PORT", serverPort)
+			errText := serverPort + " out of range"
+			if _, err := LoadConfig(); err == nil || !strings.Contains(err.Error(), errText) {
+				t.Fatalf("expected SERVER_PORT range error containing %q, got %v", errText, err)
+			}
+		})
+	}
+}
+
 func TestLoadConfigRejectsBadARN(t *testing.T) {
 	clearConfigEnv(t)
 	t.Setenv("AWS_REGION", "eu-north-1")

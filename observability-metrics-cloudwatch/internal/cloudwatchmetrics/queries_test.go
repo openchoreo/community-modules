@@ -6,6 +6,7 @@ package cloudwatchmetrics
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -380,14 +381,14 @@ func TestGetResourceMetricsScopeDimensionsMatchEMFOrder(t *testing.T) {
 	if captured == nil {
 		t.Fatal("expected captured input")
 	}
-	got := dimensionsAsMap(captured.MetricDataQueries[0].MetricStat.Metric.Dimensions)
-	want := map[string]string{
-		DimensionComponentUID:   "comp-1",
-		DimensionEnvironmentUID: "env-1",
-		DimensionNamespace:      "payments",
-		DimensionInstanceName:   "test-cluster",
+	got := captured.MetricDataQueries[0].MetricStat.Metric.Dimensions
+	want := []cwtypes.Dimension{
+		{Name: aws.String(DimensionComponentUID), Value: aws.String("comp-1")},
+		{Name: aws.String(DimensionEnvironmentUID), Value: aws.String("env-1")},
+		{Name: aws.String(DimensionNamespace), Value: aws.String("payments")},
+		{Name: aws.String(DimensionInstanceName), Value: aws.String("test-cluster")},
 	}
-	if !mapEqual(got, want) {
-		t.Fatalf("unexpected dimensions: %#v", got)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected dimensions order:\n got: %#v\nwant: %#v", got, want)
 	}
 }

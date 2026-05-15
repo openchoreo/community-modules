@@ -7,7 +7,6 @@
 {{- $serviceAccountCreate := true -}}
 {{- if hasKey $serviceAccount "create" -}}{{- $serviceAccountCreate = get $serviceAccount "create" -}}{{- end -}}
 {{- if $enabled }}
-{{- include "metrics-cloudwatch.validate" . -}}
 {{- if $serviceAccountCreate }}
 apiVersion: v1
 kind: ServiceAccount

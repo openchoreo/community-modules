@@ -402,7 +402,7 @@ func (c *Client) putMetricAlarm(ctx context.Context, p MetricAlertParams) (strin
 	}
 	alarmName := BuildAlarmName(p.Namespace, p.Name)
 
-	dims := buildScopeDimensions(p.Namespace, p.ComponentUID, p.ProjectUID, p.EnvironmentUID)
+	dims := c.buildScopeDimensions(p.Namespace, p.ComponentUID, p.ProjectUID, p.EnvironmentUID)
 
 	tags := []cwtypes.Tag{
 		{Key: aws.String(TagRuleSource), Value: aws.String(TagRuleSourceVal)},

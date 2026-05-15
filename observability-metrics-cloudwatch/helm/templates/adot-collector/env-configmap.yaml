@@ -1,4 +1,4 @@
-{{- include "metrics-cloudwatch.validate" . -}}
+{{- if .Values.adotcollector.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -10,3 +10,4 @@ data:
   INSTANCE_NAME: {{ include "metrics-cloudwatch.instanceName" . | quote }}
   EMF_LOG_GROUP_NAME: {{ include "metrics-cloudwatch.logGroup" . | quote }}
   EMF_RETENTION_DAYS: {{ .Values.metrics.retentionDays | quote }}
+{{- end }}

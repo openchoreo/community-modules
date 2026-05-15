@@ -31,12 +31,13 @@ const (
 )
 
 // EMF dimension names emitted by the ADOT collector. They must stay in sync
-// with the metric_declarations block in helm/templates/adot-collector/configmap.yaml.
+// with the metric_declarations block in helm/values.yaml.
 const (
 	DimensionComponentUID   = "ComponentUID"
 	DimensionProjectUID     = "ProjectUID"
 	DimensionEnvironmentUID = "EnvironmentUID"
 	DimensionNamespace      = "Namespace"
+	DimensionInstanceName   = "InstanceName"
 )
 
 // Logical metric names the EMF exporter writes (set by metricstransform).

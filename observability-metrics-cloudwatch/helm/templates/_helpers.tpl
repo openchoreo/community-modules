@@ -63,6 +63,7 @@ metrics-adapter-cloudwatch-webhook-token
 {{- fail "metrics.retentionDays must be one of: 1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653" -}}
 {{- end -}}
 {{- end -}}
+{{- if .Values.adapter.enabled -}}
 {{- if and .Values.adapter.alerting.webhookAuth.enabled (not (or .Values.adapter.alerting.webhookAuth.sharedSecret .Values.adapter.alerting.webhookAuth.sharedSecretRef.name)) -}}
 {{- fail "adapter.alerting.webhookAuth requires either sharedSecret or sharedSecretRef.name when enabled" -}}
 {{- end -}}
@@ -78,6 +79,7 @@ metrics-adapter-cloudwatch-webhook-token
 {{- end -}}
 {{- if empty .Values.adapter.networkPolicy.observerPodLabels -}}
 {{- fail "adapter.networkPolicy.observerPodLabels must not be empty when networkPolicy is enabled" -}}
+{{- end -}}
 {{- end -}}
 {{- end -}}
 {{- end -}}

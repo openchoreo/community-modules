@@ -15,19 +15,25 @@ import (
 )
 
 func TestBuildScopeDimensionsAlwaysIncludesNamespace(t *testing.T) {
-	got := buildScopeDimensions("payments", "", "", "")
-	want := map[string]string{DimensionNamespace: "payments"}
+	c := newTestClient(&stubCloudWatchAPI{})
+	got := c.buildScopeDimensions("payments", "", "", "")
+	want := map[string]string{
+		DimensionNamespace:    "payments",
+		DimensionInstanceName: "test-cluster",
+	}
 	if !mapEqual(dimensionsAsMap(got), want) {
 		t.Fatalf("unexpected dimensions: %#v", got)
 	}
 }
 
 func TestBuildScopeDimensionsIncludesPublishedUIDDimensions(t *testing.T) {
-	got := buildScopeDimensions("payments", "comp-1", "proj-1", "env-1")
+	c := newTestClient(&stubCloudWatchAPI{})
+	got := c.buildScopeDimensions("payments", "comp-1", "proj-1", "env-1")
 	want := map[string]string{
 		DimensionComponentUID:   "comp-1",
 		DimensionEnvironmentUID: "env-1",
 		DimensionNamespace:      "payments",
+		DimensionInstanceName:   "test-cluster",
 	}
 	if !mapEqual(dimensionsAsMap(got), want) {
 		t.Fatalf("unexpected dimensions: %#v", got)
@@ -38,11 +44,13 @@ func TestBuildScopeDimensionsIncludesPublishedUIDDimensions(t *testing.T) {
 }
 
 func TestBuildScopeDimensionsOmitsEmptyUIDs(t *testing.T) {
-	got := buildScopeDimensions("payments", "comp-1", "", "env-1")
+	c := newTestClient(&stubCloudWatchAPI{})
+	got := c.buildScopeDimensions("payments", "comp-1", "", "env-1")
 	want := map[string]string{
 		DimensionComponentUID:   "comp-1",
 		DimensionEnvironmentUID: "env-1",
 		DimensionNamespace:      "payments",
+		DimensionInstanceName:   "test-cluster",
 	}
 	if !mapEqual(dimensionsAsMap(got), want) {
 		t.Fatalf("unexpected dimensions: %#v", got)
@@ -377,6 +385,7 @@ func TestGetResourceMetricsScopeDimensionsMatchEMFOrder(t *testing.T) {
 		DimensionComponentUID:   "comp-1",
 		DimensionEnvironmentUID: "env-1",
 		DimensionNamespace:      "payments",
+		DimensionInstanceName:   "test-cluster",
 	}
 	if !mapEqual(got, want) {
 		t.Fatalf("unexpected dimensions: %#v", got)

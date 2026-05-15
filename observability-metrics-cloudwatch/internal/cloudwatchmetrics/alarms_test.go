@@ -233,16 +233,16 @@ func TestValidateAlertParamsHappyPath(t *testing.T) {
 
 func TestValidateAlertParamsRejectsInvalidInputs(t *testing.T) {
 	cases := map[string]MetricAlertParams{
-		"missing name":       withParams(func(p *MetricAlertParams) { p.Name = "" }),
-		"missing namespace":  withParams(func(p *MetricAlertParams) { p.Namespace = "" }),
-		"unknown metric":     withParams(func(p *MetricAlertParams) { p.Metric = "unknown" }),
-		"zero window":        withParams(func(p *MetricAlertParams) { p.Window = 0 }),
-		"zero interval":      withParams(func(p *MetricAlertParams) { p.Interval = 0 }),
-		"window < interval":  withParams(func(p *MetricAlertParams) { p.Window = 30 * time.Second; p.Interval = time.Minute }),
-		"sub minute":         withParams(func(p *MetricAlertParams) { p.Interval = 30 * time.Second }),
-		"unsupported eq":     withParams(func(p *MetricAlertParams) { p.Operator = "eq" }),
-		"bad operator":       withParams(func(p *MetricAlertParams) { p.Operator = "??" }),
-		"overlong identity":  withParams(func(p *MetricAlertParams) { p.Name = strings.Repeat("a", 200); p.Namespace = strings.Repeat("b", 200) }),
+		"missing name":      withParams(func(p *MetricAlertParams) { p.Name = "" }),
+		"missing namespace": withParams(func(p *MetricAlertParams) { p.Namespace = "" }),
+		"unknown metric":    withParams(func(p *MetricAlertParams) { p.Metric = "unknown" }),
+		"zero window":       withParams(func(p *MetricAlertParams) { p.Window = 0 }),
+		"zero interval":     withParams(func(p *MetricAlertParams) { p.Interval = 0 }),
+		"window < interval": withParams(func(p *MetricAlertParams) { p.Window = 30 * time.Second; p.Interval = time.Minute }),
+		"sub minute":        withParams(func(p *MetricAlertParams) { p.Interval = 30 * time.Second }),
+		"unsupported eq":    withParams(func(p *MetricAlertParams) { p.Operator = "eq" }),
+		"bad operator":      withParams(func(p *MetricAlertParams) { p.Operator = "??" }),
+		"overlong identity": withParams(func(p *MetricAlertParams) { p.Name = strings.Repeat("a", 200); p.Namespace = strings.Repeat("b", 200) }),
 	}
 	for name, params := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -324,6 +324,7 @@ func TestCreateAlertHappyPath(t *testing.T) {
 		DimensionComponentUID:   "comp-1",
 		DimensionEnvironmentUID: "env-1",
 		DimensionNamespace:      "payments",
+		DimensionInstanceName:   "test-cluster",
 	}
 	if got := dimensionsAsMap(m1.MetricStat.Metric.Dimensions); !mapEqual(got, wantDims) {
 		t.Fatalf("unexpected m1 dimensions: %#v", got)

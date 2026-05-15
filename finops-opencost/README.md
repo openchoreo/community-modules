@@ -26,10 +26,9 @@ helm repo update
 
 ```bash
 helm upgrade --install opencost opencost/opencost \
-  --namespace opencost \
-  --create-namespace \
+  --namespace openchoreo-observability-plane \
   --version 2.5.14 \
-  -f values.yaml
+  -f https://raw.githubusercontent.com/openchoreo/community-modules/main/finops-opencost/values.yaml
 ```
 
 ## Sample values file

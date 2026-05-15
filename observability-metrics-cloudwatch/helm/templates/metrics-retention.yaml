@@ -63,7 +63,12 @@ spec:
             - -ec
           args:
             - |
-              aws logs create-log-group --log-group-name "${LOG_GROUP_NAME}" 2>/dev/null || true
+              if ! create_output="$(aws logs create-log-group --log-group-name "${LOG_GROUP_NAME}" 2>&1)"; then
+                case "${create_output}" in
+                  *ResourceAlreadyExistsException*) ;;
+                  *) printf '%s\n' "${create_output}" >&2; exit 1 ;;
+                esac
+              fi
               aws logs put-retention-policy \
                 --log-group-name "${LOG_GROUP_NAME}" \
                 --retention-in-days "${RETENTION_DAYS}"

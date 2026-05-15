@@ -1,6 +1,9 @@
 # Prefix shared by all log groups this module reads/writes.
-# Must match what the CloudWatch Agent writes to (Container Insights default).
-logGroupPrefix: "/aws/containerinsights"
+# This is under `global` so the dependent amazon-cloudwatch-observability chart
+# can render Fluent Bit with the same log group path as the adapter and setup
+# Job. The application log group resolves to `<global.logGroupPrefix>/application`.
+global:
+  logGroupPrefix: "/aws/containerinsights"
 
 # AWS authentication mode. Defaults to **EKS Pod Identity / IRSA / EC2
 # instance-profile** — the AWS SDK default credentials chain picks them up
@@ -31,18 +34,12 @@ containerLogs:
 # EKS. On EKS you may prefer `k8sMode: EKS` to pick up IRSA-based auth.
 cloudWatchAgent:
   enabled: true
-  # The upstream Fluent Bit kubernetes filter resolves the agent Pod Association
-  # endpoint at the hard-coded address `cloudwatch-agent.amazon-cloudwatch:4311`.
-  # When this chart is installed in any other namespace (the OpenChoreo
-  # convention is `openchoreo-observability-plane`), Fluent Bit logs steady
-  # "no upstream connections available" errors and Pod Association silently
-  # degrades. This block creates an `amazon-cloudwatch` namespace + an
-  # ExternalName Service of the right name that forwards to the real Service
-  # in the release namespace. Disable if you install the chart in
-  # `amazon-cloudwatch` directly, or if a real `cloudwatch-agent` Service
-  # already exists in `amazon-cloudwatch`.
+  # Optional compatibility bridge for the upstream Fluent Bit Pod Association
+  # path, which expects `cloudwatch-agent.amazon-cloudwatch:4311`. This module
+  # disables Pod Association in its Fluent Bit override, so the bridge is off
+  # by default and no `amazon-cloudwatch` namespace is created.
   bridgeService:
-    enabled: true
+    enabled: false
   # The upstream Fluent Bit DaemonSet exposes no env-injection knob, so static
   # AWS credentials (the k3d / kind path) cannot reach the cloudwatch_logs
   # output plugin. This Helm post-install hook Job patches the DaemonSet to
@@ -151,7 +148,7 @@ amazon-cloudwatch-observability:
               Name                cloudwatch_logs
               Match               application.*
               region              ${AWS_REGION}
-              log_group_name      /aws/containerinsights/application
+              log_group_name      {{ .Values.global.logGroupPrefix | default "/aws/containerinsights" | trimSuffix "/" }}/application
               log_stream_prefix   ${HOST_NAME}-
               auto_create_group   true
               extra_user_agent    container-insights
@@ -219,7 +216,7 @@ amazon-cloudwatch-observability:
               Name                cloudwatch_logs
               Match               application.*
               region              ${AWS_REGION}
-              log_group_name      /aws/containerinsights/application
+              log_group_name      {{ .Values.global.logGroupPrefix | default "/aws/containerinsights" | trimSuffix "/" }}/application
               log_stream_prefix   ${HOST_NAME}-
               auto_create_group   true
               extra_user_agent    container-insights
@@ -274,7 +271,7 @@ adapter:
   logLevel: INFO
   # Alerting (CloudWatch Logs metric filter + metric alarm) support.
   alerting:
-    enabled: false
+    enabled: true
     metricNamespace: OpenChoreo/Logs
     alarmActionArns: []
     okActionArns: []

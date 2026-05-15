@@ -7,7 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 Render the log group path prefix.
 */}}
 {{- define "logs-cloudwatch.logGroupPrefix" -}}
-{{- trimSuffix "/" .Values.logGroupPrefix -}}
+{{- trimSuffix "/" .Values.global.logGroupPrefix -}}
 {{- end -}}
 
 {{/*
@@ -34,6 +34,9 @@ Called once from templates/validate.yaml.
 {{- if or .Values.adapter.enabled .Values.cloudWatchAgent.enabled .Values.setup.enabled .Values.awsCredentials.create -}}
 {{- if not (include "logs-cloudwatch.region" .) -}}
 {{- fail "amazon-cloudwatch-observability.region is required. Example: --set amazon-cloudwatch-observability.region=us-east-1" -}}
+{{- end -}}
+{{- if not .Values.global.logGroupPrefix -}}
+{{- fail "global.logGroupPrefix is required. Example: --set global.logGroupPrefix=/aws/containerinsights" -}}
 {{- end -}}
 {{- end -}}
 

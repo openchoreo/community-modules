@@ -1,0 +1,42 @@
+opencost:
+  prometheus:
+    internal:
+      namespaceName: openchoreo-observability-plane
+      serviceName: openchoreo-observability-prometheus
+      port: 9091
+
+  dataRetention:
+    dailyResolutionDays: 30  # default: 15
+
+  exporter:
+    defaultClusterId: k3d-local-cluster
+    replicas: 1
+    resources:
+      requests:
+        cpu: "10m"
+        memory: "60Mi"
+      limits:
+        cpu: "50m"
+        memory: "100Mi"
+    persistence:
+      enabled: false
+
+  customPricing:
+    enabled: true
+    costModel:
+      description: Modified prices based on your internal pricing
+      CPU: 0.03
+      RAM: 0.004
+      storage: 0.00005
+
+  metrics:
+    kubeStateMetrics:
+      emitKsmV1Metrics: true
+      emitKsmV1MetricsOnly: false
+    serviceMonitor:
+      enabled: true
+      additionalLabels:
+        release: prometheus
+
+  ui:
+    enabled: false

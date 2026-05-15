@@ -1,9 +1,5 @@
 # Networking Module with Cilium
 
-|               |                                                                                                                                                                              |
-| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Code coverage | [![Codecov](https://codecov.io/gh/openchoreo/community-modules/branch/main/graph/badge.svg?component=networking_cilium)](https://codecov.io/gh/openchoreo/community-modules) |
-
 This module enables advanced network security and observability in OpenChoreo using [Cilium](https://cilium.io/).
 
 ## Features

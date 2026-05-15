@@ -8,7 +8,6 @@
 
 set -euo pipefail
 
-INSTANCE_NAME="${INSTANCE_NAME:?INSTANCE_NAME is required}"
 AWS_REGION="${AWS_REGION:?AWS_REGION is required}"
 LOG_GROUP_PREFIX="${LOG_GROUP_PREFIX:-/aws/containerinsights}"
 RETENTION_DAYS="${RETENTION_DAYS:-7}"
@@ -29,9 +28,7 @@ esac
 LOG_GROUP_PREFIX="${LOG_GROUP_PREFIX%/}"
 
 LOG_GROUPS=(
-  "${LOG_GROUP_PREFIX}/${INSTANCE_NAME}/application"
-  "${LOG_GROUP_PREFIX}/${INSTANCE_NAME}/dataplane"
-  "${LOG_GROUP_PREFIX}/${INSTANCE_NAME}/host"
+  "${LOG_GROUP_PREFIX}/application"
 )
 
 echo "Ensuring CloudWatch log groups exist in region ${AWS_REGION} with ${RETENTION_DAYS}-day retention"

@@ -122,8 +122,7 @@ func (s *stubSTSAPI) GetCallerIdentity(context.Context, *sts.GetCallerIdentityIn
 
 func newTestClient(logs logsAPI, alarms alarmsAPI) *Client {
 	return NewClientWithAWS(logs, alarms, &stubSTSAPI{}, Config{
-		InstanceName:         "test-cluster",
-		LogGroupName:         "/aws/containerinsights/test-cluster/application",
+		LogGroupName:         "/aws/containerinsights/application",
 		AlertMetricNamespace: defaultMetricNamespace,
 		QueryTimeout:         30 * time.Second,
 		PollEvery:            100 * time.Millisecond,
@@ -207,7 +206,7 @@ func TestGetAlertReturnsErrAlertNotFoundWhenResourcesMissing(t *testing.T) {
 }
 
 func TestGetAlertReconstructsDetailFromAlarmAndTags(t *testing.T) {
-	names := BuildAlertResourceNames("test-cluster", "payments", "high-error-rate")
+	names := BuildAlertResourceNames("payments", "high-error-rate")
 	logs := &stubLogsAPI{
 		describeMetricFiltersOut: &cloudwatchlogs.DescribeMetricFiltersOutput{
 			MetricFilters: []cwltypes.MetricFilter{{
@@ -256,7 +255,7 @@ func TestGetAlertReconstructsDetailFromAlarmAndTags(t *testing.T) {
 }
 
 func TestGetAlertFindsNamespaceSensitiveAlarmByRuleNameOnly(t *testing.T) {
-	names := BuildAlertResourceNames("test-cluster", "payments", "high-error-rate")
+	names := BuildAlertResourceNames("payments", "high-error-rate")
 	logs := &stubLogsAPI{
 		describeMetricFiltersOut: &cloudwatchlogs.DescribeMetricFiltersOutput{
 			MetricFilters: []cwltypes.MetricFilter{{
@@ -318,10 +317,10 @@ type fakeAPIError struct {
 	message string
 }
 
-func (e *fakeAPIError) Error() string                    { return e.code + ": " + e.message }
-func (e *fakeAPIError) ErrorCode() string                { return e.code }
-func (e *fakeAPIError) ErrorMessage() string             { return e.message }
-func (e *fakeAPIError) ErrorFault() smithy.ErrorFault    { return smithy.FaultClient }
+func (e *fakeAPIError) Error() string                 { return e.code + ": " + e.message }
+func (e *fakeAPIError) ErrorCode() string             { return e.code }
+func (e *fakeAPIError) ErrorMessage() string          { return e.message }
+func (e *fakeAPIError) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
 
 func TestIsAWSNotFound(t *testing.T) {
 	if isAWSNotFound(nil) {
@@ -352,7 +351,7 @@ func TestUpdateAlertReturnsErrAlertNotFoundWhenMissing(t *testing.T) {
 }
 
 func TestUpdateAlertSucceeds(t *testing.T) {
-	names := BuildAlertResourceNames("test-cluster", "payments", "high-error-rate")
+	names := BuildAlertResourceNames("payments", "high-error-rate")
 	logs := &stubLogsAPI{
 		describeMetricFiltersOut: &cloudwatchlogs.DescribeMetricFiltersOutput{
 			MetricFilters: []cwltypes.MetricFilter{{
@@ -441,7 +440,7 @@ func TestGetAlarmTagsByNamePropagatesListTagsError(t *testing.T) {
 }
 
 func TestDeleteAlertHappyPath(t *testing.T) {
-	names := BuildAlertResourceNames("test-cluster", "payments", "high-error-rate")
+	names := BuildAlertResourceNames("payments", "high-error-rate")
 	logs := &stubLogsAPI{}
 	alarms := &stubAlarmsAPI{
 		describeAlarmsOuts: []*sdkcloudwatch.DescribeAlarmsOutput{{
@@ -476,7 +475,7 @@ func TestDeleteAlertPropagatesDescribeError(t *testing.T) {
 }
 
 func TestDeleteAlertPropagatesDeleteAlarmsError(t *testing.T) {
-	names := BuildAlertResourceNames("test-cluster", "payments", "high-error-rate")
+	names := BuildAlertResourceNames("payments", "high-error-rate")
 	alarms := &stubAlarmsAPI{
 		describeAlarmsOuts: []*sdkcloudwatch.DescribeAlarmsOutput{{
 			MetricAlarms: []cwtypes.MetricAlarm{{

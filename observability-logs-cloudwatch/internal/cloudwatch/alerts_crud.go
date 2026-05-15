@@ -26,10 +26,10 @@ const defaultMetricNamespace = "OpenChoreo/Logs"
 // If the alarm put fails after the filter is created, the filter is deleted
 // best-effort to avoid orphaned resources.
 func (c *Client) CreateAlert(ctx context.Context, p LogAlertParams) (string, error) {
-	if err := ValidateAlertParams(c.instanceName, p); err != nil {
+	if err := ValidateAlertParams(p); err != nil {
 		return "", err
 	}
-	names := BuildAlertResourceNames(c.instanceName, p.Namespace, p.Name)
+	names := BuildAlertResourceNames(p.Namespace, p.Name)
 
 	pattern, err := BuildAlertFilterPattern(p)
 	if err != nil {
@@ -213,22 +213,22 @@ func (c *Client) putMetricAlarm(ctx context.Context, names AlertResourceNames, m
 	}
 
 	input := &cloudwatch.PutMetricAlarmInput{
-		AlarmName:          aws.String(names.AlarmName),
-		AlarmDescription:   aws.String(fmt.Sprintf("OpenChoreo log alert %s/%s", p.Namespace, p.Name)),
-		MetricName:         aws.String(names.MetricName),
-		Namespace:          aws.String(metricNamespace),
-		Statistic:          cwtypes.StatisticSum,
-		Period:             aws.Int32(period),
-		EvaluationPeriods:  aws.Int32(evalPeriods),
-		DatapointsToAlarm:  aws.Int32(evalPeriods),
-		Threshold:          aws.Float64(p.Threshold),
-		ComparisonOperator: operator,
-		TreatMissingData:   aws.String("notBreaching"),
-		ActionsEnabled:     aws.Bool(p.Enabled),
-		AlarmActions:       c.alarmActionARNs,
-		OKActions:          c.okActionARNs,
+		AlarmName:               aws.String(names.AlarmName),
+		AlarmDescription:        aws.String(fmt.Sprintf("OpenChoreo log alert %s/%s", p.Namespace, p.Name)),
+		MetricName:              aws.String(names.MetricName),
+		Namespace:               aws.String(metricNamespace),
+		Statistic:               cwtypes.StatisticSum,
+		Period:                  aws.Int32(period),
+		EvaluationPeriods:       aws.Int32(evalPeriods),
+		DatapointsToAlarm:       aws.Int32(evalPeriods),
+		Threshold:               aws.Float64(p.Threshold),
+		ComparisonOperator:      operator,
+		TreatMissingData:        aws.String("notBreaching"),
+		ActionsEnabled:          aws.Bool(p.Enabled),
+		AlarmActions:            c.alarmActionARNs,
+		OKActions:               c.okActionARNs,
 		InsufficientDataActions: c.insufficientDataActionARNs,
-		Tags:               tags,
+		Tags:                    tags,
 	}
 	if _, err := c.alarms.PutMetricAlarm(ctx, input); err != nil {
 		return "", err
@@ -329,7 +329,7 @@ func isAWSNotFound(err error) bool {
 
 func (c *Client) resolveAlertResourceNames(ctx context.Context, ruleNamespace, ruleName string) (AlertResourceNames, string, error) {
 	if strings.TrimSpace(ruleNamespace) != "" {
-		return BuildAlertResourceNames(c.instanceName, ruleNamespace, ruleName), ruleNamespace, nil
+		return BuildAlertResourceNames(ruleNamespace, ruleName), ruleNamespace, nil
 	}
 
 	out, err := c.alarms.DescribeAlarms(ctx, &cloudwatch.DescribeAlarmsInput{
@@ -345,7 +345,7 @@ func (c *Client) resolveAlertResourceNames(ctx context.Context, ruleNamespace, r
 			continue
 		}
 
-		_, namespace, name, parseErr := ParseAlertIdentityFromAlarmName(aws.ToString(alarm.AlarmName))
+		namespace, name, parseErr := ParseAlertIdentityFromAlarmName(aws.ToString(alarm.AlarmName))
 		if parseErr == nil && name == ruleName {
 			return AlertResourceNames{
 				AlarmName:        aws.ToString(alarm.AlarmName),

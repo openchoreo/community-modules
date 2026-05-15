@@ -90,12 +90,12 @@ func ParseSNSEnvelope(body []byte) (*SNSEnvelopeResult, error) {
 // parseSNSAlarmMessage handles the JSON body of a CloudWatch-alarm SNS notification.
 func parseSNSAlarmMessage(message, envTimestamp string) (*ParsedAlertEvent, error) {
 	var msg struct {
-		AlarmName       string `json:"AlarmName"`
+		AlarmName        string `json:"AlarmName"`
 		AlarmDescription string `json:"AlarmDescription"`
-		NewStateValue   string `json:"NewStateValue"`
-		NewStateReason  string `json:"NewStateReason"`
-		StateChangeTime string `json:"StateChangeTime"`
-		Trigger         struct {
+		NewStateValue    string `json:"NewStateValue"`
+		NewStateReason   string `json:"NewStateReason"`
+		StateChangeTime  string `json:"StateChangeTime"`
+		Trigger          struct {
 			Threshold float64 `json:"Threshold"`
 		} `json:"Trigger"`
 	}
@@ -110,7 +110,7 @@ func parseSNSAlarmMessage(message, envTimestamp string) (*ParsedAlertEvent, erro
 		AlertValue:     value,
 		AlertTimestamp: ts,
 	}
-	if _, namespace, name, err := ParseAlertIdentityFromAlarmName(msg.AlarmName); err == nil {
+	if namespace, name, err := ParseAlertIdentityFromAlarmName(msg.AlarmName); err == nil {
 		evt.RuleNamespace = namespace
 		evt.RuleName = name
 	}
@@ -126,10 +126,10 @@ func ParseEventBridgeEvent(body []byte) (*ParsedAlertEvent, error) {
 		Detail struct {
 			AlarmName string `json:"alarmName"`
 			State     struct {
-				Value         string `json:"value"`
-				Reason        string `json:"reason"`
-				ReasonData    string `json:"reasonData"`
-				Timestamp     string `json:"timestamp"`
+				Value      string `json:"value"`
+				Reason     string `json:"reason"`
+				ReasonData string `json:"reasonData"`
+				Timestamp  string `json:"timestamp"`
 			} `json:"state"`
 			Configuration struct {
 				Metrics []struct {
@@ -162,7 +162,7 @@ func ParseEventBridgeEvent(body []byte) (*ParsedAlertEvent, error) {
 		AlertValue:     value,
 		AlertTimestamp: ts,
 	}
-	if _, namespace, name, err := ParseAlertIdentityFromAlarmName(evt.Detail.AlarmName); err == nil {
+	if namespace, name, err := ParseAlertIdentityFromAlarmName(evt.Detail.AlarmName); err == nil {
 		parsed.RuleNamespace = namespace
 		parsed.RuleName = name
 	}

@@ -9,10 +9,10 @@ import (
 )
 
 func TestBuildAlertResourceNamesAreStableAndSafe(t *testing.T) {
-	first := BuildAlertResourceNames("test-instance", "payments", "high-error-rate")
-	second := BuildAlertResourceNames("test-instance", "payments", "high-error-rate")
-	otherNamespace := BuildAlertResourceNames("test-instance", "other", "high-error-rate")
-	otherInstance := BuildAlertResourceNames("other-instance", "payments", "high-error-rate")
+	first := BuildAlertResourceNames("payments", "high-error-rate")
+	second := BuildAlertResourceNames("payments", "high-error-rate")
+	otherNamespace := BuildAlertResourceNames("other", "high-error-rate")
+	otherName := BuildAlertResourceNames("payments", "latency")
 
 	if first != second {
 		t.Fatalf("expected identical inputs to be stable, got %#v vs %#v", first, second)
@@ -20,14 +20,14 @@ func TestBuildAlertResourceNamesAreStableAndSafe(t *testing.T) {
 	if first == otherNamespace {
 		t.Fatalf("expected namespace to affect resource names, got %#v vs %#v", first, otherNamespace)
 	}
-	if first == otherInstance {
-		t.Fatalf("expected instanceName to affect resource names, got %#v vs %#v", first, otherInstance)
+	if first == otherName {
+		t.Fatalf("expected rule name to affect resource names, got %#v vs %#v", first, otherName)
 	}
 	if !strings.HasPrefix(first.AlarmName, "oc-logs-alert-") {
 		t.Fatalf("unexpected alarm name %q", first.AlarmName)
 	}
-	if !strings.Contains(first.AlarmName, "in.") || !strings.Contains(first.AlarmName, ".ns.") {
-		t.Fatalf("expected instance-aware alarm name format, got %q", first.AlarmName)
+	if strings.Contains(first.AlarmName, "in.") || !strings.Contains(first.AlarmName, "ns.") {
+		t.Fatalf("expected namespace/name alarm name format, got %q", first.AlarmName)
 	}
 	if !strings.Contains(first.AlarmName, ".rn.") {
 		t.Fatalf("expected base64url alarm name format, got %q", first.AlarmName)
@@ -39,12 +39,12 @@ func TestBuildAlertResourceNamesAreStableAndSafe(t *testing.T) {
 		t.Fatalf("resource names too long: %#v", first)
 	}
 
-	instance, namespace, name, err := ParseAlertIdentityFromAlarmName(first.AlarmName)
+	namespace, name, err := ParseAlertIdentityFromAlarmName(first.AlarmName)
 	if err != nil {
 		t.Fatalf("ParseAlertIdentityFromAlarmName() error = %v", err)
 	}
-	if instance != "test-instance" || namespace != "payments" || name != "high-error-rate" {
-		t.Fatalf("unexpected parsed identity: instance=%q namespace=%q name=%q", instance, namespace, name)
+	if namespace != "payments" || name != "high-error-rate" {
+		t.Fatalf("unexpected parsed identity: namespace=%q name=%q", namespace, name)
 	}
 }
 
@@ -173,7 +173,7 @@ func TestValidateAlertParamsRejectsOverlongGeneratedAlarmName(t *testing.T) {
 		Interval:  time.Minute,
 	}
 
-	err := ValidateAlertParams("test-instance", params)
+	err := ValidateAlertParams(params)
 	if err == nil {
 		t.Fatal("expected overlong generated alarm name to fail validation")
 	}
@@ -213,7 +213,7 @@ func TestParseAlertIdentityRejectsBadInputs(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if _, _, _, err := ParseAlertIdentityFromAlarmName(test.input); err == nil {
+			if _, _, err := ParseAlertIdentityFromAlarmName(test.input); err == nil {
 				t.Fatalf("expected error for %q", test.input)
 			}
 		})
@@ -221,7 +221,7 @@ func TestParseAlertIdentityRejectsBadInputs(t *testing.T) {
 }
 
 func TestParseAlertIdentityRejectsBadBase64(t *testing.T) {
-	if _, _, _, err := ParseAlertIdentityFromAlarmName("oc-logs-alert-in.???.ns.???.rn.???.deadbeef0000"); err == nil {
+	if _, _, err := ParseAlertIdentityFromAlarmName("oc-logs-alert-ns.???.rn.???.deadbeef0000"); err == nil {
 		t.Fatal("expected base64 decode error")
 	}
 }
@@ -230,32 +230,19 @@ func TestValidateAlertParamsRejectsMissingFields(t *testing.T) {
 	cases := []LogAlertParams{
 		{Namespace: "ns", Operator: "gt", Window: time.Minute, Interval: time.Minute},
 		{Name: "rule", Operator: "gt", Window: time.Minute, Interval: time.Minute},
-		{Name: "rule", Namespace: "ns", Operator: "gt"},                                    // missing window/interval
+		{Name: "rule", Namespace: "ns", Operator: "gt"},                                                  // missing window/interval
 		{Name: "rule", Namespace: "ns", Operator: "gt", Window: 30 * time.Second, Interval: time.Minute}, // window < interval
-		{Name: "rule", Namespace: "ns", Operator: "??", Window: time.Minute, Interval: time.Minute},     // bad operator
+		{Name: "rule", Namespace: "ns", Operator: "??", Window: time.Minute, Interval: time.Minute},      // bad operator
 	}
 	for i, p := range cases {
-		if err := ValidateAlertParams("test-instance", p); err == nil {
+		if err := ValidateAlertParams(p); err == nil {
 			t.Fatalf("case %d: expected error for %#v", i, p)
 		}
 	}
 }
 
-func TestValidateAlertParamsRejectsMissingInstanceName(t *testing.T) {
-	p := LogAlertParams{
-		Name:      "rule",
-		Namespace: "ns",
-		Operator:  "gt",
-		Window:    time.Minute,
-		Interval:  time.Minute,
-	}
-	if err := ValidateAlertParams("", p); err == nil {
-		t.Fatal("expected empty instanceName to fail")
-	}
-}
-
 func TestValidateAlertParamsAcceptsHappyPath(t *testing.T) {
-	if err := ValidateAlertParams("test-instance", LogAlertParams{
+	if err := ValidateAlertParams(LogAlertParams{
 		Name:      "rule",
 		Namespace: "ns",
 		Operator:  "gt",
@@ -304,7 +291,7 @@ func TestComputePeriodAndEvaluationPeriodsCapsHourlyOK(t *testing.T) {
 }
 
 func TestValidateAlertParamsRejectsOversizedAlarmName(t *testing.T) {
-	err := ValidateAlertParams("test-instance", LogAlertParams{
+	err := ValidateAlertParams(LogAlertParams{
 		Name:      strings.Repeat("a", 200),
 		Namespace: strings.Repeat("b", 200),
 		Operator:  "gt",

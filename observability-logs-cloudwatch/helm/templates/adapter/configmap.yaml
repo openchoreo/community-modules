@@ -8,7 +8,6 @@ metadata:
     app: logs-adapter-cloudwatch
 data:
   SERVER_PORT: {{ .Values.adapter.service.port | quote }}
-  INSTANCE_NAME: {{ include "logs-cloudwatch.instanceName" . | quote }}
   AWS_REGION: {{ include "logs-cloudwatch.region" . | quote }}
   LOG_GROUP_PREFIX: {{ include "logs-cloudwatch.logGroupPrefix" . | quote }}
   LOG_GROUP_NAME: {{ include "logs-cloudwatch.logGroupName" . | quote }}

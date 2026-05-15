@@ -43,7 +43,7 @@ In the default single-cluster topology, the chart deploys two workload groups:
 Application logs are written to the following CloudWatch log group:
 
 ```text
-/aws/containerinsights/<instanceName>/application
+/aws/containerinsights/application
 ```
 
 Each log record includes Kubernetes metadata such as:
@@ -53,8 +53,7 @@ Each log record includes Kubernetes metadata such as:
 - Container name
 - Labels
 
-`instanceName` scopes CloudWatch log groups to one OpenChoreo installation
-when multiple installations publish into the same AWS account and region.
+All participating clusters write to the same configured application log group.
 
 | Endpoint | Purpose |
 | --- | --- |
@@ -79,7 +78,6 @@ Choose the deployment topology first, then choose the AWS authentication model f
 
 For one OpenChoreo installation, keep these values identical across all participating clusters:
 
-- `instanceName`
 - `amazon-cloudwatch-observability.region`
 - `logGroupPrefix`
 
@@ -143,7 +141,6 @@ Replace:
 
 - `<region>` with your AWS region.
 - `<account-id>` with your AWS account ID.
-- `<instance-name>` with your OpenChoreo instance name.
 
 ```json
 {
@@ -164,7 +161,7 @@ Replace:
         "logs:DescribeMetricFilters",
         "logs:DeleteMetricFilter"
       ],
-      "Resource": "arn:aws:logs:<region>:<account-id>:log-group:/aws/containerinsights/<instance-name>/application:*"
+      "Resource": "arn:aws:logs:<region>:<account-id>:log-group:/aws/containerinsights/application:*"
     },
     {
       "Sid": "LogsUnscoped",
@@ -207,7 +204,6 @@ Replace:
 
 - `<region>` with your AWS region.
 - `<account-id>` with your AWS account ID.
-- `<instance-name>` with your OpenChoreo instance name.
 
 ```json
 {
@@ -220,7 +216,7 @@ Replace:
         "logs:CreateLogGroup",
         "logs:PutRetentionPolicy"
       ],
-      "Resource": "arn:aws:logs:<region>:<account-id>:log-group:/aws/containerinsights/<instance-name>/*"
+      "Resource": "arn:aws:logs:<region>:<account-id>:log-group:/aws/containerinsights/application:*"
     }
   ]
 }
@@ -234,7 +230,6 @@ This is the recommended installation path for EKS clusters.
 
 ```bash
 export AWS_REGION=<your-aws-region>
-export INSTANCE_NAME=<your-openchoreo-instance-name>
 export NS=openchoreo-observability-plane
 export WEBHOOK_SHARED_SECRET="$(openssl rand -base64 32)"
 ```
@@ -305,8 +300,6 @@ helm upgrade --install observability-logs-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
   --version 0.1.0 \
-  --set instanceName="$INSTANCE_NAME" \
-  --set amazon-cloudwatch-observability.clusterName="$INSTANCE_NAME" \
   --set amazon-cloudwatch-observability.region="$AWS_REGION" \
   --set adapter.alerting.webhookAuth.enabled=true \
   --set adapter.alerting.webhookAuth.sharedSecret="$WEBHOOK_SHARED_SECRET"
@@ -322,7 +315,6 @@ helm upgrade --install observability-logs-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
   --version 0.1.0 \
-  --set instanceName="$INSTANCE_NAME" \
   --set cloudWatchAgent.enabled=false \
   --set setup.enabled=false \
   --set amazon-cloudwatch-observability.region="$AWS_REGION" \
@@ -340,8 +332,6 @@ helm upgrade --install observability-logs-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
   --version 0.1.0 \
-  --set instanceName="$INSTANCE_NAME" \
-  --set amazon-cloudwatch-observability.clusterName="$INSTANCE_NAME" \
   --set amazon-cloudwatch-observability.region="$AWS_REGION" \
   --set adapter.enabled=false
 ```
@@ -412,7 +402,6 @@ In this mode, the chart creates a Kubernetes Secret containing AWS credentials. 
 
 ```bash
 export AWS_REGION=<your-aws-region>
-export INSTANCE_NAME=<your-openchoreo-instance-name>
 export NS=openchoreo-observability-plane
 export WEBHOOK_SHARED_SECRET="$(openssl rand -base64 32)"
 export AWS_ACCESS_KEY_ID=<your-access-key-id>
@@ -442,8 +431,6 @@ helm upgrade --install observability-logs-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
   --version 0.1.0 \
-  --set instanceName="$INSTANCE_NAME" \
-  --set amazon-cloudwatch-observability.clusterName="$INSTANCE_NAME" \
   --set amazon-cloudwatch-observability.region="$AWS_REGION" \
   --set awsCredentials.create=true \
   --set awsCredentials.name=cloudwatch-aws-credentials \
@@ -472,7 +459,6 @@ helm upgrade --install observability-logs-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
   --version 0.1.0 \
-  --set instanceName="$INSTANCE_NAME" \
   --set cloudWatchAgent.enabled=false \
   --set setup.enabled=false \
   --set amazon-cloudwatch-observability.region="$AWS_REGION" \
@@ -494,8 +480,6 @@ helm upgrade --install observability-logs-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
   --version 0.1.0 \
-  --set instanceName="$INSTANCE_NAME" \
-  --set amazon-cloudwatch-observability.clusterName="$INSTANCE_NAME" \
   --set amazon-cloudwatch-observability.region="$AWS_REGION" \
   --set awsCredentials.create=true \
   --set awsCredentials.name=cloudwatch-aws-credentials \
@@ -626,7 +610,7 @@ X-OpenChoreo-Webhook-Token
 
 The module implements log alerts using native CloudWatch resources:
 
-1. A CloudWatch Logs metric filter on `/aws/containerinsights/<instanceName>/application`.
+1. A CloudWatch Logs metric filter on `/aws/containerinsights/application`.
 2. A custom CloudWatch metric in `adapter.alerting.metricNamespace`.
 3. A CloudWatch metric alarm for that custom metric.
 4. An EventBridge rule that forwards CloudWatch alarm state changes to the adapter webhook.
@@ -648,12 +632,10 @@ The adapter also encodes the rule identity into the alarm name for fast lookup.
 Managed alarm names use this format:
 
 ```text
-oc-logs-alert-in.<instance>.ns.<namespace>.rn.<name>.<hash>
+oc-logs-alert-ns.<namespace>.rn.<name>.<hash>
 ```
 
-`<instance>`, `<namespace>`, and `<name>` are base64url-encoded without padding. `<hash>` is the first 12 hex characters of `sha256(instanceName + "\x00" + namespace + "\x00" + name)`.
-
-Including `instanceName` in the alarm name prevents collisions when two OpenChoreo installations share the same AWS account and region.
+`<namespace>` and `<name>` are base64url-encoded without padding. `<hash>` is the first 12 hex characters of `sha256(namespace + "\x00" + name)`.
 
 ## Expose the alert webhook through EventBridge
 
@@ -909,7 +891,6 @@ kubectl -n "$NS" logs job/cloudwatch-agent-post-install --tail=200
 | Fluent Bit is healthy but no logs arrive | IMDS/entity enrichment timeout on k3d/kind | Confirm that Application Signals entity enrichment is disabled for non-EKS clusters. |
 | Webhook returns unauthorized | Missing or incorrect `X-OpenChoreo-Webhook-Token` | Check EventBridge connection header and chart webhook secret values. |
 | Alerts do not fire for old logs | CloudWatch metric filters do not backfill | Generate new matching logs after creating the rule. |
-| Data-plane logs land in wrong log group | `instanceName` differs between releases | Verify that `instanceName` is identical across all clusters in the installation. |
 | Setup Job fails after creating Pod Identity associations | Pod Identity association was created after the first Helm install | Delete the failed Job and re-run `helm upgrade` after confirming the association is attached. |
 
 ### Rerun a failed setup Job
@@ -941,9 +922,8 @@ kubectl -n "$NS" logs -l job-name=cloudwatch-setup-logs --tail=100
 
 | Value | Default | Description |
 | --- | --- | --- |
-| `instanceName` | Required | OpenChoreo instance name. Propagated to the adapter, setup Job, and used as the log group segment. All clusters in one installation must use the same value. |
-| `logGroupPrefix` | `/aws/containerinsights` | Prefix shared by application, dataplane, and host log groups. |
-| `amazon-cloudwatch-observability.clusterName` | `""` | Internal subchart value required by the upstream `amazon-cloudwatch-observability` chart. Must be set to the same value as `instanceName` when `cloudWatchAgent.enabled=true`. Adapter-only installs do not need it. |
+| `logGroupPrefix` | `/aws/containerinsights` | Prefix used by the adapter and setup Job for the shared application log group. |
+| `amazon-cloudwatch-observability.clusterName` | `openchoreo` | Upstream Container Insights chart value required to render the dependency. This module does not use it for log group naming. |
 | `amazon-cloudwatch-observability.region` | Required | AWS region for CloudWatch log groups and API calls. |
 | `awsCredentials.create` | `false` | Creates a static AWS credentials Secret. Keep `false` for Pod Identity, IRSA, or instance-profile based auth. Set to `true` for k3d, kind, or non-EKS clusters. |
 | `awsCredentials.name` | `""` | Name of the AWS credentials Secret. Required when `awsCredentials.create=true`. |

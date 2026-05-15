@@ -4,14 +4,6 @@ SPDX-License-Identifier: Apache-2.0
 */}}
 
 {{/*
-OpenChoreo instance identity used for the shared CloudWatch log group segment,
-alarm names, metric names, and adapter/setup configuration.
-*/}}
-{{- define "logs-cloudwatch.instanceName" -}}
-{{- .Values.instanceName -}}
-{{- end -}}
-
-{{/*
 Render the log group path prefix.
 */}}
 {{- define "logs-cloudwatch.logGroupPrefix" -}}
@@ -29,7 +21,7 @@ AWS region sourced from the upstream subchart values block.
 Resolved application log group name for the adapter and setup Job.
 */}}
 {{- define "logs-cloudwatch.logGroupName" -}}
-{{- printf "%s/%s/application" (include "logs-cloudwatch.logGroupPrefix" .) (include "logs-cloudwatch.instanceName" .) -}}
+{{- printf "%s/application" (include "logs-cloudwatch.logGroupPrefix" .) -}}
 {{- end -}}
 
 {{/*
@@ -42,21 +34,6 @@ Called once from templates/validate.yaml.
 {{- if or .Values.adapter.enabled .Values.cloudWatchAgent.enabled .Values.setup.enabled .Values.awsCredentials.create -}}
 {{- if not (include "logs-cloudwatch.region" .) -}}
 {{- fail "amazon-cloudwatch-observability.region is required. Example: --set amazon-cloudwatch-observability.region=us-east-1" -}}
-{{- end -}}
-{{- end -}}
-
-{{/* --- instanceName: required when adapter, agent, or setup is active --- */}}
-{{- if or .Values.adapter.enabled .Values.cloudWatchAgent.enabled .Values.setup.enabled -}}
-{{- if not (include "logs-cloudwatch.instanceName" .) -}}
-{{- fail "instanceName is required. Example: --set instanceName=openchoreo-dev" -}}
-{{- end -}}
-{{- end -}}
-
-{{/* --- subchart clusterName: required when CloudWatch Agent is enabled --- */}}
-{{- if .Values.cloudWatchAgent.enabled -}}
-{{- $cw := index .Values "amazon-cloudwatch-observability" -}}
-{{- if not $cw.clusterName -}}
-{{- fail "amazon-cloudwatch-observability.clusterName is required when cloudWatchAgent.enabled=true (set it to the same value as instanceName)" -}}
 {{- end -}}
 {{- end -}}
 

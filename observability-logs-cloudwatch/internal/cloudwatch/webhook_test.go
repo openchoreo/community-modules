@@ -7,7 +7,7 @@ import (
 )
 
 func TestParseSNSEnvelopeNotification(t *testing.T) {
-	names := BuildAlertResourceNames("test-instance", "payments", "high-error-rate")
+	names := BuildAlertResourceNames("payments", "high-error-rate")
 	body := []byte(`{
 		"Type": "Notification",
 		"MessageId": "msg-1",
@@ -61,7 +61,7 @@ func TestParseSNSEnvelopeSubscriptionConfirmation(t *testing.T) {
 }
 
 func TestParseEventBridgeEvent(t *testing.T) {
-	names := BuildAlertResourceNames("test-instance", "payments", "high-error-rate")
+	names := BuildAlertResourceNames("payments", "high-error-rate")
 	body := []byte(`{
 		"source": "aws.cloudwatch",
 		"time": "2026-04-23T10:00:00Z",

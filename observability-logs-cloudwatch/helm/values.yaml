@@ -1,9 +1,3 @@
-# ---------------------------------------------------------------------------
-# OpenChoreo instance identity. All clusters in one OpenChoreo installation
-# must share the same instanceName so logs land in a single CloudWatch log
-# group: <logGroupPrefix>/<instanceName>/application.
-instanceName: ""
-
 # Prefix shared by all log groups this module reads/writes.
 # Must match what the CloudWatch Agent writes to (Container Insights default).
 logGroupPrefix: "/aws/containerinsights"
@@ -66,11 +60,11 @@ cloudWatchAgent:
     pullPolicy: IfNotPresent
 
 amazon-cloudwatch-observability:
-  # clusterName is an internal subchart value required by the upstream
-  # amazon-cloudwatch-observability chart. It MUST be set to the same value as
-  # `instanceName` when cloudWatchAgent.enabled=true so the Fluent Bit
-  # CLUSTER_NAME env var matches. Adapter-only installs do not need it.
-  clusterName: ""
+  # clusterName belongs to the upstream Container Insights chart. This module
+  # does not use it for log group naming. The upstream chart requires a
+  # non-empty value to render, so keep this stable across installs unless you
+  # intentionally use upstream Container Insights features outside this module.
+  clusterName: "openchoreo"
   # AWS region for the CloudWatch Agent and Fluent Bit output.
   region: ""
   containerLogs:
@@ -157,7 +151,7 @@ amazon-cloudwatch-observability:
               Name                cloudwatch_logs
               Match               application.*
               region              ${AWS_REGION}
-              log_group_name      /aws/containerinsights/${CLUSTER_NAME}/application
+              log_group_name      /aws/containerinsights/application
               log_stream_prefix   ${HOST_NAME}-
               auto_create_group   true
               extra_user_agent    container-insights
@@ -166,6 +160,73 @@ amazon-cloudwatch-observability:
             # Disabled by observability-logs-cloudwatch (k3d / kind have no systemd journal).
           host-log.conf: |
             # Disabled by observability-logs-cloudwatch (k3d / kind have no systemd journal).
+      configWindows:
+        extraFiles:
+          application-log.conf: |
+            [INPUT]
+              Name                tail
+              Tag                 application.*
+              Exclude_Path        C:\\var\\log\\containers\\fluent-bit*, C:\\var\\log\\containers\\cloudwatch-agent*
+              Path                C:\\var\\log\\containers\\*.log
+              Parser              docker
+              DB                  C:\\var\\fluent-bit\\state\\flb_container.db
+              Mem_Buf_Limit       50MB
+              Skip_Long_Lines     On
+              Rotate_Wait         30
+              Refresh_Interval    10
+              Read_from_Head      ${READ_FROM_HEAD}
+
+            [INPUT]
+              Name                tail
+              Tag                 application.*
+              Path                C:\\var\\log\\containers\\fluent-bit*
+              Parser              docker
+              DB                  C:\\var\\fluent-bit\\state\\flb_log.db
+              Mem_Buf_Limit       5MB
+              Skip_Long_Lines     On
+              Rotate_Wait         30
+              Refresh_Interval    10
+              Read_from_Head      ${READ_FROM_HEAD}
+
+            [INPUT]
+              Name                tail
+              Tag                 application.*
+              Path                C:\\var\\log\\containers\\cloudwatch-agent*
+              Parser              docker
+              DB                  C:\\var\\fluent-bit\\state\\flb_cwagent.db
+              Mem_Buf_Limit       5MB
+              Skip_Long_Lines     On
+              Rotate_Wait         30
+              Refresh_Interval    10
+              Read_from_Head      ${READ_FROM_HEAD}
+
+            [FILTER]
+              Name                kubernetes
+              Match               application.*
+              Kube_URL            https://kubernetes.default.svc:443
+              Kube_Tag_Prefix     application.C.var.log.containers.
+              Merge_Log           On
+              Merge_Log_Key       log_processed
+              K8S-Logging.Parser  On
+              K8S-Logging.Exclude Off
+              Labels              On
+              Annotations         Off
+              Use_Kubelet         On
+              Kubelet_Port        10250
+              Buffer_Size         0
+
+            [OUTPUT]
+              Name                cloudwatch_logs
+              Match               application.*
+              region              ${AWS_REGION}
+              log_group_name      /aws/containerinsights/application
+              log_stream_prefix   ${HOST_NAME}-
+              auto_create_group   true
+              extra_user_agent    container-insights
+          dataplane-log.conf: |
+            # Disabled by observability-logs-cloudwatch.
+          host-log.conf: |
+            # Disabled by observability-logs-cloudwatch.
   # Leave `agent.config` empty to use the default Container Insights collection
   # config. On EC2/EKS with an instance-profile or IRSA, the AWS SDK default
   # chain applies to the agent and no extra wiring is required here.

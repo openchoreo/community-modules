@@ -122,8 +122,8 @@ func (s *stubSTSAPI) GetCallerIdentity(context.Context, *sts.GetCallerIdentityIn
 
 func newTestClient(logs logsAPI, alarms alarmsAPI) *Client {
 	return NewClientWithAWS(logs, alarms, &stubSTSAPI{}, Config{
-		ClusterName:          "test-cluster",
-		LogGroupPrefix:       "/aws/containerinsights",
+		InstanceName:         "test-cluster",
+		LogGroupName:         "/aws/containerinsights/test-cluster/application",
 		AlertMetricNamespace: defaultMetricNamespace,
 		QueryTimeout:         30 * time.Second,
 		PollEvery:            100 * time.Millisecond,
@@ -207,7 +207,7 @@ func TestGetAlertReturnsErrAlertNotFoundWhenResourcesMissing(t *testing.T) {
 }
 
 func TestGetAlertReconstructsDetailFromAlarmAndTags(t *testing.T) {
-	names := BuildAlertResourceNames("payments", "high-error-rate")
+	names := BuildAlertResourceNames("test-cluster", "payments", "high-error-rate")
 	logs := &stubLogsAPI{
 		describeMetricFiltersOut: &cloudwatchlogs.DescribeMetricFiltersOutput{
 			MetricFilters: []cwltypes.MetricFilter{{
@@ -256,7 +256,7 @@ func TestGetAlertReconstructsDetailFromAlarmAndTags(t *testing.T) {
 }
 
 func TestGetAlertFindsNamespaceSensitiveAlarmByRuleNameOnly(t *testing.T) {
-	names := BuildAlertResourceNames("payments", "high-error-rate")
+	names := BuildAlertResourceNames("test-cluster", "payments", "high-error-rate")
 	logs := &stubLogsAPI{
 		describeMetricFiltersOut: &cloudwatchlogs.DescribeMetricFiltersOutput{
 			MetricFilters: []cwltypes.MetricFilter{{
@@ -352,7 +352,7 @@ func TestUpdateAlertReturnsErrAlertNotFoundWhenMissing(t *testing.T) {
 }
 
 func TestUpdateAlertSucceeds(t *testing.T) {
-	names := BuildAlertResourceNames("payments", "high-error-rate")
+	names := BuildAlertResourceNames("test-cluster", "payments", "high-error-rate")
 	logs := &stubLogsAPI{
 		describeMetricFiltersOut: &cloudwatchlogs.DescribeMetricFiltersOutput{
 			MetricFilters: []cwltypes.MetricFilter{{
@@ -441,7 +441,7 @@ func TestGetAlarmTagsByNamePropagatesListTagsError(t *testing.T) {
 }
 
 func TestDeleteAlertHappyPath(t *testing.T) {
-	names := BuildAlertResourceNames("payments", "high-error-rate")
+	names := BuildAlertResourceNames("test-cluster", "payments", "high-error-rate")
 	logs := &stubLogsAPI{}
 	alarms := &stubAlarmsAPI{
 		describeAlarmsOuts: []*sdkcloudwatch.DescribeAlarmsOutput{{
@@ -476,7 +476,7 @@ func TestDeleteAlertPropagatesDescribeError(t *testing.T) {
 }
 
 func TestDeleteAlertPropagatesDeleteAlarmsError(t *testing.T) {
-	names := BuildAlertResourceNames("payments", "high-error-rate")
+	names := BuildAlertResourceNames("test-cluster", "payments", "high-error-rate")
 	alarms := &stubAlarmsAPI{
 		describeAlarmsOuts: []*sdkcloudwatch.DescribeAlarmsOutput{{
 			MetricAlarms: []cwtypes.MetricAlarm{{

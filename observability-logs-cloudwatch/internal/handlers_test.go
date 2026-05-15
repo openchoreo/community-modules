@@ -749,7 +749,7 @@ func TestHandleAlertWebhookEventBridgePayload(t *testing.T) {
 	handler := NewLogsHandlerWithOptions(&stubLogsClient{}, HandlerOptions{
 		ObserverClient: observer,
 	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	names := cloudwatch.BuildAlertResourceNames("payments", "high-error-rate")
+	names := cloudwatch.BuildAlertResourceNames("test-instance", "payments", "high-error-rate")
 
 	body := gen.HandleAlertWebhookJSONRequestBody{
 		"source": "aws.cloudwatch",

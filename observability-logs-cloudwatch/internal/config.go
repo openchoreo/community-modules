@@ -15,8 +15,8 @@ import (
 type Config struct {
 	ServerPort     string
 	AWSRegion      string
-	ClusterName    string
 	LogGroupPrefix string
+	LogGroupName   string
 	QueryTimeout   time.Duration
 	QueryPollEvery time.Duration
 	LogLevel       slog.Level
@@ -37,8 +37,8 @@ type Config struct {
 func LoadConfig() (*Config, error) {
 	serverPort := getEnv("SERVER_PORT", "9098")
 	awsRegion := getEnv("AWS_REGION", "")
-	clusterName := getEnv("CLUSTER_NAME", "")
 	logGroupPrefix := getEnv("LOG_GROUP_PREFIX", "/aws/containerinsights")
+	logGroupName := getEnv("LOG_GROUP_NAME", "")
 	queryTimeoutStr := getEnv("QUERY_TIMEOUT_SECONDS", "30")
 	queryPollStr := getEnv("QUERY_POLL_MILLISECONDS", "500")
 
@@ -59,8 +59,10 @@ func LoadConfig() (*Config, error) {
 	if awsRegion == "" {
 		return nil, fmt.Errorf("environment variable AWS_REGION is required")
 	}
-	if clusterName == "" {
-		return nil, fmt.Errorf("environment variable CLUSTER_NAME is required")
+
+	logGroupPrefix = strings.TrimRight(logGroupPrefix, "/")
+	if logGroupName == "" {
+		logGroupName = logGroupPrefix + "/application"
 	}
 
 	queryTimeoutSec, err := strconv.Atoi(queryTimeoutStr)
@@ -73,8 +75,12 @@ func LoadConfig() (*Config, error) {
 		return nil, fmt.Errorf("invalid QUERY_POLL_MILLISECONDS: %q", queryPollStr)
 	}
 
-	if _, err := strconv.Atoi(serverPort); err != nil {
+	port, err := strconv.Atoi(serverPort)
+	if err != nil {
 		return nil, fmt.Errorf("invalid SERVER_PORT: %w", err)
+	}
+	if port < 1 || port > 65535 {
+		return nil, fmt.Errorf("invalid SERVER_PORT: %d out of range", port)
 	}
 
 	alertMetricNamespace := getEnv("ALERT_METRIC_NAMESPACE", "OpenChoreo/Logs")
@@ -102,8 +108,8 @@ func LoadConfig() (*Config, error) {
 	return &Config{
 		ServerPort:                 serverPort,
 		AWSRegion:                  awsRegion,
-		ClusterName:                clusterName,
-		LogGroupPrefix:             strings.TrimRight(logGroupPrefix, "/"),
+		LogGroupPrefix:             logGroupPrefix,
+		LogGroupName:               logGroupName,
 		QueryTimeout:               time.Duration(queryTimeoutSec) * time.Second,
 		QueryPollEvery:             time.Duration(queryPollMs) * time.Millisecond,
 		LogLevel:                   logLevel,

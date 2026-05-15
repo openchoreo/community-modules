@@ -26,10 +26,10 @@ const defaultMetricNamespace = "OpenChoreo/Logs"
 // If the alarm put fails after the filter is created, the filter is deleted
 // best-effort to avoid orphaned resources.
 func (c *Client) CreateAlert(ctx context.Context, p LogAlertParams) (string, error) {
-	if err := ValidateAlertParams(p); err != nil {
+	if err := ValidateAlertParams(c.instanceName, p); err != nil {
 		return "", err
 	}
-	names := BuildAlertResourceNames(p.Namespace, p.Name)
+	names := BuildAlertResourceNames(c.instanceName, p.Namespace, p.Name)
 
 	pattern, err := BuildAlertFilterPattern(p)
 	if err != nil {
@@ -329,7 +329,7 @@ func isAWSNotFound(err error) bool {
 
 func (c *Client) resolveAlertResourceNames(ctx context.Context, ruleNamespace, ruleName string) (AlertResourceNames, string, error) {
 	if strings.TrimSpace(ruleNamespace) != "" {
-		return BuildAlertResourceNames(ruleNamespace, ruleName), ruleNamespace, nil
+		return BuildAlertResourceNames(c.instanceName, ruleNamespace, ruleName), ruleNamespace, nil
 	}
 
 	out, err := c.alarms.DescribeAlarms(ctx, &cloudwatch.DescribeAlarmsInput{
@@ -345,7 +345,7 @@ func (c *Client) resolveAlertResourceNames(ctx context.Context, ruleNamespace, r
 			continue
 		}
 
-		namespace, name, parseErr := ParseAlertIdentityFromAlarmName(aws.ToString(alarm.AlarmName))
+		_, namespace, name, parseErr := ParseAlertIdentityFromAlarmName(aws.ToString(alarm.AlarmName))
 		if parseErr == nil && name == ruleName {
 			return AlertResourceNames{
 				AlarmName:        aws.ToString(alarm.AlarmName),

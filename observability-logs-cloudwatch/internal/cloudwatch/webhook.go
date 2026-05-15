@@ -110,7 +110,7 @@ func parseSNSAlarmMessage(message, envTimestamp string) (*ParsedAlertEvent, erro
 		AlertValue:     value,
 		AlertTimestamp: ts,
 	}
-	if namespace, name, err := ParseAlertIdentityFromAlarmName(msg.AlarmName); err == nil {
+	if _, namespace, name, err := ParseAlertIdentityFromAlarmName(msg.AlarmName); err == nil {
 		evt.RuleNamespace = namespace
 		evt.RuleName = name
 	}
@@ -162,7 +162,7 @@ func ParseEventBridgeEvent(body []byte) (*ParsedAlertEvent, error) {
 		AlertValue:     value,
 		AlertTimestamp: ts,
 	}
-	if namespace, name, err := ParseAlertIdentityFromAlarmName(evt.Detail.AlarmName); err == nil {
+	if _, namespace, name, err := ParseAlertIdentityFromAlarmName(evt.Detail.AlarmName); err == nil {
 		parsed.RuleNamespace = namespace
 		parsed.RuleName = name
 	}

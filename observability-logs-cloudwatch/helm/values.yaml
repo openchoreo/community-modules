@@ -1,4 +1,9 @@
 # ---------------------------------------------------------------------------
+# OpenChoreo instance identity. All clusters in one OpenChoreo installation
+# must share the same instanceName so logs land in a single CloudWatch log
+# group: <logGroupPrefix>/<instanceName>/application.
+instanceName: ""
+
 # Prefix shared by all log groups this module reads/writes.
 # Must match what the CloudWatch Agent writes to (Container Insights default).
 logGroupPrefix: "/aws/containerinsights"
@@ -61,13 +66,12 @@ cloudWatchAgent:
     pullPolicy: IfNotPresent
 
 amazon-cloudwatch-observability:
-  # Single source of truth for clusterName / region across this chart and the
-  # upstream subchart. Both parent and subchart templates read these values
-  # via the helpers in templates/_helpers.tpl, so operators only set them
-  # once:
-  #   --set amazon-cloudwatch-observability.clusterName=openchoreo-dev \
-  #   --set amazon-cloudwatch-observability.region=us-east-1
+  # clusterName is an internal subchart value required by the upstream
+  # amazon-cloudwatch-observability chart. It MUST be set to the same value as
+  # `instanceName` when cloudWatchAgent.enabled=true so the Fluent Bit
+  # CLUSTER_NAME env var matches. Adapter-only installs do not need it.
   clusterName: ""
+  # AWS region for the CloudWatch Agent and Fluent Bit output.
   region: ""
   containerLogs:
     enabled: true

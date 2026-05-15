@@ -96,7 +96,7 @@ for each cluster.
 | Topology | Install location | Purpose | Required Helm values |
 | --- | --- | --- | --- |
 | Single cluster | The OpenChoreo cluster where the observability plane and workloads run together. | Deploys the adapter, OpenTelemetry collector, kube-state-metrics, and retention Job. | Defaults. |
-| Observability plane cluster | The dedicated observability cluster. | Deploys only the CloudWatch Metrics Adapter. | `adotcollector.enabled=false`, `kubeStateMetrics.enabled=false`, `metrics.retention.enabled=false` |
+| Observability plane cluster | The cluster where the OpenChoreo observability plane is installed. | Deploys only the CloudWatch Metrics Adapter. | `adotcollector.enabled=false`, `kubeStateMetrics.enabled=false`, `metrics.retention.enabled=false` |
 | Data-plane / workflow-plane cluster | Each cluster that runs OpenChoreo workloads. | Deploys only metric ingestion components: OpenTelemetry collector, kube-state-metrics, and retention Job. | `adapter.enabled=false` |
 
 For one OpenChoreo installation, keep these values identical across all

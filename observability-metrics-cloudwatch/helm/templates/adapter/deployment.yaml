@@ -37,8 +37,8 @@ spec:
               value: {{ .Values.adapter.service.port | quote }}
             - name: AWS_REGION
               value: {{ include "metrics-cloudwatch.region" . | quote }}
-            - name: CLUSTER_NAME
-              value: {{ include "metrics-cloudwatch.clusterName" . | quote }}
+            - name: INSTANCE_NAME
+              value: {{ include "metrics-cloudwatch.instanceName" . | quote }}
             - name: METRIC_NAMESPACE
               value: {{ include "metrics-cloudwatch.metricNamespace" . | quote }}
             - name: LOG_LEVEL

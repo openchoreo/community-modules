@@ -71,7 +71,7 @@ type stsAPI interface {
 // Config holds the static configuration for Client.
 type Config struct {
 	Region                     string
-	ClusterName                string
+	InstanceName               string
 	MetricNamespace            string
 	AlarmActionARNs            []string
 	OKActionARNs               []string
@@ -82,7 +82,7 @@ type Config struct {
 type Client struct {
 	cw                         cloudwatchAPI
 	sts                        stsAPI
-	clusterName                string
+	instanceName               string
 	metricNamespace            string
 	alarmActionARNs            []string
 	okActionARNs               []string
@@ -102,7 +102,7 @@ func NewClient(ctx context.Context, cfg Config, logger *slog.Logger) (*Client, e
 	return &Client{
 		cw:                         cloudwatch.NewFromConfig(awsCfg),
 		sts:                        sts.NewFromConfig(awsCfg),
-		clusterName:                cfg.ClusterName,
+		instanceName:               cfg.InstanceName,
 		metricNamespace:            ns,
 		alarmActionARNs:            cfg.AlarmActionARNs,
 		okActionARNs:               cfg.OKActionARNs,
@@ -120,7 +120,7 @@ func NewClientWithAWS(cw cloudwatchAPI, stsClient stsAPI, cfg Config, logger *sl
 	return &Client{
 		cw:                         cw,
 		sts:                        stsClient,
-		clusterName:                cfg.ClusterName,
+		instanceName:               cfg.InstanceName,
 		metricNamespace:            ns,
 		alarmActionARNs:            cfg.AlarmActionARNs,
 		okActionARNs:               cfg.OKActionARNs,

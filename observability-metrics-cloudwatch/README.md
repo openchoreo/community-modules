@@ -53,7 +53,7 @@ The OpenTelemetry collector writes Embedded Metric Format events to this CloudWa
 log group:
 
 ```text
-/aws/openchoreo/<clusterName>/metrics
+/aws/openchoreo/<instanceName>/metrics
 ```
 
 Each collector DaemonSet pod writes to a node-named log stream such as
@@ -90,10 +90,6 @@ Before installing this module, make sure the following are available.
 
 - OpenChoreo is installed.
 - The `openchoreo-observability-plane` Helm chart is installed.
-- Workload pods include OpenChoreo labels such as:
-  - `openchoreo.dev/component-uid`
-  - `openchoreo.dev/environment-uid`
-  - `openchoreo.dev/project-uid`
 
 See the [OpenChoreo documentation](https://openchoreo.dev/docs) for the base
 installation steps.
@@ -107,36 +103,28 @@ Install the following tools on your machine:
 - `jq`
 - `aws` CLI v2
 
-### Cluster prerequisites
-
-The OpenTelemetry collector expects:
-
-- Kubernetes API access to pods, services, endpoints, namespaces, nodes, and
-  replicasets.
-- Kubelet stats access through the node kubelet.
-- A running `kube-state-metrics` Service. The bundled scrape config keeps any
-  endpoint port named `http` or `http-metrics`, so the upstream
-  [`prometheus-community/kube-state-metrics`](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-state-metrics)
-  chart works out of the box.
-
-If `kube-state-metrics` is not already installed, install it before deploying
-this module. To make the OpenChoreo UID labels available on the
-`kube_pod_container_resource_*` series, allowlist them on `kube_pod_labels`:
+### Prerequisites
+The chart installs kube-state-metrics by default with the required
+`metricLabelsAllowlist` for the OpenChoreo UID labels. If
+kube-state-metrics is already running in the cluster, disable the
+bundled instance when install the helm chart:
 
 ```bash
-helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-helm install kube-state-metrics prometheus-community/kube-state-metrics \
-  --namespace kube-system \
-  --set 'metricLabelsAllowlist={pods=[openchoreo.dev/component-uid\,openchoreo.dev/environment-uid\,openchoreo.dev/project-uid]}'
+--set kubeStateMetrics.enabled=false
 ```
 
-### AWS prerequisites
+When using your own instance, ensure the OpenChoreo pod labels are
+allowlisted:
 
-You need:
+```bash
+--set 'metricLabelsAllowlist={pods=[openchoreo.dev/component-uid\,openchoreo.dev/environment-uid\,openchoreo.dev/project-uid]}'
+```
+
+You need these:
 
 - An AWS account.
 - An AWS region, for example `us-east-1`.
-- A cluster name, for example `openchoreo-dev`.
+- An OpenChoreo instance name, for example `openchoreo-dev`.
 - An IAM principal with the permissions described in [IAM permissions](#iam-permissions).
 
 For EKS, use IAM roles with **EKS Pod Identity** or IRSA. For non-EKS clusters
@@ -202,13 +190,13 @@ principal when using separate EKS identities.
 }
 ```
 
-### OpenTelemetry collector and log-retention IAM policy
+### OpenTelemetry collector and retention IAM policy
 
 Create the following custom IAM policy and attach it to the OpenTelemetry
 collector IAM principal when using separate EKS identities. If
-`metrics.logRetention.enabled=true`, also attach this policy to the
-log-retention Job IAM principal configured through
-`metrics.logRetention.serviceAccount.annotations`.
+`metrics.retention.enabled=true`, also attach this policy to the
+retention Job IAM principal configured through
+`metrics.retention.serviceAccount.annotations`.
 
 `logs:PutRetentionPolicy` is required on the **collector** policy because
 the awsemfexporter is configured with `log_retention` and reapplies
@@ -301,7 +289,7 @@ This is the recommended installation path for EKS clusters.
 
 ```bash
 export AWS_REGION=ap-southeast-1
-export CLUSTER_NAME=openchoreo-metric-test
+export INSTANCE_NAME=openchoreo-metric-test
 export NS=openchoreo-observability-plane
 export WEBHOOK_SHARED_SECRET="$(openssl rand -base64 32)"
 ```
@@ -337,7 +325,7 @@ Create another IAM role for the OpenTelemetry collector, for example:
 OpenChoreoCloudWatchMetricsRoleForAdot
 ```
 
-Attach the custom [OpenTelemetry collector and log-retention IAM policy](#opentelemetry-collector-and-log-retention-iam-policy).
+Attach the custom [OpenTelemetry collector and retention IAM policy](#opentelemetry-collector-and-retention-iam-policy).
 
 Use the following trust policy for both roles when using EKS Pod Identity:
 
@@ -367,7 +355,7 @@ helm upgrade --install observability-metrics-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
   --version 0.1.0 \
-  --set clusterName="$CLUSTER_NAME" \
+  --set instanceName="$INSTANCE_NAME" \
   --set region="$AWS_REGION" \
   --set adapter.alerting.webhookAuth.enabled=true \
   --set adapter.alerting.webhookAuth.sharedSecret="$WEBHOOK_SHARED_SECRET"
@@ -380,8 +368,8 @@ Create three Pod Identity associations in the `$NS` namespace.
 | ServiceAccount | Used by | IAM policy |
 | --- | --- | --- |
 | `metrics-adapter-cloudwatch` | Adapter metric queries, alert CRUD, and webhook handling. | [Adapter IAM policy](#adapter-iam-policy) |
-| `observability-metrics-cloudwatch-adotcollector` | OpenTelemetry collector metric export to CloudWatch Logs. | [OpenTelemetry collector and log-retention IAM policy](#opentelemetry-collector-and-log-retention-iam-policy) |
-| `metrics-cloudwatch-log-retention` | Helm post-install/post-upgrade Job that creates the EMF log group and applies `metrics.logRetentionDays`. | [OpenTelemetry collector and log-retention IAM policy](#opentelemetry-collector-and-log-retention-iam-policy) |
+| `observability-metrics-cloudwatch-adotcollector` | OpenTelemetry collector metric export to CloudWatch Logs. | [OpenTelemetry collector and retention IAM policy](#opentelemetry-collector-and-retention-iam-policy) |
+| `metrics-cloudwatch-retention` | Helm post-install/post-upgrade Job that creates the EMF log group and applies `metrics.retentionDays`. | [OpenTelemetry collector and retention IAM policy](#opentelemetry-collector-and-retention-iam-policy) |
 
 All three service account names must match the rendered Helm release. If you
 install with a release name other than `observability-metrics-cloudwatch`,
@@ -392,7 +380,7 @@ helm template observability-metrics-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-metrics-cloudwatch \
   --namespace "$NS" \
   --version 0.1.0 \
-  --set clusterName="$CLUSTER_NAME" \
+  --set instanceName="$INSTANCE_NAME" \
   --set region="$AWS_REGION" \
   | grep -A5 'kind: ServiceAccount'
 ```
@@ -414,20 +402,20 @@ kubectl -n "$NS" rollout restart deploy/metrics-adapter-cloudwatch
 kubectl -n "$NS" rollout restart ds/observability-metrics-cloudwatch-adotcollector-agent
 ```
 
-If the log-retention Job already failed because its Pod Identity association
+If the retention Job already failed because its Pod Identity association
 was created late, you must rerun it manually — `helm upgrade` re-fires the
 post-upgrade hook, but the failed Job has a fixed name and a new one cannot
 be created until it is deleted.
 
 Confirm the Pod Identity association for
-`metrics-cloudwatch-log-retention` is attached **before** rerunning the
+`metrics-cloudwatch-retention` is attached **before** rerunning the
 upgrade. Otherwise the new Job pod will fail with the same
 `no EC2 IMDS role found` error and the upgrade will fail again with
 `BackoffLimitExceeded`.
 
 ```bash
 # 1. Delete the failed Job so a new one can be created with the same name.
-kubectl -n "$NS" delete job metrics-cloudwatch-log-retention --ignore-not-found
+kubectl -n "$NS" delete job metrics-cloudwatch-retention --ignore-not-found
 
 # 2. Re-fire the post-upgrade hook.
 helm upgrade observability-metrics-cloudwatch \
@@ -435,14 +423,14 @@ helm upgrade observability-metrics-cloudwatch \
   --namespace "$NS" --reset-then-reuse-values
 
 # 3. Watch the new Job complete (Ctrl+C once COMPLETIONS shows 1/1).
-kubectl -n "$NS" get job metrics-cloudwatch-log-retention -w
+kubectl -n "$NS" get job metrics-cloudwatch-retention -w
 ```
 
 If the new Job pod fails again, inspect its logs to confirm credentials are
 being injected:
 
 ```bash
-kubectl -n "$NS" logs -l job-name=metrics-cloudwatch-log-retention --tail=100
+kubectl -n "$NS" logs -l job-name=metrics-cloudwatch-retention --tail=100
 ```
 
 If the OpenTelemetry collector DaemonSet name differs because of your Helm release name, inspect
@@ -504,7 +492,7 @@ pointed at the same Secret through `adotcollector.extraEnvsFrom`.
 
 ```bash
 export AWS_REGION=us-east-1
-export CLUSTER_NAME=openchoreo-dev
+export INSTANCE_NAME=openchoreo-dev
 export NS=openchoreo-observability-plane
 export WEBHOOK_SHARED_SECRET="$(openssl rand -base64 32)"
 export AWS_ACCESS_KEY_ID="AKIA..."
@@ -526,7 +514,7 @@ helm upgrade --install observability-metrics-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
   --version 0.1.0 \
-  --set clusterName="$CLUSTER_NAME" \
+  --set instanceName="$INSTANCE_NAME" \
   --set region="$AWS_REGION" \
   --set awsCredentials.create=true \
   --set awsCredentials.name=metrics-cloudwatch-aws-credentials \
@@ -909,20 +897,22 @@ reference.
 
 | Value | Default | Description |
 | --- | --- | --- |
-| `clusterName` | Required | OpenChoreo or EKS cluster name. Propagated to the OpenTelemetry collector and adapter. |
+| `instanceName` | Required | OpenChoreo instance name. Propagated to the OpenTelemetry collector and adapter. |
 | `region` | Required | AWS region for CloudWatch Logs, CloudWatch Metrics, and API calls. |
 | `awsCredentials.create` | `false` | Creates a static AWS credentials Secret. Keep `false` for Pod Identity, IRSA, or instance-profile based auth. Set to `true` for k3d, kind, or non-EKS clusters. |
 | `awsCredentials.name` | `""` | Name of the AWS credentials Secret. Required when `awsCredentials.create=true`. |
 | `awsCredentials.accessKeyId` | Required if `create=true` | AWS access key ID. |
 | `awsCredentials.secretAccessKey` | Required if `create=true` | AWS secret access key. |
+| `kubeStateMetrics.enabled` | `true` | Installs the bundled kube-state-metrics subchart with the required OpenChoreo label allowlist. Set to `false` when kube-state-metrics is already running in the cluster. |
 | `metrics.namespace` | `OpenChoreo/Metrics` | CloudWatch metric namespace used by the adapter. |
-| `metrics.logGroup` | `""` | CloudWatch Logs log group used by the OpenTelemetry EMF exporter. Empty defaults to `/aws/openchoreo/<clusterName>/metrics`. |
-| `metrics.logRetentionDays` | `7` | CloudWatch Logs retention period for the EMF log group. Must be one of the retention values supported by CloudWatch Logs. |
-| `metrics.logRetention.enabled` | `true` | Runs a Helm post-install/post-upgrade Job that creates the EMF log group if needed and applies `metrics.logRetentionDays`. |
-| `metrics.logRetention.serviceAccount.create` | `true` | Creates a ServiceAccount for the log-retention Job. |
-| `metrics.logRetention.serviceAccount.annotations` | `{}` | ServiceAccount annotations for IRSA or other identity integrations used by the log-retention Job. |
-| `metrics.logRetention.image.repository` | `public.ecr.aws/aws-cli/aws-cli` | AWS CLI image used by the log-retention Job. |
-| `metrics.logRetention.image.tag` | `2.15.57` | AWS CLI image tag used by the log-retention Job. |
+| `metrics.logGroup` | `""` | CloudWatch Logs log group used by the OpenTelemetry EMF exporter. Empty defaults to `/aws/openchoreo/<instanceName>/metrics`. |
+| `metrics.retentionDays` | `7` | CloudWatch Logs retention period for the EMF log group. Must be one of the retention values supported by CloudWatch Logs. |
+| `metrics.retention.enabled` | `true` | Runs a Helm post-install/post-upgrade Job that creates the EMF log group if needed and applies `metrics.retentionDays`. |
+| `metrics.retention.serviceAccount.create` | `true` | Creates a ServiceAccount for the retention Job. |
+| `metrics.retention.serviceAccount.name` | `""` | ServiceAccount name for the retention Job. Defaults to `metrics-cloudwatch-retention` when `create=true`. Required when `create=false`. |
+| `metrics.retention.serviceAccount.annotations` | `{}` | ServiceAccount annotations for IRSA or other identity integrations used by the retention Job. |
+| `metrics.retention.image.repository` | `public.ecr.aws/aws-cli/aws-cli` | AWS CLI image used by the retention Job. |
+| `metrics.retention.image.tag` | `2.15.57` | AWS CLI image tag used by the retention Job. |
 | `adotcollector.enabled` | `true` | Enables the ADOT subchart. |
 | `adotcollector.mode` | `daemonset` | Runs one collector per node. |
 | `adotcollector.image.repository` | `otel/opentelemetry-collector-contrib` | Collector image repository. The contrib image includes kubeletstats and awsemfexporter. |
@@ -957,6 +947,7 @@ reference.
 | `adapter.networkPolicy.observerNamespaceLabels` | `{kubernetes.io/metadata.name: openchoreo-observability-plane}` | Namespace labels allowed to call the adapter from the Observer. |
 | `adapter.networkPolicy.observerPodLabels` | `{}` | Pod labels allowed to call the adapter from the Observer. Tune per deployment. |
 | `adapter.networkPolicy.gatewayNamespaceLabels` | `{}` | Namespace labels of the Gateway data-plane pods allowed to proxy the webhook. Set when webhookRoute is enabled. |
+| `adapter.networkPolicy.gatewayPodLabels` | `{}` | Pod labels of the Gateway data-plane pods allowed to proxy the webhook. When set, restricts gateway ingress to matching pods instead of the entire namespace. |
 | `adapter.networkPolicy.allowProbeIPBlock` | `""` | Optional node CIDR for kubelet probes when required by the CNI. |
 
 If you override `metrics.logGroup`, update the CloudWatch Logs IAM policy

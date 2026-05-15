@@ -7,6 +7,6 @@ metadata:
   labels:
     app.kubernetes.io/name: observability-metrics-cloudwatch
 data:
-  CLUSTER_NAME: {{ include "metrics-cloudwatch.clusterName" . | quote }}
+  INSTANCE_NAME: {{ include "metrics-cloudwatch.instanceName" . | quote }}
   EMF_LOG_GROUP_NAME: {{ include "metrics-cloudwatch.logGroup" . | quote }}
-  EMF_LOG_RETENTION_DAYS: {{ .Values.metrics.logRetentionDays | quote }}
+  EMF_RETENTION_DAYS: {{ .Values.metrics.retentionDays | quote }}

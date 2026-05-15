@@ -3,8 +3,8 @@ Copyright 2026 The OpenChoreo Authors
 SPDX-License-Identifier: Apache-2.0
 */}}
 
-{{- define "metrics-cloudwatch.clusterName" -}}
-{{- .Values.clusterName -}}
+{{- define "metrics-cloudwatch.instanceName" -}}
+{{- .Values.instanceName -}}
 {{- end -}}
 
 {{- define "metrics-cloudwatch.region" -}}
@@ -19,21 +19,21 @@ SPDX-License-Identifier: Apache-2.0
 {{- if .Values.metrics.logGroup -}}
 {{- .Values.metrics.logGroup -}}
 {{- else -}}
-{{- printf "/aws/openchoreo/%s/metrics" (include "metrics-cloudwatch.clusterName" .) -}}
+{{- printf "/aws/openchoreo/%s/metrics" (include "metrics-cloudwatch.instanceName" .) -}}
 {{- end -}}
 {{- end -}}
 
-{{- define "metrics-cloudwatch.logRetentionServiceAccountName" -}}
+{{- define "metrics-cloudwatch.retentionServiceAccountName" -}}
 {{- $metrics := .Values.metrics | default dict -}}
-{{- $logRetention := (get $metrics "logRetention") | default dict -}}
-{{- $serviceAccount := (get $logRetention "serviceAccount") | default dict -}}
+{{- $retention := (get $metrics "retention") | default dict -}}
+{{- $serviceAccount := (get $retention "serviceAccount") | default dict -}}
 {{- $create := true -}}
 {{- if hasKey $serviceAccount "create" -}}{{- $create = get $serviceAccount "create" -}}{{- end -}}
 {{- $name := get $serviceAccount "name" | default "" -}}
 {{- if $create -}}
-{{- default "metrics-cloudwatch-log-retention" $name -}}
+{{- default "metrics-cloudwatch-retention" $name -}}
 {{- else -}}
-{{- required "metrics.logRetention.serviceAccount.name is required when metrics.logRetention.serviceAccount.create=false" $name -}}
+{{- required "metrics.retention.serviceAccount.name is required when metrics.retention.serviceAccount.create=false" $name -}}
 {{- end -}}
 {{- end -}}
 
@@ -46,21 +46,21 @@ metrics-adapter-cloudwatch-webhook-token
 {{- end -}}
 
 {{- define "metrics-cloudwatch.validate" -}}
-{{- if not (include "metrics-cloudwatch.clusterName" .) -}}
-{{- fail "clusterName is required. Example: --set clusterName=openchoreo-dev" -}}
+{{- if not (include "metrics-cloudwatch.instanceName" .) -}}
+{{- fail "instanceName (OpenChoreo instance name) is required. Example: --set instanceName=openchoreo-dev" -}}
 {{- end -}}
 {{- if not (include "metrics-cloudwatch.region" .) -}}
 {{- fail "region is required. Example: --set region=us-east-1" -}}
 {{- end -}}
 {{- $metrics := .Values.metrics | default dict -}}
-{{- $logRetention := (get $metrics "logRetention") | default dict -}}
-{{- $logRetentionEnabled := true -}}
-{{- if hasKey $logRetention "enabled" -}}{{- $logRetentionEnabled = get $logRetention "enabled" -}}{{- end -}}
-{{- if $logRetentionEnabled -}}
-{{- $retention := int .Values.metrics.logRetentionDays -}}
+{{- $retention := (get $metrics "retention") | default dict -}}
+{{- $retentionEnabled := true -}}
+{{- if hasKey $retention "enabled" -}}{{- $retentionEnabled = get $retention "enabled" -}}{{- end -}}
+{{- if $retentionEnabled -}}
+{{- $retentionDays := int .Values.metrics.retentionDays -}}
 {{- $validRetentions := list 1 3 5 7 14 30 60 90 120 150 180 365 400 545 731 1096 1827 2192 2557 2922 3288 3653 -}}
-{{- if not (has $retention $validRetentions) -}}
-{{- fail "metrics.logRetentionDays must be one of: 1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653" -}}
+{{- if not (has $retentionDays $validRetentions) -}}
+{{- fail "metrics.retentionDays must be one of: 1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653" -}}
 {{- end -}}
 {{- end -}}
 {{- if and .Values.adapter.alerting.webhookAuth.enabled (not (or .Values.adapter.alerting.webhookAuth.sharedSecret .Values.adapter.alerting.webhookAuth.sharedSecretRef.name)) -}}

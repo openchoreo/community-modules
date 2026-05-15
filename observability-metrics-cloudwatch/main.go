@@ -28,7 +28,7 @@ func main() {
 	logger.Info("Configuration loaded",
 		slog.String("logLevel", cfg.LogLevel.String()),
 		slog.String("awsRegion", cfg.AWSRegion),
-		slog.String("clusterName", cfg.ClusterName),
+		slog.String("instanceName", cfg.InstanceName),
 		slog.String("metricNamespace", cfg.MetricNamespace),
 		slog.String("serverPort", cfg.ServerPort),
 	)
@@ -38,7 +38,7 @@ func main() {
 
 	cwClient, err := cloudwatchmetrics.NewClient(bootstrapCtx, cloudwatchmetrics.Config{
 		Region:                     cfg.AWSRegion,
-		ClusterName:                cfg.ClusterName,
+		InstanceName:               cfg.InstanceName,
 		MetricNamespace:            cfg.MetricNamespace,
 		AlarmActionARNs:            cfg.AlarmActionARNs,
 		OKActionARNs:               cfg.OKActionARNs,

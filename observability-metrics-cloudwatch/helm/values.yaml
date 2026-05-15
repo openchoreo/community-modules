@@ -1,8 +1,8 @@
 # ---------------------------------------------------------------------------
-# Cluster identity. Both clusterName and region are required and propagate to
-# the OpenTelemetry collector and the adapter.
+# OpenChoreo instance identity. Both instanceName and region are required and
+# propagate to the OpenTelemetry collector and the adapter.
 # ---------------------------------------------------------------------------
-clusterName: ""
+instanceName: ""
 region: ""
 
 # AWS authentication.
@@ -19,6 +19,20 @@ awsCredentials:
   name: ""
   accessKeyId: ""
   secretAccessKey: ""
+
+# ---------------------------------------------------------------------------
+# kube-state-metrics subchart.
+# Enabled by default. Set kubeStateMetrics.enabled=false if
+# kube-state-metrics is already running in the cluster. The chart
+# hardcodes the metricLabelsAllowlist so the OpenChoreo UID labels are
+# available on kube_pod_container_resource_* series.
+# ---------------------------------------------------------------------------
+kubeStateMetrics:
+  enabled: true
+
+kube-state-metrics:
+  metricLabelsAllowlist:
+    - pods=[openchoreo.dev/component-uid,openchoreo.dev/environment-uid,openchoreo.dev/project-uid]
 
 # ---------------------------------------------------------------------------
 # ADOT collector subchart (alias: adotcollector)
@@ -178,9 +192,9 @@ adotcollector:
         log_stream_name: ${env:K8S_NODE_NAME}
         # Retention applied by the awsemfexporter itself whenever it creates
         # the log group, so retention survives manual log-group deletion.
-        # Sourced from metrics.logRetentionDays via the env-configmap. The
-        # post-install Job in metrics-log-retention.yaml is belt-and-suspenders.
-        log_retention: ${env:EMF_LOG_RETENTION_DAYS}
+        # Sourced from metrics.retentionDays via the env-configmap. The
+        # post-install Job in metrics-retention.yaml is belt-and-suspenders.
+        log_retention: ${env:EMF_RETENTION_DAYS}
         dimension_rollup_option: NoDimensionRollup
         resource_to_telemetry_conversion:
           enabled: true
@@ -212,10 +226,10 @@ adotcollector:
 # ---------------------------------------------------------------------------
 metrics:
   namespace: OpenChoreo/Metrics
-  # Empty means /aws/openchoreo/<clusterName>/metrics.
+  # Empty means /aws/openchoreo/<instanceName>/metrics.
   logGroup: ""
-  logRetentionDays: 7
-  logRetention:
+  retentionDays: 7
+  retention:
     enabled: true
     image:
       repository: public.ecr.aws/aws-cli/aws-cli

@@ -14,7 +14,6 @@ import (
 type Config struct {
 	ServerPort      string
 	AWSRegion       string
-	InstanceName    string
 	MetricNamespace string
 	LogLevel        slog.Level
 
@@ -31,7 +30,6 @@ type Config struct {
 func LoadConfig() (*Config, error) {
 	serverPort := getEnv("SERVER_PORT", "9099")
 	awsRegion := getEnv("AWS_REGION", "")
-	instanceName := getEnv("INSTANCE_NAME", "")
 	metricNamespace := getEnv("METRIC_NAMESPACE", "OpenChoreo/Metrics")
 
 	logLevel := slog.LevelInfo
@@ -50,9 +48,6 @@ func LoadConfig() (*Config, error) {
 
 	if awsRegion == "" {
 		return nil, fmt.Errorf("environment variable AWS_REGION is required")
-	}
-	if instanceName == "" {
-		return nil, fmt.Errorf("environment variable INSTANCE_NAME is required")
 	}
 	port, err := strconv.Atoi(serverPort)
 	if err != nil {
@@ -87,7 +82,6 @@ func LoadConfig() (*Config, error) {
 	return &Config{
 		ServerPort:                 serverPort,
 		AWSRegion:                  awsRegion,
-		InstanceName:               instanceName,
 		MetricNamespace:            metricNamespace,
 		LogLevel:                   logLevel,
 		AlarmActionARNs:            alarmActionARNs,

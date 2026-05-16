@@ -324,7 +324,6 @@ func TestCreateAlertHappyPath(t *testing.T) {
 		DimensionComponentUID:   "comp-1",
 		DimensionEnvironmentUID: "env-1",
 		DimensionNamespace:      "payments",
-		DimensionInstanceName:   "test-cluster",
 	}
 	if got := dimensionsAsMap(m1.MetricStat.Metric.Dimensions); !mapEqual(got, wantDims) {
 		t.Fatalf("unexpected m1 dimensions: %#v", got)

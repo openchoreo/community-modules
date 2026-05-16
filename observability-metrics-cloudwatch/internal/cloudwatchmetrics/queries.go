@@ -153,10 +153,10 @@ func (c *Client) getMetricDataAll(ctx context.Context, queries []cwtypes.MetricD
 // buildScopeDimensions returns the EMF dimensions for the requested scope.
 // The dimension set must match what awsemfexporter is configured to emit so
 // CloudWatch matches the alarm/series identity. The EMF declaration emits
-// ComponentUID, EnvironmentUID, Namespace, and InstanceName only. ProjectUID
-// is intentionally accepted by the API but not used as a CloudWatch dimension.
+// ComponentUID, EnvironmentUID, and Namespace only. ProjectUID is
+// intentionally accepted by the API but not used as a CloudWatch dimension.
 func (c *Client) buildScopeDimensions(namespace, componentUID, _ string, environmentUID string) []cwtypes.Dimension {
-	dims := make([]cwtypes.Dimension, 0, 4)
+	dims := make([]cwtypes.Dimension, 0, 3)
 	if componentUID != "" {
 		dims = append(dims, cwtypes.Dimension{Name: aws.String(DimensionComponentUID), Value: aws.String(componentUID)})
 	}
@@ -164,7 +164,6 @@ func (c *Client) buildScopeDimensions(namespace, componentUID, _ string, environ
 		dims = append(dims, cwtypes.Dimension{Name: aws.String(DimensionEnvironmentUID), Value: aws.String(environmentUID)})
 	}
 	dims = append(dims, cwtypes.Dimension{Name: aws.String(DimensionNamespace), Value: aws.String(namespace)})
-	dims = append(dims, cwtypes.Dimension{Name: aws.String(DimensionInstanceName), Value: aws.String(c.instanceName)})
 	return dims
 }
 

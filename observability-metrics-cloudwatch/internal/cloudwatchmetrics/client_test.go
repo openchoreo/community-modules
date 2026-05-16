@@ -93,9 +93,7 @@ func (s *stubSTSAPI) GetCallerIdentity(_ context.Context, _ *sts.GetCallerIdenti
 }
 
 func newTestClient(cw *stubCloudWatchAPI) *Client {
-	return NewClientWithAWS(cw, &stubSTSAPI{}, Config{
-		InstanceName: "test-cluster",
-	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	return NewClientWithAWS(cw, &stubSTSAPI{}, Config{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 }
 
 func TestPingDelegatesToSTS(t *testing.T) {

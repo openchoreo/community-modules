@@ -14,7 +14,6 @@ import (
 var requiredEnv = []string{
 	"SERVER_PORT",
 	"AWS_REGION",
-	"INSTANCE_NAME",
 	"METRIC_NAMESPACE",
 	"LOG_LEVEL",
 	"ALARM_ACTION_ARNS",
@@ -37,7 +36,6 @@ func clearConfigEnv(t *testing.T) {
 func TestLoadConfigHappyPath(t *testing.T) {
 	clearConfigEnv(t)
 	t.Setenv("AWS_REGION", "eu-north-1")
-	t.Setenv("INSTANCE_NAME", "openchoreo-dev")
 	t.Setenv("LOG_LEVEL", "debug")
 	t.Setenv("ALARM_ACTION_ARNS", "arn:aws:sns:eu-north-1:123:alerts , arn:aws:sns:eu-north-1:123:ops")
 	t.Setenv("OBSERVER_URL", "http://observer:8081")
@@ -72,24 +70,15 @@ func TestLoadConfigHappyPath(t *testing.T) {
 
 func TestLoadConfigRequiresAWSRegion(t *testing.T) {
 	clearConfigEnv(t)
-	t.Setenv("INSTANCE_NAME", "openchoreo-dev")
 	if _, err := LoadConfig(); err == nil || !strings.Contains(err.Error(), "AWS_REGION") {
 		t.Fatalf("expected AWS_REGION error, got %v", err)
-	}
-}
-
-func TestLoadConfigRequiresInstanceName(t *testing.T) {
-	clearConfigEnv(t)
-	t.Setenv("AWS_REGION", "eu-north-1")
-	if _, err := LoadConfig(); err == nil || !strings.Contains(err.Error(), "INSTANCE_NAME") {
-		t.Fatalf("expected INSTANCE_NAME error, got %v", err)
 	}
 }
 
 func TestLoadConfigRejectsNonNumericPort(t *testing.T) {
 	clearConfigEnv(t)
 	t.Setenv("AWS_REGION", "eu-north-1")
-	t.Setenv("INSTANCE_NAME", "openchoreo-dev")
+
 	t.Setenv("SERVER_PORT", "not-a-number")
 	if _, err := LoadConfig(); err == nil || !strings.Contains(err.Error(), "SERVER_PORT") {
 		t.Fatalf("expected SERVER_PORT error, got %v", err)
@@ -102,7 +91,7 @@ func TestLoadConfigRejectsPortOutOfRange(t *testing.T) {
 		t.Run(serverPort, func(t *testing.T) {
 			clearConfigEnv(t)
 			t.Setenv("AWS_REGION", "eu-north-1")
-			t.Setenv("INSTANCE_NAME", "openchoreo-dev")
+		
 			t.Setenv("SERVER_PORT", serverPort)
 			errText := serverPort + " out of range"
 			if _, err := LoadConfig(); err == nil || !strings.Contains(err.Error(), errText) {
@@ -115,7 +104,7 @@ func TestLoadConfigRejectsPortOutOfRange(t *testing.T) {
 func TestLoadConfigRejectsBadARN(t *testing.T) {
 	clearConfigEnv(t)
 	t.Setenv("AWS_REGION", "eu-north-1")
-	t.Setenv("INSTANCE_NAME", "openchoreo-dev")
+
 	t.Setenv("ALARM_ACTION_ARNS", "not-an-arn")
 	if _, err := LoadConfig(); err == nil || !strings.Contains(err.Error(), "ALARM_ACTION_ARNS") {
 		t.Fatalf("expected ALARM_ACTION_ARNS error, got %v", err)
@@ -125,7 +114,7 @@ func TestLoadConfigRejectsBadARN(t *testing.T) {
 func TestLoadConfigRejectsTooManyARNs(t *testing.T) {
 	clearConfigEnv(t)
 	t.Setenv("AWS_REGION", "eu-north-1")
-	t.Setenv("INSTANCE_NAME", "openchoreo-dev")
+
 	t.Setenv("OK_ACTION_ARNS", strings.Join([]string{
 		"arn:aws:sns:eu-north-1:1:a",
 		"arn:aws:sns:eu-north-1:1:b",
@@ -142,7 +131,7 @@ func TestLoadConfigRejectsTooManyARNs(t *testing.T) {
 func TestLoadConfigRequiresLongWebhookSecret(t *testing.T) {
 	clearConfigEnv(t)
 	t.Setenv("AWS_REGION", "eu-north-1")
-	t.Setenv("INSTANCE_NAME", "openchoreo-dev")
+
 	t.Setenv("WEBHOOK_AUTH_ENABLED", "true")
 	t.Setenv("WEBHOOK_SHARED_SECRET", "tooshort")
 	if _, err := LoadConfig(); err == nil || !strings.Contains(err.Error(), "WEBHOOK_SHARED_SECRET") {
@@ -164,7 +153,7 @@ func TestLoadConfigLogLevelMapping(t *testing.T) {
 		t.Run("level="+raw, func(t *testing.T) {
 			clearConfigEnv(t)
 			t.Setenv("AWS_REGION", "eu-north-1")
-			t.Setenv("INSTANCE_NAME", "openchoreo-dev")
+		
 			if raw != "" {
 				t.Setenv("LOG_LEVEL", raw)
 			}

@@ -1,12 +1,3 @@
-{{/*
-Copyright 2026 The OpenChoreo Authors
-SPDX-License-Identifier: Apache-2.0
-*/}}
-
-{{- define "metrics-cloudwatch.instanceName" -}}
-{{- .Values.instanceName -}}
-{{- end -}}
-
 {{- define "metrics-cloudwatch.region" -}}
 {{- .Values.region -}}
 {{- end -}}
@@ -16,11 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 {{- end -}}
 
 {{- define "metrics-cloudwatch.logGroup" -}}
-{{- if .Values.metrics.logGroup -}}
-{{- .Values.metrics.logGroup -}}
-{{- else -}}
-{{- printf "/aws/openchoreo/%s/metrics" (include "metrics-cloudwatch.instanceName" .) -}}
-{{- end -}}
+{{- default "/aws/openchoreo/metrics" .Values.metrics.logGroup -}}
 {{- end -}}
 
 {{- define "metrics-cloudwatch.retentionServiceAccountName" -}}
@@ -46,7 +33,6 @@ metrics-adapter-cloudwatch-webhook-token
 {{- end -}}
 
 {{- define "metrics-cloudwatch.validate" -}}
-{{- $_ := required "instanceName (OpenChoreo instance name) is required. Example: --set instanceName=openchoreo-dev" .Values.instanceName -}}
 {{- $_ := required "region is required. Example: --set region=us-east-1" .Values.region -}}
 {{- $metrics := .Values.metrics | default dict -}}
 {{- $retention := (get $metrics "retention") | default dict -}}

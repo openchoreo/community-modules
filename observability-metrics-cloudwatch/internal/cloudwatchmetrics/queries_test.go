@@ -19,8 +19,7 @@ func TestBuildScopeDimensionsAlwaysIncludesNamespace(t *testing.T) {
 	c := newTestClient(&stubCloudWatchAPI{})
 	got := c.buildScopeDimensions("payments", "", "", "")
 	want := map[string]string{
-		DimensionNamespace:    "payments",
-		DimensionInstanceName: "test-cluster",
+		DimensionNamespace: "payments",
 	}
 	if !mapEqual(dimensionsAsMap(got), want) {
 		t.Fatalf("unexpected dimensions: %#v", got)
@@ -34,7 +33,6 @@ func TestBuildScopeDimensionsIncludesPublishedUIDDimensions(t *testing.T) {
 		DimensionComponentUID:   "comp-1",
 		DimensionEnvironmentUID: "env-1",
 		DimensionNamespace:      "payments",
-		DimensionInstanceName:   "test-cluster",
 	}
 	if !mapEqual(dimensionsAsMap(got), want) {
 		t.Fatalf("unexpected dimensions: %#v", got)
@@ -51,7 +49,6 @@ func TestBuildScopeDimensionsOmitsEmptyUIDs(t *testing.T) {
 		DimensionComponentUID:   "comp-1",
 		DimensionEnvironmentUID: "env-1",
 		DimensionNamespace:      "payments",
-		DimensionInstanceName:   "test-cluster",
 	}
 	if !mapEqual(dimensionsAsMap(got), want) {
 		t.Fatalf("unexpected dimensions: %#v", got)
@@ -386,7 +383,6 @@ func TestGetResourceMetricsScopeDimensionsMatchEMFOrder(t *testing.T) {
 		{Name: aws.String(DimensionComponentUID), Value: aws.String("comp-1")},
 		{Name: aws.String(DimensionEnvironmentUID), Value: aws.String("env-1")},
 		{Name: aws.String(DimensionNamespace), Value: aws.String("payments")},
-		{Name: aws.String(DimensionInstanceName), Value: aws.String("test-cluster")},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("unexpected dimensions order:\n got: %#v\nwant: %#v", got, want)

@@ -4,20 +4,12 @@
 | ------------- | --------- |
 | Code coverage | [![Codecov](https://codecov.io/gh/openchoreo/community-modules/branch/main/graph/badge.svg?component=observability_metrics_cloudwatch)](https://codecov.io/gh/openchoreo/community-modules) |
 
-The **Observability Metrics Module for AWS CloudWatch** sends OpenChoreo
-resource metrics to **AWS CloudWatch Metrics** and exposes them back to the
-OpenChoreo Observer through the standard **OpenChoreo Metrics Adapter API**.
-It also supports metric-based alerting by translating OpenChoreo alert rules
-into **CloudWatch metric math alarms** that evaluate
-`(usage / limit) * 100` against a percentage threshold, so an OpenChoreo
-threshold of `80` for `cpu_usage` fires when the pod uses more than 80% of
-its CPU limit.
+The **Observability Metrics Module for AWS CloudWatch** sends OpenChoreo resource metrics to **AWS CloudWatch Metrics** and exposes them back to the OpenChoreo Observer through the standard **OpenChoreo Metrics Adapter API**. It also supports metric-based alerting by translating OpenChoreo alert rules into **CloudWatch metric math alarms** that evaluate `(usage / limit) * 100` against a percentage threshold, so an OpenChoreo threshold of `80` for `cpu_usage` fires when the pod uses more than 80% of its CPU limit.
 
 This module supports both:
 
-- **EKS clusters** using **EKS Pod Identity** or IRSA, recommended for production.
-- **Non-EKS Kubernetes clusters** such as **k3d**, **kind**, or Kubernetes
-  running outside AWS, using static AWS credentials.
+- **EKS clusters** using **EKS Pod Identity** — recommended for production.
+- **Non-EKS Kubernetes clusters** such as **k3d**, **kind**, or Kubernetes running outside AWS, using static AWS credentials.
 
 ## Table of contents
 
@@ -42,22 +34,16 @@ This module has two main responsibilities:
 
 In the default single-cluster topology, the chart deploys two workloads:
 
-1. An **OpenTelemetry collector** DaemonSet that scrapes pod CPU and memory
-   usage from kubelet, scrapes pod requests and limits from
-   `kube-state-metrics`, enriches series with OpenChoreo pod labels, and
-   publishes metrics to CloudWatch through the AWS EMF exporter.
-2. A Go **CloudWatch Metrics Adapter** Deployment that implements the
-   OpenChoreo Metrics Adapter API.
+1. An **OpenTelemetry collector** DaemonSet that scrapes pod CPU and memory usage from kubelet, scrapes pod requests and limits from `kube-state-metrics`, enriches series with OpenChoreo pod labels, and publishes metrics to CloudWatch through the AWS EMF exporter.
+2. A Go **CloudWatch Metrics Adapter** Deployment that implements the OpenChoreo Metrics Adapter API.
 
-The OpenTelemetry collector writes Embedded Metric Format events to this CloudWatch Logs
-log group:
+The OpenTelemetry collector writes Embedded Metric Format events to this CloudWatch Logs log group:
 
 ```text
-/aws/openchoreo/<instanceName>/metrics
+/aws/openchoreo/metrics
 ```
 
-Each collector DaemonSet pod writes to a node-named log stream such as
-`ip-10-0-3-168.us-east-1.compute.internal`.
+Each collector DaemonSet pod writes to a node-named log stream such as `ip-10-0-3-168.us-east-1.compute.internal`.
 
 CloudWatch then promotes those EMF records into metrics under this namespace:
 
@@ -70,11 +56,8 @@ The intended metric dimensions are:
 - `ComponentUID`
 - `EnvironmentUID`
 - `Namespace`
-- `InstanceName`
 
-`InstanceName` scopes CloudWatch metric queries and alarms to one OpenChoreo
-installation when multiple installations publish into the same AWS account,
-region, and metric namespace.
+All participating clusters write to the same configured EMF log group and metric namespace.
 
 | Endpoint | Purpose |
 | --- | --- |
@@ -89,8 +72,7 @@ region, and metric namespace.
 
 ## Choose a deployment topology
 
-Choose the deployment topology first, then choose the AWS authentication model
-for each cluster.
+Choose the deployment topology first, then choose the AWS authentication model for each cluster.
 
 | Topology | Install location | Purpose | Required Helm values |
 | --- | --- | --- | --- |
@@ -98,17 +80,12 @@ for each cluster.
 | Observability plane cluster | The cluster where the OpenChoreo observability plane is installed. | Deploys only the CloudWatch Metrics Adapter. | `adotcollector.enabled=false`, `kubeStateMetrics.enabled=false`, `metrics.retention.enabled=false` |
 | Data-plane / workflow-plane cluster | Each cluster that runs OpenChoreo workloads. | Deploys only metric ingestion components: OpenTelemetry collector, kube-state-metrics, and retention Job. | `adapter.enabled=false` |
 
-For one OpenChoreo installation, keep these values identical across all
-participating clusters:
+For one OpenChoreo installation, keep these values identical across all participating clusters:
 
-- `instanceName`
 - `region`
 - `metrics.namespace`
 
-`InstanceName` is emitted as a CloudWatch metric dimension, so the adapter can
-query and create alarms for the correct OpenChoreo installation even when
-multiple installations publish to the same AWS account, region, and metric
-namespace.
+CloudWatch Metrics is the shared managed backend. Remote workload clusters write directly to CloudWatch and do not need network connectivity back to a self-hosted metrics datastore. All clusters that belong to one OpenChoreo installation write to the same EMF log group, and the observability-plane adapter reads from the shared metric namespace.
 
 ## Prerequisites
 
@@ -119,8 +96,7 @@ Before installing this module, make sure the following are available.
 - OpenChoreo is installed.
 - The `openchoreo-observability-plane` Helm chart is installed.
 
-See the [OpenChoreo documentation](https://openchoreo.dev/docs) for the base
-installation steps.
+See the [OpenChoreo documentation](https://openchoreo.dev/docs) for the base installation steps.
 
 ### Local tooling
 
@@ -131,33 +107,29 @@ Install the following tools on your machine:
 - `jq`
 - `aws` CLI v2
 
+### AWS prerequisites
+
+You need:
+
+- An AWS account.
+- An AWS region, for example `us-east-1`.
+- An IAM principal with the permissions described in [IAM permissions](#iam-permissions).
+
+For EKS, use an IAM role with **EKS Pod Identity**. For non-EKS clusters such as k3d or kind, use an IAM user with access keys.
+
 ### kube-state-metrics
 
-The chart installs kube-state-metrics by default with the required
-`metricLabelsAllowlist` for the OpenChoreo UID labels. If
-kube-state-metrics is already running in the cluster, disable the
-bundled instance when installing the Helm chart:
+The chart installs kube-state-metrics by default with the required `metricLabelsAllowlist` for the OpenChoreo UID labels. If kube-state-metrics is already running in the cluster, disable the bundled instance when installing the Helm chart:
 
 ```bash
 --set kubeStateMetrics.enabled=false
 ```
 
-When using your own instance, ensure the OpenChoreo pod labels are
-allowlisted:
+When using your own instance, ensure the OpenChoreo pod labels are allowlisted:
 
 ```bash
 --set 'metricLabelsAllowlist={pods=[openchoreo.dev/component-uid\,openchoreo.dev/environment-uid\,openchoreo.dev/project-uid]}'
 ```
-
-You need these:
-
-- An AWS account.
-- An AWS region, for example `us-east-1`.
-- An OpenChoreo instance name, for example `openchoreo-dev`.
-- An IAM principal with the permissions described in [IAM permissions](#iam-permissions).
-
-For EKS, use IAM roles with **EKS Pod Identity** or IRSA. For non-EKS clusters
-such as k3d or kind, use an IAM user with access keys.
 
 ## IAM permissions
 
@@ -171,18 +143,12 @@ The OpenTelemetry collector needs permission to write EMF records to CloudWatch 
 
 Use these policies based on the credential model:
 
-- **EKS Pod Identity or IRSA:** keep the adapter and OpenTelemetry collector policies
-  separate and attach them to separate roles. This keeps each ServiceAccount
-  least-privileged.
-- **Static credentials:** use one IAM user and attach the
-  [combined static-credentials IAM policy](#combined-static-credentials-iam-policy),
-  because the same Kubernetes Secret is shared by the adapter and OpenTelemetry collector
-  collector.
+- **EKS Pod Identity or IRSA:** keep the adapter and OpenTelemetry collector policies separate and attach them to separate roles. This keeps each ServiceAccount least-privileged.
+- **Static credentials:** use one IAM user and attach the [combined static-credentials IAM policy](#combined-static-credentials-iam-policy), because the same Kubernetes Secret is shared by the adapter and OpenTelemetry collector.
 
 ### Adapter IAM policy
 
-Create the following custom IAM policy and attach it to the adapter IAM
-principal when using separate EKS identities.
+Create the following custom IAM policy and attach it to the adapter IAM principal.
 
 ```json
 {
@@ -219,20 +185,16 @@ principal when using separate EKS identities.
 }
 ```
 
+Notes:
+
+- `cloudwatch:TagResource` is required because the adapter adds tags when creating alarms.
+- `cloudwatch:UntagResource` is not required because the adapter does not remove tags.
+- CloudWatch alarm actions use `"Resource": "*"` because alarm ARNs are only known after the first `PutMetricAlarm` call.
+- Leave `adapter.alerting.alarmActionArns` empty when using EventBridge to forward alarm state-change events.
+
 ### OpenTelemetry collector and retention IAM policy
 
-Create the following custom IAM policy and attach it to the OpenTelemetry
-collector IAM principal when using separate EKS identities. If
-`metrics.retention.enabled=true`, also attach this policy to the
-retention Job IAM principal configured through
-`metrics.retention.serviceAccount.annotations`.
-
-`logs:PutRetentionPolicy` is required on the **collector** policy because
-the awsemfexporter is configured with `log_retention` and reapplies
-retention each time it (re)creates the EMF log group — including after a
-manual `delete-log-group`. Without this permission, an out-of-band
-deletion would result in a recreated log group with `Never Expire`.
-
+Create the following custom IAM policy and attach it to the OpenTelemetry collector IAM principal when using separate EKS identities. If `metrics.retention.enabled=true`, also attach this policy to the retention Job IAM principal configured through `metrics.retention.serviceAccount.annotations`.
 Replace:
 
 - `<region>` with your AWS region.
@@ -253,7 +215,7 @@ Replace:
         "logs:DescribeLogStreams",
         "logs:PutRetentionPolicy"
       ],
-      "Resource": "arn:aws:logs:<region>:<account-id>:log-group:/aws/openchoreo/*/metrics:*"
+      "Resource": "arn:aws:logs:<region>:<account-id>:log-group:/aws/openchoreo/metrics:*"
     }
   ]
 }
@@ -261,8 +223,7 @@ Replace:
 
 ### Combined static-credentials IAM policy
 
-Use this policy for non-EKS clusters where one IAM user backs the shared static
-AWS credentials Secret.
+Use this policy for non-EKS clusters where one IAM user backs the shared static AWS credentials Secret.
 
 Replace:
 
@@ -304,7 +265,7 @@ Replace:
         "logs:DescribeLogStreams",
         "logs:PutRetentionPolicy"
       ],
-      "Resource": "arn:aws:logs:<region>:<account-id>:log-group:/aws/openchoreo/*/metrics:*"
+      "Resource": "arn:aws:logs:<region>:<account-id>:log-group:/aws/openchoreo/metrics:*"
     }
   ]
 }
@@ -314,11 +275,10 @@ Replace:
 
 This is the recommended installation path for EKS clusters.
 
-### Step 1 - Export shared values
+### Step 1 — Export shared values
 
 ```bash
 export AWS_REGION=<your-aws-region>
-export INSTANCE_NAME=<your-openchoreo-instance-name>
 export NS=openchoreo-observability-plane
 export WEBHOOK_SHARED_SECRET="$(openssl rand -base64 32)"
 ```
@@ -335,10 +295,9 @@ Also verify that the EKS Pod Identity Agent add-on is installed:
 kubectl -n kube-system get daemonset eks-pod-identity-agent
 ```
 
-Pod Identity credentials are injected only when the Pod Identity Agent is
-running.
+Pod Identity credentials are injected only when the Pod Identity Agent is running.
 
-### Step 2 - Create IAM roles
+### Step 2 — Create IAM roles
 
 Create an IAM role for the adapter, for example:
 
@@ -376,14 +335,13 @@ Use the following trust policy for both roles when using EKS Pod Identity:
 }
 ```
 
-### Step 3 - Install the module
+### Step 3 — Install the module
 
 Use the command that matches the cluster's topology.
 
 #### Single-cluster install
 
-Deploy the adapter, OpenTelemetry collector, kube-state-metrics, and retention
-Job in one cluster:
+Deploy the adapter, OpenTelemetry collector, kube-state-metrics, and retention Job in one cluster:
 
 ```bash
 helm upgrade --install observability-metrics-cloudwatch \
@@ -391,7 +349,6 @@ helm upgrade --install observability-metrics-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
   --version 0.1.0 \
-  --set instanceName="$INSTANCE_NAME" \
   --set region="$AWS_REGION" \
   --set adapter.alerting.webhookAuth.enabled=true \
   --set adapter.alerting.webhookAuth.sharedSecret="$WEBHOOK_SHARED_SECRET"
@@ -407,7 +364,6 @@ helm upgrade --install observability-metrics-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
   --version 0.1.0 \
-  --set instanceName="$INSTANCE_NAME" \
   --set region="$AWS_REGION" \
   --set adotcollector.enabled=false \
   --set kubeStateMetrics.enabled=false \
@@ -418,8 +374,7 @@ helm upgrade --install observability-metrics-cloudwatch \
 
 #### Data-plane / workflow-plane install
 
-Deploy only the OpenTelemetry collector, kube-state-metrics, and retention Job
-in each workload cluster:
+Deploy only the OpenTelemetry collector, kube-state-metrics, and retention Job in each workload cluster:
 
 ```bash
 helm upgrade --install observability-metrics-cloudwatch \
@@ -427,50 +382,79 @@ helm upgrade --install observability-metrics-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
   --version 0.1.0 \
-  --set instanceName="$INSTANCE_NAME" \
   --set region="$AWS_REGION" \
   --set adapter.enabled=false
 ```
 
-### Step 4 - Create Pod Identity associations
+### Step 4 — Create Pod Identity associations
 
-For the default single-cluster topology, create three Pod Identity
-associations in the `$NS` namespace.
+EKS Pod Identity links a Kubernetes ServiceAccount to an IAM role. Each association is scoped to a single EKS cluster, namespace, and ServiceAccount. You must create these associations on every EKS cluster that participates in the install.
 
-| ServiceAccount | Used by | IAM policy |
+#### Single-cluster topology
+
+Create three Pod Identity associations on the EKS cluster, all in the `$NS` namespace:
+
+| ServiceAccount | Used by | IAM role to associate |
 | --- | --- | --- |
-| `metrics-adapter-cloudwatch` | Adapter metric queries, alert CRUD, and webhook handling. | [Adapter IAM policy](#adapter-iam-policy) |
-| `observability-metrics-cloudwatch-adotcollector` | OpenTelemetry collector metric export to CloudWatch Logs. | [OpenTelemetry collector and retention IAM policy](#opentelemetry-collector-and-retention-iam-policy) |
-| `metrics-cloudwatch-retention` | Helm post-install/post-upgrade Job that creates the EMF log group and applies `metrics.retentionDays`. | [OpenTelemetry collector and retention IAM policy](#opentelemetry-collector-and-retention-iam-policy) |
+| `metrics-adapter-cloudwatch` | Adapter metric queries, alert CRUD, and webhook handling. | The role with the [Adapter IAM policy](#adapter-iam-policy) attached. |
+| `observability-metrics-cloudwatch-adotcollector` | OpenTelemetry collector metric export to CloudWatch Logs. | The role with the [OpenTelemetry collector and retention IAM policy](#opentelemetry-collector-and-retention-iam-policy) attached. |
+| `metrics-cloudwatch-retention` | Helm post-install/post-upgrade Job that creates the EMF log group and applies `metrics.retentionDays`. | The role with the [OpenTelemetry collector and retention IAM policy](#opentelemetry-collector-and-retention-iam-policy) attached. |
 
-For multi-cluster installs, create only the associations for components
-rendered in that cluster. The observability plane needs the adapter identity;
-data-plane / workflow-plane clusters need the collector and retention Job
-identities.
+#### Multi-cluster topology
 
-All three service account names must match the rendered Helm release. If you
-install with a release name other than `observability-metrics-cloudwatch`,
-render the chart and confirm the OpenTelemetry collector ServiceAccount name:
+In a multi-cluster setup, each EKS cluster only runs a subset of the components. Create Pod Identity associations only for the ServiceAccounts that exist in that cluster.
 
-```bash
-helm template observability-metrics-cloudwatch \
-  oci://ghcr.io/openchoreo/helm-charts/observability-metrics-cloudwatch \
-  --namespace "$NS" \
-  --version 0.1.0 \
-  --set instanceName="$INSTANCE_NAME" \
-  --set region="$AWS_REGION" \
-  | grep -A5 'kind: ServiceAccount'
-```
+**Observability plane cluster** (runs only the adapter):
 
-You can create these associations from the AWS Console:
+| ServiceAccount | IAM role to associate |
+| --- | --- |
+| `metrics-adapter-cloudwatch` | The role with the [Adapter IAM policy](#adapter-iam-policy) attached. |
+
+The `observability-metrics-cloudwatch-adotcollector` and `metrics-cloudwatch-retention` ServiceAccounts do not exist in this cluster because `adotcollector.enabled=false` and `metrics.retention.enabled=false`.
+
+**Each data-plane / workflow-plane cluster** (runs the OpenTelemetry collector, kube-state-metrics, and retention Job):
+
+| ServiceAccount | IAM role to associate |
+| --- | --- |
+| `observability-metrics-cloudwatch-adotcollector` | The role with the [OpenTelemetry collector and retention IAM policy](#opentelemetry-collector-and-retention-iam-policy) attached. |
+| `metrics-cloudwatch-retention` | The role with the [OpenTelemetry collector and retention IAM policy](#opentelemetry-collector-and-retention-iam-policy) attached. |
+
+The `metrics-adapter-cloudwatch` ServiceAccount does not exist in these clusters because `adapter.enabled=false`.
+
+#### How to create a Pod Identity association
+
+You can create associations from the AWS Console:
 
 ```text
-EKS -> Cluster -> Access -> Pod Identity associations -> Create
+EKS → Cluster → Access → Pod Identity associations → Create
 ```
 
-### Step 5 - Restart workloads
+For each association, fill in:
+
+- **Namespace**: the namespace where the module is installed (for example, `openchoreo-observability-plane`).
+- **Service Account**: the ServiceAccount name from the tables above.
+- **IAM Role**: the ARN of the corresponding IAM role.
+
+Alternatively, use the AWS CLI:
+
+```bash
+aws eks create-pod-identity-association \
+  --cluster-name <your-eks-cluster-name> \
+  --namespace "$NS" \
+  --service-account <service-account-name> \
+  --role-arn <iam-role-arn>
+```
+
+Repeat this command for each ServiceAccount that needs an association on the given cluster. For multi-cluster installs, run the appropriate commands against each EKS cluster.
+
+### Step 5 — Restart workloads
 
 EKS Pod Identity injects credentials only at pod creation time.
+
+So, you will see errors such as:
+
+- `AccessDeniedException` from `assumed-role/<node-role>` in OpenTelemetry collector logs.
+- `Unable to locate credentials` in the `metrics-cloudwatch-retention` Job.
 
 Recreate the workloads so new pods receive Pod Identity credentials:
 
@@ -479,11 +463,19 @@ kubectl -n "$NS" rollout restart deployment/metrics-adapter-cloudwatch
 kubectl -n "$NS" rollout restart daemonset/observability-metrics-cloudwatch-adotcollector-agent
 ```
 
-If the OpenTelemetry collector DaemonSet name differs because of your Helm release name, inspect
-it first:
+If the OpenTelemetry collector DaemonSet name differs because of your Helm release name, inspect it first:
 
 ```bash
 kubectl -n "$NS" get daemonset
+```
+
+Re-trigger the retention Helm hook (it ran once at install time):
+
+```bash
+kubectl -n "$NS" delete job metrics-cloudwatch-retention --ignore-not-found
+helm upgrade observability-metrics-cloudwatch \
+  oci://ghcr.io/openchoreo/helm-charts/observability-metrics-cloudwatch \
+  --namespace "$NS" --reuse-values
 ```
 
 Verify that Pod Identity was injected into a new adapter pod:
@@ -494,8 +486,7 @@ kubectl -n "$NS" get pod -l app=metrics-adapter-cloudwatch -o name | head -1 \
   | grep -E "AWS_CONTAINER|eks-pod-identity-token"
 ```
 
-If these values are missing, check that the namespace and ServiceAccount names
-in the Pod Identity associations exactly match the table above.
+If these values are missing, check that the namespace and ServiceAccount names in the Pod Identity associations exactly match the table above.
 
 ## Installation on non-EKS clusters with static credentials
 
@@ -506,36 +497,31 @@ Use this path for:
 - Kubernetes clusters outside AWS
 - Kubernetes clusters where Pod Identity or IRSA is not available
 
-In this mode, the chart creates a Kubernetes Secret containing AWS credentials.
-The adapter reads this Secret automatically. The OpenTelemetry collector must also be
-pointed at the same Secret through `adotcollector.extraEnvsFrom`.
+In this mode, the chart creates a Kubernetes Secret containing AWS credentials. The adapter reads this Secret automatically. The OpenTelemetry collector must also be pointed at the same Secret through `adotcollector.extraEnvsFrom`.
 
-### Step 1 - Export shared values
+### Step 1 — Export shared values
 
 ```bash
 export AWS_REGION=<your-aws-region>
-export INSTANCE_NAME=<your-openchoreo-instance-name>
 export NS=openchoreo-observability-plane
 export WEBHOOK_SHARED_SECRET="$(openssl rand -base64 32)"
 export AWS_ACCESS_KEY_ID=<your-access-key-id>
 export AWS_SECRET_ACCESS_KEY=<your-secret-access-key>
 ```
 
-### Step 2 - Create an IAM user
+### Step 2 — Create an IAM user
 
-Create an IAM user and attach the custom
-[combined static-credentials IAM policy](#combined-static-credentials-iam-policy).
+Create an IAM user and attach the custom [combined static-credentials IAM policy](#combined-static-credentials-iam-policy).
 
 Create access keys for this IAM user and export them as shown above.
 
-### Step 3 - Install the module
+### Step 3 — Install the module
 
 Use the command that matches the cluster's topology.
 
 #### Single-cluster install
 
-Deploy the adapter, OpenTelemetry collector, kube-state-metrics, and retention
-Job in one cluster:
+Deploy the adapter, OpenTelemetry collector, kube-state-metrics, and retention Job in one cluster:
 
 ```bash
 helm upgrade --install observability-metrics-cloudwatch \
@@ -543,7 +529,6 @@ helm upgrade --install observability-metrics-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
   --version 0.1.0 \
-  --set instanceName="$INSTANCE_NAME" \
   --set region="$AWS_REGION" \
   --set awsCredentials.create=true \
   --set awsCredentials.name=metrics-cloudwatch-aws-credentials \
@@ -555,6 +540,14 @@ helm upgrade --install observability-metrics-cloudwatch \
   --set adapter.alerting.webhookAuth.sharedSecret="$WEBHOOK_SHARED_SECRET"
 ```
 
+This enables the static-credentials path:
+
+- The chart creates a Kubernetes Secret.
+- The adapter reads credentials from that Secret.
+- The OpenTelemetry collector reads credentials from the same Secret through `adotcollector.extraEnvsFrom`.
+
+You do not need to restart workloads after installation because credentials are injected during install.
+
 #### Observability plane install
 
 Deploy only the adapter in the observability plane cluster:
@@ -565,7 +558,6 @@ helm upgrade --install observability-metrics-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
   --version 0.1.0 \
-  --set instanceName="$INSTANCE_NAME" \
   --set region="$AWS_REGION" \
   --set awsCredentials.create=true \
   --set awsCredentials.name=metrics-cloudwatch-aws-credentials \
@@ -580,8 +572,7 @@ helm upgrade --install observability-metrics-cloudwatch \
 
 #### Data-plane / workflow-plane install
 
-Deploy only the OpenTelemetry collector, kube-state-metrics, and retention Job
-in each workload cluster:
+Deploy only the OpenTelemetry collector, kube-state-metrics, and retention Job in each workload cluster:
 
 ```bash
 helm upgrade --install observability-metrics-cloudwatch \
@@ -589,7 +580,6 @@ helm upgrade --install observability-metrics-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
   --version 0.1.0 \
-  --set instanceName="$INSTANCE_NAME" \
   --set region="$AWS_REGION" \
   --set awsCredentials.create=true \
   --set awsCredentials.name=metrics-cloudwatch-aws-credentials \
@@ -600,46 +590,58 @@ helm upgrade --install observability-metrics-cloudwatch \
   --set adapter.enabled=false
 ```
 
-This enables the static-credentials path:
-
-- The chart creates a Kubernetes Secret.
-- The adapter reads credentials from that Secret.
-- The OpenTelemetry collector reads credentials from the same Secret through
-  `adotcollector.extraEnvsFrom`.
-
-In an observability-plane-only install, the collector is disabled, so the
-created Secret is used only by the adapter.
+In an observability-plane-only install, the collector is disabled, so the created Secret is used only by the adapter.
 
 ## Metric alerting
 
-Metric alerting is enabled by default when the adapter is installed. The chart
-injects `OBSERVER_URL` into the adapter so forwarded CloudWatch alarm events
-can be sent to the Observer.
+Metric alerting is enabled by default when the adapter is installed. The chart injects `OBSERVER_URL` into the adapter so forwarded CloudWatch alarm events can be sent to the Observer.
 
-Webhook exposure remains opt-in. To receive CloudWatch alarm state-change
-events from outside the cluster, expose the webhook through EventBridge and
-configure webhook authentication as described below.
+Webhook exposure remains opt-in. To receive CloudWatch alarm state-change events from outside the cluster, expose the webhook through EventBridge and configure webhook authentication as described below.
 
-If `adapter.alerting.webhookAuth.enabled=true` and
-`adapter.alerting.webhookAuth.sharedSecret` were set during installation, the
-adapter now requires the following header on alert webhook calls:
+If `adapter.alerting.webhookAuth.enabled=true` and `adapter.alerting.webhookAuth.sharedSecret` were set during installation, the adapter now requires the following header on alert webhook calls:
 
 ```text
 X-OpenChoreo-Webhook-Token
 ```
 
-### Test Alerting
+### Alerting behavior
 
-For an end-to-end OpenChoreo alert and incident flow, see the
-[Component Alerts and Incidents tutorial](https://openchoreo.dev/docs/tutorials/component-alerts-and-incidents/).
+The module implements metric alerts using native CloudWatch resources:
+
+1. A CloudWatch metric math alarm evaluating `(usage / limit) * 100` against the threshold percentage.
+2. An EventBridge rule that forwards CloudWatch alarm state changes to the adapter webhook.
+
+Important constraints:
+
+- Threshold is a percentage (0-100) of the pod's CPU or memory limit.
+- When the pod has no limit, the limit series is missing, the math expression returns no data, and the alarm sits in `INSUFFICIENT_DATA` (with `TreatMissingData=notBreaching` it does not fire).
+
+### Alert identity mapping
+
+The adapter stores the logical OpenChoreo rule identity in CloudWatch alarm tags:
+
+- `openchoreo.rule.name`
+- `openchoreo.rule.namespace`
+
+The adapter also encodes the rule identity into the alarm name for fast lookup.
+
+Managed alarm names use this format:
+
+```text
+oc-metrics-alert-ns.<namespace>.rn.<name>.<hash>
+```
+
+`<namespace>` and `<name>` are base64url-encoded without padding. `<hash>` is the first 12 hex characters of `sha256(namespace + "\x00" + name)`.
+
+### Test alerting
+
+For an end-to-end OpenChoreo alert and incident flow, see the [Component Alerts and Incidents tutorial](https://openchoreo.dev/docs/tutorials/component-alerts-and-incidents/).
 
 ## Expose the alert webhook through EventBridge
 
-CloudWatch alarms cannot directly send HTTP requests to the adapter. To deliver
-alarm events, use Amazon EventBridge. EventBridge routes AWS service events to
-targets such as API destinations; see the
-[Amazon EventBridge documentation](https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-what-is.html)
-for the service overview.
+CloudWatch alarms cannot directly send HTTP requests to the adapter. To deliver alarm events, create an EventBridge rule that matches CloudWatch alarm state changes and routes them to an API destination that points at the adapter's webhook endpoint.
+
+The end-to-end flow:
 
 ```text
 CloudWatch Alarm State Change
@@ -660,30 +662,60 @@ CloudWatch Metrics Adapter
 OpenChoreo Observer
 ```
 
-Setting up EventBridge requires three resources: a **connection** (carries the
-authentication header), an **API destination** (the adapter webhook URL), and a
-**rule** (matches CloudWatch alarm events and routes them to the destination).
+### Expose only the webhook endpoint
+
+For production, expose only the alert webhook endpoint through your ingress:
+
+```text
+/api/v1alpha1/alerts/webhook
+```
+
+Do **not** publicly expose:
+
+- `/api/v1/metrics/query`
+- `/api/v1alpha1/alerts/rules/*`
+- `/healthz`
+- `/livez`
+
+Use `adapter.alerting.webhookRoute` to create a Gateway API `HTTPRoute` that exposes only the webhook path through your existing Gateway. TLS termination, rate limiting, and any WAF / auth rules belong on the parent Gateway listener.
 
 ### Step 1 — Create an EventBridge connection
 
-The connection stores the `X-OpenChoreo-Webhook-Token` header that the adapter
-requires when `adapter.alerting.webhookAuth.enabled=true`.
+The connection stores the authentication credentials that EventBridge uses when calling the adapter webhook.
 
-### Step 2 — Create an API destination
+1. Open the Amazon EventBridge console and navigate to **Integration** → **Connections**.
+2. Choose **Create connection**.
+3. Enter a connection name, for example `openchoreo-metrics-webhook-connection`.
+4. For **Authorization type**, select **API Key**.
+5. Set **API key name** to `X-OpenChoreo-Webhook-Token`.
+6. Set **Value** to the same shared secret you configured during Helm installation (the value of `adapter.alerting.webhookAuth.sharedSecret` or the contents of the Kubernetes Secret referenced by `adapter.alerting.webhookAuth.sharedSecretRef`).
+7. Choose **Create**.
 
-Point the destination at the adapter's public webhook URL. 
+### Step 2 — Create an EventBridge API destination
 
-`$ADAPTER_WEBHOOK_PUBLIC_URL` must include the full path, for example:
+The API destination defines the HTTP endpoint that EventBridge calls when a matching event arrives.
 
-```text
-https://metrics-webhook.example.com/api/v1alpha1/alerts/webhook
-```
+1. In the EventBridge console, navigate to **Integration** → **API destinations**.
+2. Choose **Create API destination**.
+3. Enter a name, for example `openchoreo-metrics-webhook`.
+4. For **API destination endpoint**, enter the publicly reachable URL of the adapter webhook. This is the external URL exposed through your Gateway or ingress, ending with `/api/v1alpha1/alerts/webhook`. For example: `https://metrics-webhook.example.com/api/v1alpha1/alerts/webhook`.
+5. For **HTTP method**, select **POST**.
+6. For **Connection**, select the connection created in Step 1 (`openchoreo-metrics-webhook-connection`).
+7. Optionally set an **Invocation rate limit** to protect the adapter from bursts. A value of 10 per second is a reasonable starting point.
+8. Choose **Create**.
 
 ### Step 3 — Create an EventBridge rule
 
-Use a custom event pattern so only managed metric alarms reach the adapter.
-The `alarmName` prefix filter ensures log-module alarms (`oc-logs-alert`)
-are not routed here.
+The rule matches CloudWatch alarm state-change events and routes them to the API destination.
+
+1. In the EventBridge console, navigate to **Buses** → **Rules** on the **default** event bus.
+2. Choose **Create rule**.
+3. Enter a rule name, for example `openchoreo-metrics-alarm-to-webhook`.
+4. For **Event bus**, keep **default**.
+5. For **Rule type**, select **Rule with an event pattern**.
+6. Choose **Next**.
+7. For **Event source**, select **AWS events or EventBridge partner events**.
+8. Under **Event pattern**, choose **Custom patterns (JSON editor)** and paste the following pattern:
 
 ```json
 {
@@ -700,29 +732,41 @@ are not routed here.
 }
 ```
 
-### Step 4 — Attach the API destination as a target
+This pattern matches only `ALARM` state transitions for alarms whose name starts with `oc-metrics-alert`. The prefix filter ensures that log-module alarms (which use the `oc-logs-alert` prefix) are not routed to the metrics adapter.
 
-EventBridge needs an IAM role that allows it to invoke the API destination.
+9. Choose **Next**.
+10. For **Target**, select **EventBridge API destination**.
+11. Select the API destination created in Step 2 (`openchoreo-metrics-webhook`).
+12. Leave the input transformer at the default (full event) unless you have a specific reason to modify it.
+13. Choose **Next**, review the rule, and choose **Create rule**.
 
-### Development-only webhook test with port-forward and ngrok
+### Test alert delivery
 
-For local testing, you can expose the adapter through a temporary public
-tunnel using ngrok.
-Docs: https://openchoreo.dev/docs/tutorials/component-alerts-and-incidents/
+Follow the Component Alerts and Incidents tutorial to trigger a metric alert:
+
+```text
+https://openchoreo.dev/docs/tutorials/component-alerts-and-incidents/
+```
+
+Then check the adapter logs:
+
+```bash
+kubectl -n "$NS" logs deployment/metrics-adapter-cloudwatch --tail=100 | grep -Ei 'webhook|forward'
+```
+
+Expected log messages should show that the webhook was received and forwarded to the Observer.
 
 ## Shared webhook secret
 
-When webhook authentication is enabled, the adapter rejects webhook
-requests that do not include the configured token in this header:
+When webhook authentication is enabled, the adapter rejects webhook requests that do not include the configured token in this header:
 
 ```text
 X-OpenChoreo-Webhook-Token
 ```
 
-The same token must be configured in the EventBridge API destination
-connection.
+The same token must be configured in the EventBridge connection created in [Step 1](#step-1--create-an-eventbridge-connection) as the API Key value.
 
-### Option 1 - Inline secret
+### Option 1 — Inline secret
 
 This is convenient for development:
 
@@ -731,10 +775,9 @@ This is convenient for development:
 --set adapter.alerting.webhookAuth.sharedSecret="$WEBHOOK_SHARED_SECRET"
 ```
 
-However, the secret becomes visible in Helm release values. Anyone with access
-to `helm get values` may be able to read it.
+However, the secret becomes visible in Helm release values. Anyone with access to `helm get values` may be able to read it.
 
-### Option 2 - Existing Kubernetes Secret
+### Option 2 — Existing Kubernetes Secret
 
 This is recommended for production.
 
@@ -758,23 +801,35 @@ helm upgrade observability-metrics-cloudwatch \
   --set adapter.alerting.webhookAuth.sharedSecretRef.key=token
 ```
 
-Pass `sharedSecret=""` when switching from inline secret to Secret reference.
-Otherwise, the previous inline value may continue to shadow the Secret
-reference.
+Pass `sharedSecret=""` when switching from inline secret to Secret reference. Otherwise, the previous inline value may continue to shadow the Secret reference.
 
 ## Troubleshooting
 
-### Retention Job fails after creating Pod Identity associations
+### Start with these logs
 
-If the retention Job failed because its Pod Identity association was created
-after the first Helm install, rerun it manually. `helm upgrade` re-fires the
-post-upgrade hook, but the failed Job has a fixed name and a new one cannot be
-created until it is deleted.
+```bash
+kubectl -n "$NS" logs daemonset/observability-metrics-cloudwatch-adotcollector-agent --tail=200
+kubectl -n "$NS" logs deployment/metrics-adapter-cloudwatch --tail=200
+kubectl -n "$NS" logs -l job-name=metrics-cloudwatch-retention --tail=200
+```
 
-Confirm the Pod Identity association for `metrics-cloudwatch-retention` is
-attached before rerunning the upgrade. Otherwise the new Job pod will fail with
-the same credential error and the upgrade can fail again with
-`BackoffLimitExceeded`.
+### Common issues
+
+| Symptom | Likely cause | What to check |
+| --- | --- | --- |
+| Adapter pod does not start | Missing or invalid AWS credentials | Check Pod Identity association or static Secret values. |
+| OpenTelemetry collector shows `AccessDeniedException` | Pod is using the node IAM role instead of Pod Identity role | Restart the collector after creating Pod Identity associations. |
+| Retention Job shows `Unable to locate credentials` | Pod Identity association missing or static Secret not configured | Check the `metrics-cloudwatch-retention` ServiceAccount association or static credentials values. |
+| Query returns empty series | Metrics not published to CloudWatch, or dimensions are missing | Check OpenTelemetry collector logs and verify that OpenChoreo pod labels are present. |
+| Webhook returns unauthorized | Missing or incorrect `X-OpenChoreo-Webhook-Token` | Check EventBridge connection header and chart webhook secret values. |
+| Alerts do not fire for pods without limits | CloudWatch math expression returns no data when limit is missing | This is expected; the alarm stays in `INSUFFICIENT_DATA` with `TreatMissingData=notBreaching`. |
+| Retention Job fails after creating Pod Identity associations | Pod Identity association was created after the first Helm install | Delete the failed Job and re-run `helm upgrade` after confirming the association is attached. |
+
+### Rerun a failed retention Job
+
+If the retention Job failed because its Pod Identity association was created after the first Helm install, rerun it manually. `helm upgrade` re-fires the post-upgrade hook, but the failed Job has a fixed name and a new one cannot be created until it is deleted.
+
+Confirm the Pod Identity association for `metrics-cloudwatch-retention` is attached before rerunning the upgrade. Otherwise the new Job pod will fail with the same credential error and the upgrade can fail again with `BackoffLimitExceeded`.
 
 ```bash
 # 1. Delete the failed Job so a new one can be created with the same name.
@@ -783,7 +838,7 @@ kubectl -n "$NS" delete job metrics-cloudwatch-retention --ignore-not-found
 # 2. Re-fire the post-upgrade hook.
 helm upgrade observability-metrics-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-metrics-cloudwatch \
-  --namespace "$NS" --reset-then-reuse-values
+  --namespace "$NS" --reuse-values
 
 # 3. Watch the new Job complete.
 kubectl -n "$NS" get job metrics-cloudwatch-retention -w
@@ -799,7 +854,6 @@ kubectl -n "$NS" logs -l job-name=metrics-cloudwatch-retention --tail=100
 
 | Value | Default | Description |
 | --- | --- | --- |
-| `instanceName` | Required | OpenChoreo instance name. Propagated to the OpenTelemetry collector and adapter. |
 | `region` | Required | AWS region for CloudWatch Logs, CloudWatch Metrics, and API calls. |
 | `awsCredentials.create` | `false` | Creates a static AWS credentials Secret. Keep `false` for Pod Identity, IRSA, or instance-profile based auth. Set to `true` for k3d, kind, or non-EKS clusters. |
 | `awsCredentials.name` | `""` | Name of the AWS credentials Secret. Required when `awsCredentials.create=true`. |
@@ -807,20 +861,20 @@ kubectl -n "$NS" logs -l job-name=metrics-cloudwatch-retention --tail=100
 | `awsCredentials.secretAccessKey` | Required if `create=true` | AWS secret access key. |
 | `kubeStateMetrics.enabled` | `true` | Installs the bundled kube-state-metrics subchart with the required OpenChoreo label allowlist. Set to `false` when kube-state-metrics is already running in the cluster or on an observability-plane-only install. |
 | `metrics.namespace` | `OpenChoreo/Metrics` | CloudWatch metric namespace used by the adapter. Keep this consistent across clusters in one multi-cluster installation. |
-| `metrics.logGroup` | `""` | CloudWatch Logs log group used by the OpenTelemetry EMF exporter. Empty defaults to `/aws/openchoreo/<instanceName>/metrics`. |
+| `metrics.logGroup` | `""` | CloudWatch Logs log group used by the OpenTelemetry EMF exporter. Empty defaults to `/aws/openchoreo/metrics`. |
 | `metrics.retentionDays` | `7` | CloudWatch Logs retention period for the EMF log group. Must be one of the retention values supported by CloudWatch Logs. |
 | `metrics.retention.enabled` | `true` | Runs a Helm post-install/post-upgrade Job that creates the EMF log group if needed and applies `metrics.retentionDays`. Set to `false` on an observability-plane-only install. |
 | `metrics.retention.serviceAccount.create` | `true` | Creates a ServiceAccount for the retention Job. |
 | `metrics.retention.serviceAccount.name` | `""` | ServiceAccount name for the retention Job. Defaults to `metrics-cloudwatch-retention` when `create=true`. Required when `create=false`. |
 | `metrics.retention.serviceAccount.annotations` | `{}` | ServiceAccount annotations for IRSA or other identity integrations used by the retention Job. |
 | `metrics.retention.image.repository` | `public.ecr.aws/aws-cli/aws-cli` | AWS CLI image used by the retention Job. |
-| `metrics.retention.image.tag` | `2.15.57` | AWS CLI image tag used by the retention Job. |
+| `metrics.retention.image.tag` | `2.34.44` | AWS CLI image tag used by the retention Job. |
 | `adotcollector.enabled` | `true` | Enables the ADOT subchart. Set to `false` on an observability-plane-only install. |
 | `adotcollector.mode` | `daemonset` | Runs one collector per node. |
 | `adotcollector.image.repository` | `otel/opentelemetry-collector-contrib` | Collector image repository. The contrib image includes kubeletstats and awsemfexporter. |
-| `adotcollector.image.tag` | `0.109.0` | Collector image tag. |
+| `adotcollector.image.tag` | `0.149.0` | Collector image tag. |
 | `adotcollector.serviceAccount.annotations` | `{}` | ServiceAccount annotations for IRSA or other identity integrations. |
-| `adotcollector.extraEnvsFrom` | `[{configMapRef: {name: metrics-cloudwatch-cluster-env}}]` | Extra `envFrom` entries for the OpenTelemetry collector. The default ConfigMap supplies `EMF_LOG_GROUP_NAME`; append the static AWS credentials Secret at index `1` on non-EKS clusters. |
+| `adotcollector.extraEnvsFrom` | `[{configMapRef: {name: metrics-cloudwatch-cluster-env}}]` | Extra `envFrom` entries for the OpenTelemetry collector. The default ConfigMap supplies `AWS_REGION` and `EMF_LOG_GROUP_NAME`; append the static AWS credentials Secret at index `1` on non-EKS clusters. |
 | `adapter.enabled` | `true` | Deploys the CloudWatch Metrics Adapter Deployment and Service. Set to `false` on data-plane / workflow-plane installs. |
 | `adapter.replicas` | `1` | Number of adapter replicas. |
 | `adapter.image.repository` | `ghcr.io/openchoreo/observability-metrics-cloudwatch-adapter` | Adapter image repository. |
@@ -852,6 +906,4 @@ kubectl -n "$NS" logs -l job-name=metrics-cloudwatch-retention --tail=100
 | `adapter.networkPolicy.gatewayPodLabels` | `{}` | Pod labels of the Gateway data-plane pods allowed to proxy the webhook. When set, restricts gateway ingress to matching pods instead of the entire namespace. |
 | `adapter.networkPolicy.allowProbeIPBlock` | `""` | Optional node CIDR for kubelet probes when required by the CNI. |
 
-If you override `metrics.logGroup`, update the CloudWatch Logs IAM policy
-resource ARN to match that log group. The examples above use
-`/aws/openchoreo/*/metrics` so the default cluster-scoped groups are covered.
+If you override `metrics.logGroup`, update the CloudWatch Logs IAM policy resource ARN to match that log group.

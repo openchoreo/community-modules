@@ -37,7 +37,6 @@ const (
 	DimensionProjectUID     = "ProjectUID"
 	DimensionEnvironmentUID = "EnvironmentUID"
 	DimensionNamespace      = "Namespace"
-	DimensionInstanceName   = "InstanceName"
 )
 
 // Logical metric names the EMF exporter writes (set by metricstransform).
@@ -72,7 +71,6 @@ type stsAPI interface {
 // Config holds the static configuration for Client.
 type Config struct {
 	Region                     string
-	InstanceName               string
 	MetricNamespace            string
 	AlarmActionARNs            []string
 	OKActionARNs               []string
@@ -83,7 +81,6 @@ type Config struct {
 type Client struct {
 	cw                         cloudwatchAPI
 	sts                        stsAPI
-	instanceName               string
 	metricNamespace            string
 	alarmActionARNs            []string
 	okActionARNs               []string
@@ -103,7 +100,6 @@ func NewClient(ctx context.Context, cfg Config, logger *slog.Logger) (*Client, e
 	return &Client{
 		cw:                         cloudwatch.NewFromConfig(awsCfg),
 		sts:                        sts.NewFromConfig(awsCfg),
-		instanceName:               cfg.InstanceName,
 		metricNamespace:            ns,
 		alarmActionARNs:            cfg.AlarmActionARNs,
 		okActionARNs:               cfg.OKActionARNs,
@@ -121,7 +117,6 @@ func NewClientWithAWS(cw cloudwatchAPI, stsClient stsAPI, cfg Config, logger *sl
 	return &Client{
 		cw:                         cw,
 		sts:                        stsClient,
-		instanceName:               cfg.InstanceName,
 		metricNamespace:            ns,
 		alarmActionARNs:            cfg.AlarmActionARNs,
 		okActionARNs:               cfg.OKActionARNs,

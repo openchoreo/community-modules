@@ -38,7 +38,7 @@ hubble:
       - drop
       - tcp
     serviceMonitor:
-      enabled: false
+      enabled: true
 
 envoy:
   enabled: true

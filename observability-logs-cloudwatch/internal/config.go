@@ -76,8 +76,8 @@ func LoadConfig() (*Config, error) {
 	}
 
 	port, err := strconv.Atoi(serverPort)
-	if err != nil {
-		return nil, fmt.Errorf("invalid SERVER_PORT: %w", err)
+	if err != nil || strconv.Itoa(port) != serverPort {
+		return nil, fmt.Errorf("invalid SERVER_PORT: %q", serverPort)
 	}
 	if port < 1 || port > 65535 {
 		return nil, fmt.Errorf("invalid SERVER_PORT: %d out of range", port)

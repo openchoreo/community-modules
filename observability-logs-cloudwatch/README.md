@@ -297,7 +297,7 @@ helm upgrade --install observability-logs-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.1.0 \
+  --version 0.2.0 \
   --set amazon-cloudwatch-observability.region="$AWS_REGION" \
   --set adapter.alerting.webhookAuth.enabled=true \
   --set adapter.alerting.webhookAuth.sharedSecret="$WEBHOOK_SHARED_SECRET"
@@ -312,7 +312,7 @@ helm upgrade --install observability-logs-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.1.0 \
+  --version 0.2.0 \
   --set cloudWatchAgent.enabled=false \
   --set setup.enabled=false \
   --set amazon-cloudwatch-observability.region="$AWS_REGION" \
@@ -329,7 +329,7 @@ helm upgrade --install observability-logs-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.1.0 \
+  --version 0.2.0 \
   --set amazon-cloudwatch-observability.region="$AWS_REGION" \
   --set adapter.enabled=false
 ```
@@ -471,7 +471,7 @@ helm upgrade --install observability-logs-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.1.0 \
+  --version 0.2.0 \
   --set amazon-cloudwatch-observability.region="$AWS_REGION" \
   --set awsCredentials.create=true \
   --set awsCredentials.name=cloudwatch-aws-credentials \
@@ -499,7 +499,7 @@ helm upgrade --install observability-logs-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.1.0 \
+  --version 0.2.0 \
   --set cloudWatchAgent.enabled=false \
   --set setup.enabled=false \
   --set amazon-cloudwatch-observability.region="$AWS_REGION" \
@@ -520,7 +520,7 @@ helm upgrade --install observability-logs-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.1.0 \
+  --version 0.2.0 \
   --set amazon-cloudwatch-observability.region="$AWS_REGION" \
   --set awsCredentials.create=true \
   --set awsCredentials.name=cloudwatch-aws-credentials \

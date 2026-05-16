@@ -185,13 +185,6 @@ Create the following custom IAM policy and attach it to the adapter IAM principa
 }
 ```
 
-Notes:
-
-- `cloudwatch:TagResource` is required because the adapter adds tags when creating alarms.
-- `cloudwatch:UntagResource` is not required because the adapter does not remove tags.
-- CloudWatch alarm actions use `"Resource": "*"` because alarm ARNs are only known after the first `PutMetricAlarm` call.
-- Leave `adapter.alerting.alarmActionArns` empty when using EventBridge to forward alarm state-change events.
-
 ### OpenTelemetry collector and retention IAM policy
 
 Create the following custom IAM policy and attach it to the OpenTelemetry collector IAM principal when using separate EKS identities. If `metrics.retention.enabled=true`, also attach this policy to the retention Job IAM principal configured through `metrics.retention.serviceAccount.annotations`.
@@ -348,7 +341,7 @@ helm upgrade --install observability-metrics-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-metrics-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.1.0 \
+  --version 0.2.0 \
   --set region="$AWS_REGION" \
   --set adapter.alerting.webhookAuth.enabled=true \
   --set adapter.alerting.webhookAuth.sharedSecret="$WEBHOOK_SHARED_SECRET"
@@ -363,7 +356,7 @@ helm upgrade --install observability-metrics-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-metrics-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.1.0 \
+  --version 0.2.0 \
   --set region="$AWS_REGION" \
   --set adotcollector.enabled=false \
   --set kubeStateMetrics.enabled=false \
@@ -381,7 +374,7 @@ helm upgrade --install observability-metrics-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-metrics-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.1.0 \
+  --version 0.2.0 \
   --set region="$AWS_REGION" \
   --set adapter.enabled=false
 ```
@@ -475,7 +468,7 @@ Re-trigger the retention Helm hook (it ran once at install time):
 kubectl -n "$NS" delete job metrics-cloudwatch-retention --ignore-not-found
 helm upgrade observability-metrics-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-metrics-cloudwatch \
-  --namespace "$NS" --reuse-values
+  --namespace "$NS" --version 0.2.0 --reuse-values
 ```
 
 Verify that Pod Identity was injected into a new adapter pod:
@@ -528,7 +521,7 @@ helm upgrade --install observability-metrics-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-metrics-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.1.0 \
+  --version 0.2.0 \
   --set region="$AWS_REGION" \
   --set awsCredentials.create=true \
   --set awsCredentials.name=metrics-cloudwatch-aws-credentials \
@@ -557,7 +550,7 @@ helm upgrade --install observability-metrics-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-metrics-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.1.0 \
+  --version 0.2.0 \
   --set region="$AWS_REGION" \
   --set awsCredentials.create=true \
   --set awsCredentials.name=metrics-cloudwatch-aws-credentials \
@@ -579,7 +572,7 @@ helm upgrade --install observability-metrics-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-metrics-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.1.0 \
+  --version 0.2.0 \
   --set region="$AWS_REGION" \
   --set awsCredentials.create=true \
   --set awsCredentials.name=metrics-cloudwatch-aws-credentials \
@@ -766,43 +759,6 @@ X-OpenChoreo-Webhook-Token
 
 The same token must be configured in the EventBridge connection created in [Step 1](#step-1--create-an-eventbridge-connection) as the API Key value.
 
-### Option 1 — Inline secret
-
-This is convenient for development:
-
-```bash
---set adapter.alerting.webhookAuth.enabled=true \
---set adapter.alerting.webhookAuth.sharedSecret="$WEBHOOK_SHARED_SECRET"
-```
-
-However, the secret becomes visible in Helm release values. Anyone with access to `helm get values` may be able to read it.
-
-### Option 2 — Existing Kubernetes Secret
-
-This is recommended for production.
-
-Create the Secret:
-
-```bash
-kubectl -n "$NS" create secret generic openchoreo-metrics-webhook-token \
-  --from-literal=token="$WEBHOOK_SHARED_SECRET"
-```
-
-Point the chart to the Secret:
-
-```bash
-helm upgrade observability-metrics-cloudwatch \
-  oci://ghcr.io/openchoreo/helm-charts/observability-metrics-cloudwatch \
-  --namespace "$NS" \
-  --reuse-values \
-  --set adapter.alerting.webhookAuth.enabled=true \
-  --set adapter.alerting.webhookAuth.sharedSecret="" \
-  --set adapter.alerting.webhookAuth.sharedSecretRef.name=openchoreo-metrics-webhook-token \
-  --set adapter.alerting.webhookAuth.sharedSecretRef.key=token
-```
-
-Pass `sharedSecret=""` when switching from inline secret to Secret reference. Otherwise, the previous inline value may continue to shadow the Secret reference.
-
 ## Troubleshooting
 
 ### Start with these logs
@@ -838,7 +794,7 @@ kubectl -n "$NS" delete job metrics-cloudwatch-retention --ignore-not-found
 # 2. Re-fire the post-upgrade hook.
 helm upgrade observability-metrics-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-metrics-cloudwatch \
-  --namespace "$NS" --reuse-values
+  --version 0.2.0 --namespace "$NS" --reuse-values
 
 # 3. Watch the new Job complete.
 kubectl -n "$NS" get job metrics-cloudwatch-retention -w

@@ -449,11 +449,17 @@ So, you will see errors such as:
 - `AccessDeniedException` from `assumed-role/<node-role>` in OpenTelemetry collector logs.
 - `Unable to locate credentials` in the `metrics-cloudwatch-retention` Job.
 
-Recreate the workloads so new pods receive Pod Identity credentials:
+Recreate the workloads so new pods receive Pod Identity credentials.
+Only workloads present in your topology need restarting:
 
 ```bash
-kubectl -n "$NS" rollout restart deployment/metrics-adapter-cloudwatch
-kubectl -n "$NS" rollout restart daemonset/observability-metrics-cloudwatch-adotcollector-agent
+# Restart the adapter if it exists (observability-plane installs)
+kubectl -n "$NS" get deployment metrics-adapter-cloudwatch &>/dev/null \
+  && kubectl -n "$NS" rollout restart deployment/metrics-adapter-cloudwatch
+
+# Restart the collector DaemonSet if it exists (data-plane installs)
+kubectl -n "$NS" get daemonset observability-metrics-cloudwatch-adotcollector-agent &>/dev/null \
+  && kubectl -n "$NS" rollout restart daemonset/observability-metrics-cloudwatch-adotcollector-agent
 ```
 
 If the OpenTelemetry collector DaemonSet name differs because of your Helm release name, inspect it first:

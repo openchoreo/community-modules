@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -964,5 +965,82 @@ func TestParseSpanDetail_NoExtraAttributes(t *testing.T) {
 	}
 	if len(detail.ResourceAttributes) != 0 {
 		t.Errorf("expected 0 resource attributes, got %d: %v", len(detail.ResourceAttributes), detail.ResourceAttributes)
+	}
+}
+
+func TestExecuteSearchQuery_StreamNotFound(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"code":20002,"message":"Search stream not found: default"}`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(server.URL)
+	_, err := client.executeSearchQuery(context.Background(), []byte(`{}`))
+	if !errors.Is(err, ErrStreamNotFound) {
+		t.Fatalf("expected ErrStreamNotFound, got %v", err)
+	}
+}
+
+func TestGetTraces_StreamNotFound(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"code":20002,"message":"Search stream not found: default"}`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(server.URL)
+	result, err := client.GetTraces(context.Background(), TracesQueryParams{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected non-nil empty result")
+	}
+	if len(result.Traces) != 0 || result.Total != 0 {
+		t.Fatalf("expected empty result, got %+v", result)
+	}
+}
+
+func TestGetSpans_StreamNotFound(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"code":20002,"message":"Search stream not found: default"}`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(server.URL)
+	result, err := client.GetSpans(context.Background(), TracesQueryParams{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected non-nil empty result")
+	}
+	if len(result.Spans) != 0 || result.Total != 0 {
+		t.Fatalf("expected empty result, got %+v", result)
+	}
+}
+
+func TestIsStreamNotFound(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{"matching code", `{"code":20002,"message":"..."}`, true},
+		{"other code", `{"code":20001,"message":"..."}`, false},
+		{"no code field", `{"message":"foo"}`, false},
+		{"empty body", ``, false},
+		{"malformed json", `{not json`, false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := isStreamNotFound([]byte(tc.body))
+			if got != tc.want {
+				t.Fatalf("isStreamNotFound(%q) = %v, want %v", tc.body, got, tc.want)
+			}
+		})
 	}
 }

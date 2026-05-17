@@ -166,9 +166,39 @@ maps to the OpenBao secret path `secret/<apiKeyRef>` with property `value`.
 > [!TIP]
 > When a component with these traits is deployed, the cluster-agent in the data
 > plane needs permissions to create Agent Gateway CRs (`AgentgatewayBackend`,
-> `AgentgatewayPolicy`, `HTTPRoute`, etc.). Follow the
+> `AgentgatewayPolicy`, etc.). Follow the
 > [cluster-agent RBAC guide](https://openchoreo.dev/docs/platform-engineer-guide/cluster-agent-rbac/)
 > to add the required permissions.
+>
+> For example:
+>
+> ```bash
+> kubectl apply -f - <<EOF
+> apiVersion: rbac.authorization.k8s.io/v1
+> kind: ClusterRole
+> metadata:
+>   name: cluster-agent-custom-permissions
+> rules:
+>   - apiGroups: ["agentgateway.dev"]
+>     resources: ["agentgatewaybackends", "agentgatewaypolicies"]
+>     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+> EOF
+>
+> kubectl apply -f - <<EOF
+> apiVersion: rbac.authorization.k8s.io/v1
+> kind: ClusterRoleBinding
+> metadata:
+>   name: cluster-agent-custom-permissions
+> roleRef:
+>   apiGroup: rbac.authorization.k8s.io
+>   kind: ClusterRole
+>   name: cluster-agent-custom-permissions
+> subjects:
+>   - kind: ServiceAccount
+>     name: cluster-agent-dataplane
+>     namespace: openchoreo-data-plane
+> EOF
+> ```
 
 ## Samples
 

@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -14,6 +15,32 @@ import (
 	"strings"
 	"time"
 )
+
+// openObserveStreamNotFoundCode is the OpenObserve error code returned when
+// a search target stream has not yet been created (lazy stream creation).
+// Surfaced as HTTP 400 with body {"code":20002,"message":"Search stream not found: ..."}.
+const openObserveStreamNotFoundCode = 20002
+
+// ErrStreamNotFound is returned by executeSearchQuery when OpenObserve reports
+// the search stream does not yet exist. Callers should treat this as an empty
+// result set, not a retrieval failure.
+var ErrStreamNotFound = errors.New("openobserve stream not found")
+
+// isStreamNotFound parses an OpenObserve error envelope and returns true when
+// code == openObserveStreamNotFoundCode.
+func isStreamNotFound(body []byte) bool {
+	if len(body) == 0 {
+		return false
+	}
+
+	var envelope struct {
+		Code int `json:"code"`
+	}
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return false
+	}
+	return envelope.Code == openObserveStreamNotFoundCode
+}
 
 // Scope holds the filtering scope for trace queries.
 type Scope struct {
@@ -157,6 +184,9 @@ func (c *Client) executeSearchQuery(ctx context.Context, queryJSON []byte) (*Ope
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		if isStreamNotFound(body) {
+			return nil, ErrStreamNotFound
+		}
 		c.logger.Error("OpenObserve returned error",
 			slog.Int("statusCode", resp.StatusCode),
 			slog.String("body", string(body)))
@@ -184,6 +214,9 @@ func (c *Client) GetTraces(ctx context.Context, params TracesQueryParams) (*Trac
 	}
 
 	openObserveResp, err := c.executeSearchQuery(ctx, queryJSON)
+	if errors.Is(err, ErrStreamNotFound) {
+		return &TracesResult{Traces: []TraceEntry{}, Total: 0, TookMs: 0}, nil
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -264,6 +297,13 @@ func (c *Client) GetTraces(ctx context.Context, params TracesQueryParams) (*Trac
 		return nil, fmt.Errorf("failed to generate traces count query: %w", err)
 	}
 	countResp, err := c.executeSearchQuery(ctx, countQueryJSON)
+	if errors.Is(err, ErrStreamNotFound) {
+		return &TracesResult{
+			Traces: traces,
+			Total:  len(traces),
+			TookMs: openObserveResp.Took,
+		}, nil
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute traces count query: %w", err)
 	}
@@ -283,6 +323,9 @@ func (c *Client) GetSpans(ctx context.Context, params TracesQueryParams) (*Spans
 	}
 
 	openObserveResp, err := c.executeSearchQuery(ctx, queryJSON)
+	if errors.Is(err, ErrStreamNotFound) {
+		return &SpansResult{Spans: []SpanEntry{}, Total: 0, TookMs: 0}, nil
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -299,6 +342,13 @@ func (c *Client) GetSpans(ctx context.Context, params TracesQueryParams) (*Spans
 		return nil, fmt.Errorf("failed to generate spans count query: %w", err)
 	}
 	countResp, err := c.executeSearchQuery(ctx, countQueryJSON)
+	if errors.Is(err, ErrStreamNotFound) {
+		return &SpansResult{
+			Spans:  spans,
+			Total:  len(spans),
+			TookMs: openObserveResp.Took,
+		}, nil
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute spans count query: %w", err)
 	}
@@ -318,6 +368,9 @@ func (c *Client) GetSpanDetail(ctx context.Context, params TracesQueryParams) (*
 	}
 
 	openObserveResp, err := c.executeSearchQuery(ctx, queryJSON)
+	if errors.Is(err, ErrStreamNotFound) {
+		return nil, fmt.Errorf("span not found: traceId=%s, spanId=%s", params.TraceID, params.SpanID)
+	}
 	if err != nil {
 		return nil, err
 	}

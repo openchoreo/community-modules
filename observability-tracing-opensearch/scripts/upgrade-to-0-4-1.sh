@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # Reindex existing trace indices onto the 0.4.1 mapping
 # Run AFTER `helm upgrade … observability-tracing-opensearch 0.4.1`
 
@@ -64,7 +65,9 @@ reindex() {
   local total created failures
   total=$(json_num "$resp" total)
   created=$(json_num "$resp" created)
-  failures=$(printf '%s' "$resp" | grep -o '"failures":\[[^]]*\]' | grep -o '{' | wc -l | tr -d ' ')
+  # `grep -o '{'` exits 1 when failures is an empty array; under pipefail that
+  # would abort the script on a successful reindex, so swallow the non-match.
+  failures=$(printf '%s' "$resp" | grep -o '"failures":\[[^]]*\]' | { grep -o '{' || true; } | wc -l | tr -d ' ')
   if [ "${failures:-0}" != "0" ]; then
     fail "$src -> $dst  ($failures failures)"
     printf '%s\n' "$resp"

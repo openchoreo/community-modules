@@ -1,4 +1,4 @@
-# Observability Tracing Module for AWS X-Ray (CloudWatch)
+# Observability Tracing Module for AWS X-Ray
 
 The **Observability Tracing Module for AWS X-Ray** collects application
 traces via an **OpenTelemetry Collector** and stores them in **AWS X-Ray**.
@@ -301,8 +301,8 @@ Use the command that matches the cluster's topology.
 Deploy the adapter and OpenTelemetry collector in one cluster:
 
 ```bash
-helm upgrade --install observability-tracing-cloudwatch \
-  oci://ghcr.io/openchoreo/helm-charts/observability-tracing-cloudwatch \
+helm upgrade --install observability-tracing-aws-xray \
+  oci://ghcr.io/openchoreo/helm-charts/observability-tracing-aws-xray \
   --create-namespace \
   --namespace "$NS" \
   --version 0.2.0 \
@@ -314,8 +314,8 @@ helm upgrade --install observability-tracing-cloudwatch \
 Deploy only the adapter in the observability plane cluster:
 
 ```bash
-helm upgrade --install observability-tracing-cloudwatch \
-  oci://ghcr.io/openchoreo/helm-charts/observability-tracing-cloudwatch \
+helm upgrade --install observability-tracing-aws-xray \
+  oci://ghcr.io/openchoreo/helm-charts/observability-tracing-aws-xray \
   --create-namespace \
   --namespace "$NS" \
   --version 0.2.0 \
@@ -328,8 +328,8 @@ helm upgrade --install observability-tracing-cloudwatch \
 Deploy only the OpenTelemetry collector in each workload cluster:
 
 ```bash
-helm upgrade --install observability-tracing-cloudwatch \
-  oci://ghcr.io/openchoreo/helm-charts/observability-tracing-cloudwatch \
+helm upgrade --install observability-tracing-aws-xray \
+  oci://ghcr.io/openchoreo/helm-charts/observability-tracing-aws-xray \
   --create-namespace \
   --namespace "$NS" \
   --version 0.2.0 \
@@ -347,7 +347,7 @@ Create two Pod Identity associations on the EKS cluster, all in the `$NS` namesp
 
 | ServiceAccount | Used by | IAM role to associate |
 | --- | --- | --- |
-| `tracing-adapter-cloudwatch` | Adapter trace queries and STS startup check. | The role with the [Adapter IAM policy](#adapter-iam-policy) attached. |
+| `tracing-adapter-aws-xray` | Adapter trace queries and STS startup check. | The role with the [Adapter IAM policy](#adapter-iam-policy) attached. |
 | `opentelemetry-collector` | OpenTelemetry collector trace export to X-Ray. | The role with the [OpenTelemetry collector IAM policy](#opentelemetry-collector-iam-policy) attached. |
 
 #### Multi-cluster topology
@@ -358,7 +358,7 @@ In a multi-cluster setup, each EKS cluster only runs a subset of the components.
 
 | ServiceAccount | IAM role to associate |
 | --- | --- |
-| `tracing-adapter-cloudwatch` | The role with the [Adapter IAM policy](#adapter-iam-policy) attached. |
+| `tracing-adapter-aws-xray` | The role with the [Adapter IAM policy](#adapter-iam-policy) attached. |
 
 The `opentelemetry-collector` ServiceAccount does not exist in this cluster because `opentelemetry-collector.enabled=false`.
 
@@ -368,7 +368,7 @@ The `opentelemetry-collector` ServiceAccount does not exist in this cluster beca
 | --- | --- |
 | `opentelemetry-collector` | The role with the [OpenTelemetry collector IAM policy](#opentelemetry-collector-iam-policy) attached. |
 
-The `tracing-adapter-cloudwatch` ServiceAccount does not exist in these clusters because `adapter.enabled=false`.
+The `tracing-adapter-aws-xray` ServiceAccount does not exist in these clusters because `adapter.enabled=false`.
 
 #### How to create a Pod Identity association
 
@@ -393,7 +393,7 @@ EKS Pod Identity injects credentials only at pod creation time.
 Recreate the workloads so new pods receive Pod Identity credentials:
 
 ```bash
-kubectl -n "$NS" rollout restart deploy/tracing-adapter-cloudwatch
+kubectl -n "$NS" rollout restart deploy/tracing-adapter-aws-xray
 kubectl -n "$NS" rollout restart deploy/opentelemetry-collector
 ```
 
@@ -407,7 +407,7 @@ kubectl -n "$NS" get deploy
 Verify that Pod Identity was injected into a new adapter pod:
 
 ```bash
-kubectl -n "$NS" get pod -l app=tracing-adapter-cloudwatch -o name | head -1 \
+kubectl -n "$NS" get pod -l app=tracing-adapter-aws-xray -o name | head -1 \
   | xargs -I {} kubectl -n "$NS" get {} -o yaml \
   | grep -E "AWS_CONTAINER|eks-pod-identity-token"
 ```
@@ -453,18 +453,18 @@ Use the command that matches the cluster's topology.
 Deploy the adapter and OpenTelemetry collector in one cluster:
 
 ```bash
-helm upgrade --install observability-tracing-cloudwatch \
-  oci://ghcr.io/openchoreo/helm-charts/observability-tracing-cloudwatch \
+helm upgrade --install observability-tracing-aws-xray \
+  oci://ghcr.io/openchoreo/helm-charts/observability-tracing-aws-xray \
   --create-namespace \
   --namespace "$NS" \
   --version 0.2.0 \
   --set region="$AWS_REGION" \
   --set awsCredentials.create=true \
-  --set awsCredentials.name=tracing-cloudwatch-aws-credentials \
+  --set awsCredentials.name=tracing-aws-xray-aws-credentials \
   --set awsCredentials.accessKeyId="$AWS_ACCESS_KEY_ID" \
   --set awsCredentials.secretAccessKey="$AWS_SECRET_ACCESS_KEY" \
-  --set "opentelemetry-collector.extraEnvsFrom[0].configMapRef.name=tracing-cloudwatch-collector-env" \
-  --set "opentelemetry-collector.extraEnvsFrom[1].secretRef.name=tracing-cloudwatch-aws-credentials"
+  --set "opentelemetry-collector.extraEnvsFrom[0].configMapRef.name=tracing-aws-xray-collector-env" \
+  --set "opentelemetry-collector.extraEnvsFrom[1].secretRef.name=tracing-aws-xray-aws-credentials"
 ```
 
 #### Observability plane install
@@ -472,14 +472,14 @@ helm upgrade --install observability-tracing-cloudwatch \
 Deploy only the adapter in the observability plane cluster:
 
 ```bash
-helm upgrade --install observability-tracing-cloudwatch \
-  oci://ghcr.io/openchoreo/helm-charts/observability-tracing-cloudwatch \
+helm upgrade --install observability-tracing-aws-xray \
+  oci://ghcr.io/openchoreo/helm-charts/observability-tracing-aws-xray \
   --create-namespace \
   --namespace "$NS" \
   --version 0.2.0 \
   --set region="$AWS_REGION" \
   --set awsCredentials.create=true \
-  --set awsCredentials.name=tracing-cloudwatch-aws-credentials \
+  --set awsCredentials.name=tracing-aws-xray-aws-credentials \
   --set awsCredentials.accessKeyId="$AWS_ACCESS_KEY_ID" \
   --set awsCredentials.secretAccessKey="$AWS_SECRET_ACCESS_KEY" \
   --set opentelemetry-collector.enabled=false
@@ -490,18 +490,18 @@ helm upgrade --install observability-tracing-cloudwatch \
 Deploy only the OpenTelemetry collector in each workload cluster:
 
 ```bash
-helm upgrade --install observability-tracing-cloudwatch \
-  oci://ghcr.io/openchoreo/helm-charts/observability-tracing-cloudwatch \
+helm upgrade --install observability-tracing-aws-xray \
+  oci://ghcr.io/openchoreo/helm-charts/observability-tracing-aws-xray \
   --create-namespace \
   --namespace "$NS" \
   --version 0.2.0 \
   --set region="$AWS_REGION" \
   --set awsCredentials.create=true \
-  --set awsCredentials.name=tracing-cloudwatch-aws-credentials \
+  --set awsCredentials.name=tracing-aws-xray-aws-credentials \
   --set awsCredentials.accessKeyId="$AWS_ACCESS_KEY_ID" \
   --set awsCredentials.secretAccessKey="$AWS_SECRET_ACCESS_KEY" \
-  --set "opentelemetry-collector.extraEnvsFrom[0].configMapRef.name=tracing-cloudwatch-collector-env" \
-  --set "opentelemetry-collector.extraEnvsFrom[1].secretRef.name=tracing-cloudwatch-aws-credentials" \
+  --set "opentelemetry-collector.extraEnvsFrom[0].configMapRef.name=tracing-aws-xray-collector-env" \
+  --set "opentelemetry-collector.extraEnvsFrom[1].secretRef.name=tracing-aws-xray-aws-credentials" \
   --set adapter.enabled=false
 ```
 
@@ -542,7 +542,7 @@ After about 30 seconds, traces should appear in the AWS X-Ray console and OpenCh
 ### Start with these logs
 
 ```bash
-kubectl -n "$NS" logs deployment/tracing-adapter-cloudwatch --tail=200
+kubectl -n "$NS" logs deployment/tracing-adapter-aws-xray --tail=200
 kubectl -n "$NS" logs deployment/opentelemetry-collector --tail=200
 ```
 
@@ -570,9 +570,9 @@ kubectl -n "$NS" logs deployment/opentelemetry-collector --tail=200
 | `opentelemetry-collector.image.repository` | `otel/opentelemetry-collector-contrib` | Collector image repository. The contrib image includes `awsxray` exporter and `k8sattributes` processor. |
 | `opentelemetry-collector.image.tag` | `0.151.0` | Collector image tag. |
 | `opentelemetry-collector.serviceAccount.annotations` | `{}` | ServiceAccount annotations for IRSA or other identity integrations. |
-| `opentelemetry-collector.extraEnvsFrom` | `[{configMapRef: {name: tracing-cloudwatch-collector-env}}]` | Extra `envFrom` entries for the collector. The default ConfigMap supplies `AWS_REGION`. Append the static AWS credentials Secret at index `1` on non-EKS clusters. |
+| `opentelemetry-collector.extraEnvsFrom` | `[{configMapRef: {name: tracing-aws-xray-collector-env}}]` | Extra `envFrom` entries for the collector. The default ConfigMap supplies `AWS_REGION`. Append the static AWS credentials Secret at index `1` on non-EKS clusters. |
 | `adapter.enabled` | `true` | Deploys the X-Ray Tracing Adapter Deployment and Service. Set to `false` on data-plane clusters in a multi-cluster topology. |
-| `adapter.image.repository` | `ghcr.io/openchoreo/observability-tracing-cloudwatch-adapter` | Adapter image repository. |
+| `adapter.image.repository` | `ghcr.io/openchoreo/observability-tracing-aws-xray-adapter` | Adapter image repository. |
 | `adapter.image.tag` | `""` | Adapter image tag. Empty defaults to chart `appVersion`. |
 | `adapter.image.pullPolicy` | `IfNotPresent` | Adapter image pull policy. |
 | `adapter.service.port` | `9100` | Adapter HTTP port. |

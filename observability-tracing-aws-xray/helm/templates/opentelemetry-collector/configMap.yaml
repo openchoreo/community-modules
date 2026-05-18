@@ -1,11 +1,11 @@
 # Copyright 2026 The OpenChoreo Authors
 # SPDX-License-Identifier: Apache-2.0
 
-{{- include "tracing-cloudwatch.validate" . }}
+{{- include "tracing-aws-xray.validate" . }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: tracing-cloudwatch-collector-config
+  name: tracing-aws-xray-collector-config
   namespace: {{ .Release.Namespace }}
 data:
   relay: |

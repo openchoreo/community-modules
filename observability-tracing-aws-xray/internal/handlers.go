@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/openchoreo/community-modules/observability-tracing-cloudwatch/internal/api/gen"
-	"github.com/openchoreo/community-modules/observability-tracing-cloudwatch/internal/xray"
+	"github.com/openchoreo/community-modules/observability-tracing-aws-xray/internal/api/gen"
+	"github.com/openchoreo/community-modules/observability-tracing-aws-xray/internal/xray"
 )
 
 type TracingHandler struct {

@@ -2,31 +2,31 @@
 # SPDX-License-Identifier: Apache-2.0
 
 {{- if .Values.adapter.enabled }}
-{{- include "tracing-cloudwatch.validate" . }}
+{{- include "tracing-aws-xray.validate" . }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: tracing-adapter-cloudwatch
+  name: tracing-adapter-aws-xray
   namespace: {{ .Release.Namespace }}
   labels:
-    app: tracing-adapter-cloudwatch
+    app: tracing-adapter-aws-xray
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: tracing-adapter-cloudwatch
+      app: tracing-adapter-aws-xray
   template:
     metadata:
       labels:
-        app: tracing-adapter-cloudwatch
+        app: tracing-adapter-aws-xray
     spec:
-      serviceAccountName: tracing-adapter-cloudwatch
+      serviceAccountName: tracing-adapter-aws-xray
       securityContext:
         runAsUser: 10500
         runAsGroup: 10500
         runAsNonRoot: true
       containers:
-        - name: tracing-adapter-cloudwatch
+        - name: tracing-adapter-aws-xray
           image: "{{ .Values.adapter.image.repository }}:{{ .Values.adapter.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.adapter.image.pullPolicy | default "IfNotPresent" }}
           ports:
@@ -35,7 +35,7 @@ spec:
             - name: SERVER_PORT
               value: {{ .Values.adapter.service.port | quote }}
             - name: AWS_REGION
-              value: {{ include "tracing-cloudwatch.region" . | quote }}
+              value: {{ include "tracing-aws-xray.region" . | quote }}
             - name: LOG_LEVEL
               value: {{ .Values.adapter.logLevel | quote }}
           {{- if .Values.awsCredentials.create }}

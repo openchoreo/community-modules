@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/openchoreo/community-modules/observability-tracing-cloudwatch/internal/api/gen"
+	"github.com/openchoreo/community-modules/observability-tracing-aws-xray/internal/api/gen"
 )
 
 type Server struct {

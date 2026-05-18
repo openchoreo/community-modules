@@ -1,0 +1,13 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+{{- include "tracing-aws-xray.validate" . }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tracing-aws-xray-collector-env
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: observability-tracing-aws-xray
+data:
+  AWS_REGION: {{ include "tracing-aws-xray.region" . | quote }}

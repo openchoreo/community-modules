@@ -11,8 +11,8 @@ import (
 	"syscall"
 	"time"
 
-	app "github.com/openchoreo/community-modules/observability-tracing-cloudwatch/internal"
-	"github.com/openchoreo/community-modules/observability-tracing-cloudwatch/internal/xray"
+	app "github.com/openchoreo/community-modules/observability-tracing-aws-xray/internal"
+	"github.com/openchoreo/community-modules/observability-tracing-aws-xray/internal/xray"
 )
 
 func main() {

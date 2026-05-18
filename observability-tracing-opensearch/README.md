@@ -147,12 +147,19 @@ helm upgrade --install observability-tracing-opensearch \
   --set opentelemetryCollectorCustomizations.http.observabilityPlaneVirtualHost="opentelemetry.<gateway-domain>"
 ```
 
+## Upgrades
+
+If you are upgrading from a version before 0.4.0, reindex the older tracing data to work with newer queries
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/openchoreo/community-modules/refs/heads/main/observability-tracing-opensearch/scripts/upgrade-to-0-4-1.sh | bash
+```
 
 ## Compatibility
 
 > **Note:** The Helm chart versions specified in the installation commands above are for the latest module version compatible with the development version of OpenChoreo. Refer to the compatibility table below to determine the appropriate module version for your OpenChoreo installation.
 
 | Module Version | OpenChoreo Version |
-|----------------|--------------------|
+| -------------- | ------------------ |
 | v0.4.x         | v1.1.x             |
 | v0.3.x         | v1.0.x             |

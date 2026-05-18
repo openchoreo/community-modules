@@ -130,7 +130,7 @@ func buildWorkflowQuery(p WorkflowLogsParams) string {
 	if p.WorkflowRunName != "" {
 		// Match pods by name prefix (same approach as the OpenSearch adaptor).
 		// Argo Workflow pod names follow the pattern "<workflowRunName>-<stepHash>".
-		fmt.Fprintf(&b, "| filter kubernetes.pod_name like /^%s/\n", escapeInsightsRegex(p.WorkflowRunName))
+		fmt.Fprintf(&b, "| filter kubernetes.pod_name like /^%s(-|$)/\n", escapeInsightsRegex(p.WorkflowRunName))
 	}
 	// Exclude Argo sidecar containers that carry infrastructure noise.
 	b.WriteString("| filter kubernetes.container_name not in [\"init\", \"wait\"]\n")

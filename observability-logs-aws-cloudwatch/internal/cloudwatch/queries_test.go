@@ -64,7 +64,7 @@ func TestBuildWorkflowQueryPodNameFilter(t *testing.T) {
 		Namespace:       "default",
 		WorkflowRunName: "my-build-01",
 	})
-	if !strings.Contains(query, `kubernetes.pod_name like /^my-build-01/`) {
+	if !strings.Contains(query, `kubernetes.pod_name like /^my-build-01(-|$)/`) {
 		t.Fatalf("expected pod_name prefix filter, got:\n%s", query)
 	}
 }

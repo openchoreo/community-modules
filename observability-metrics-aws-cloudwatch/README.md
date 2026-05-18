@@ -390,7 +390,7 @@ Create three Pod Identity associations on the EKS cluster, all in the `$NS` name
 | ServiceAccount | Used by | IAM role to associate |
 | --- | --- | --- |
 | `metrics-adapter-aws-cloudwatch` | Adapter metric queries, alert CRUD, and webhook handling. | The role with the [Adapter IAM policy](#adapter-iam-policy) attached. |
-| `opentelemetry-collector` | OpenTelemetry collector metric export to CloudWatch Logs. | The role with the [OpenTelemetry collector and retention IAM policy](#opentelemetry-collector-and-retention-iam-policy) attached. |
+| `metrics-opentelemetry-collector` | OpenTelemetry collector metric export to CloudWatch Logs. | The role with the [OpenTelemetry collector and retention IAM policy](#opentelemetry-collector-and-retention-iam-policy) attached. |
 | `metrics-aws-cloudwatch-retention` | Helm post-install/post-upgrade Job that creates the EMF log group and applies `metrics.retentionDays`. | The role with the [OpenTelemetry collector and retention IAM policy](#opentelemetry-collector-and-retention-iam-policy) attached. |
 
 #### Multi-cluster topology
@@ -403,13 +403,13 @@ In a multi-cluster setup, each EKS cluster only runs a subset of the components.
 | --- | --- |
 | `metrics-adapter-aws-cloudwatch` | The role with the [Adapter IAM policy](#adapter-iam-policy) attached. |
 
-The `opentelemetry-collector` and `metrics-aws-cloudwatch-retention` ServiceAccounts do not exist in this cluster because `opentelemetry-collector.enabled=false` and `metrics.retention.enabled=false`.
+The `metrics-opentelemetry-collector` and `metrics-aws-cloudwatch-retention` ServiceAccounts do not exist in this cluster because `opentelemetry-collector.enabled=false` and `metrics.retention.enabled=false`.
 
 **Each data-plane / workflow-plane cluster** (runs the OpenTelemetry collector, kube-state-metrics, and retention Job):
 
 | ServiceAccount | IAM role to associate |
 | --- | --- |
-| `opentelemetry-collector` | The role with the [OpenTelemetry collector and retention IAM policy](#opentelemetry-collector-and-retention-iam-policy) attached. |
+| `metrics-opentelemetry-collector` | The role with the [OpenTelemetry collector and retention IAM policy](#opentelemetry-collector-and-retention-iam-policy) attached. |
 | `metrics-aws-cloudwatch-retention` | The role with the [OpenTelemetry collector and retention IAM policy](#opentelemetry-collector-and-retention-iam-policy) attached. |
 
 The `metrics-adapter-aws-cloudwatch` ServiceAccount does not exist in these clusters because `adapter.enabled=false`.
@@ -458,8 +458,8 @@ kubectl -n "$NS" get deployment metrics-adapter-aws-cloudwatch &>/dev/null \
   && kubectl -n "$NS" rollout restart deployment/metrics-adapter-aws-cloudwatch
 
 # Restart the collector DaemonSet if it exists (data-plane installs)
-kubectl -n "$NS" get daemonset opentelemetry-collector-agent &>/dev/null \
-  && kubectl -n "$NS" rollout restart daemonset/opentelemetry-collector-agent
+kubectl -n "$NS" get daemonset metrics-opentelemetry-collector-agent &>/dev/null \
+  && kubectl -n "$NS" rollout restart daemonset/metrics-opentelemetry-collector-agent
 ```
 
 If the OpenTelemetry collector DaemonSet name differs because of your Helm release name, inspect it first:
@@ -770,7 +770,7 @@ The same token must be configured in the EventBridge connection created in [Step
 ### Start with these logs
 
 ```bash
-kubectl -n "$NS" logs daemonset/opentelemetry-collector-agent --tail=200
+kubectl -n "$NS" logs daemonset/metrics-opentelemetry-collector-agent --tail=200
 kubectl -n "$NS" logs deployment/metrics-adapter-aws-cloudwatch --tail=200
 kubectl -n "$NS" logs -l job-name=metrics-aws-cloudwatch-retention --tail=200
 ```
@@ -831,7 +831,7 @@ kubectl -n "$NS" logs -l job-name=metrics-aws-cloudwatch-retention --tail=100
 | `metrics.retention.serviceAccount.annotations` | `{}` | ServiceAccount annotations for IRSA or other identity integrations used by the retention Job. |
 | `metrics.retention.image.repository` | `public.ecr.aws/aws-cli/aws-cli` | AWS CLI image used by the retention Job. |
 | `metrics.retention.image.tag` | `2.34.44` | AWS CLI image tag used by the retention Job. |
-| `opentelemetry-collector.fullnameOverride` | `opentelemetry-collector` | Overrides the subchart resource name prefix. |
+| `opentelemetry-collector.fullnameOverride` | `metrics-opentelemetry-collector` | Overrides the subchart resource name prefix. |
 | `opentelemetry-collector.enabled` | `true` | Enables the OpenTelemetry collector subchart. Set to `false` on an observability-plane-only install. |
 | `opentelemetry-collector.mode` | `daemonset` | Runs one collector per node. |
 | `opentelemetry-collector.image.repository` | `otel/opentelemetry-collector-contrib` | Collector image repository. The contrib image includes kubeletstats and awsemfexporter. |

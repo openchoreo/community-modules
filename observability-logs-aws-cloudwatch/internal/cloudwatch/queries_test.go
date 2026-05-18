@@ -49,6 +49,35 @@ func TestBuildWorkflowQueryFiltersStructuredLogLevelFields(t *testing.T) {
 	}
 }
 
+func TestBuildWorkflowQueryNamespacePrefix(t *testing.T) {
+	query := buildWorkflowQuery(WorkflowLogsParams{
+		Namespace:       "default",
+		WorkflowRunName: "my-build-01",
+	})
+	if !strings.Contains(query, `kubernetes.namespace_name = "workflows-default"`) {
+		t.Fatalf("expected workflows- namespace prefix, got:\n%s", query)
+	}
+}
+
+func TestBuildWorkflowQueryPodNameFilter(t *testing.T) {
+	query := buildWorkflowQuery(WorkflowLogsParams{
+		Namespace:       "default",
+		WorkflowRunName: "my-build-01",
+	})
+	if !strings.Contains(query, `kubernetes.pod_name like /^my-build-01/`) {
+		t.Fatalf("expected pod_name prefix filter, got:\n%s", query)
+	}
+}
+
+func TestBuildWorkflowQueryExcludesInitWait(t *testing.T) {
+	query := buildWorkflowQuery(WorkflowLogsParams{
+		Namespace: "default",
+	})
+	if !strings.Contains(query, `kubernetes.container_name not in ["init", "wait"]`) {
+		t.Fatalf("expected init/wait exclusion, got:\n%s", query)
+	}
+}
+
 func TestNormaliseSortOrder(t *testing.T) {
 	tests := []struct {
 		input string
@@ -93,12 +122,6 @@ func TestEscapeInsights(t *testing.T) {
 func TestEscapeInsightsRegexQuotesMeta(t *testing.T) {
 	if got := escapeInsightsRegex("a.b*c"); got != `a\.b\*c` {
 		t.Fatalf("escapeInsightsRegex() = %q", got)
-	}
-}
-
-func TestAnnotationField(t *testing.T) {
-	if got := annotationField("workflows.argoproj.io/node-name"); !strings.Contains(got, "annotations") {
-		t.Fatalf("annotationField() = %q", got)
 	}
 }
 

@@ -24,6 +24,7 @@ This module supports both:
 9. [Shared webhook secret](#shared-webhook-secret)
 10. [Troubleshooting](#troubleshooting)
 11. [Configuration reference](#configuration-reference)
+12. [Compatibility](#compatibility)
 
 ## Architecture
 
@@ -244,6 +245,43 @@ Also verify that the EKS Pod Identity Agent add-on is installed:
 kubectl -n kube-system get daemonset eks-pod-identity-agent
 ```
 
+If the agent is not found, install it on data plane/workflow plane/observability plane:
+
+```bash
+aws eks create-addon \
+  --cluster-name <your-eks-cluster-name> \
+  --addon-name eks-pod-identity-agent \
+  --region "$AWS_REGION"
+```
+
+The EKS node IAM role must have `AmazonEKSWorkerNodePolicy` attached. This policy includes `eks-auth:AssumeRoleForPodIdentity`, which the Pod Identity Agent needs to assume roles on behalf of pods. Without it, the adapter fails with `AccessDeniedException: not authorized to perform eks-auth:AssumeRoleForPodIdentity`. If the agent pods also show `ImagePullBackOff`, additionally attach `AmazonEC2ContainerRegistryReadOnly` for ECR pull permissions.
+
+Verify and attach the required policies:
+
+1. Open the **IAM console** → **Roles**.
+2. Find the EKS node role (the role associated with your EKS managed node group).
+3. Choose **Add permissions** → **Attach policies**.
+4. Search for and attach `AmazonEKSWorkerNodePolicy`. If agent pods cannot pull images, also attach `AmazonEC2ContainerRegistryReadOnly`.
+
+Alternatively, use the AWS CLI:
+
+```bash
+aws iam attach-role-policy \
+  --role-name <your-eks-node-role-name> \
+  --policy-arn arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
+
+# Only needed if agent pods show ImagePullBackOff
+aws iam attach-role-policy \
+  --role-name <your-eks-node-role-name> \
+  --policy-arn arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+```
+
+After attaching policies, delete the failing agent pods so they restart:
+
+```bash
+kubectl -n kube-system delete pods -l app.kubernetes.io/name=eks-pod-identity-agent
+```
+
 Pod Identity credentials are injected only when the Pod Identity Agent is running.
 
 ### Step 2 — Create IAM roles
@@ -284,6 +322,121 @@ Use the following trust policy for both roles when using EKS Pod Identity:
 }
 ```
 
+To create the roles and attach policies using the AWS CLI:
+
+```bash
+export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+POD_IDENTITY_TRUST_POLICY='{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "pods.eks.amazonaws.com"
+      },
+      "Action": [
+        "sts:AssumeRole",
+        "sts:TagSession"
+      ]
+    }
+  ]
+}'
+
+# Create the adapter role
+aws iam create-role \
+  --role-name OpenChoreoCloudWatchLogsRoleForAdapter \
+  --assume-role-policy-document "$POD_IDENTITY_TRUST_POLICY"
+
+# Create the adapter policy
+aws iam create-policy \
+  --policy-name OpenChoreoCloudWatchLogsAdapterPolicy \
+  --policy-document "$(cat <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "Startup",
+      "Effect": "Allow",
+      "Action": "sts:GetCallerIdentity",
+      "Resource": "*"
+    },
+    {
+      "Sid": "LogsScoped",
+      "Effect": "Allow",
+      "Action": [
+        "logs:StartQuery",
+        "logs:PutMetricFilter",
+        "logs:DescribeMetricFilters",
+        "logs:DeleteMetricFilter"
+      ],
+      "Resource": "arn:aws:logs:${AWS_REGION}:${AWS_ACCOUNT_ID}:log-group:/aws/containerinsights/application:*"
+    },
+    {
+      "Sid": "LogsUnscoped",
+      "Effect": "Allow",
+      "Action": [
+        "logs:GetQueryResults",
+        "logs:StopQuery"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "MetricAlarms",
+      "Effect": "Allow",
+      "Action": [
+        "cloudwatch:PutMetricAlarm",
+        "cloudwatch:DescribeAlarms",
+        "cloudwatch:DeleteAlarms",
+        "cloudwatch:TagResource",
+        "cloudwatch:ListTagsForResource"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+EOF
+)"
+
+aws iam attach-role-policy \
+  --role-name OpenChoreoCloudWatchLogsRoleForAdapter \
+  --policy-arn "arn:aws:iam::${AWS_ACCOUNT_ID}:policy/OpenChoreoCloudWatchLogsAdapterPolicy"
+
+# Create the ingestion role
+aws iam create-role \
+  --role-name OpenChoreoCloudWatchLogsRoleForIngestion \
+  --assume-role-policy-document "$POD_IDENTITY_TRUST_POLICY"
+
+# Create the setup job policy
+aws iam create-policy \
+  --policy-name OpenChoreoCloudWatchLogsSetupPolicy \
+  --policy-document "$(cat <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "CreateLogGroups",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:PutRetentionPolicy"
+      ],
+      "Resource": "arn:aws:logs:${AWS_REGION}:${AWS_ACCOUNT_ID}:log-group:/aws/containerinsights/application:*"
+    }
+  ]
+}
+EOF
+)"
+
+aws iam attach-role-policy \
+  --role-name OpenChoreoCloudWatchLogsRoleForIngestion \
+  --policy-arn "arn:aws:iam::${AWS_ACCOUNT_ID}:policy/OpenChoreoCloudWatchLogsSetupPolicy"
+
+aws iam attach-role-policy \
+  --role-name OpenChoreoCloudWatchLogsRoleForIngestion \
+  --policy-arn arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+```
+
 ### Step 3 — Install the module
 
 Use the command that matches the cluster's topology.
@@ -297,7 +450,7 @@ helm upgrade --install observability-logs-aws-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-aws-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.2.0 \
+  --version 0.2.1 \
   --set amazon-cloudwatch-observability.region="$AWS_REGION" \
   --set adapter.alerting.webhookAuth.enabled=true \
   --set adapter.alerting.webhookAuth.sharedSecret="$WEBHOOK_SHARED_SECRET"
@@ -312,7 +465,7 @@ helm upgrade --install observability-logs-aws-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-aws-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.2.0 \
+  --version 0.2.1 \
   --set cloudWatchAgent.enabled=false \
   --set setup.enabled=false \
   --set amazon-cloudwatch-observability.region="$AWS_REGION" \
@@ -329,7 +482,7 @@ helm upgrade --install observability-logs-aws-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-aws-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.2.0 \
+  --version 0.2.1 \
   --set amazon-cloudwatch-observability.region="$AWS_REGION" \
   --set adapter.enabled=false
 ```
@@ -383,19 +536,68 @@ For each association, fill in:
 - **Service Account**: the ServiceAccount name from the tables above.
 - **IAM Role**: the ARN of the corresponding IAM role.
 
-Alternatively, use the AWS CLI:
+Alternatively, use the AWS CLI. Export the role ARNs from Step 2:
 
 ```bash
-aws eks create-pod-identity-association \
-  --cluster-name <your-eks-cluster-name> \
-  --namespace "$NS" \
-  --service-account <service-account-name> \
-  --role-arn <iam-role-arn>
+export ADAPTER_ROLE_ARN="arn:aws:iam::${AWS_ACCOUNT_ID}:role/OpenChoreoCloudWatchLogsRoleForAdapter"
+export INGESTION_ROLE_ARN="arn:aws:iam::${AWS_ACCOUNT_ID}:role/OpenChoreoCloudWatchLogsRoleForIngestion"
 ```
 
-Repeat this command for each ServiceAccount that needs an association on the given cluster. For multi-cluster installs, run the appropriate commands against each EKS cluster.
+**Single-cluster topology** — create all three associations:
 
-### Step 5 — Restart workloads
+```bash
+export EKS_CLUSTER_NAME=<your-eks-cluster-name>
+
+aws eks create-pod-identity-association \
+  --cluster-name "$EKS_CLUSTER_NAME" \
+  --namespace "$NS" \
+  --service-account logs-adapter-aws-cloudwatch \
+  --role-arn "$ADAPTER_ROLE_ARN"
+
+aws eks create-pod-identity-association \
+  --cluster-name "$EKS_CLUSTER_NAME" \
+  --namespace "$NS" \
+  --service-account cloudwatch-setup \
+  --role-arn "$INGESTION_ROLE_ARN"
+
+aws eks create-pod-identity-association \
+  --cluster-name "$EKS_CLUSTER_NAME" \
+  --namespace "$NS" \
+  --service-account cloudwatch-agent \
+  --role-arn "$INGESTION_ROLE_ARN"
+```
+
+**Observability plane cluster** — adapter only:
+
+```bash
+export EKS_CLUSTER_NAME=<your-obs-plane-cluster-name>
+
+aws eks create-pod-identity-association \
+  --cluster-name "$EKS_CLUSTER_NAME" \
+  --namespace "$NS" \
+  --service-account logs-adapter-aws-cloudwatch \
+  --role-arn "$ADAPTER_ROLE_ARN"
+```
+
+**Each data-plane / workflow-plane cluster** — setup Job and CloudWatch Agent only. Repeat for each cluster:
+
+```bash
+export EKS_CLUSTER_NAME=<your-data-plane-cluster-name>
+
+aws eks create-pod-identity-association \
+  --cluster-name "$EKS_CLUSTER_NAME" \
+  --namespace "$NS" \
+  --service-account cloudwatch-setup \
+  --role-arn "$INGESTION_ROLE_ARN"
+
+aws eks create-pod-identity-association \
+  --cluster-name "$EKS_CLUSTER_NAME" \
+  --namespace "$NS" \
+  --service-account cloudwatch-agent \
+  --role-arn "$INGESTION_ROLE_ARN"
+```
+
+### Step 5 — Restart workloads on Each Cluster
 
 EKS Pod Identity injects credentials only at pod creation time.
 
@@ -404,7 +606,9 @@ So, you will see errors such as:
 - `AccessDeniedException` from `assumed-role/<node-role>` in Fluent Bit or CloudWatch Agent logs.
 - `Unable to locate credentials` in the `cloudwatch-setup-logs` Job.
 
-Recreate the workloads so new pods receive Pod Identity credentials:
+Recreate the workloads so new pods receive Pod Identity credentials. Run the commands that match your topology on each cluster.
+
+**Single-cluster topology:**
 
 ```bash
 kubectl -n "$NS" rollout restart daemonset/cloudwatch-agent
@@ -412,13 +616,33 @@ kubectl -n "$NS" rollout restart daemonset/fluent-bit
 kubectl -n "$NS" rollout restart deployment/logs-adapter-aws-cloudwatch
 
 # Re-trigger the setup Helm hook (it ran once at install time)
-kubectl -n $NS delete job cloudwatch-setup-logs --ignore-not-found
+kubectl -n "$NS" delete job cloudwatch-setup-logs --ignore-not-found
 helm upgrade observability-logs-aws-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-aws-cloudwatch \
-  --namespace $NS --reuse-values
+  --namespace "$NS" --version 0.2.1 --reuse-values
 ```
 
-Verify that Pod Identity was injected into a new Fluent Bit pod:
+**Observability plane cluster** — restart only the adapter:
+
+```bash
+kubectl -n "$NS" rollout restart deployment/logs-adapter-aws-cloudwatch
+```
+
+**Each data-plane / workflow-plane cluster** — restart the DaemonSets and re-trigger the setup Job:
+
+```bash
+kubectl -n "$NS" rollout restart daemonset/cloudwatch-agent
+kubectl -n "$NS" rollout restart daemonset/fluent-bit
+
+kubectl -n "$NS" delete job cloudwatch-setup-logs --ignore-not-found
+helm upgrade observability-logs-aws-cloudwatch \
+  oci://ghcr.io/openchoreo/helm-charts/observability-logs-aws-cloudwatch \
+  --namespace "$NS" --version 0.2.1 --reuse-values
+```
+
+#### Verify Pod Identity injection
+
+Verify that Pod Identity was injected into a new Fluent Bit pod (on clusters that run Fluent Bit):
 
 ```bash
 kubectl -n "$NS" get pod -l k8s-app=fluent-bit -o name | head -1 \
@@ -458,6 +682,79 @@ Create an IAM user and attach both:
 
 Create access keys for this IAM user and export them as shown above.
 
+To create the IAM user and attach policies using the AWS CLI:
+
+```bash
+export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+# Create the IAM user
+aws iam create-user --user-name OpenChoreoCloudWatchLogsUser
+
+# Create the adapter policy
+aws iam create-policy \
+  --policy-name OpenChoreoCloudWatchLogsAdapterPolicy \
+  --policy-document "$(cat <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "Startup",
+      "Effect": "Allow",
+      "Action": "sts:GetCallerIdentity",
+      "Resource": "*"
+    },
+    {
+      "Sid": "LogsScoped",
+      "Effect": "Allow",
+      "Action": [
+        "logs:StartQuery",
+        "logs:PutMetricFilter",
+        "logs:DescribeMetricFilters",
+        "logs:DeleteMetricFilter"
+      ],
+      "Resource": "arn:aws:logs:${AWS_REGION}:${AWS_ACCOUNT_ID}:log-group:/aws/containerinsights/application:*"
+    },
+    {
+      "Sid": "LogsUnscoped",
+      "Effect": "Allow",
+      "Action": [
+        "logs:GetQueryResults",
+        "logs:StopQuery"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "MetricAlarms",
+      "Effect": "Allow",
+      "Action": [
+        "cloudwatch:PutMetricAlarm",
+        "cloudwatch:DescribeAlarms",
+        "cloudwatch:DeleteAlarms",
+        "cloudwatch:TagResource",
+        "cloudwatch:ListTagsForResource"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+EOF
+)"
+
+aws iam attach-user-policy \
+  --user-name OpenChoreoCloudWatchLogsUser \
+  --policy-arn "arn:aws:iam::${AWS_ACCOUNT_ID}:policy/OpenChoreoCloudWatchLogsAdapterPolicy"
+
+# Attach the AWS-managed CloudWatchAgentServerPolicy
+aws iam attach-user-policy \
+  --user-name OpenChoreoCloudWatchLogsUser \
+  --policy-arn arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+
+# Create access keys
+ACCESS_KEY_OUTPUT=$(aws iam create-access-key --user-name OpenChoreoCloudWatchLogsUser)
+export AWS_ACCESS_KEY_ID=$(echo "$ACCESS_KEY_OUTPUT" | jq -r '.AccessKey.AccessKeyId')
+export AWS_SECRET_ACCESS_KEY=$(echo "$ACCESS_KEY_OUTPUT" | jq -r '.AccessKey.SecretAccessKey')
+```
+
 ### Step 3 — Install the module
 
 Use the command that matches the cluster's topology.
@@ -471,7 +768,7 @@ helm upgrade --install observability-logs-aws-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-aws-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.2.0 \
+  --version 0.2.1 \
   --set amazon-cloudwatch-observability.region="$AWS_REGION" \
   --set awsCredentials.create=true \
   --set awsCredentials.name=cloudwatch-aws-credentials \
@@ -499,7 +796,7 @@ helm upgrade --install observability-logs-aws-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-aws-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.2.0 \
+  --version 0.2.1 \
   --set cloudWatchAgent.enabled=false \
   --set setup.enabled=false \
   --set amazon-cloudwatch-observability.region="$AWS_REGION" \
@@ -520,7 +817,7 @@ helm upgrade --install observability-logs-aws-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-aws-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.2.0 \
+  --version 0.2.1 \
   --set amazon-cloudwatch-observability.region="$AWS_REGION" \
   --set awsCredentials.create=true \
   --set awsCredentials.name=cloudwatch-aws-credentials \
@@ -625,6 +922,15 @@ The connection stores the authentication credentials that EventBridge uses when 
 6. Set **Value** to the same shared secret you configured during Helm installation (the value of `adapter.alerting.webhookAuth.sharedSecret` or the contents of the Kubernetes Secret referenced by `adapter.alerting.webhookAuth.sharedSecretRef`).
 7. Choose **Create**.
 
+Alternatively, use the AWS CLI:
+
+```bash
+aws events create-connection \
+  --name openchoreo-logs-webhook-connection \
+  --authorization-type API_KEY \
+  --auth-parameters '{"ApiKeyAuthParameters":{"ApiKeyName":"X-OpenChoreo-Webhook-Token","ApiKeyValue":"'"$WEBHOOK_SHARED_SECRET"'"}}'
+```
+
 ### Step 2 — Create an EventBridge API destination
 
 The API destination defines the HTTP endpoint that EventBridge calls when a matching event arrives.
@@ -637,6 +943,23 @@ The API destination defines the HTTP endpoint that EventBridge calls when a matc
 6. For **Connection**, select the connection created in Step 1 (`openchoreo-logs-webhook-connection`).
 7. Optionally set an **Invocation rate limit** to protect the adapter from bursts. A value of 10 per second is a reasonable starting point.
 8. Choose **Create**.
+
+Alternatively, use the AWS CLI:
+
+```bash
+export CONNECTION_ARN=$(aws events describe-connection \
+  --name openchoreo-logs-webhook-connection \
+  --query ConnectionArn --output text)
+
+aws events create-api-destination \
+  --name openchoreo-logs-webhook \
+  --connection-arn "$CONNECTION_ARN" \
+  --invocation-endpoint "<your-webhook-url>/api/v1alpha1/alerts/webhook" \
+  --http-method POST \
+  --invocation-rate-limit-per-second 10
+```
+
+Replace `<your-webhook-url>` with the publicly reachable base URL of the adapter exposed through your Gateway or ingress.
 
 ### Step 3 — Create an EventBridge rule
 
@@ -673,6 +996,81 @@ This pattern matches only `ALARM` state transitions for alarms whose name starts
 11. Select the API destination created in Step 2 (`openchoreo-logs-webhook`).
 12. Leave the input transformer at the default (full event) unless you have a specific reason to modify it.
 13. Choose **Next**, review the rule, and choose **Create rule**.
+
+Alternatively, use the AWS CLI:
+
+```bash
+# Create the EventBridge rule
+aws events put-rule \
+  --name openchoreo-logs-alarm-to-webhook \
+  --event-bus-name default \
+  --event-pattern '{
+    "source": ["aws.cloudwatch"],
+    "detail-type": ["CloudWatch Alarm State Change"],
+    "detail": {
+      "state": {
+        "value": ["ALARM"]
+      },
+      "alarmName": [{
+        "prefix": "oc-logs-alert"
+      }]
+    }
+  }'
+
+# Create an IAM role that allows EventBridge to invoke the API destination
+aws iam create-role \
+  --role-name OpenChoreoEventBridgeInvokeRole \
+  --assume-role-policy-document '{
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Principal": {
+          "Service": "events.amazonaws.com"
+        },
+        "Action": "sts:AssumeRole"
+      }
+    ]
+  }'
+
+export API_DEST_ARN=$(aws events describe-api-destination \
+  --name openchoreo-logs-webhook \
+  --query ApiDestinationArn --output text)
+
+aws iam create-policy \
+  --policy-name OpenChoreoEventBridgeInvokePolicy \
+  --policy-document "$(cat <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "events:InvokeApiDestination",
+      "Resource": "$API_DEST_ARN"
+    }
+  ]
+}
+EOF
+)"
+
+aws iam attach-role-policy \
+  --role-name OpenChoreoEventBridgeInvokeRole \
+  --policy-arn "arn:aws:iam::${AWS_ACCOUNT_ID}:policy/OpenChoreoEventBridgeInvokePolicy"
+
+export EVENTBRIDGE_ROLE_ARN=$(aws iam get-role \
+  --role-name OpenChoreoEventBridgeInvokeRole \
+  --query Role.Arn --output text)
+
+# Add the API destination as a target for the rule
+aws events put-targets \
+  --rule openchoreo-logs-alarm-to-webhook \
+  --event-bus-name default \
+  --targets '[{
+    "Id": "openchoreo-logs-webhook",
+    "Arn": "'"$API_DEST_ARN"'",
+    "RoleArn": "'"$EVENTBRIDGE_ROLE_ARN"'"
+  }]'
+```
 
 ### Test alert delivery
 
@@ -737,7 +1135,7 @@ kubectl -n "$NS" delete job cloudwatch-setup-logs --ignore-not-found
 # 2. Re-fire the post-upgrade hook.
 helm upgrade observability-logs-aws-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-aws-cloudwatch \
-  --namespace "$NS" --reuse-values
+  --namespace "$NS" --version 0.2.1 --reuse-values
 
 # 3. Watch the new Job complete.
 kubectl -n "$NS" get job cloudwatch-setup-logs -w
@@ -793,3 +1191,11 @@ kubectl -n "$NS" logs -l job-name=cloudwatch-setup-logs --tail=100
 | `adapter.networkPolicy.observerPodLabels` | `{}` | Pod labels allowed to call the adapter from the Observer. Tune per deployment. |
 | `adapter.networkPolicy.gatewayNamespaceLabels` | `{}` | Namespace labels of the Gateway data-plane pods allowed to proxy the webhook. Set when `webhookRoute` is enabled. |
 | `adapter.networkPolicy.allowProbeIPBlock` | `""` | Optional node CIDR for kubelet probes when required by the CNI. |
+
+## Compatibility
+
+> **Note:** The Helm chart versions specified in the installation commands above are for the latest module version compatible with the development version of OpenChoreo. Refer to the compatibility table below to determine the appropriate module version for your OpenChoreo installation.
+
+| Module Version | OpenChoreo Version |
+|----------------|--------------------|
+| v0.2.x         | v1.1.x             |

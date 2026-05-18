@@ -386,6 +386,96 @@ func TestApplicationLogGroup(t *testing.T) {
 	}
 }
 
+func TestExtractInnerLog(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "fluent-bit JSON envelope",
+			input: `{"time":"2026-05-18T11:12:09Z","stream":"stderr","_p":"F","log":"Choreo Reading List service is starting...","kubernetes":{"pod_name":"pod-1"}}`,
+			want:  "Choreo Reading List service is starting...",
+		},
+		{
+			name:  "plain text passthrough",
+			input: "just a plain log message",
+			want:  "just a plain log message",
+		},
+		{
+			name:  "empty string",
+			input: "",
+			want:  "",
+		},
+		{
+			name:  "JSON without log field",
+			input: `{"time":"2026-05-18T11:12:09Z","stream":"stderr"}`,
+			want:  `{"time":"2026-05-18T11:12:09Z","stream":"stderr"}`,
+		},
+		{
+			name:  "invalid JSON starting with brace",
+			input: `{invalid json`,
+			want:  `{invalid json`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := extractInnerLog(test.input); got != test.want {
+				t.Fatalf("extractInnerLog() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestGetComponentLogsExtractsInnerLog(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	api := &queryStubLogsAPI{
+		resultsQueue: [][]cwltypes.ResultField{
+			{
+				{Field: aws.String("@timestamp"), Value: aws.String(now.Format("2006-01-02 15:04:05.000"))},
+				{Field: aws.String("@message"), Value: aws.String(`{"time":"2026-05-18T11:12:09Z","stream":"stderr","log":"service started","kubernetes":{}}`)},
+				{Field: aws.String("namespace"), Value: aws.String("default")},
+			},
+		},
+	}
+	c := newQueryTestClient(api)
+	res, err := c.GetComponentLogs(context.Background(), ComponentLogsParams{
+		Namespace: "default",
+		StartTime: now.Add(-time.Hour),
+		EndTime:   now,
+	})
+	if err != nil {
+		t.Fatalf("GetComponentLogs() error = %v", err)
+	}
+	if res.Logs[0].Log != "service started" {
+		t.Fatalf("expected extracted inner log, got %q", res.Logs[0].Log)
+	}
+}
+
+func TestGetWorkflowLogsExtractsInnerLog(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	api := &queryStubLogsAPI{
+		resultsQueue: [][]cwltypes.ResultField{
+			{
+				{Field: aws.String("@timestamp"), Value: aws.String(now.Format("2006-01-02 15:04:05.000"))},
+				{Field: aws.String("@message"), Value: aws.String(`{"time":"2026-05-18T11:07:47Z","stream":"stdout","log":">> Commit: <not specified>","kubernetes":{}}`)},
+			},
+		},
+	}
+	c := newQueryTestClient(api)
+	res, err := c.GetWorkflowLogs(context.Background(), WorkflowLogsParams{
+		Namespace: "default",
+		StartTime: now.Add(-time.Hour),
+		EndTime:   now,
+	})
+	if err != nil {
+		t.Fatalf("GetWorkflowLogs() error = %v", err)
+	}
+	if res.Logs[0].Log != ">> Commit: <not specified>" {
+		t.Fatalf("expected extracted inner log, got %q", res.Logs[0].Log)
+	}
+}
+
 func TestNewClientReturnsErrorOnInvalidAWSConfig(t *testing.T) {
 	t.Setenv("AWS_EC2_METADATA_DISABLED", "true")
 	t.Setenv("AWS_REGION", "")

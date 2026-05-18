@@ -7,6 +7,7 @@ package cloudwatch
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -218,7 +219,7 @@ func (c *Client) GetComponentLogs(ctx context.Context, params ComponentLogsParam
 	entries := make([]ComponentLogsEntry, 0, len(rows))
 	for _, row := range rows {
 		entry := ComponentLogsEntry{
-			Log:             row["@message"],
+			Log:             extractInnerLog(row["@message"]),
 			Namespace:       row["namespace"],
 			PodName:         row["podName"],
 			PodNamespace:    row["namespace"],
@@ -261,7 +262,7 @@ func (c *Client) GetWorkflowLogs(ctx context.Context, params WorkflowLogsParams)
 
 	entries := make([]WorkflowLogsEntry, 0, len(rows))
 	for _, row := range rows {
-		entry := WorkflowLogsEntry{Log: row["@message"]}
+		entry := WorkflowLogsEntry{Log: extractInnerLog(row["@message"])}
 		if ts, err := parseInsightsTimestamp(row["@timestamp"]); err == nil {
 			entry.Timestamp = ts
 		}
@@ -401,4 +402,20 @@ func extractLogLevel(msg string) string {
 		}
 	}
 	return "INFO"
+}
+
+// extractInnerLog extracts the nested "log" field from a Fluent Bit JSON
+// envelope. If the message is not JSON or has no "log" key, it returns the
+// original string unchanged.
+func extractInnerLog(raw string) string {
+	if len(raw) == 0 || raw[0] != '{' {
+		return raw
+	}
+	var envelope struct {
+		Log string `json:"log"`
+	}
+	if err := json.Unmarshal([]byte(raw), &envelope); err != nil || envelope.Log == "" {
+		return raw
+	}
+	return envelope.Log
 }

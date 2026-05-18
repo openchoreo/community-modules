@@ -20,8 +20,6 @@ const (
 	labelProjectUID      = "openchoreo.dev/project-uid"
 	labelProjectName     = "openchoreo.dev/project"
 
-	// Argo Workflows annotation carrying the workflow node (pod-scoped step) name.
-	annotationWorkflowNodeName = "workflows.argoproj.io/node-name"
 )
 
 var logLevelFieldNames = []string{
@@ -59,11 +57,6 @@ var logLevelResultFields = []struct {
 // entire flattened path must be wrapped in backticks.
 func labelField(key string) string {
 	return fmt.Sprintf("`kubernetes.labels.%s`", key)
-}
-
-// annotationField renders a CloudWatch Insights accessor for a Kubernetes annotation key.
-func annotationField(key string) string {
-	return fmt.Sprintf("`kubernetes.annotations.%s`", key)
 }
 
 // escapeInsights escapes a user-provided literal for inclusion inside a double-quoted
@@ -132,10 +125,15 @@ func buildWorkflowQuery(p WorkflowLogsParams) string {
 	var b strings.Builder
 
 	b.WriteString("fields @timestamp, @message\n")
-	fmt.Fprintf(&b, "| filter kubernetes.namespace_name = \"%s\"\n", escapeInsights(p.Namespace))
+	// Workflow pods run in the "workflows-<namespace>" K8s namespace.
+	fmt.Fprintf(&b, "| filter kubernetes.namespace_name = \"workflows-%s\"\n", escapeInsights(p.Namespace))
 	if p.WorkflowRunName != "" {
-		fmt.Fprintf(&b, "| filter %s = \"%s\"\n", annotationField(annotationWorkflowNodeName), escapeInsights(p.WorkflowRunName))
+		// Match pods by name prefix (same approach as the OpenSearch adaptor).
+		// Argo Workflow pod names follow the pattern "<workflowRunName>-<stepHash>".
+		fmt.Fprintf(&b, "| filter kubernetes.pod_name like /^%s/\n", escapeInsightsRegex(p.WorkflowRunName))
 	}
+	// Exclude Argo sidecar containers that carry infrastructure noise.
+	b.WriteString("| filter kubernetes.container_name not in [\"init\", \"wait\"]\n")
 	if p.SearchPhrase != "" {
 		fmt.Fprintf(&b, "| filter @message like \"%s\"\n", escapeInsights(p.SearchPhrase))
 	}

@@ -19,10 +19,9 @@ This module supports both:
 4. [IAM permissions](#iam-permissions)
 5. [Installation on EKS with Pod Identity](#installation-on-eks-with-pod-identity)
 6. [Installation on non-EKS clusters with static credentials](#installation-on-non-eks-clusters-with-static-credentials)
-7. [Wire the Observer to the adapter](#wire-the-observer-to-the-adapter)
-8. [Verify trace ingestion and querying](#verify-trace-ingestion-and-querying)
-9. [Troubleshooting](#troubleshooting)
-10. [Configuration reference](#configuration-reference)
+7. [Verify trace ingestion and querying](#verify-trace-ingestion-and-querying)
+8. [Troubleshooting](#troubleshooting)
+9. [Configuration reference](#configuration-reference)
 
 ## Architecture
 
@@ -507,6 +506,36 @@ helm upgrade --install observability-tracing-cloudwatch \
 ```
 
 In an observability-plane-only install, the collector is disabled, so the created Secret is used only by the adapter.
+
+## Trace ingestion and querying
+
+Deploy the [URL Shortener sample](https://github.com/openchoreo/openchoreo/tree/main/samples/from-image/url-shortener)
+to generate distributed traces across multiple services. The sample includes a
+frontend, API service, analytics service, PostgreSQL, and Redis — all
+instrumented with OpenTelemetry.
+
+```bash
+kubectl apply -f https://raw.githubusercontent.com/openchoreo/openchoreo/main/samples/from-image/url-shortener/project.yaml
+kubectl apply \
+  -f https://raw.githubusercontent.com/openchoreo/openchoreo/main/samples/from-image/url-shortener/components/postgres.yaml \
+  -f https://raw.githubusercontent.com/openchoreo/openchoreo/main/samples/from-image/url-shortener/components/redis.yaml \
+  -f https://raw.githubusercontent.com/openchoreo/openchoreo/main/samples/from-image/url-shortener/components/api-service.yaml \
+  -f https://raw.githubusercontent.com/openchoreo/openchoreo/main/samples/from-image/url-shortener/components/analytics-service.yaml \
+  -f https://raw.githubusercontent.com/openchoreo/openchoreo/main/samples/from-image/url-shortener/components/frontend.yaml
+```
+
+Once the pods are running, send a few requests to generate traces:
+
+```bash
+FRONTEND_URL=$(kubectl get releasebinding snip-frontend-development \
+  -o jsonpath='{.status.endpoints[0].externalURLs.http.scheme}://{.status.endpoints[0].externalURLs.http.host}:{.status.endpoints[0].externalURLs.http.port}')
+
+curl -X POST "$FRONTEND_URL/api/shorten" \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com", "username": "testuser"}'
+```
+
+After about 30 seconds, traces should appear in the AWS X-Ray console and OpenChoreo UI.
 
 ## Troubleshooting
 

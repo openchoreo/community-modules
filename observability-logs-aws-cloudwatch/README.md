@@ -2,7 +2,7 @@
 
 |               |           |
 | ------------- | --------- |
-| Code coverage | [![Codecov](https://codecov.io/gh/openchoreo/community-modules/branch/main/graph/badge.svg?component=observability_logs_cloudwatch)](https://codecov.io/gh/openchoreo/community-modules) |
+| Code coverage | [![Codecov](https://codecov.io/gh/openchoreo/community-modules/branch/main/graph/badge.svg?component=observability_logs_aws_cloudwatch)](https://codecov.io/gh/openchoreo/community-modules) |
 
 The **Observability Logs Module for AWS CloudWatch** sends OpenChoreo container logs to **AWS CloudWatch Logs** and exposes them back to the OpenChoreo Observer through the standard **OpenChoreo CloudWatch Adapter API**. It also supports log-based alerting by translating OpenChoreo alert rules into **CloudWatch Logs metric filters** and **CloudWatch metric alarms**.
 

@@ -32,6 +32,18 @@ component_management:
       name: observability-metrics-prometheus
       paths:
         - observability-metrics-prometheus/**
+    - component_id: observability_logs_aws_cloudwatch
+      name: observability-logs-aws-cloudwatch
+      paths:
+        - observability-logs-aws-cloudwatch/**
+    - component_id: observability_metrics_aws_cloudwatch
+      name: observability-metrics-aws-cloudwatch
+      paths:
+        - observability-metrics-aws-cloudwatch/**
+    - component_id: observability_tracing_aws_xray
+      name: observability-tracing-aws-xray
+      paths:
+        - observability-tracing-aws-xray/**
     - component_id: observability_tracing_openobserve
       name: observability-tracing-openobserve
       paths:

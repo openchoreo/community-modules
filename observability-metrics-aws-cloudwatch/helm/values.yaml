@@ -38,7 +38,7 @@ kube-state-metrics:
 # OpenTelemetry collector subchart
 # ---------------------------------------------------------------------------
 opentelemetry-collector:
-  fullnameOverride: opentelemetry-collector
+  fullnameOverride: metrics-opentelemetry-collector
   enabled: true
   mode: daemonset
   image:

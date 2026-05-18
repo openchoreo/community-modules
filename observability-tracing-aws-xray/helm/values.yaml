@@ -18,7 +18,7 @@ region: ""
 # `opentelemetry-collector.extraEnvsFrom` block (see below).
 awsCredentials:
   create: false
-  name: "tracing-cloudwatch-aws-credentials"
+  name: "tracing-aws-xray-aws-credentials"
   accessKeyId: ""
   secretAccessKey: ""
 
@@ -49,13 +49,13 @@ opentelemetry-collector:
 
   configMap:
     create: false
-    existingName: "tracing-cloudwatch-collector-config"
+    existingName: "tracing-aws-xray-collector-config"
 
   extraEnvsFrom:
     - configMapRef:
-        name: tracing-cloudwatch-collector-env
+        name: tracing-aws-xray-collector-env
     - secretRef:
-        name: tracing-cloudwatch-aws-credentials
+        name: tracing-aws-xray-aws-credentials
         optional: true
 
   fullnameOverride: "opentelemetry-collector"
@@ -77,7 +77,7 @@ opentelemetry-collector:
 adapter:
   enabled: true
   image:
-    repository: ghcr.io/openchoreo/observability-tracing-cloudwatch-adapter
+    repository: ghcr.io/openchoreo/observability-tracing-aws-xray-adapter
     tag: ""
     pullPolicy: IfNotPresent
   service:

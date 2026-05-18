@@ -1,4 +1,4 @@
-module github.com/openchoreo/community-modules/observability-tracing-cloudwatch
+module github.com/openchoreo/community-modules/observability-tracing-aws-xray
 
 go 1.26.2
 

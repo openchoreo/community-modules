@@ -2,15 +2,14 @@
 # SPDX-License-Identifier: Apache-2.0
 
 apiVersion: v2
-name: observability-tracing-cloudwatch
-description: A Helm chart for OpenChoreo Tracing Module for AWS X-Ray (CloudWatch)
+name: observability-tracing-aws-xray
+description: A Helm chart for OpenChoreo Tracing Module for AWS X-Ray
 type: application
 version: 0.2.0
 appVersion: "0.2.0"
 keywords:
   - xray
   - aws
-  - cloudwatch
   - openchoreo
   - tracing
   - otel

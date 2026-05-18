@@ -5,6 +5,6 @@
 # Each entry defines the image name, build context, Dockerfile path
 
 images:
-  - name: observability-tracing-cloudwatch-adapter
+  - name: observability-tracing-aws-xray-adapter
     context: .
     dockerfile: Dockerfile

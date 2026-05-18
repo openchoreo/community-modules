@@ -8,7 +8,7 @@ metadata:
   name: tracing-adapter
   namespace: {{ .Release.Namespace }}
   labels:
-    app: tracing-adapter-cloudwatch
+    app: tracing-adapter-aws-xray
 spec:
   type: ClusterIP
   ports:
@@ -17,5 +17,5 @@ spec:
       protocol: TCP
       name: http
   selector:
-    app: tracing-adapter-cloudwatch
+    app: tracing-adapter-aws-xray
 {{- end }}

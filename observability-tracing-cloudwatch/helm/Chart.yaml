@@ -5,8 +5,8 @@ apiVersion: v2
 name: observability-tracing-cloudwatch
 description: A Helm chart for OpenChoreo Tracing Module for AWS X-Ray (CloudWatch)
 type: application
-version: 0.1.0
-appVersion: "0.1.0"
+version: 0.2.0
+appVersion: "0.2.0"
 keywords:
   - xray
   - aws

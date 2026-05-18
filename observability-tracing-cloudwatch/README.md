@@ -14,16 +14,15 @@ This module supports both:
 ## Table of contents
 
 1. [Architecture](#architecture)
-2. [Prerequisites](#prerequisites)
-3. [IAM permissions](#iam-permissions)
-4. [Installation on EKS with Pod Identity](#installation-on-eks-with-pod-identity)
-5. [Installation on non-EKS clusters with static credentials](#installation-on-non-eks-clusters-with-static-credentials)
-6. [Wire the Observer to the adapter](#wire-the-observer-to-the-adapter)
-7. [Verify trace ingestion and querying](#verify-trace-ingestion-and-querying)
-8. [Configuration reference](#configuration-reference)
-9. [k3d and kind compatibility](#k3d-and-kind-compatibility)
-10. [Limitations](#limitations)
-11. [Troubleshooting](#troubleshooting)
+2. [Choose a deployment topology](#choose-a-deployment-topology)
+3. [Prerequisites](#prerequisites)
+4. [IAM permissions](#iam-permissions)
+5. [Installation on EKS with Pod Identity](#installation-on-eks-with-pod-identity)
+6. [Installation on non-EKS clusters with static credentials](#installation-on-non-eks-clusters-with-static-credentials)
+7. [Wire the Observer to the adapter](#wire-the-observer-to-the-adapter)
+8. [Verify trace ingestion and querying](#verify-trace-ingestion-and-querying)
+9. [Troubleshooting](#troubleshooting)
+10. [Configuration reference](#configuration-reference)
 
 ## Architecture
 
@@ -61,6 +60,22 @@ enabling scope-based trace retrieval.
 | `GET /api/v1alpha1/traces/{traceId}/spans/{spanId}` | Returns full detail for a specific span within a trace, including attributes and resource attributes. |
 | `GET /healthz` | Readiness and liveness check. Returns `200` once the adapter is ready. |
 
+## Choose a deployment topology
+
+Choose the deployment topology first, then choose the AWS authentication model for each cluster.
+
+| Topology | Install location | Purpose | Required Helm values |
+| --- | --- | --- | --- |
+| Single cluster | The OpenChoreo cluster where the observability plane and workloads run together. | Deploys the adapter and OpenTelemetry collector. | Defaults. |
+| Observability plane cluster | The cluster where the OpenChoreo observability plane is installed. | Deploys only the X-Ray Tracing Adapter. | `opentelemetry-collector.enabled=false` |
+| Data-plane / workflow-plane cluster | Each cluster that runs OpenChoreo workloads. | Deploys only the OpenTelemetry collector. | `adapter.enabled=false` |
+
+For one OpenChoreo installation, keep these values identical across all participating clusters:
+
+- `region`
+
+AWS X-Ray is the shared managed backend. Remote workload clusters write directly to X-Ray and do not need network connectivity back to a self-hosted tracing datastore. All clusters that belong to one OpenChoreo installation write to the same X-Ray service, and the observability-plane adapter reads from X-Ray.
+
 ## Prerequisites
 
 Before installing this module, make sure the following are available.
@@ -93,8 +108,8 @@ Install the following tools on your machine:
 
 The OpenTelemetry collector expects:
 
-- Kubernetes API access to pods, replicasets, namespaces, and nodes (for
-  the `k8sattributes` processor in `singleCluster` mode).
+- Kubernetes API access to pods and replicasets (for
+  the `k8sattributes` processor).
 
 ### AWS prerequisites
 
@@ -102,9 +117,6 @@ You need:
 
 - An AWS account.
 - An AWS region, for example `eu-north-1`.
-- An OpenChoreo instance name, for example `openchoreo-dev`.
-  This is the identifier for this OpenChoreo installation and is exported to
-  X-Ray as the `openchoreo-instance-name` annotation.
 - An IAM principal with the permissions described in [IAM permissions](#iam-permissions).
 
 For EKS, use IAM roles with **EKS Pod Identity** or IRSA. For non-EKS clusters
@@ -221,11 +233,10 @@ AWS credentials Secret.
 
 This is the recommended installation path for EKS clusters.
 
-### Step 1 - Export shared values
+### Step 1 — Export shared values
 
 ```bash
-export AWS_REGION=eu-north-1
-export INSTANCE_NAME=openchoreo-dev
+export AWS_REGION=<your-aws-region>
 export NS=openchoreo-observability-plane
 ```
 
@@ -244,7 +255,7 @@ kubectl -n kube-system get ds eks-pod-identity-agent
 Pod Identity credentials are injected only when the Pod Identity Agent is
 running.
 
-### Step 2 - Create IAM roles
+### Step 2 — Create IAM roles
 
 Create an IAM role for the adapter, for example:
 
@@ -282,48 +293,101 @@ Use the following trust policy for both roles when using EKS Pod Identity:
 }
 ```
 
-### Step 3 - Install the module
+### Step 3 — Install the module
+
+Use the command that matches the cluster's topology.
+
+#### Single-cluster install
+
+Deploy the adapter and OpenTelemetry collector in one cluster:
 
 ```bash
 helm upgrade --install observability-tracing-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-tracing-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.1.0 \
-  --set instanceName="$INSTANCE_NAME" \
+  --version 0.2.0 \
   --set region="$AWS_REGION"
 ```
 
-### Step 4 - Create Pod Identity associations
+#### Observability plane install
 
-Create two Pod Identity associations in the `$NS` namespace.
-
-| ServiceAccount | Used by | IAM policy |
-| --- | --- | --- |
-| `tracing-adapter-cloudwatch` | Adapter trace queries and STS startup check. | [Adapter IAM policy](#adapter-iam-policy) |
-| `tracing-cloudwatch-collector` | OpenTelemetry collector trace export to X-Ray. | [OpenTelemetry collector IAM policy](#opentelemetry-collector-iam-policy) |
-
-All service account names must match the rendered Helm release. If you
-install with a release name other than `observability-tracing-cloudwatch`,
-render the chart and confirm the ServiceAccount names:
+Deploy only the adapter in the observability plane cluster:
 
 ```bash
-helm template observability-tracing-cloudwatch \
+helm upgrade --install observability-tracing-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-tracing-cloudwatch \
+  --create-namespace \
   --namespace "$NS" \
-  --version 0.1.0 \
-  --set instanceName="$INSTANCE_NAME" \
+  --version 0.2.0 \
   --set region="$AWS_REGION" \
-  | grep -A5 'kind: ServiceAccount'
+  --set opentelemetry-collector.enabled=false
 ```
 
-You can create these associations from the AWS Console:
+#### Data-plane / workflow-plane install
+
+Deploy only the OpenTelemetry collector in each workload cluster:
+
+```bash
+helm upgrade --install observability-tracing-cloudwatch \
+  oci://ghcr.io/openchoreo/helm-charts/observability-tracing-cloudwatch \
+  --create-namespace \
+  --namespace "$NS" \
+  --version 0.2.0 \
+  --set region="$AWS_REGION" \
+  --set adapter.enabled=false
+```
+
+### Step 4 — Create Pod Identity associations
+
+EKS Pod Identity links a Kubernetes ServiceAccount to an IAM role. Each association is scoped to a single EKS cluster, namespace, and ServiceAccount. You must create these associations on every EKS cluster that participates in the install.
+
+#### Single-cluster topology
+
+Create two Pod Identity associations on the EKS cluster, all in the `$NS` namespace:
+
+| ServiceAccount | Used by | IAM role to associate |
+| --- | --- | --- |
+| `tracing-adapter-cloudwatch` | Adapter trace queries and STS startup check. | The role with the [Adapter IAM policy](#adapter-iam-policy) attached. |
+| `opentelemetry-collector` | OpenTelemetry collector trace export to X-Ray. | The role with the [OpenTelemetry collector IAM policy](#opentelemetry-collector-iam-policy) attached. |
+
+#### Multi-cluster topology
+
+In a multi-cluster setup, each EKS cluster only runs a subset of the components. Create Pod Identity associations only for the ServiceAccounts that exist in that cluster.
+
+**Observability plane cluster** (runs only the adapter):
+
+| ServiceAccount | IAM role to associate |
+| --- | --- |
+| `tracing-adapter-cloudwatch` | The role with the [Adapter IAM policy](#adapter-iam-policy) attached. |
+
+The `opentelemetry-collector` ServiceAccount does not exist in this cluster because `opentelemetry-collector.enabled=false`.
+
+**Each data-plane / workflow-plane cluster** (runs only the OpenTelemetry collector):
+
+| ServiceAccount | IAM role to associate |
+| --- | --- |
+| `opentelemetry-collector` | The role with the [OpenTelemetry collector IAM policy](#opentelemetry-collector-iam-policy) attached. |
+
+The `tracing-adapter-cloudwatch` ServiceAccount does not exist in these clusters because `adapter.enabled=false`.
+
+#### How to create a Pod Identity association
+
+You can create associations from the AWS Console:
 
 ```text
-EKS -> Cluster -> Access -> Pod Identity associations -> Create
+EKS → Cluster → Access → Pod Identity associations → Create
 ```
 
-### Step 5 - Restart workloads
+For each association, fill in:
+
+- **Namespace**: the namespace where the module is installed (for example, `openchoreo-observability-plane`).
+- **Service Account**: the ServiceAccount name from the tables above.
+- **IAM Role**: the ARN of the corresponding IAM role.
+
+Repeat this command for each ServiceAccount that needs an association on the given cluster. For multi-cluster installs, run the appropriate commands against each EKS cluster.
+
+### Step 5 — Restart workloads
 
 EKS Pod Identity injects credentials only at pod creation time.
 
@@ -365,216 +429,120 @@ In this mode, the chart creates a Kubernetes Secret containing AWS credentials.
 The adapter reads this Secret automatically. The OpenTelemetry collector must also be
 pointed at the same Secret through `opentelemetry-collector.extraEnvsFrom`.
 
-### Step 1 - Export shared values
+### Step 1 — Export shared values
 
 ```bash
-export AWS_REGION=eu-north-1
-export INSTANCE_NAME=openchoreo-dev
+export AWS_REGION=<your-aws-region>
 export NS=openchoreo-observability-plane
-export AWS_ACCESS_KEY_ID="AKIA..."
-export AWS_SECRET_ACCESS_KEY="..."
+export AWS_ACCESS_KEY_ID=<your-access-key-id>
+export AWS_SECRET_ACCESS_KEY=<your-secret-access-key>
 ```
 
-### Step 2 - Create an IAM user
+### Step 2 — Create an IAM user
 
 Create an IAM user and attach the custom
 [combined IAM policy](#combined-static-credentials-iam-policy).
 
 Create access keys for this IAM user and export them as shown above.
 
-### Step 3 - Install the module
+### Step 3 — Install the module
+
+Use the command that matches the cluster's topology.
+
+#### Single-cluster install
+
+Deploy the adapter and OpenTelemetry collector in one cluster:
 
 ```bash
 helm upgrade --install observability-tracing-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-tracing-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.1.0 \
-  --set instanceName="$INSTANCE_NAME" \
+  --version 0.2.0 \
   --set region="$AWS_REGION" \
   --set awsCredentials.create=true \
   --set awsCredentials.name=tracing-cloudwatch-aws-credentials \
   --set awsCredentials.accessKeyId="$AWS_ACCESS_KEY_ID" \
   --set awsCredentials.secretAccessKey="$AWS_SECRET_ACCESS_KEY" \
-  --set "opentelemetry-collector.extraEnvsFrom[0].configMapRef.name=tracing-cloudwatch-instance-env" \
+  --set "opentelemetry-collector.extraEnvsFrom[0].configMapRef.name=tracing-cloudwatch-collector-env" \
   --set "opentelemetry-collector.extraEnvsFrom[1].secretRef.name=tracing-cloudwatch-aws-credentials"
 ```
 
-## Wire the Observer to the adapter
+#### Observability plane install
 
-After installing the CloudWatch tracing module, configure the OpenChoreo
-Observer to call this adapter.
+Deploy only the adapter in the observability plane cluster:
 
 ```bash
-helm upgrade --install openchoreo-observability-plane \
-  oci://ghcr.io/openchoreo/helm-charts/openchoreo-observability-plane \
+helm upgrade --install observability-tracing-cloudwatch \
+  oci://ghcr.io/openchoreo/helm-charts/observability-tracing-cloudwatch \
+  --create-namespace \
   --namespace "$NS" \
-  --reuse-values \
-  --set observer.tracingAdapter.enabled=true
+  --version 0.2.0 \
+  --set region="$AWS_REGION" \
+  --set awsCredentials.create=true \
+  --set awsCredentials.name=tracing-cloudwatch-aws-credentials \
+  --set awsCredentials.accessKeyId="$AWS_ACCESS_KEY_ID" \
+  --set awsCredentials.secretAccessKey="$AWS_SECRET_ACCESS_KEY" \
+  --set opentelemetry-collector.enabled=false
 ```
 
-The adapter service inside the observability namespace is:
+#### Data-plane / workflow-plane install
 
-```text
-http://tracing-adapter:9100
-```
-
-After this step, the OpenChoreo Observer uses the CloudWatch adapter for
-tracing queries.
-
-## Verify trace ingestion and querying
-
-### Step 1 - Check pod status
+Deploy only the OpenTelemetry collector in each workload cluster:
 
 ```bash
-kubectl -n "$NS" rollout status deploy/tracing-adapter-cloudwatch
-kubectl -n "$NS" get pods
+helm upgrade --install observability-tracing-cloudwatch \
+  oci://ghcr.io/openchoreo/helm-charts/observability-tracing-cloudwatch \
+  --create-namespace \
+  --namespace "$NS" \
+  --version 0.2.0 \
+  --set region="$AWS_REGION" \
+  --set awsCredentials.create=true \
+  --set awsCredentials.name=tracing-cloudwatch-aws-credentials \
+  --set awsCredentials.accessKeyId="$AWS_ACCESS_KEY_ID" \
+  --set awsCredentials.secretAccessKey="$AWS_SECRET_ACCESS_KEY" \
+  --set "opentelemetry-collector.extraEnvsFrom[0].configMapRef.name=tracing-cloudwatch-collector-env" \
+  --set "opentelemetry-collector.extraEnvsFrom[1].secretRef.name=tracing-cloudwatch-aws-credentials" \
+  --set adapter.enabled=false
 ```
 
-Confirm that the following workloads are running:
+In an observability-plane-only install, the collector is disabled, so the created Secret is used only by the adapter.
 
-- `tracing-adapter-cloudwatch`
-- The OpenTelemetry collector Deployment from the subchart.
+## Troubleshooting
 
-### Step 2 - Check adapter health
+### Start with these logs
 
 ```bash
-kubectl -n "$NS" port-forward svc/tracing-adapter 9100:9100 &
-curl -sf http://localhost:9100/healthz | jq .
+kubectl -n "$NS" logs deployment/tracing-adapter-cloudwatch --tail=200
+kubectl -n "$NS" logs deployment/opentelemetry-collector --tail=200
 ```
 
-Expected response:
+### Common issues
 
-```json
-{
-  "status": "healthy"
-}
-```
-
-AWS credentials are checked during adapter startup. If the adapter starts
-successfully, most credential or STS issues have already been caught.
-
-### Step 3 - Send test traces
-
-Configure an instrumented application to send OTLP traces to the collector.
-Point the OTLP exporter at the collector's in-cluster Service:
-
-```text
-http://opentelemetry-collector.openchoreo-observability-plane.svc.cluster.local:4318   (HTTP)
-opentelemetry-collector.openchoreo-observability-plane.svc.cluster.local:4317          (gRPC)
-```
-
-Alternatively, port-forward the collector and send synthetic traces with
-realistic OpenChoreo resource attributes:
-
-```bash
-kubectl -n "$NS" port-forward svc/opentelemetry-collector 4318:4318 &
-```
-
-```bash
-TRACE_ID=$(openssl rand -hex 16)
-SPAN_ID=$(openssl rand -hex 8)
-NOW_NS=$(date +%s)000000000
-
-curl -s http://localhost:4318/v1/traces \
-  -H 'Content-Type: application/json' \
-  -d '{
-  "resourceSpans": [{
-    "resource": {
-      "attributes": [
-        {"key": "service.name", "value": {"stringValue": "snip-api-service"}},
-        {"key": "openchoreo.dev/namespace", "value": {"stringValue": "default"}},
-        {"key": "openchoreo.dev/component-uid", "value": {"stringValue": "ce2e8126-595a-4402-afc5-8017c4ac9f69"}},
-        {"key": "openchoreo.dev/project-uid", "value": {"stringValue": "3d473b0a-5116-4b99-ae2b-c6ac3dc3e747"}},
-        {"key": "openchoreo.dev/environment-uid", "value": {"stringValue": "1e228fd5-5f40-488b-aecb-ff0d5f68fa87"}}
-      ]
-    },
-    "scopeSpans": [{
-      "scope": {"name": "test"},
-      "spans": [{
-        "traceId": "'"$TRACE_ID"'",
-        "spanId": "'"$SPAN_ID"'",
-        "name": "GET /api/v1/urls",
-        "kind": 2,
-        "startTimeUnixNano": "'"$NOW_NS"'",
-        "endTimeUnixNano": "'"$(( $(date +%s) + 1 ))"'000000000",
-        "status": {"code": 1}
-      }]
-    }]
-  }]
-}'
-```
-
-Wait for traces to be exported to X-Ray:
-
-```bash
-sleep 30
-```
-
-Check X-Ray directly:
-
-```bash
-aws xray get-trace-summaries \
-  --region "$AWS_REGION" \
-  --start-time "$(date -u -v-10M +%FT%TZ 2>/dev/null || date -u -d '-10 minutes' +%FT%TZ)" \
-  --end-time "$(date -u +%FT%TZ)" \
-  | jq '.TraceSummaries | length'
-```
-
-You should see at least one trace summary from UI.
-
-### Step 4 - Query the adapter
-
-```bash
-curl -s http://localhost:9100/api/v1alpha1/traces/query \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "startTime": "'"$(date -u -v-30M +%FT%TZ 2>/dev/null || date -u -d '-30 minutes' +%FT%TZ)"'",
-    "endTime": "'"$(date -u +%FT%TZ)"'",
-    "searchScope": {
-      "namespace": "default"
-    }
-  }' | jq .
-```
-
-Expected result:
-
-```json
-{
-  "traces": [
-    {
-      "traceId": "5759e988bd862e3fe1be46a994272793",
-      "traceName": "GET /api/v1/resource",
-      "durationNs": 500000000,
-      "startTime": "...",
-      "endTime": "...",
-      "hasErrors": false
-    }
-  ],
-  "total": 1,
-  "tookMs": 123
-}
-```
-
-The exact values will vary.
+| Symptom | Likely cause | What to check |
+| --- | --- | --- |
+| Adapter pod does not start | Missing or invalid AWS credentials | Check Pod Identity association or static Secret values. |
+| Collector shows `AccessDeniedException` | Pod is using the node IAM role instead of Pod Identity role | Restart the collector after creating Pod Identity associations. |
+| Query returns `traces: []` | Traces not exported to X-Ray, or labels are missing | Check collector logs and verify that OpenChoreo labels are present on workload pods. |
+| X-Ray shows traces but adapter returns empty | Indexed attributes not searchable yet | Wait up to 30 seconds for X-Ray indexing, then retry the adapter query. |
+| Pod Identity not injected | Pod Identity Agent not running or association mismatch | Verify the `eks-pod-identity-agent` DaemonSet is running and the namespace/ServiceAccount in the association match the installed chart. |
 
 ## Configuration reference
 
 | Value | Default | Description |
 | --- | --- | --- |
-| `instanceName` | Required | Identifier for this OpenChoreo installation. Propagated to the OpenTelemetry collector and exported to X-Ray as the `openchoreo-instance-name` annotation. |
 | `region` | Required | AWS region for X-Ray API calls. |
 | `awsCredentials.create` | `false` | Creates a static AWS credentials Secret. Keep `false` for Pod Identity, IRSA, or instance-profile based auth. Set to `true` for k3d, kind, or non-EKS clusters. |
 | `awsCredentials.name` | `""` | Name of the AWS credentials Secret. Required when `awsCredentials.create=true`. |
 | `awsCredentials.accessKeyId` | Required if `create=true` | AWS access key ID. |
 | `awsCredentials.secretAccessKey` | Required if `create=true` | AWS secret access key. |
-| `opentelemetry-collector.enabled` | `true` | Enables the OpenTelemetry collector subchart. |
+| `opentelemetry-collector.enabled` | `true` | Enables the OpenTelemetry collector subchart. Set to `false` on the observability plane cluster in a multi-cluster topology. |
 | `opentelemetry-collector.mode` | `deployment` | Runs the collector as a Deployment (push-based trace collection). |
 | `opentelemetry-collector.image.repository` | `otel/opentelemetry-collector-contrib` | Collector image repository. The contrib image includes `awsxray` exporter and `k8sattributes` processor. |
 | `opentelemetry-collector.image.tag` | `0.151.0` | Collector image tag. |
 | `opentelemetry-collector.serviceAccount.annotations` | `{}` | ServiceAccount annotations for IRSA or other identity integrations. |
-| `opentelemetry-collector.extraEnvsFrom` | `[{configMapRef: {name: tracing-cloudwatch-instance-env}}]` | Extra `envFrom` entries for the collector. The default ConfigMap supplies `INSTANCE_NAME` and `AWS_REGION`. Append the static AWS credentials Secret at index `1` on non-EKS clusters. |
-| `adapter.enabled` | `true` | Deploys the X-Ray Tracing Adapter Deployment and Service. |
+| `opentelemetry-collector.extraEnvsFrom` | `[{configMapRef: {name: tracing-cloudwatch-collector-env}}]` | Extra `envFrom` entries for the collector. The default ConfigMap supplies `AWS_REGION`. Append the static AWS credentials Secret at index `1` on non-EKS clusters. |
+| `adapter.enabled` | `true` | Deploys the X-Ray Tracing Adapter Deployment and Service. Set to `false` on data-plane clusters in a multi-cluster topology. |
 | `adapter.image.repository` | `ghcr.io/openchoreo/observability-tracing-cloudwatch-adapter` | Adapter image repository. |
 | `adapter.image.tag` | `""` | Adapter image tag. Empty defaults to chart `appVersion`. |
 | `adapter.image.pullPolicy` | `IfNotPresent` | Adapter image pull policy. |
@@ -585,7 +553,6 @@ The exact values will vary.
 | `adapter.resources.limits.memory` | `256Mi` | Memory limit for the adapter. |
 | `adapter.resources.requests.cpu` | `50m` | CPU request for the adapter. |
 | `adapter.resources.requests.memory` | `128Mi` | Memory request for the adapter. |
-| `tracingCollectorCustomizations.installationMode` | `singleCluster` | Collector installation mode. `singleCluster` enables the `k8sattributes` processor for label enrichment. |
 | `tracingCollectorCustomizations.tailSampling.enabled` | `true` | Enables the `tail_sampling` processor for rate limiting. |
 | `tracingCollectorCustomizations.tailSampling.decisionWait` | `10s` | Time to wait before making a sampling decision. |
 | `tracingCollectorCustomizations.tailSampling.numTraces` | `100` | Maximum number of traces to keep in memory during the decision wait. |

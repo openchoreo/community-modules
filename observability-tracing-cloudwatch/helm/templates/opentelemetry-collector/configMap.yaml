@@ -25,19 +25,12 @@ data:
           - openchoreo.dev/component-uid
           - openchoreo.dev/project-uid
           - openchoreo.dev/environment-uid
-          - openchoreo-instance-name
 
     extensions:
       health_check:
         endpoint: ${env:MY_POD_IP}:13133
 
     processors:
-      resource/instance:
-        attributes:
-          - key: openchoreo-instance-name
-            value: ${env:INSTANCE_NAME}
-            action: upsert
-      {{- if eq .Values.tracingCollectorCustomizations.installationMode "singleCluster" }}
       k8sattributes:
         auth_type: "serviceAccount"
         passthrough: false
@@ -54,7 +47,6 @@ data:
             - k8s.deployment.name
             - k8s.namespace.name
             - k8s.node.name
-      {{- end }}
       transform/openchoreo_annotations:
         trace_statements:
           - context: span
@@ -63,7 +55,6 @@ data:
               - set(span.attributes["openchoreo.dev/component-uid"], resource.attributes["openchoreo.dev/component-uid"]) where resource.attributes["openchoreo.dev/component-uid"] != nil
               - set(span.attributes["openchoreo.dev/project-uid"], resource.attributes["openchoreo.dev/project-uid"]) where resource.attributes["openchoreo.dev/project-uid"] != nil
               - set(span.attributes["openchoreo.dev/environment-uid"], resource.attributes["openchoreo.dev/environment-uid"]) where resource.attributes["openchoreo.dev/environment-uid"] != nil
-              - set(span.attributes["openchoreo-instance-name"], resource.attributes["openchoreo-instance-name"]) where resource.attributes["openchoreo-instance-name"] != nil
       {{- if .Values.tracingCollectorCustomizations.tailSampling.enabled }}
       tail_sampling:
         decision_wait: {{ .Values.tracingCollectorCustomizations.tailSampling.decisionWait }}
@@ -86,15 +77,9 @@ data:
       pipelines:
         traces:
           receivers: [otlp]
-          {{- $processors := list "resource/instance" }}
-          {{- if eq .Values.tracingCollectorCustomizations.installationMode "singleCluster" }}
-          {{- $processors = append $processors "k8sattributes" }}
-          {{- end }}
-          {{- $processors = append $processors "transform/openchoreo_annotations" }}
+          {{- $processors := list "k8sattributes" "transform/openchoreo_annotations" }}
           {{- if .Values.tracingCollectorCustomizations.tailSampling.enabled }}
           {{- $processors = append $processors "tail_sampling" }}
           {{- end }}
-          {{- if $processors }}
           processors: [{{ join ", " $processors }}]
-          {{- end }}
           exporters: [awsxray]

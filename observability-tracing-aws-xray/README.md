@@ -1,14 +1,13 @@
 # Observability Tracing Module for AWS X-Ray
 
-The **Observability Tracing Module for AWS X-Ray** collects application
-traces via an **OpenTelemetry Collector** and stores them in **AWS X-Ray**.
-A Go adapter service implements the **OpenChoreo Tracing Adapter API** to
-query traces back from X-Ray for the OpenChoreo Observer.
+|               |           |
+| ------------- | --------- |
+| Code coverage | [![Codecov](https://codecov.io/gh/openchoreo/community-modules/branch/main/graph/badge.svg?component=observability_tracing_aws_xray)](https://codecov.io/gh/openchoreo/community-modules) |
 
 This module supports both:
 
-- **EKS clusters** using **EKS Pod Identity** or IRSA, recommended for production.
-- **Non-EKS Kubernetes clusters** such as **k3d**, **kind**, or Kubernetes
+- **EKS clusters** using **EKS Pod Identity**.
+- **Non-EKS Kubernetes clusters** such as k3d, kind, or Kubernetes
   running outside AWS, using static AWS credentials.
 
 ## Table of contents
@@ -67,7 +66,7 @@ Choose the deployment topology first, then choose the AWS authentication model f
 | --- | --- | --- | --- |
 | Single cluster | The OpenChoreo cluster where the observability plane and workloads run together. | Deploys the adapter and OpenTelemetry collector. | Defaults. |
 | Observability plane cluster | The cluster where the OpenChoreo observability plane is installed. | Deploys only the X-Ray Tracing Adapter. | `opentelemetry-collector.enabled=false` |
-| Data-plane / workflow-plane cluster | Each cluster that runs OpenChoreo workloads. | Deploys only the OpenTelemetry collector. | `adapter.enabled=false` |
+| Data-plane cluster | Each cluster that runs OpenChoreo workloads. | Deploys only the OpenTelemetry collector. | `adapter.enabled=false` |
 
 For one OpenChoreo installation, keep these values identical across all participating clusters:
 
@@ -292,9 +291,101 @@ Use the following trust policy for both roles when using EKS Pod Identity:
 }
 ```
 
+To create the roles and attach policies using the AWS CLI:
+
+```bash
+export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+POD_IDENTITY_TRUST_POLICY='{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "pods.eks.amazonaws.com"
+      },
+      "Action": [
+        "sts:AssumeRole",
+        "sts:TagSession"
+      ]
+    }
+  ]
+}'
+
+# Create the adapter role
+aws iam create-role \
+  --role-name OpenChoreoXRayTracingRoleForAdapter \
+  --assume-role-policy-document "$POD_IDENTITY_TRUST_POLICY"
+
+# Create the adapter policy
+aws iam create-policy \
+  --policy-name OpenChoreoXRayTracingAdapterPolicy \
+  --policy-document "$(cat <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "Startup",
+      "Effect": "Allow",
+      "Action": "sts:GetCallerIdentity",
+      "Resource": "*"
+    },
+    {
+      "Sid": "XRayRead",
+      "Effect": "Allow",
+      "Action": [
+        "xray:GetTraceSummaries",
+        "xray:BatchGetTraces",
+        "xray:GetTraceGraph"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+EOF
+)"
+
+aws iam attach-role-policy \
+  --role-name OpenChoreoXRayTracingRoleForAdapter \
+  --policy-arn "arn:aws:iam::${AWS_ACCOUNT_ID}:policy/OpenChoreoXRayTracingAdapterPolicy"
+
+# Create the collector role
+aws iam create-role \
+  --role-name OpenChoreoXRayTracingRoleForCollector \
+  --assume-role-policy-document "$POD_IDENTITY_TRUST_POLICY"
+
+# Create the collector policy
+aws iam create-policy \
+  --policy-name OpenChoreoXRayTracingCollectorPolicy \
+  --policy-document "$(cat <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "XRayWrite",
+      "Effect": "Allow",
+      "Action": [
+        "xray:PutTraceSegments",
+        "xray:PutTelemetryRecords",
+        "xray:GetSamplingRules",
+        "xray:GetSamplingTargets",
+        "xray:GetSamplingStatisticSummaries"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+EOF
+)"
+
+aws iam attach-role-policy \
+  --role-name OpenChoreoXRayTracingRoleForCollector \
+  --policy-arn "arn:aws:iam::${AWS_ACCOUNT_ID}:policy/OpenChoreoXRayTracingCollectorPolicy"
+```
+
 ### Step 3 — Install the module
 
-Use the command that matches the cluster's topology.
+Use the command that matches the cluster's topology. The following Helm commands will time out or the pods will enter CrashLoopBackOff since the Pod Identity associations are not created yet. Everything will work after Step 5 is completed.
 
 #### Single-cluster install
 
@@ -323,7 +414,7 @@ helm upgrade --install observability-tracing-aws-xray \
   --set opentelemetry-collector.enabled=false
 ```
 
-#### Data-plane / workflow-plane install
+#### Data-plane install
 
 Deploy only the OpenTelemetry collector in each workload cluster:
 
@@ -362,7 +453,7 @@ In a multi-cluster setup, each EKS cluster only runs a subset of the components.
 
 The `opentelemetry-collector` ServiceAccount does not exist in this cluster because `opentelemetry-collector.enabled=false`.
 
-**Each data-plane / workflow-plane cluster** (runs only the OpenTelemetry collector):
+**Each data-plane cluster** (runs only the OpenTelemetry collector):
 
 | ServiceAccount | IAM role to associate |
 | --- | --- |
@@ -384,27 +475,90 @@ For each association, fill in:
 - **Service Account**: the ServiceAccount name from the tables above.
 - **IAM Role**: the ARN of the corresponding IAM role.
 
-Repeat this command for each ServiceAccount that needs an association on the given cluster. For multi-cluster installs, run the appropriate commands against each EKS cluster.
+Alternatively, use the AWS CLI. Export the role ARNs from Step 2:
 
-### Step 5 — Restart workloads
+```bash
+export ADAPTER_ROLE_ARN="arn:aws:iam::${AWS_ACCOUNT_ID}:role/OpenChoreoXRayTracingRoleForAdapter"
+export COLLECTOR_ROLE_ARN="arn:aws:iam::${AWS_ACCOUNT_ID}:role/OpenChoreoXRayTracingRoleForCollector"
+```
+
+**Single-cluster topology** — create both associations:
+
+```bash
+export EKS_CLUSTER_NAME=<your-eks-cluster-name>
+
+aws eks create-pod-identity-association \
+  --cluster-name "$EKS_CLUSTER_NAME" \
+  --namespace "$NS" \
+  --service-account tracing-adapter-aws-xray \
+  --role-arn "$ADAPTER_ROLE_ARN"
+
+aws eks create-pod-identity-association \
+  --cluster-name "$EKS_CLUSTER_NAME" \
+  --namespace "$NS" \
+  --service-account opentelemetry-collector \
+  --role-arn "$COLLECTOR_ROLE_ARN"
+```
+
+**Observability plane cluster** — adapter only:
+
+```bash
+export EKS_CLUSTER_NAME=<your-obs-plane-cluster-name>
+
+aws eks create-pod-identity-association \
+  --cluster-name "$EKS_CLUSTER_NAME" \
+  --namespace "$NS" \
+  --service-account tracing-adapter-aws-xray \
+  --role-arn "$ADAPTER_ROLE_ARN"
+```
+
+**Each data-plane cluster** — OpenTelemetry collector only. Repeat for each cluster:
+
+```bash
+export EKS_CLUSTER_NAME=<your-data-plane-cluster-name>
+
+aws eks create-pod-identity-association \
+  --cluster-name "$EKS_CLUSTER_NAME" \
+  --namespace "$NS" \
+  --service-account opentelemetry-collector \
+  --role-arn "$COLLECTOR_ROLE_ARN"
+```
+
+### Step 5 — Restart workloads on each cluster
 
 EKS Pod Identity injects credentials only at pod creation time.
 
-Recreate the workloads so new pods receive Pod Identity credentials:
+So, you will see errors such as:
+
+- `AccessDeniedException` from `assumed-role/<node-role>` in OpenTelemetry collector logs.
+- `NoCredentialProviders` or `failed to retrieve credentials` in adapter logs.
+
+Recreate the workloads so new pods receive Pod Identity credentials. Run the commands that match your topology on each cluster.
+
+**Single-cluster topology:**
 
 ```bash
-kubectl -n "$NS" rollout restart deploy/tracing-adapter-aws-xray
-kubectl -n "$NS" rollout restart deploy/opentelemetry-collector
+kubectl -n "$NS" rollout restart deployment/tracing-adapter-aws-xray
+kubectl -n "$NS" rollout restart deployment/opentelemetry-collector
 ```
 
-If the collector Deployment name differs because of your Helm release name,
-inspect it first:
+**Observability plane cluster** — restart only the adapter:
 
 ```bash
-kubectl -n "$NS" get deploy
+kubectl -n "$NS" rollout restart deployment/tracing-adapter-aws-xray
 ```
 
-Verify that Pod Identity was injected into a new adapter pod:
+**Each data-plane cluster** — restart only the OpenTelemetry collector:
+
+```bash
+kubectl -n "$NS" rollout restart deployment/opentelemetry-collector
+```
+
+#### Verify Pod Identity injection
+
+Verify that Pod Identity was injected by checking a pod that runs in your topology.
+
+On clusters that run the **adapter** (single-cluster or observability plane):
 
 ```bash
 kubectl -n "$NS" get pod -l app=tracing-adapter-aws-xray -o name | head -1 \
@@ -412,8 +566,15 @@ kubectl -n "$NS" get pod -l app=tracing-adapter-aws-xray -o name | head -1 \
   | grep -E "AWS_CONTAINER|eks-pod-identity-token"
 ```
 
-If these values are missing, check that the namespace and ServiceAccount names
-in the Pod Identity associations exactly match the table above.
+On clusters that run the **OpenTelemetry collector** (single-cluster or data-plane):
+
+```bash
+kubectl -n "$NS" get pod -l app.kubernetes.io/name=opentelemetry-collector -o name | head -1 \
+  | xargs -I {} kubectl -n "$NS" get {} -o yaml \
+  | grep -E "AWS_CONTAINER|eks-pod-identity-token"
+```
+
+If these values are missing, check that the namespace and ServiceAccount names in the Pod Identity associations exactly match the table above.
 
 ## Installation on non-EKS clusters with static credentials
 
@@ -443,6 +604,57 @@ Create an IAM user and attach the custom
 [combined IAM policy](#combined-static-credentials-iam-policy).
 
 Create access keys for this IAM user and export them as shown above.
+
+To create the IAM user and attach policies using the AWS CLI:
+
+```bash
+export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+# Create the IAM user
+aws iam create-user --user-name OpenChoreoXRayTracingUser
+
+# Create the combined policy
+aws iam create-policy \
+  --policy-name OpenChoreoXRayTracingCombinedPolicy \
+  --policy-document "$(cat <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "Startup",
+      "Effect": "Allow",
+      "Action": "sts:GetCallerIdentity",
+      "Resource": "*"
+    },
+    {
+      "Sid": "XRayReadAndWrite",
+      "Effect": "Allow",
+      "Action": [
+        "xray:GetTraceSummaries",
+        "xray:BatchGetTraces",
+        "xray:GetTraceGraph",
+        "xray:PutTraceSegments",
+        "xray:PutTelemetryRecords",
+        "xray:GetSamplingRules",
+        "xray:GetSamplingTargets",
+        "xray:GetSamplingStatisticSummaries"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+EOF
+)"
+
+aws iam attach-user-policy \
+  --user-name OpenChoreoXRayTracingUser \
+  --policy-arn "arn:aws:iam::${AWS_ACCOUNT_ID}:policy/OpenChoreoXRayTracingCombinedPolicy"
+
+# Create access keys
+ACCESS_KEY_OUTPUT=$(aws iam create-access-key --user-name OpenChoreoXRayTracingUser)
+export AWS_ACCESS_KEY_ID=$(echo "$ACCESS_KEY_OUTPUT" | jq -r '.AccessKey.AccessKeyId')
+export AWS_SECRET_ACCESS_KEY=$(echo "$ACCESS_KEY_OUTPUT" | jq -r '.AccessKey.SecretAccessKey')
+```
 
 ### Step 3 — Install the module
 
@@ -485,7 +697,7 @@ helm upgrade --install observability-tracing-aws-xray \
   --set opentelemetry-collector.enabled=false
 ```
 
-#### Data-plane / workflow-plane install
+#### Data-plane install
 
 Deploy only the OpenTelemetry collector in each workload cluster:
 
@@ -514,28 +726,7 @@ to generate distributed traces across multiple services. The sample includes a
 frontend, API service, analytics service, PostgreSQL, and Redis — all
 instrumented with OpenTelemetry.
 
-```bash
-kubectl apply -f https://raw.githubusercontent.com/openchoreo/openchoreo/main/samples/from-image/url-shortener/project.yaml
-kubectl apply \
-  -f https://raw.githubusercontent.com/openchoreo/openchoreo/main/samples/from-image/url-shortener/components/postgres.yaml \
-  -f https://raw.githubusercontent.com/openchoreo/openchoreo/main/samples/from-image/url-shortener/components/redis.yaml \
-  -f https://raw.githubusercontent.com/openchoreo/openchoreo/main/samples/from-image/url-shortener/components/api-service.yaml \
-  -f https://raw.githubusercontent.com/openchoreo/openchoreo/main/samples/from-image/url-shortener/components/analytics-service.yaml \
-  -f https://raw.githubusercontent.com/openchoreo/openchoreo/main/samples/from-image/url-shortener/components/frontend.yaml
-```
-
-Once the pods are running, send a few requests to generate traces:
-
-```bash
-FRONTEND_URL=$(kubectl get releasebinding snip-frontend-development \
-  -o jsonpath='{.status.endpoints[0].externalURLs.http.scheme}://{.status.endpoints[0].externalURLs.http.host}:{.status.endpoints[0].externalURLs.http.port}')
-
-curl -X POST "$FRONTEND_URL/api/shorten" \
-  -H "Content-Type: application/json" \
-  -d '{"url": "https://example.com", "username": "testuser"}'
-```
-
-After about 30 seconds, traces should appear in the AWS X-Ray console and OpenChoreo UI.
+Once the pods are running, send a few requests to generate traces. After about 30 seconds, traces should appear in the AWS X-Ray console and OpenChoreo UI.
 
 ## Troubleshooting
 
@@ -594,3 +785,11 @@ Unlike the logs and metrics CloudWatch modules, this tracing module does not
 expose a retention value. AWS X-Ray trace retention is service-managed and fixed
 at 30 days; it is not backed by a customer-managed CloudWatch Logs log group
 with a configurable retention policy.
+
+## Compatibility
+
+> **Note:** The Helm chart versions specified in the installation commands above are for the latest module version compatible with the development version of OpenChoreo. Refer to the compatibility table below to determine the appropriate module version for your OpenChoreo installation.
+
+| Module Version | OpenChoreo Version |
+|----------------|--------------------|
+| v0.2.x         | v1.1.x             |

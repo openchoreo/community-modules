@@ -1,0 +1,25 @@
+apiVersion: v2
+name: observability-metrics-aws-cloudwatch
+description: A Helm chart for OpenChoreo Metrics Module for AWS CloudWatch
+type: application
+version: 0.2.0
+appVersion: "0.2.0"
+keywords:
+  - cloudwatch
+  - aws
+  - openchoreo
+  - metrics
+  - otel
+  - opentelemetry
+maintainers:
+  - name: OpenChoreo Team
+home: https://github.com/openchoreo/community-modules
+dependencies:
+  - name: opentelemetry-collector
+    version: "0.150.1"
+    repository: https://open-telemetry.github.io/opentelemetry-helm-charts
+    condition: opentelemetry-collector.enabled
+  - name: kube-state-metrics
+    version: "5.33.2"
+    repository: https://prometheus-community.github.io/helm-charts
+    condition: kubeStateMetrics.enabled

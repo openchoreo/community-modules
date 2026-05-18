@@ -1,0 +1,13 @@
+{{- if (index .Values "opentelemetry-collector").enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: metrics-aws-cloudwatch-cluster-env
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: observability-metrics-aws-cloudwatch
+data:
+  AWS_REGION: {{ include "metrics-aws-cloudwatch.region" . | quote }}
+  EMF_LOG_GROUP_NAME: {{ include "metrics-aws-cloudwatch.logGroup" . | quote }}
+  EMF_RETENTION_DAYS: {{ .Values.metrics.retentionDays | quote }}
+{{- end }}

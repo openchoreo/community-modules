@@ -152,10 +152,9 @@ func (s *queryStubLogsAPI) DeleteMetricFilter(context.Context, *cloudwatchlogs.D
 
 func newQueryTestClient(api *queryStubLogsAPI) *Client {
 	return NewClientWithAWS(api, &stubAlarmsAPI{}, &stsStub{}, Config{
-		ClusterName:    "test-cluster",
-		LogGroupPrefix: "/aws/containerinsights",
-		QueryTimeout:   2 * time.Second,
-		PollEvery:      5 * time.Millisecond,
+		LogGroupName: "/aws/containerinsights/application",
+		QueryTimeout: 2 * time.Second,
+		PollEvery:    5 * time.Millisecond,
 	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 }
 
@@ -332,8 +331,7 @@ func TestRunQueryDeadlineExceededTriggersStopQuery(t *testing.T) {
 		},
 	}
 	c := NewClientWithAWS(api, &stubAlarmsAPI{}, &stsStub{}, Config{
-		ClusterName:    "test-cluster",
-		LogGroupPrefix: "/aws/containerinsights",
+		LogGroupName: "/aws/containerinsights/application",
 		// PollEvery is intentionally larger than QueryTimeout: after the first
 		// GetQueryResults returns Running we sleep for PollEvery, so the next
 		// deadline check is guaranteed to be past QueryTimeout regardless of CI
@@ -383,7 +381,7 @@ func TestParseInsightsTimestampLayouts(t *testing.T) {
 
 func TestApplicationLogGroup(t *testing.T) {
 	c := newQueryTestClient(&queryStubLogsAPI{})
-	if got := c.applicationLogGroup(); got != "/aws/containerinsights/test-cluster/application" {
+	if got := c.applicationLogGroup(); got != "/aws/containerinsights/application" {
 		t.Fatalf("applicationLogGroup() = %q", got)
 	}
 }
@@ -392,7 +390,7 @@ func TestNewClientReturnsErrorOnInvalidAWSConfig(t *testing.T) {
 	t.Setenv("AWS_EC2_METADATA_DISABLED", "true")
 	t.Setenv("AWS_REGION", "")
 	// LoadDefaultConfig succeeds even without region — but this still exercises the constructor's success path.
-	c, err := NewClient(context.Background(), Config{Region: "eu-north-1", ClusterName: "x", LogGroupPrefix: "/aws/containerinsights"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	c, err := NewClient(context.Background(), Config{Region: "eu-north-1", LogGroupName: "/aws/containerinsights/application"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatalf("NewClient() error = %v", err)
 	}

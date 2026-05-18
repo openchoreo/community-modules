@@ -213,22 +213,22 @@ func (c *Client) putMetricAlarm(ctx context.Context, names AlertResourceNames, m
 	}
 
 	input := &cloudwatch.PutMetricAlarmInput{
-		AlarmName:          aws.String(names.AlarmName),
-		AlarmDescription:   aws.String(fmt.Sprintf("OpenChoreo log alert %s/%s", p.Namespace, p.Name)),
-		MetricName:         aws.String(names.MetricName),
-		Namespace:          aws.String(metricNamespace),
-		Statistic:          cwtypes.StatisticSum,
-		Period:             aws.Int32(period),
-		EvaluationPeriods:  aws.Int32(evalPeriods),
-		DatapointsToAlarm:  aws.Int32(evalPeriods),
-		Threshold:          aws.Float64(p.Threshold),
-		ComparisonOperator: operator,
-		TreatMissingData:   aws.String("notBreaching"),
-		ActionsEnabled:     aws.Bool(p.Enabled),
-		AlarmActions:       c.alarmActionARNs,
-		OKActions:          c.okActionARNs,
+		AlarmName:               aws.String(names.AlarmName),
+		AlarmDescription:        aws.String(fmt.Sprintf("OpenChoreo log alert %s/%s", p.Namespace, p.Name)),
+		MetricName:              aws.String(names.MetricName),
+		Namespace:               aws.String(metricNamespace),
+		Statistic:               cwtypes.StatisticSum,
+		Period:                  aws.Int32(period),
+		EvaluationPeriods:       aws.Int32(evalPeriods),
+		DatapointsToAlarm:       aws.Int32(evalPeriods),
+		Threshold:               aws.Float64(p.Threshold),
+		ComparisonOperator:      operator,
+		TreatMissingData:        aws.String("notBreaching"),
+		ActionsEnabled:          aws.Bool(p.Enabled),
+		AlarmActions:            c.alarmActionARNs,
+		OKActions:               c.okActionARNs,
 		InsufficientDataActions: c.insufficientDataActionARNs,
-		Tags:               tags,
+		Tags:                    tags,
 	}
 	if _, err := c.alarms.PutMetricAlarm(ctx, input); err != nil {
 		return "", err

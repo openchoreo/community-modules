@@ -57,13 +57,12 @@ type stsAPI interface {
 	GetCallerIdentity(context.Context, *sts.GetCallerIdentityInput, ...func(*sts.Options)) (*sts.GetCallerIdentityOutput, error)
 }
 
-// Client wraps CloudWatch Logs Insights queries scoped to a single EKS/K8s cluster.
+// Client wraps CloudWatch Logs Insights queries scoped to the configured log group.
 type Client struct {
 	logs                       logsAPI
 	alarms                     alarmsAPI
 	sts                        stsAPI
-	clusterName                string
-	logGroupPrefix             string
+	logGroupName               string
 	queryTimeout               time.Duration
 	pollEvery                  time.Duration
 	alertMetricNamespace       string
@@ -76,8 +75,7 @@ type Client struct {
 // Config holds static configuration for the Client.
 type Config struct {
 	Region                     string
-	ClusterName                string
-	LogGroupPrefix             string
+	LogGroupName               string
 	QueryTimeout               time.Duration
 	PollEvery                  time.Duration
 	AlertMetricNamespace       string
@@ -98,8 +96,7 @@ func NewClient(ctx context.Context, cfg Config, logger *slog.Logger) (*Client, e
 		logs:                       cloudwatchlogs.NewFromConfig(awsCfg),
 		alarms:                     cloudwatch.NewFromConfig(awsCfg),
 		sts:                        sts.NewFromConfig(awsCfg),
-		clusterName:                cfg.ClusterName,
-		logGroupPrefix:             strings.TrimRight(cfg.LogGroupPrefix, "/"),
+		logGroupName:               cfg.LogGroupName,
 		queryTimeout:               cfg.QueryTimeout,
 		pollEvery:                  cfg.PollEvery,
 		alertMetricNamespace:       cfg.AlertMetricNamespace,
@@ -117,8 +114,7 @@ func NewClientWithAWS(logs logsAPI, alarms alarmsAPI, stsClient stsAPI, cfg Conf
 		logs:                       logs,
 		alarms:                     alarms,
 		sts:                        stsClient,
-		clusterName:                cfg.ClusterName,
-		logGroupPrefix:             strings.TrimRight(cfg.LogGroupPrefix, "/"),
+		logGroupName:               cfg.LogGroupName,
 		queryTimeout:               cfg.QueryTimeout,
 		pollEvery:                  cfg.PollEvery,
 		alertMetricNamespace:       cfg.AlertMetricNamespace,
@@ -138,7 +134,7 @@ func (c *Client) Ping(ctx context.Context) error {
 // applicationLogGroup returns the CloudWatch log group where Fluent Bit ships container
 // application logs in the Container Insights schema.
 func (c *Client) applicationLogGroup() string {
-	return fmt.Sprintf("%s/%s/application", c.logGroupPrefix, c.clusterName)
+	return c.logGroupName
 }
 
 // ComponentLogsParams captures the component-scoped query options.

@@ -12,7 +12,6 @@ import (
 
 func TestLoadConfigParsesAlertingEnv(t *testing.T) {
 	t.Setenv("AWS_REGION", "eu-north-1")
-	t.Setenv("CLUSTER_NAME", "openchoreo-test")
 	t.Setenv("ALERT_METRIC_NAMESPACE", "Custom/Logs")
 	t.Setenv("ALARM_ACTION_ARNS", "arn:aws:sns:eu-north-1:123456789012:alerts")
 	t.Setenv("OK_ACTION_ARNS", "arn:aws:lambda:eu-north-1:123456789012:function:ok")
@@ -44,7 +43,6 @@ func TestLoadConfigParsesAlertingEnv(t *testing.T) {
 
 func TestLoadConfigRejectsInvalidActionARN(t *testing.T) {
 	t.Setenv("AWS_REGION", "eu-north-1")
-	t.Setenv("CLUSTER_NAME", "openchoreo-test")
 	t.Setenv("ALARM_ACTION_ARNS", "not-an-arn")
 
 	if _, err := LoadConfig(); err == nil {
@@ -54,7 +52,6 @@ func TestLoadConfigRejectsInvalidActionARN(t *testing.T) {
 
 func TestLoadConfigRejectsTooManyActionARNs(t *testing.T) {
 	t.Setenv("AWS_REGION", "eu-north-1")
-	t.Setenv("CLUSTER_NAME", "openchoreo-test")
 	t.Setenv("ALARM_ACTION_ARNS",
 		"arn:aws:sns:eu-north-1:123456789012:a,"+
 			"arn:aws:sns:eu-north-1:123456789012:b,"+
@@ -71,7 +68,6 @@ func TestLoadConfigRejectsTooManyActionARNs(t *testing.T) {
 
 func TestLoadConfigRejectsMissingWebhookSecretWhenAuthEnabled(t *testing.T) {
 	t.Setenv("AWS_REGION", "eu-north-1")
-	t.Setenv("CLUSTER_NAME", "openchoreo-test")
 	t.Setenv("WEBHOOK_AUTH_ENABLED", "true")
 
 	if _, err := LoadConfig(); err == nil {
@@ -82,8 +78,9 @@ func TestLoadConfigRejectsMissingWebhookSecretWhenAuthEnabled(t *testing.T) {
 func resetCoreEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("AWS_REGION", "")
-	t.Setenv("CLUSTER_NAME", "")
 	t.Setenv("LOG_LEVEL", "")
+	t.Setenv("LOG_GROUP_NAME", "")
+	t.Setenv("LOG_GROUP_PREFIX", "")
 	t.Setenv("ALARM_ACTION_ARNS", "")
 	t.Setenv("OK_ACTION_ARNS", "")
 	t.Setenv("INSUFFICIENT_DATA_ACTION_ARNS", "")
@@ -101,7 +98,6 @@ func resetCoreEnv(t *testing.T) {
 func TestLoadConfigDefaultsAreApplied(t *testing.T) {
 	resetCoreEnv(t)
 	t.Setenv("AWS_REGION", "eu-north-1")
-	t.Setenv("CLUSTER_NAME", "openchoreo-test")
 
 	cfg, err := LoadConfig()
 	if err != nil {
@@ -125,28 +121,21 @@ func TestLoadConfigDefaultsAreApplied(t *testing.T) {
 	if cfg.LogLevel != slog.LevelInfo {
 		t.Fatalf("LogLevel = %s", cfg.LogLevel)
 	}
+	if cfg.LogGroupName != "/aws/containerinsights/application" {
+		t.Fatalf("LogGroupName = %q", cfg.LogGroupName)
+	}
 }
 
 func TestLoadConfigRequiresAWSRegion(t *testing.T) {
 	resetCoreEnv(t)
-	t.Setenv("CLUSTER_NAME", "openchoreo-test")
 	if _, err := LoadConfig(); err == nil {
 		t.Fatal("expected missing AWS_REGION error")
-	}
-}
-
-func TestLoadConfigRequiresClusterName(t *testing.T) {
-	resetCoreEnv(t)
-	t.Setenv("AWS_REGION", "eu-north-1")
-	if _, err := LoadConfig(); err == nil {
-		t.Fatal("expected missing CLUSTER_NAME error")
 	}
 }
 
 func TestLoadConfigRejectsInvalidQueryTimeout(t *testing.T) {
 	resetCoreEnv(t)
 	t.Setenv("AWS_REGION", "eu-north-1")
-	t.Setenv("CLUSTER_NAME", "openchoreo-test")
 	t.Setenv("QUERY_TIMEOUT_SECONDS", "0")
 	if _, err := LoadConfig(); err == nil {
 		t.Fatal("expected invalid QUERY_TIMEOUT_SECONDS error")
@@ -162,7 +151,6 @@ func TestLoadConfigRejectsInvalidQueryTimeout(t *testing.T) {
 func TestLoadConfigRejectsNonNumericServerPort(t *testing.T) {
 	resetCoreEnv(t)
 	t.Setenv("AWS_REGION", "eu-north-1")
-	t.Setenv("CLUSTER_NAME", "openchoreo-test")
 	t.Setenv("SERVER_PORT", "not-a-port")
 	if _, err := LoadConfig(); err == nil {
 		t.Fatal("expected invalid SERVER_PORT error")
@@ -181,7 +169,6 @@ func TestLoadConfigParsesLogLevels(t *testing.T) {
 		t.Run(input, func(t *testing.T) {
 			resetCoreEnv(t)
 			t.Setenv("AWS_REGION", "eu-north-1")
-			t.Setenv("CLUSTER_NAME", "openchoreo-test")
 			t.Setenv("LOG_LEVEL", input)
 			cfg, err := LoadConfig()
 			if err != nil {
@@ -217,5 +204,66 @@ func TestGetEnvFallsBackToDefault(t *testing.T) {
 	_ = os.Unsetenv("DOES_NOT_EXIST")
 	if got := getEnv("DOES_NOT_EXIST", "fallback"); got != "fallback" {
 		t.Fatalf("getEnv() = %q", got)
+	}
+}
+
+func TestLoadConfigLogGroupNameOverride(t *testing.T) {
+	resetCoreEnv(t)
+	t.Setenv("AWS_REGION", "eu-north-1")
+	t.Setenv("LOG_GROUP_NAME", "/custom/log-group")
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+	if cfg.LogGroupName != "/custom/log-group" {
+		t.Fatalf("LogGroupName = %q, want /custom/log-group", cfg.LogGroupName)
+	}
+}
+
+func TestLoadConfigRejectsServerPortOutOfRange(t *testing.T) {
+	resetCoreEnv(t)
+	t.Setenv("AWS_REGION", "eu-north-1")
+
+	t.Setenv("SERVER_PORT", "0")
+	if _, err := LoadConfig(); err == nil {
+		t.Fatal("expected SERVER_PORT=0 to fail")
+	}
+
+	t.Setenv("SERVER_PORT", "70000")
+	if _, err := LoadConfig(); err == nil {
+		t.Fatal("expected SERVER_PORT=70000 to fail")
+	}
+
+	t.Setenv("SERVER_PORT", "-1")
+	if _, err := LoadConfig(); err == nil {
+		t.Fatal("expected SERVER_PORT=-1 to fail")
+	}
+}
+
+func TestLoadConfigLogGroupDerivation(t *testing.T) {
+	resetCoreEnv(t)
+	t.Setenv("AWS_REGION", "eu-north-1")
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+	if cfg.LogGroupName != "/aws/containerinsights/application" {
+		t.Fatalf("LogGroupName = %q", cfg.LogGroupName)
+	}
+}
+
+func TestLoadConfigLogGroupDerivationTrimsTrailingSlash(t *testing.T) {
+	resetCoreEnv(t)
+	t.Setenv("AWS_REGION", "eu-north-1")
+	t.Setenv("LOG_GROUP_PREFIX", "/aws/containerinsights/")
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+	if cfg.LogGroupName != "/aws/containerinsights/application" {
+		t.Fatalf("LogGroupName = %q", cfg.LogGroupName)
 	}
 }

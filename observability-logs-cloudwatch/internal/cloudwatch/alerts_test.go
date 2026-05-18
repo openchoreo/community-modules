@@ -12,6 +12,7 @@ func TestBuildAlertResourceNamesAreStableAndSafe(t *testing.T) {
 	first := BuildAlertResourceNames("payments", "high-error-rate")
 	second := BuildAlertResourceNames("payments", "high-error-rate")
 	otherNamespace := BuildAlertResourceNames("other", "high-error-rate")
+	otherName := BuildAlertResourceNames("payments", "latency")
 
 	if first != second {
 		t.Fatalf("expected identical inputs to be stable, got %#v vs %#v", first, second)
@@ -19,8 +20,14 @@ func TestBuildAlertResourceNamesAreStableAndSafe(t *testing.T) {
 	if first == otherNamespace {
 		t.Fatalf("expected namespace to affect resource names, got %#v vs %#v", first, otherNamespace)
 	}
+	if first == otherName {
+		t.Fatalf("expected rule name to affect resource names, got %#v vs %#v", first, otherName)
+	}
 	if !strings.HasPrefix(first.AlarmName, "oc-logs-alert-") {
 		t.Fatalf("unexpected alarm name %q", first.AlarmName)
+	}
+	if strings.Contains(first.AlarmName, "in.") || !strings.Contains(first.AlarmName, "ns.") {
+		t.Fatalf("expected namespace/name alarm name format, got %q", first.AlarmName)
 	}
 	if !strings.Contains(first.AlarmName, ".rn.") {
 		t.Fatalf("expected base64url alarm name format, got %q", first.AlarmName)
@@ -203,7 +210,6 @@ func TestParseAlertIdentityRejectsBadInputs(t *testing.T) {
 		{"missing prefix", "foo-bar"},
 		{"too few parts", "oc-logs-alert-ns.cGF5bWVudHM"},
 		{"wrong shape", "oc-logs-alert-x.y.z.q.r"},
-		{"empty hash", "oc-logs-alert-ns.YQ.rn.Yg."},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -224,9 +230,9 @@ func TestValidateAlertParamsRejectsMissingFields(t *testing.T) {
 	cases := []LogAlertParams{
 		{Namespace: "ns", Operator: "gt", Window: time.Minute, Interval: time.Minute},
 		{Name: "rule", Operator: "gt", Window: time.Minute, Interval: time.Minute},
-		{Name: "rule", Namespace: "ns", Operator: "gt"},                                    // missing window/interval
+		{Name: "rule", Namespace: "ns", Operator: "gt"},                                                  // missing window/interval
 		{Name: "rule", Namespace: "ns", Operator: "gt", Window: 30 * time.Second, Interval: time.Minute}, // window < interval
-		{Name: "rule", Namespace: "ns", Operator: "??", Window: time.Minute, Interval: time.Minute},     // bad operator
+		{Name: "rule", Namespace: "ns", Operator: "??", Window: time.Minute, Interval: time.Minute},      // bad operator
 	}
 	for i, p := range cases {
 		if err := ValidateAlertParams(p); err == nil {

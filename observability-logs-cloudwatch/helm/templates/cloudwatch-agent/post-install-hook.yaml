@@ -1,12 +1,11 @@
 {{- /*
-Post-install / post-upgrade hook that fixes two upstream amazon-cloudwatch-
-observability shortcomings so the chart works from any namespace and with
-static AWS credentials:
+Post-install / post-upgrade hook that fixes optional upstream amazon-cloudwatch-
+observability integration gaps:
 
-  1. Creates `amazon-cloudwatch` namespace + an ExternalName Service named
-     `cloudwatch-agent` pointing at the real Service in this release. This
-     unblocks Fluent Bit's hard-coded Pod Association upstream
-     (`cloudwatch-agent.amazon-cloudwatch:4311`).
+  1. When `cloudWatchAgent.bridgeService.enabled=true`, creates an
+     `amazon-cloudwatch` namespace + an ExternalName Service named
+     `cloudwatch-agent` pointing at the real Service in this release. This is
+     only needed if Pod Association is re-enabled in Fluent Bit.
   2. Patches the upstream `fluent-bit` DaemonSet to `envFrom` the same
      credentials Secret the adapter consumes, so the cloudwatch_logs output
      plugin can authenticate. Skipped when `awsCredentials.name` is empty

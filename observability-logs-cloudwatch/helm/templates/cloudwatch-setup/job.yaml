@@ -1,4 +1,3 @@
-{{- include "logs-cloudwatch.validate" . -}}
 {{- if .Values.setup.enabled }}
 apiVersion: batch/v1
 kind: Job
@@ -27,8 +26,6 @@ spec:
           image: "{{ .Values.setup.image.repository }}:{{ .Values.setup.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.setup.image.pullPolicy }}
           env:
-            - name: CLUSTER_NAME
-              value: {{ include "logs-cloudwatch.clusterName" . | quote }}
             - name: AWS_REGION
               value: {{ include "logs-cloudwatch.region" . | quote }}
             - name: LOG_GROUP_PREFIX

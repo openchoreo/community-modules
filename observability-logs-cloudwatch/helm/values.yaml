@@ -1,7 +1,9 @@
-# ---------------------------------------------------------------------------
 # Prefix shared by all log groups this module reads/writes.
-# Must match what the CloudWatch Agent writes to (Container Insights default).
-logGroupPrefix: "/aws/containerinsights"
+# This is under `global` so the dependent amazon-cloudwatch-observability chart
+# can render Fluent Bit with the same log group path as the adapter and setup
+# Job. The application log group resolves to `<global.logGroupPrefix>/application`.
+global:
+  logGroupPrefix: "/aws/containerinsights"
 
 # AWS authentication mode. Defaults to **EKS Pod Identity / IRSA / EC2
 # instance-profile** — the AWS SDK default credentials chain picks them up
@@ -32,18 +34,12 @@ containerLogs:
 # EKS. On EKS you may prefer `k8sMode: EKS` to pick up IRSA-based auth.
 cloudWatchAgent:
   enabled: true
-  # The upstream Fluent Bit kubernetes filter resolves the agent Pod Association
-  # endpoint at the hard-coded address `cloudwatch-agent.amazon-cloudwatch:4311`.
-  # When this chart is installed in any other namespace (the OpenChoreo
-  # convention is `openchoreo-observability-plane`), Fluent Bit logs steady
-  # "no upstream connections available" errors and Pod Association silently
-  # degrades. This block creates an `amazon-cloudwatch` namespace + an
-  # ExternalName Service of the right name that forwards to the real Service
-  # in the release namespace. Disable if you install the chart in
-  # `amazon-cloudwatch` directly, or if a real `cloudwatch-agent` Service
-  # already exists in `amazon-cloudwatch`.
+  # Optional compatibility bridge for the upstream Fluent Bit Pod Association
+  # path, which expects `cloudwatch-agent.amazon-cloudwatch:4311`. This module
+  # disables Pod Association in its Fluent Bit override, so the bridge is off
+  # by default and no `amazon-cloudwatch` namespace is created.
   bridgeService:
-    enabled: true
+    enabled: false
   # The upstream Fluent Bit DaemonSet exposes no env-injection knob, so static
   # AWS credentials (the k3d / kind path) cannot reach the cloudwatch_logs
   # output plugin. This Helm post-install hook Job patches the DaemonSet to
@@ -61,13 +57,12 @@ cloudWatchAgent:
     pullPolicy: IfNotPresent
 
 amazon-cloudwatch-observability:
-  # Single source of truth for clusterName / region across this chart and the
-  # upstream subchart. Both parent and subchart templates read these values
-  # via the helpers in templates/_helpers.tpl, so operators only set them
-  # once:
-  #   --set amazon-cloudwatch-observability.clusterName=openchoreo-dev \
-  #   --set amazon-cloudwatch-observability.region=us-east-1
-  clusterName: ""
+  # clusterName belongs to the upstream Container Insights chart. This module
+  # does not use it for log group naming. The upstream chart requires a
+  # non-empty value to render, so keep this stable across installs unless you
+  # intentionally use upstream Container Insights features outside this module.
+  clusterName: "openchoreo"
+  # AWS region for the CloudWatch Agent and Fluent Bit output.
   region: ""
   containerLogs:
     enabled: true
@@ -153,7 +148,7 @@ amazon-cloudwatch-observability:
               Name                cloudwatch_logs
               Match               application.*
               region              ${AWS_REGION}
-              log_group_name      /aws/containerinsights/${CLUSTER_NAME}/application
+              log_group_name      {{ .Values.global.logGroupPrefix | default "/aws/containerinsights" | trimSuffix "/" }}/application
               log_stream_prefix   ${HOST_NAME}-
               auto_create_group   true
               extra_user_agent    container-insights
@@ -162,6 +157,73 @@ amazon-cloudwatch-observability:
             # Disabled by observability-logs-cloudwatch (k3d / kind have no systemd journal).
           host-log.conf: |
             # Disabled by observability-logs-cloudwatch (k3d / kind have no systemd journal).
+      configWindows:
+        extraFiles:
+          application-log.conf: |
+            [INPUT]
+              Name                tail
+              Tag                 application.*
+              Exclude_Path        C:\\var\\log\\containers\\fluent-bit*, C:\\var\\log\\containers\\cloudwatch-agent*
+              Path                C:\\var\\log\\containers\\*.log
+              Parser              docker
+              DB                  C:\\var\\fluent-bit\\state\\flb_container.db
+              Mem_Buf_Limit       50MB
+              Skip_Long_Lines     On
+              Rotate_Wait         30
+              Refresh_Interval    10
+              Read_from_Head      ${READ_FROM_HEAD}
+
+            [INPUT]
+              Name                tail
+              Tag                 application.*
+              Path                C:\\var\\log\\containers\\fluent-bit*
+              Parser              docker
+              DB                  C:\\var\\fluent-bit\\state\\flb_log.db
+              Mem_Buf_Limit       5MB
+              Skip_Long_Lines     On
+              Rotate_Wait         30
+              Refresh_Interval    10
+              Read_from_Head      ${READ_FROM_HEAD}
+
+            [INPUT]
+              Name                tail
+              Tag                 application.*
+              Path                C:\\var\\log\\containers\\cloudwatch-agent*
+              Parser              docker
+              DB                  C:\\var\\fluent-bit\\state\\flb_cwagent.db
+              Mem_Buf_Limit       5MB
+              Skip_Long_Lines     On
+              Rotate_Wait         30
+              Refresh_Interval    10
+              Read_from_Head      ${READ_FROM_HEAD}
+
+            [FILTER]
+              Name                kubernetes
+              Match               application.*
+              Kube_URL            https://kubernetes.default.svc:443
+              Kube_Tag_Prefix     application.C.var.log.containers.
+              Merge_Log           On
+              Merge_Log_Key       log_processed
+              K8S-Logging.Parser  On
+              K8S-Logging.Exclude Off
+              Labels              On
+              Annotations         Off
+              Use_Kubelet         On
+              Kubelet_Port        10250
+              Buffer_Size         0
+
+            [OUTPUT]
+              Name                cloudwatch_logs
+              Match               application.*
+              region              ${AWS_REGION}
+              log_group_name      {{ .Values.global.logGroupPrefix | default "/aws/containerinsights" | trimSuffix "/" }}/application
+              log_stream_prefix   ${HOST_NAME}-
+              auto_create_group   true
+              extra_user_agent    container-insights
+          dataplane-log.conf: |
+            # Disabled by observability-logs-cloudwatch.
+          host-log.conf: |
+            # Disabled by observability-logs-cloudwatch.
   # Leave `agent.config` empty to use the default Container Insights collection
   # config. On EC2/EKS with an instance-profile or IRSA, the AWS SDK default
   # chain applies to the agent and no extra wiring is required here.
@@ -209,7 +271,7 @@ adapter:
   logLevel: INFO
   # Alerting (CloudWatch Logs metric filter + metric alarm) support.
   alerting:
-    enabled: false
+    enabled: true
     metricNamespace: OpenChoreo/Logs
     alarmActionArns: []
     okActionArns: []

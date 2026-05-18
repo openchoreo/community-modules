@@ -68,7 +68,7 @@ const (
 var alertIdentityEncoding = base64.RawURLEncoding
 
 // BuildAlertResourceNames produces deterministic, AWS-safe identifiers that
-// carry the rule namespace + name in the alarm/filter name itself so an
+// carry the rule namespace and name in the alarm/filter name itself so an
 // EventBridge state-change event can be mapped back to the originating rule
 // without a second AWS lookup. Dots are used as separators because they are
 // outside the base64url alphabet and keep parsing unambiguous.
@@ -87,26 +87,27 @@ func BuildAlertResourceNames(namespace, name string) AlertResourceNames {
 
 // ParseAlertIdentityFromAlarmName recovers the OpenChoreo rule namespace/name
 // from the CloudWatch alarm name emitted by BuildAlertResourceNames.
-func ParseAlertIdentityFromAlarmName(alarmName string) (string, string, error) {
+func ParseAlertIdentityFromAlarmName(alarmName string) (namespace, name string, err error) {
 	rest, ok := strings.CutPrefix(alarmName, alertAlarmPrefix)
 	if !ok {
 		return "", "", fmt.Errorf("alarm name %q does not use the managed prefix", alarmName)
 	}
 
 	parts := strings.Split(rest, ".")
-	if len(parts) != 5 || parts[0] != "ns" || parts[2] != "rn" || parts[4] == "" {
-		return "", "", fmt.Errorf("alarm name %q does not match the managed base64url format", alarmName)
+
+	if len(parts) == 5 && parts[0] == "ns" && parts[2] == "rn" && parts[4] != "" {
+		ns, decErr := decodeAlertIdentitySegment(parts[1])
+		if decErr != nil {
+			return "", "", fmt.Errorf("decode namespace from alarm name %q: %w", alarmName, decErr)
+		}
+		n, decErr := decodeAlertIdentitySegment(parts[3])
+		if decErr != nil {
+			return "", "", fmt.Errorf("decode rule name from alarm name %q: %w", alarmName, decErr)
+		}
+		return ns, n, nil
 	}
 
-	namespace, err := decodeAlertIdentitySegment(parts[1])
-	if err != nil {
-		return "", "", fmt.Errorf("decode namespace from alarm name %q: %w", alarmName, err)
-	}
-	name, err := decodeAlertIdentitySegment(parts[3])
-	if err != nil {
-		return "", "", fmt.Errorf("decode rule name from alarm name %q: %w", alarmName, err)
-	}
-	return namespace, name, nil
+	return "", "", fmt.Errorf("alarm name %q does not match the managed format", alarmName)
 }
 
 // Tag keys on the CloudWatch alarm used to round-trip OpenChoreo metadata.

@@ -122,8 +122,7 @@ func (s *stubSTSAPI) GetCallerIdentity(context.Context, *sts.GetCallerIdentityIn
 
 func newTestClient(logs logsAPI, alarms alarmsAPI) *Client {
 	return NewClientWithAWS(logs, alarms, &stubSTSAPI{}, Config{
-		ClusterName:          "test-cluster",
-		LogGroupPrefix:       "/aws/containerinsights",
+		LogGroupName:         "/aws/containerinsights/application",
 		AlertMetricNamespace: defaultMetricNamespace,
 		QueryTimeout:         30 * time.Second,
 		PollEvery:            100 * time.Millisecond,
@@ -318,10 +317,10 @@ type fakeAPIError struct {
 	message string
 }
 
-func (e *fakeAPIError) Error() string                    { return e.code + ": " + e.message }
-func (e *fakeAPIError) ErrorCode() string                { return e.code }
-func (e *fakeAPIError) ErrorMessage() string             { return e.message }
-func (e *fakeAPIError) ErrorFault() smithy.ErrorFault    { return smithy.FaultClient }
+func (e *fakeAPIError) Error() string                 { return e.code + ": " + e.message }
+func (e *fakeAPIError) ErrorCode() string             { return e.code }
+func (e *fakeAPIError) ErrorMessage() string          { return e.message }
+func (e *fakeAPIError) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
 
 func TestIsAWSNotFound(t *testing.T) {
 	if isAWSNotFound(nil) {

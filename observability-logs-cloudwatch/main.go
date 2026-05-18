@@ -29,8 +29,7 @@ func main() {
 	logger.Info("Configuration loaded",
 		slog.String("logLevel", cfg.LogLevel.String()),
 		slog.String("awsRegion", cfg.AWSRegion),
-		slog.String("clusterName", cfg.ClusterName),
-		slog.String("logGroupPrefix", cfg.LogGroupPrefix),
+		slog.String("logGroupName", cfg.LogGroupName),
 		slog.String("queryTimeout", cfg.QueryTimeout.String()),
 		slog.String("serverPort", cfg.ServerPort),
 	)
@@ -40,8 +39,7 @@ func main() {
 
 	cwClient, err := cloudwatch.NewClient(bootstrapCtx, cloudwatch.Config{
 		Region:                     cfg.AWSRegion,
-		ClusterName:                cfg.ClusterName,
-		LogGroupPrefix:             cfg.LogGroupPrefix,
+		LogGroupName:               cfg.LogGroupName,
 		QueryTimeout:               cfg.QueryTimeout,
 		PollEvery:                  cfg.QueryPollEvery,
 		AlertMetricNamespace:       cfg.AlertMetricNamespace,

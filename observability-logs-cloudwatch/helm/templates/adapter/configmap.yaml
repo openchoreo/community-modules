@@ -1,4 +1,3 @@
-{{- include "logs-cloudwatch.validate" . -}}
 {{- if .Values.adapter.enabled }}
 apiVersion: v1
 kind: ConfigMap
@@ -9,9 +8,9 @@ metadata:
     app: logs-adapter-cloudwatch
 data:
   SERVER_PORT: {{ .Values.adapter.service.port | quote }}
-  CLUSTER_NAME: {{ include "logs-cloudwatch.clusterName" . | quote }}
   AWS_REGION: {{ include "logs-cloudwatch.region" . | quote }}
   LOG_GROUP_PREFIX: {{ include "logs-cloudwatch.logGroupPrefix" . | quote }}
+  LOG_GROUP_NAME: {{ include "logs-cloudwatch.logGroupName" . | quote }}
   QUERY_TIMEOUT_SECONDS: {{ .Values.adapter.queryTimeoutSeconds | quote }}
   QUERY_POLL_MILLISECONDS: {{ .Values.adapter.queryPollMilliseconds | quote }}
   LOG_LEVEL: {{ .Values.adapter.logLevel | quote }}

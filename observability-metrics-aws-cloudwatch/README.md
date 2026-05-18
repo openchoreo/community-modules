@@ -341,7 +341,7 @@ helm upgrade --install observability-metrics-aws-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-metrics-aws-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.2.0 \
+  --version 0.2.1 \
   --set region="$AWS_REGION" \
   --set adapter.alerting.webhookAuth.enabled=true \
   --set adapter.alerting.webhookAuth.sharedSecret="$WEBHOOK_SHARED_SECRET"
@@ -356,7 +356,7 @@ helm upgrade --install observability-metrics-aws-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-metrics-aws-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.2.0 \
+  --version 0.2.1 \
   --set region="$AWS_REGION" \
   --set opentelemetry-collector.enabled=false \
   --set kubeStateMetrics.enabled=false \
@@ -374,7 +374,7 @@ helm upgrade --install observability-metrics-aws-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-metrics-aws-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.2.0 \
+  --version 0.2.1 \
   --set region="$AWS_REGION" \
   --set adapter.enabled=false
 ```
@@ -474,7 +474,7 @@ Re-trigger the retention Helm hook (it ran once at install time):
 kubectl -n "$NS" delete job metrics-aws-cloudwatch-retention --ignore-not-found
 helm upgrade observability-metrics-aws-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-metrics-aws-cloudwatch \
-  --namespace "$NS" --version 0.2.0 --reuse-values
+  --namespace "$NS" --version 0.2.1 --reuse-values
 ```
 
 Verify that Pod Identity was injected into a new adapter pod:
@@ -527,7 +527,7 @@ helm upgrade --install observability-metrics-aws-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-metrics-aws-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.2.0 \
+  --version 0.2.1 \
   --set region="$AWS_REGION" \
   --set awsCredentials.create=true \
   --set awsCredentials.name=metrics-aws-cloudwatch-aws-credentials \
@@ -556,7 +556,7 @@ helm upgrade --install observability-metrics-aws-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-metrics-aws-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.2.0 \
+  --version 0.2.1 \
   --set region="$AWS_REGION" \
   --set awsCredentials.create=true \
   --set awsCredentials.name=metrics-aws-cloudwatch-aws-credentials \
@@ -578,7 +578,7 @@ helm upgrade --install observability-metrics-aws-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-metrics-aws-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.2.0 \
+  --version 0.2.1 \
   --set region="$AWS_REGION" \
   --set awsCredentials.create=true \
   --set awsCredentials.name=metrics-aws-cloudwatch-aws-credentials \
@@ -800,7 +800,7 @@ kubectl -n "$NS" delete job metrics-aws-cloudwatch-retention --ignore-not-found
 # 2. Re-fire the post-upgrade hook.
 helm upgrade observability-metrics-aws-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-metrics-aws-cloudwatch \
-  --version 0.2.0 --namespace "$NS" --reuse-values
+  --version 0.2.1 --namespace "$NS" --reuse-values
 
 # 3. Watch the new Job complete.
 kubectl -n "$NS" get job metrics-aws-cloudwatch-retention -w

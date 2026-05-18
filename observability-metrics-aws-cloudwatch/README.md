@@ -6,7 +6,7 @@
 
 This module supports both:
 
-- **EKS clusters** using **EKS Pod Identity** - recommended for production.
+- **EKS clusters** using **EKS Pod Identity**.
 - **Non-EKS Kubernetes clusters** such as k3d, kind, or Kubernetes running outside AWS, using static AWS credentials.
 
 ## Table of contents
@@ -432,7 +432,7 @@ aws iam attach-role-policy \
 
 ### Step 3 — Install the module
 
-Use the command that matches the cluster's topology.
+Use the command that matches the cluster's topology. The following Helm commands will time out or the pods will enter CrashLoopBackOff since the Pod Identity associations are not created yet. Everything will work after Step 5 is completed.
 
 #### Single-cluster install
 

@@ -4,11 +4,9 @@
 | ------------- | --------- |
 | Code coverage | [![Codecov](https://codecov.io/gh/openchoreo/community-modules/branch/main/graph/badge.svg?component=observability_logs_aws_cloudwatch)](https://codecov.io/gh/openchoreo/community-modules) |
 
-The **Observability Logs Module for AWS CloudWatch** sends OpenChoreo container logs to **AWS CloudWatch Logs** and exposes them back to the OpenChoreo Observer through the standard **OpenChoreo CloudWatch Adapter API**. It also supports log-based alerting by translating OpenChoreo alert rules into **CloudWatch Logs metric filters** and **CloudWatch metric alarms**.
-
 This module supports both:
 
-- **EKS clusters** using **EKS Pod Identity** — recommended for production.
+- **EKS clusters** using **EKS Pod Identity**.
 - **Non-EKS Kubernetes clusters** such as **k3d**, **kind**, or Kubernetes running outside AWS, using static AWS credentials.
 
 ## Table of contents
@@ -439,7 +437,7 @@ aws iam attach-role-policy \
 
 ### Step 3 — Install the module
 
-Use the command that matches the cluster's topology. The following Helm commands will time out since the pod identity associations are not created yet. Everything will work after step 5 is completed.
+Use the command that matches the cluster's topology. The following Helm commands will time out or the pods will enter CrashLoopBackOff since the Pod Identity associations are not created yet. Everything will work after Step 5 is completed.
 
 #### Single-cluster install
 

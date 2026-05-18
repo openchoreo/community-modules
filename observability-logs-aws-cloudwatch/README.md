@@ -439,7 +439,7 @@ aws iam attach-role-policy \
 
 ### Step 3 — Install the module
 
-Use the command that matches the cluster's topology.
+Use the command that matches the cluster's topology. The following Helm commands will time out since the pod identity associations are not created yet. Everything will work after step 5 is completed.
 
 #### Single-cluster install
 

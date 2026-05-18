@@ -22,13 +22,14 @@ import (
 )
 
 type stubMetricsClient struct {
-	pingErr            error
-	getResourceFn      func(context.Context, cloudwatchmetrics.MetricsQueryParams) (*cloudwatchmetrics.ResourceMetricsResult, error)
-	createAlertFn      func(context.Context, cloudwatchmetrics.MetricAlertParams) (string, error)
-	getAlertFn         func(context.Context, string, string) (*cloudwatchmetrics.AlertDetail, error)
-	updateAlertFn      func(context.Context, string, string, cloudwatchmetrics.MetricAlertParams) (string, error)
-	deleteAlertFn      func(context.Context, string, string) (string, error)
-	getAlarmTagsByName func(context.Context, string) (map[string]string, error)
+	pingErr                        error
+	getResourceFn                  func(context.Context, cloudwatchmetrics.MetricsQueryParams) (*cloudwatchmetrics.ResourceMetricsResult, error)
+	createAlertFn                  func(context.Context, cloudwatchmetrics.MetricAlertParams) (string, error)
+	getAlertFn                     func(context.Context, string, string) (*cloudwatchmetrics.AlertDetail, error)
+	updateAlertFn                  func(context.Context, string, string, cloudwatchmetrics.MetricAlertParams) (string, error)
+	deleteAlertFn                  func(context.Context, string, string) (string, error)
+	getAlarmTagsByName             func(context.Context, string) (map[string]string, error)
+	resolveNamespaceDimensionFn    func(context.Context, string, string) (string, error)
 }
 
 func (s *stubMetricsClient) Ping(context.Context) error { return s.pingErr }
@@ -73,6 +74,13 @@ func (s *stubMetricsClient) GetAlarmTagsByName(ctx context.Context, name string)
 		return nil, errors.New("unexpected GetAlarmTagsByName call")
 	}
 	return s.getAlarmTagsByName(ctx, name)
+}
+
+func (s *stubMetricsClient) ResolveNamespaceDimension(ctx context.Context, componentUID, environmentUID string) (string, error) {
+	if s.resolveNamespaceDimensionFn == nil {
+		return "", nil
+	}
+	return s.resolveNamespaceDimensionFn(ctx, componentUID, environmentUID)
 }
 
 func newTestHandler(client metricsClient, observer observerForwarder) *MetricsHandler {
@@ -606,6 +614,66 @@ func TestToAlertRuleResponseDropsInvalidUUIDs(t *testing.T) {
 	}
 	if got.Metadata.ProjectUid != nil || got.Metadata.EnvironmentUid != nil || got.Metadata.ComponentUid != nil {
 		t.Fatalf("expected invalid UIDs to be dropped: %#v", got.Metadata)
+	}
+}
+
+func TestCreateAlertRuleResolvesDimensionNamespace(t *testing.T) {
+	var capturedParams cloudwatchmetrics.MetricAlertParams
+	h := newTestHandler(&stubMetricsClient{
+		getAlertFn: func(context.Context, string, string) (*cloudwatchmetrics.AlertDetail, error) {
+			return nil, cloudwatchmetrics.ErrAlertNotFound
+		},
+		createAlertFn: func(_ context.Context, p cloudwatchmetrics.MetricAlertParams) (string, error) {
+			capturedParams = p
+			return "arn:test", nil
+		},
+		resolveNamespaceDimensionFn: func(_ context.Context, componentUID, environmentUID string) (string, error) {
+			return "resolved-oc-namespace", nil
+		},
+	}, nil)
+	req := alertRuleRequest()
+	req.Metadata.Namespace = "dp-some-k8s-namespace"
+
+	resp, err := h.CreateAlertRule(context.Background(), gen.CreateAlertRuleRequestObject{Body: req})
+	if err != nil {
+		t.Fatalf("CreateAlertRule() error = %v", err)
+	}
+	if _, ok := resp.(gen.CreateAlertRule201JSONResponse); !ok {
+		t.Fatalf("expected 201, got %T", resp)
+	}
+	if capturedParams.Namespace != "dp-some-k8s-namespace" {
+		t.Fatalf("expected rule namespace preserved, got %q", capturedParams.Namespace)
+	}
+	if capturedParams.DimensionNamespace != "resolved-oc-namespace" {
+		t.Fatalf("expected DimensionNamespace resolved, got %q", capturedParams.DimensionNamespace)
+	}
+}
+
+func TestUpdateAlertRuleResolvesDimensionNamespace(t *testing.T) {
+	var capturedParams cloudwatchmetrics.MetricAlertParams
+	h := newTestHandler(&stubMetricsClient{
+		updateAlertFn: func(_ context.Context, _, _ string, p cloudwatchmetrics.MetricAlertParams) (string, error) {
+			capturedParams = p
+			return "arn:test", nil
+		},
+		resolveNamespaceDimensionFn: func(_ context.Context, _, _ string) (string, error) {
+			return "resolved-ns", nil
+		},
+	}, nil)
+	req := alertRuleRequest()
+	req.Metadata.Namespace = "dp-k8s-ns"
+
+	resp, err := h.UpdateAlertRule(context.Background(), gen.UpdateAlertRuleRequestObject{
+		RuleName: "high-cpu", Body: req,
+	})
+	if err != nil {
+		t.Fatalf("UpdateAlertRule() error = %v", err)
+	}
+	if _, ok := resp.(gen.UpdateAlertRule200JSONResponse); !ok {
+		t.Fatalf("expected 200, got %T", resp)
+	}
+	if capturedParams.DimensionNamespace != "resolved-ns" {
+		t.Fatalf("expected DimensionNamespace resolved, got %q", capturedParams.DimensionNamespace)
 	}
 }
 

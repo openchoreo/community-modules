@@ -22,17 +22,18 @@ import (
 
 // MetricAlertParams is the input model for alert CRUD.
 type MetricAlertParams struct {
-	Name           string
-	Namespace      string
-	ProjectUID     string
-	EnvironmentUID string
-	ComponentUID   string
-	Metric         string // cpu_usage | memory_usage
-	Operator       string // gt|gte|lt|lte|eq|neq
-	Threshold      float64
-	Window         time.Duration
-	Interval       time.Duration
-	Enabled        bool
+	Name               string
+	Namespace          string
+	DimensionNamespace string // CloudWatch metric dimension value; falls back to Namespace if empty
+	ProjectUID         string
+	EnvironmentUID     string
+	ComponentUID       string
+	Metric             string // cpu_usage | memory_usage
+	Operator           string // gt|gte|lt|lte|eq|neq
+	Threshold          float64
+	Window             time.Duration
+	Interval           time.Duration
+	Enabled            bool
 }
 
 // AlertDetail is the reconstructed view of an existing alarm.
@@ -402,7 +403,11 @@ func (c *Client) putMetricAlarm(ctx context.Context, p MetricAlertParams) (strin
 	}
 	alarmName := BuildAlarmName(p.Namespace, p.Name)
 
-	dims := c.buildScopeDimensions(p.Namespace, p.ComponentUID, p.ProjectUID, p.EnvironmentUID)
+	dimNS := p.DimensionNamespace
+	if dimNS == "" {
+		dimNS = p.Namespace
+	}
+	dims := c.buildScopeDimensions(dimNS, p.ComponentUID, p.ProjectUID, p.EnvironmentUID)
 
 	tags := []cwtypes.Tag{
 		{Key: aws.String(TagRuleSource), Value: aws.String(TagRuleSourceVal)},

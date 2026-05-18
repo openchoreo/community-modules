@@ -132,11 +132,12 @@ func (r *KubernetesScopeResolver) Resolve(ctx context.Context, p ScopeResolution
 		labels := pod.Metadata.Labels
 		componentUID := firstNonEmpty(p.ComponentUID, labels[cloudwatchmetrics.LabelComponentUID])
 		environmentUID := firstNonEmpty(p.EnvironmentUID, labels[cloudwatchmetrics.LabelEnvironmentUID])
-		if componentUID == "" || environmentUID == "" || pod.Metadata.Namespace == "" {
+		ocNamespace := firstNonEmpty(p.Namespace, labels[cloudwatchmetrics.LabelNamespace])
+		if componentUID == "" || environmentUID == "" || ocNamespace == "" {
 			continue
 		}
 		res := ScopeResolutionResult{
-			Namespace:      pod.Metadata.Namespace,
+			Namespace:      ocNamespace,
 			ComponentUID:   componentUID,
 			ProjectUID:     firstNonEmpty(p.ProjectUID, labels[cloudwatchmetrics.LabelProjectUID]),
 			EnvironmentUID: environmentUID,

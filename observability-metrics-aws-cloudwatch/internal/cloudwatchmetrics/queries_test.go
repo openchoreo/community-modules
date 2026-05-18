@@ -353,6 +353,59 @@ func TestToAscendingPointsHandlesUnequalLengths(t *testing.T) {
 	}
 }
 
+func TestResolveNamespaceDimensionReturnsValueFromListMetrics(t *testing.T) {
+	api := &stubCloudWatchAPI{
+		listMetricsOut: &cloudwatch.ListMetricsOutput{
+			Metrics: []cwtypes.Metric{{
+				Dimensions: []cwtypes.Dimension{
+					{Name: aws.String(DimensionComponentUID), Value: aws.String("comp-1")},
+					{Name: aws.String(DimensionEnvironmentUID), Value: aws.String("env-1")},
+					{Name: aws.String(DimensionNamespace), Value: aws.String("default")},
+				},
+			}},
+		},
+	}
+	c := newTestClient(api)
+	got, err := c.ResolveNamespaceDimension(context.Background(), "comp-1", "env-1")
+	if err != nil {
+		t.Fatalf("ResolveNamespaceDimension() error = %v", err)
+	}
+	if got != "default" {
+		t.Fatalf("expected 'default', got %q", got)
+	}
+}
+
+func TestResolveNamespaceDimensionReturnsEmptyWhenNoMetrics(t *testing.T) {
+	c := newTestClient(&stubCloudWatchAPI{})
+	got, err := c.ResolveNamespaceDimension(context.Background(), "comp-1", "env-1")
+	if err != nil {
+		t.Fatalf("ResolveNamespaceDimension() error = %v", err)
+	}
+	if got != "" {
+		t.Fatalf("expected empty, got %q", got)
+	}
+}
+
+func TestResolveNamespaceDimensionReturnsEmptyWhenNoUIDs(t *testing.T) {
+	c := newTestClient(&stubCloudWatchAPI{})
+	got, err := c.ResolveNamespaceDimension(context.Background(), "", "")
+	if err != nil {
+		t.Fatalf("ResolveNamespaceDimension() error = %v", err)
+	}
+	if got != "" {
+		t.Fatalf("expected empty, got %q", got)
+	}
+}
+
+func TestResolveNamespaceDimensionPropagatesError(t *testing.T) {
+	api := &stubCloudWatchAPI{listMetricsErr: errors.New("aws boom")}
+	c := newTestClient(api)
+	_, err := c.ResolveNamespaceDimension(context.Background(), "comp-1", "env-1")
+	if err == nil {
+		t.Fatal("expected error to propagate")
+	}
+}
+
 func TestGetResourceMetricsScopeDimensionsMatchEMFOrder(t *testing.T) {
 	// awsemf and the alarm side both emit dimensions in the same order, so the
 	// query side must use the same builder. This guards against drift.

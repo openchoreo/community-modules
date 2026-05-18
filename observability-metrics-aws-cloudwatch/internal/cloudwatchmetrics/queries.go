@@ -150,6 +150,46 @@ func (c *Client) getMetricDataAll(ctx context.Context, queries []cwtypes.MetricD
 	return results, nil
 }
 
+// ResolveNamespaceDimension discovers the Namespace dimension value that the
+// OTel collector emitted for the given ComponentUID and EnvironmentUID by
+// querying CloudWatch ListMetrics. This works in both single-cluster and
+// multi-cluster topologies because CloudWatch is the shared backend.
+func (c *Client) ResolveNamespaceDimension(ctx context.Context, componentUID, environmentUID string) (string, error) {
+	if componentUID == "" && environmentUID == "" {
+		return "", nil
+	}
+	dims := make([]cwtypes.DimensionFilter, 0, 2)
+	if componentUID != "" {
+		dims = append(dims, cwtypes.DimensionFilter{
+			Name:  aws.String(DimensionComponentUID),
+			Value: aws.String(componentUID),
+		})
+	}
+	if environmentUID != "" {
+		dims = append(dims, cwtypes.DimensionFilter{
+			Name:  aws.String(DimensionEnvironmentUID),
+			Value: aws.String(environmentUID),
+		})
+	}
+	out, err := c.cw.ListMetrics(ctx, &cloudwatch.ListMetricsInput{
+		Namespace:      aws.String(c.metricNamespace),
+		MetricName:     aws.String(MetricPodCPUUsage),
+		Dimensions:     dims,
+		RecentlyActive: cwtypes.RecentlyActivePt3h,
+	})
+	if err != nil {
+		return "", fmt.Errorf("list_metrics: %w", err)
+	}
+	for _, m := range out.Metrics {
+		for _, d := range m.Dimensions {
+			if aws.ToString(d.Name) == DimensionNamespace {
+				return aws.ToString(d.Value), nil
+			}
+		}
+	}
+	return "", nil
+}
+
 // buildScopeDimensions returns the EMF dimensions for the requested scope.
 // The dimension set must match what awsemfexporter is configured to emit so
 // CloudWatch matches the alarm/series identity. The EMF declaration emits

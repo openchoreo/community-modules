@@ -340,6 +340,73 @@ func TestCreateAlertHappyPath(t *testing.T) {
 	}
 }
 
+func TestCreateAlertUsesDimensionNamespaceForMetricDimensions(t *testing.T) {
+	alarms := &stubCloudWatchAPI{
+		describeAlarmsOuts: []*cloudwatch.DescribeAlarmsOutput{{
+			MetricAlarms: []cwtypes.MetricAlarm{{
+				AlarmName: aws.String(BuildAlarmName("dp-ns-k8s", "high-cpu")),
+				AlarmArn:  aws.String("arn:test"),
+			}},
+		}},
+	}
+	client := newTestClient(alarms)
+
+	p := validAlertParams()
+	p.Namespace = "dp-ns-k8s"
+	p.DimensionNamespace = "default"
+	if _, err := client.CreateAlert(context.Background(), p); err != nil {
+		t.Fatalf("CreateAlert() error = %v", err)
+	}
+	got := alarms.putMetricAlarmInput
+	if got == nil || len(got.Metrics) < 2 {
+		t.Fatal("expected PutMetricAlarm with metrics")
+	}
+	// Alarm name should use the rule namespace (Namespace), not DimensionNamespace.
+	if !strings.Contains(aws.ToString(got.AlarmName), "oc-metrics-alert-") {
+		t.Fatalf("unexpected alarm name: %q", aws.ToString(got.AlarmName))
+	}
+	wantAlarmName := BuildAlarmName("dp-ns-k8s", "high-cpu")
+	if aws.ToString(got.AlarmName) != wantAlarmName {
+		t.Fatalf("alarm name should use rule namespace, got %q want %q", aws.ToString(got.AlarmName), wantAlarmName)
+	}
+	// Metric dimensions should use DimensionNamespace ("default").
+	wantDims := map[string]string{
+		DimensionComponentUID:   "comp-1",
+		DimensionEnvironmentUID: "env-1",
+		DimensionNamespace:      "default",
+	}
+	if gotDims := dimensionsAsMap(got.Metrics[0].MetricStat.Metric.Dimensions); !mapEqual(gotDims, wantDims) {
+		t.Fatalf("metric dimensions should use DimensionNamespace: got %#v, want %#v", gotDims, wantDims)
+	}
+}
+
+func TestCreateAlertFallsBackToNamespaceWhenDimensionNamespaceEmpty(t *testing.T) {
+	alarms := &stubCloudWatchAPI{
+		describeAlarmsOuts: []*cloudwatch.DescribeAlarmsOutput{{
+			MetricAlarms: []cwtypes.MetricAlarm{{
+				AlarmName: aws.String(BuildAlarmName("payments", "high-cpu")),
+				AlarmArn:  aws.String("arn:test"),
+			}},
+		}},
+	}
+	client := newTestClient(alarms)
+
+	p := validAlertParams()
+	p.DimensionNamespace = "" // empty → should fall back to p.Namespace
+	if _, err := client.CreateAlert(context.Background(), p); err != nil {
+		t.Fatalf("CreateAlert() error = %v", err)
+	}
+	got := alarms.putMetricAlarmInput
+	wantDims := map[string]string{
+		DimensionComponentUID:   "comp-1",
+		DimensionEnvironmentUID: "env-1",
+		DimensionNamespace:      "payments",
+	}
+	if gotDims := dimensionsAsMap(got.Metrics[0].MetricStat.Metric.Dimensions); !mapEqual(gotDims, wantDims) {
+		t.Fatalf("expected fallback to Namespace: got %#v, want %#v", gotDims, wantDims)
+	}
+}
+
 func TestCreateAlertMemoryUsesMemoryLimitPair(t *testing.T) {
 	alarms := &stubCloudWatchAPI{
 		describeAlarmsOuts: []*cloudwatch.DescribeAlarmsOutput{{

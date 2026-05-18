@@ -34,6 +34,7 @@ type metricsClient interface {
 	DeleteAlert(context.Context, string, string) (string, error)
 	GetAlert(context.Context, string, string) (*cloudwatchmetrics.AlertDetail, error)
 	GetAlarmTagsByName(context.Context, string) (map[string]string, error)
+	ResolveNamespaceDimension(context.Context, string, string) (string, error)
 }
 
 type observerForwarder interface {
@@ -206,6 +207,34 @@ func (h *MetricsHandler) queryHTTPMetrics() gen.QueryMetricsResponseObject {
 	return httpMetricsQueryOKResponse{union}
 }
 
+// resolveAlertDimensionNamespace resolves the CloudWatch Namespace dimension
+// value for an alert. The Observer may send the Kubernetes namespace in
+// metadata.namespace, but the OTel collector emits the OpenChoreo namespace
+// (from the openchoreo.dev/namespace pod label) as the Namespace dimension.
+func (h *MetricsHandler) resolveAlertDimensionNamespace(ctx context.Context, params *cloudwatchmetrics.MetricAlertParams) {
+	if h.scopeResolver != nil {
+		resolved, ok, err := h.scopeResolver.Resolve(ctx, ScopeResolutionParams{
+			ComponentUID:   params.ComponentUID,
+			ProjectUID:     params.ProjectUID,
+			EnvironmentUID: params.EnvironmentUID,
+		})
+		if err != nil {
+			h.logger.Warn("Scope resolution failed for alert", slog.Any("error", err))
+		} else if ok && resolved.Namespace != "" {
+			params.DimensionNamespace = resolved.Namespace
+			return
+		}
+	}
+	ns, err := h.client.ResolveNamespaceDimension(ctx, params.ComponentUID, params.EnvironmentUID)
+	if err != nil {
+		h.logger.Warn("CloudWatch namespace dimension resolution failed", slog.Any("error", err))
+		return
+	}
+	if ns != "" {
+		params.DimensionNamespace = ns
+	}
+}
+
 // CreateAlertRule handles POST /api/v1alpha1/alerts/rules.
 func (h *MetricsHandler) CreateAlertRule(ctx context.Context, request gen.CreateAlertRuleRequestObject) (gen.CreateAlertRuleResponseObject, error) {
 	if request.Body == nil {
@@ -215,6 +244,7 @@ func (h *MetricsHandler) CreateAlertRule(ctx context.Context, request gen.Create
 		}, nil
 	}
 	params := alertParamsFromRequest(request.Body)
+	h.resolveAlertDimensionNamespace(ctx, &params)
 
 	if existing, err := h.client.GetAlert(ctx, params.Namespace, params.Name); err == nil && existing != nil {
 		return gen.CreateAlertRule409JSONResponse{
@@ -272,6 +302,7 @@ func (h *MetricsHandler) UpdateAlertRule(ctx context.Context, request gen.Update
 	}
 	params := alertParamsFromRequest(request.Body)
 	params.Name = request.RuleName
+	h.resolveAlertDimensionNamespace(ctx, &params)
 	arn, err := h.client.UpdateAlert(ctx, params.Namespace, request.RuleName, params)
 	if err != nil {
 		if errors.Is(err, cloudwatchmetrics.ErrAlertNotFound) {

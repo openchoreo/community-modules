@@ -36,17 +36,21 @@ spec:
           resources:
             {{- toYaml .Values.fluentBit.resources | nindent 12 }}
           volumeMounts:
-            # Mount /var/log at the same host path so that the symlinks in
-            # /var/log/containers/ -> /var/log/pods/ resolve correctly inside
-            # the container.
+            # Read-only: Fluent Bit only tails logs from this path.
+            # Mounting read-only prevents the container from writing into
+            # node logs, eliminating the hostPath write-access risk.
             - name: varlog
               mountPath: /var/log
-            # Mount /var/lib/docker/containers so the second symlink hop
-            # /var/log/pods/*/N.log -> /var/lib/docker/containers/ID/*-json.log
-            # also resolves correctly (Docker-based runtimes only).
+              readOnly: true
+            # Read-only: same reason as above.
             - name: dockercontainers
               mountPath: /var/lib/docker/containers
               readOnly: true
+            # Writable emptyDir for the Fluent Bit offset database.
+            # Tracks the read position per log file across pod restarts.
+            # Cannot live in /var/log now that mount is read-only.
+            - name: fluentbit-db
+              mountPath: /fluent-bit/db
             # Full Fluent Bit YAML pipeline (including master key) from Secret.
             - name: moesif-secret
               mountPath: /fluent-bit/etc/fluent-bit.yaml
@@ -66,6 +70,8 @@ spec:
         - name: dockercontainers
           hostPath:
             path: /var/lib/docker/containers
+        - name: fluentbit-db
+          emptyDir: {}
         - name: fluent-bit-config
           configMap:
             name: fluent-bit-config

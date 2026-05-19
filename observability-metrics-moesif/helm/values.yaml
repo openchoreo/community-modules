@@ -1,0 +1,36 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+# Kubernetes namespace where Fluent Bit and its RBAC are installed.
+namespace: openchoreo-observability-plane
+
+fluentBit:
+  image:
+    repository: fluent/fluent-bit
+    tag: latest
+  resources:
+    limits:
+      memory: 200Mi
+    requests:
+      cpu: 100m
+      memory: 100Mi
+
+moesif:
+  # Cluster-level master key sent as X-Api-Token on every request.
+  # Store this value in a Kubernetes Secret rather than committing it here.
+  masterKey: ""
+
+  # Numeric org and app IDs sent as X-Moesif-Org-Id / X-Moesif-App-Id headers.
+  # These are cluster-level defaults; individual pods override them via the
+  # moesif-app-id annotation, which Fluent Bit uses dynamically for the
+  # X-Moesif-Application-Id collector authentication header.
+  orgId: ""
+  appId: ""
+
+  # Moesif collector endpoint
+  host: api.moesif.net
+  port: 443
+  uri: /v1/actions/batch
+
+  # Fluent Bit flush interval (seconds)
+  flush: 5

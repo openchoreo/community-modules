@@ -1,0 +1,21 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v2
+name: observability-metrics-moesif
+description: >
+  A Helm chart that deploys a Fluent Bit DaemonSet to capture Ballerina
+  application metrics from pod stdout, filter lines tagged with
+  logger="metrics", and publish them as Action events to the Moesif
+  collector API (/v1/actions/batch).
+type: application
+version: 0.1.0
+keywords:
+  - moesif
+  - observability
+  - metrics
+  - fluent-bit
+  - ballerina
+maintainers:
+  - name: Moesif Team
+home: https://github.com/openchoreo/community-modules

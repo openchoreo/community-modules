@@ -1,0 +1,74 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: fluent-bit
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: fluent-bit
+    {{- include "observability-metrics-moesif.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app: fluent-bit
+  template:
+    metadata:
+      labels:
+        app: fluent-bit
+    spec:
+      serviceAccountName: fluent-bit
+      tolerations:
+        # Run on every node, including control-plane nodes.
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: fluent-bit
+          image: "{{ .Values.fluentBit.image.repository }}:{{ .Values.fluentBit.image.tag }}"
+          # Explicitly use the YAML config path. The default entrypoint uses
+          # fluent-bit.conf (classic format). YAML format is required because
+          # '#' in the master key would be treated as a comment in classic
+          # format, silently truncating the key value.
+          command: ["/fluent-bit/bin/fluent-bit"]
+          args: ["-c", "/fluent-bit/etc/fluent-bit.yaml"]
+          resources:
+            {{- toYaml .Values.fluentBit.resources | nindent 12 }}
+          volumeMounts:
+            # Mount /var/log at the same host path so that the symlinks in
+            # /var/log/containers/ -> /var/log/pods/ resolve correctly inside
+            # the container.
+            - name: varlog
+              mountPath: /var/log
+            # Mount /var/lib/docker/containers so the second symlink hop
+            # /var/log/pods/*/N.log -> /var/lib/docker/containers/ID/*-json.log
+            # also resolves correctly (Docker-based runtimes only).
+            - name: dockercontainers
+              mountPath: /var/lib/docker/containers
+              readOnly: true
+            # Full Fluent Bit YAML pipeline (including master key) from Secret.
+            - name: moesif-secret
+              mountPath: /fluent-bit/etc/fluent-bit.yaml
+              subPath: fluent-bit.yaml
+              readOnly: true
+            # Parsers and Lua transform from ConfigMap (no credentials).
+            - name: fluent-bit-config
+              mountPath: /fluent-bit/etc/parsers.conf
+              subPath: parsers.conf
+            - name: fluent-bit-config
+              mountPath: /fluent-bit/scripts/transform.lua
+              subPath: transform.lua
+      volumes:
+        - name: varlog
+          hostPath:
+            path: /var/log
+        - name: dockercontainers
+          hostPath:
+            path: /var/lib/docker/containers
+        - name: fluent-bit-config
+          configMap:
+            name: fluent-bit-config
+        - name: moesif-secret
+          secret:
+            secretName: moesif-master-key

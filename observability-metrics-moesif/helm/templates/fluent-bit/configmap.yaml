@@ -1,0 +1,18 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluent-bit-config
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "observability-metrics-moesif.labels" . | nindent 4 }}
+data:
+  # Docker JSON log parser — used by the Tail input to decode container logs.
+  parsers.conf: |
+{{ .Files.Get "files/parsers.conf" | indent 4 }}
+  # Lua script that parses Ballerina logfmt metric lines and builds
+  # the Moesif Actions event structure (action_name, request, metadata).
+  transform.lua: |
+{{ .Files.Get "files/transform.lua" | indent 4 }}

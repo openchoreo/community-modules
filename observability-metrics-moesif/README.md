@@ -241,3 +241,4 @@ helm uninstall observability-metrics-moesif \
 # Remove the namespace (not deleted automatically by Helm):
 kubectl delete namespace openchoreo-observability-plane
 ```
+

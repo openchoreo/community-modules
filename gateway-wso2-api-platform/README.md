@@ -7,6 +7,7 @@ This document provides comprehensive documentation for integrating WSO2 API Plat
 - [Overview](#overview)
 - [High-Level Architecture](#high-level-architecture)
 - [Installation](#installation)
+- [Connecting to WSO2 API Manager](#connecting-to-wso2-api-manager)
 - [Configuration](#configuration)
 - [Maintenance](#maintenance)
 - [Customization](#customization)
@@ -184,13 +185,9 @@ Install the WSO2 API Platform gateway operator using its Helm chart. The operato
 ```bash
 helm install api-platform-operator \
     oci://ghcr.io/wso2/api-platform/helm-charts/gateway-operator \
-    --version 0.4.0 \
+    --version 0.8.0 \
     --namespace openchoreo-data-plane \
-    --set gateway.helm.chartName="oci://ghcr.io/wso2/api-platform/helm-charts/gateway" \
-    --set gateway.helm.chartVersion="0.9.0" \
-    --set gateway.values.gateway.controller.image.tag="0.9.0" \
-    --set gateway.values.gateway.router.image.tag="0.9.0" \
-    --set gateway.values.gateway.policyEngine.image.tag="0.9.0"
+    --set gatewayApi.installStandardCRDs=false
 ```
 
 Wait for the operator pod to be ready:
@@ -249,7 +246,7 @@ EOF
 | `configRef`      | No       | References a ConfigMap (key `values.yaml`) with custom Helm values. Must match `gateway.configRefName` from Step 1   |
 | `controlPlane`   | No       | Control plane connection settings (`host`, `tls`, `tokenSecretRef`) for managed deployments                          |
 
-The operator reconciles this CR and deploys the gateway Helm chart (`oci://ghcr.io/wso2/api-platform/helm-charts/gateway` version `0.9.0`) with the referenced ConfigMap values.
+The operator reconciles this CR and deploys the gateway Helm chart (`oci://ghcr.io/wso2/api-platform/helm-charts/gateway` version `1.1.0`) with the referenced ConfigMap values.
 
 Wait for the gateway pods to be ready:
 
@@ -484,6 +481,176 @@ spec:
 
 ---
 
+## Connecting to WSO2 API Manager
+
+By default, the WSO2 API Platform gateway operates standalone — APIs are managed directly through `RestApi` CRDs (e.g. via the `api-management` ClusterTrait). For deployments that need centralized API governance, lifecycle management, and developer portal capabilities, the gateway can be connected to a **WSO2 API Manager (APIM) control plane** running anywhere reachable from the cluster.
+
+Once connected, the gateway controller:
+
+- Registers itself with APIM as a managed gateway (using a gateway registration token)
+- Subscribes to API deployment events from APIM over a WebSocket channel
+- Pushes locally created APIs (e.g. from `RestApi` CRs) back to APIM via its Publisher REST API (using OAuth2 client credentials)
+- Receives policy and subscription state from APIM
+
+This section assumes you already have a running WSO2 API Manager 4.7.x (or later) instance — installation of APIM itself is out of scope.
+
+### Prerequisites
+
+- A running WSO2 API Manager instance, reachable from the `openchoreo-data-plane` namespace.
+  - **In-cluster:** any namespace, exposed as a `Service` (e.g. `wso2am-acp-service.openchoreo-control-plane:9443`).
+  - **External:** a publicly resolvable hostname / IP with port `9443` (or whichever Management port APIM exposes).
+- APIM admin credentials and access to the Admin Portal (`https://<apim-host>:9443/admin`).
+- The WSO2 API Platform operator and gateway already installed (see [Installation](#installation)).
+
+### Step 1: Generate a Gateway Registration Token in APIM
+
+1. Open the APIM Admin Portal: `https://<apim-host>:9443/admin`. Login with admin credentials.
+2. Navigate to **Gateways → Add Gateway**.
+3. Fill in a name (e.g. `oc-platform-gateway`) and any required fields, then save.
+4. Copy the **Gateway Registration Token** shown after creation. It looks like:
+   ```
+   019e5e87-9cba-730a-af90-99b5bdb88eb8.G9wPihxNkvpK1Vl3cH4YoOlrytlo9jkRV17RSAjM4eI
+   ```
+
+> **Note:** The token authenticates the gateway's WebSocket connection to APIM. Keep it secret. It is bound to the gateway name you chose; the same name must be used in the gateway configuration in Step 3.
+
+### Step 2: Obtain OAuth2 Client Credentials for APIM REST API
+
+The gateway also needs OAuth2 `client_id`/`client_secret` to call APIM's Publisher REST API (used to push locally created APIs back to APIM).
+
+Obtain a `clientId` and `clientSecret` for a SaaS application in APIM with the grant types `client_credentials`, `password`, and `refresh_token`. This is typically done by registering an OAuth2 client via APIM's Dynamic Client Registration (DCR) endpoint or through the Admin Portal — refer to the [APIM documentation](https://apim.docs.wso2.com/en/latest/reference/product-apis/devops-apis/dynamic-client-registration-api/) for the exact procedure for your version.
+
+You will use these credentials together with the APIM admin `username` and `password` in Step 3.
+
+### Step 3: Update the Gateway Configuration
+
+Edit the `gateway-configuration.yaml` ConfigMap (the one referenced by `APIGateway.spec.configRef`) and set the control plane fields under `gateway.config.controller.controlplane` and `gateway.controller.controlPlane`:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-platform-operator-gateway-values
+  namespace: openchoreo-data-plane
+data:
+  values.yaml: |
+    gateway:
+      # ... other settings unchanged ...
+
+      config:
+        controller:
+          # ... other settings unchanged ...
+          controlplane:
+            # Skip TLS verification for the WebSocket connection.
+            # Set to false in production and provide a CA bundle via upstreamCerts.
+            insecure_skip_verify: true
+
+            # OAuth2 client for APIM Publisher REST API (from Step 2)
+            apim_oauth2_client_id:     "<your-clientId>"
+            apim_oauth2_client_secret: "<your-clientSecret>"
+            apim_oauth2_username:      "admin"
+            apim_oauth2_password:      "admin"
+
+            # Must match the gateway name created in APIM in Step 1
+            gateway_name: "oc-platform-gateway"
+
+      controller:
+        controlPlane:
+          # APIM Management host:port reachable from this cluster.
+          # In-cluster example:
+          host: wso2am-acp-service.openchoreo-control-plane:9443
+          # External example:
+          # host: apim.example.com:9443
+          port: 9443
+
+          # Gateway Registration Token (from Step 1).
+          # Either embed the value directly:
+          token:
+            value: "019e5e87-9cba-730a-af90-99b5bdb88eb8.G9wPihxNkvpK1Vl3cH4YoOlrytlo9jkRV17RSAjM4eI"
+            key: token
+          # Or reference an existing Secret instead:
+          # token:
+          #   secretName: gateway-registration-token
+          #   key: token
+```
+
+**Field reference:**
+
+| Field                                                    | Required | Description                                                                                                |
+| -------------------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------- |
+| `config.controller.controlplane.gateway_name`            | Yes      | Must match the gateway name created in APIM (Step 1).                                                      |
+| `config.controller.controlplane.apim_oauth2_client_id`   | Yes      | OAuth2 client ID for APIM Publisher REST API (Step 2).                                                     |
+| `config.controller.controlplane.apim_oauth2_client_secret` | Yes    | OAuth2 client secret (Step 2).                                                                             |
+| `config.controller.controlplane.apim_oauth2_username`    | Yes      | APIM user with publisher permissions (default `admin`).                                                    |
+| `config.controller.controlplane.apim_oauth2_password`    | Yes      | Password for the above user.                                                                               |
+| `config.controller.controlplane.insecure_skip_verify`    | No       | Skip TLS verification for the control-plane WebSocket. Default `true`. Set `false` for production.         |
+| `controller.controlPlane.host`                           | Yes      | APIM Management host:port (in-cluster Service DNS or external FQDN).                                       |
+| `controller.controlPlane.port`                           | Yes      | APIM Management HTTPS port (typically `9443`).                                                             |
+| `controller.controlPlane.token.value`                    | One of   | Gateway registration token inline (Step 1).                                                                |
+| `controller.controlPlane.token.secretName` / `.key`      | One of   | Or a reference to an existing Secret holding the token under the given key.                                |
+
+### Step 4: Apply the Changes
+
+```bash
+kubectl apply -f gateway-configuration.yaml
+
+# Trigger the operator to reconcile and roll the controller deployment
+kubectl annotate apigateway -n openchoreo-data-plane api-platform-default \
+  reconcile-trigger="$(date +%s)" --overwrite
+
+kubectl rollout status deployment -n openchoreo-data-plane \
+  api-platform-default-gateway-controller --timeout=120s
+```
+
+The operator picks up the new ConfigMap values, regenerates the deployment, and rolls the controller pod.
+
+### Step 5: Verify the Connection
+
+Tail the gateway controller logs and look for a successful handshake:
+
+```bash
+kubectl logs -n openchoreo-data-plane \
+  -l app.kubernetes.io/component=controller,app.kubernetes.io/instance=api-platform-default-gateway \
+  --tail=50 -f
+```
+
+Expected log lines on success:
+
+```
+"Connecting to control plane","url":"wss://<apim-host>:9443/internal/data/v1/ws/gateways/connect"
+"Received connection acknowledgment","gateway_id":"...","connection_id":"..."
+"Connection state changed","from":"connecting","to":"connected"
+"Control plane connection established"
+"Starting deployment sync"
+```
+
+In the APIM Admin Portal under **Gateways**, the gateway should now show as **Connected**.
+
+### Troubleshooting
+
+**`websocket: close 4401: Invalid or expired API key`**
+
+The registration token doesn't match what APIM expects. Common causes:
+
+- Token was copied incorrectly.
+- The gateway was deleted from APIM (or its database was reset) since the token was issued — regenerate the token and re-apply Step 3.
+- `gateway_name` in the ConfigMap doesn't match the gateway name in APIM — the token is bound to that name.
+
+**TLS handshake errors**
+
+The gateway's WebSocket client can't validate APIM's TLS certificate. For non-production setups, leave `insecure_skip_verify: true`. For production, mount a CA bundle via `controller.upstreamCerts.secretName` / `configMapName` and set `insecure_skip_verify: false`.
+
+**Controller pod can't resolve `host`**
+
+- For in-cluster APIM: confirm the Service exists (`kubectl get svc -n <apim-namespace>`) and that `host` includes the namespace (`<svc>.<ns>:9443`).
+- For external APIM: confirm DNS resolution from inside a pod in `openchoreo-data-plane` (e.g. `kubectl run -i --rm --restart=Never --image=busybox -- nslookup <apim-host>`) and check egress NetworkPolicies if any are in place.
+
+**APIs created locally don't appear in APIM**
+
+The OAuth2 client credentials or admin user/password are wrong, or the user lacks publisher permissions. Check controller logs for `401` or `403` responses against the APIM REST API and verify the values from Step 2 / Step 3.
+
+---
+
 ## Configuration
 
 ### Helm Charts Reference
@@ -492,15 +659,15 @@ WSO2 API Platform is installed via the operator Helm chart, which in turn deploy
 
 | Chart                                                          | Version | Description                                                                       |
 | -------------------------------------------------------------- | ------- | --------------------------------------------------------------------------------- |
-| `oci://ghcr.io/wso2/api-platform/helm-charts/gateway-operator` | `0.4.0` | WSO2 API Platform operator — watches RestApi/APIGateway CRDs, deploys the gateway |
-| `oci://ghcr.io/wso2/api-platform/helm-charts/gateway`          | `0.9.0` | WSO2 API Platform gateway — deployed by the operator via `gateway.helm.*`         |
+| `oci://ghcr.io/wso2/api-platform/helm-charts/gateway-operator` | `0.8.0` | WSO2 API Platform operator — watches RestApi/APIGateway CRDs, deploys the gateway |
+| `oci://ghcr.io/wso2/api-platform/helm-charts/gateway`          | `1.1.0` | WSO2 API Platform gateway — deployed by the operator via `gateway.helm.*`         |
 
 **Operator Helm values:**
 
 | Value                       | Type   | Default                                                 | Description                                               |
 | --------------------------- | ------ | ------------------------------------------------------- | --------------------------------------------------------- |
 | `gateway.helm.chartName`    | string | `"oci://ghcr.io/wso2/api-platform/helm-charts/gateway"` | OCI chart reference for the gateway sub-chart             |
-| `gateway.helm.chartVersion` | string | `"0.9.0"`                                               | Version of the gateway chart deployed by the operator     |
+| `gateway.helm.chartVersion` | string | `"1.1.0"`                                               | Version of the gateway chart deployed by the operator     |
 | `gateway.configRefName`     | string | `"api-platform-default-gateway-values"`                 | ConfigMap name referenced by the Gateway CR's `configRef` |
 
 The standard gateway values continue to apply to kgateway:

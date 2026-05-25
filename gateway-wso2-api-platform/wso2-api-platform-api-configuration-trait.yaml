@@ -154,10 +154,10 @@ spec:
             main:
               url: http://${metadata.componentName}.${metadata.namespace}:${workload.toServicePorts()[0].port}
           policies: >-
-            ${[{"name": "cors", "version": "v0", "params": {"allowedOrigins": ["*"], "allowedMethods": ["*"], "allowedHeaders": ["*"]}}]
-              + (parameters.jwtAuth.enabled ? [{"name": "jwt-auth", "version": "v0"}] : [])
-              + (parameters.rateLimit.enabled ? [{"name": "basic-ratelimit", "version": "v0", "params": {"limits": parameters.rateLimit.limits}}] : [])
-              + (parameters.addHeaders.enabled ? [{"name": "add-headers", "version": "v0", "params": {"requestHeaders": parameters.addHeaders.requestHeaders, "responseHeaders": parameters.addHeaders.responseHeaders}}] : [])}
+            ${[{"name": "cors", "version": "v1", "params": {"allowedOrigins": ["*"], "allowedMethods": ["*"], "allowedHeaders": ["*"]}}]
+              + (parameters.jwtAuth.enabled ? [{"name": "jwt-auth", "version": "v1"}] : [])
+              + (parameters.rateLimit.enabled ? [{"name": "basic-ratelimit", "version": "v1", "params": {"limits": parameters.rateLimit.limits}}] : [])
+              + (parameters.addHeaders.enabled ? [{"name": "set-headers", "version": "v1", "params": {"request": {"headers": parameters.addHeaders.requestHeaders}, "response": {"headers": parameters.addHeaders.responseHeaders}}}] : [])}
           operations:
             - method: GET
               path: "/*"

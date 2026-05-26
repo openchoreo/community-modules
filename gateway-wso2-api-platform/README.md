@@ -7,6 +7,7 @@ This document provides comprehensive documentation for integrating WSO2 API Plat
 - [Overview](#overview)
 - [High-Level Architecture](#high-level-architecture)
 - [Installation](#installation)
+- [Running at the Edge](#running-at-the-edge)
 - [Connecting to WSO2 API Manager](#connecting-to-wso2-api-manager)
 - [Configuration](#configuration)
 - [Maintenance](#maintenance)
@@ -16,13 +17,17 @@ This document provides comprehensive documentation for integrating WSO2 API Plat
 
 ## Overview
 
-OpenChoreo uses the [Kubernetes Gateway API](https://gateway-api.sigs.k8s.io/) as the standard API for exposing component endpoints to public or internal networks. The [WSO2 API Platform](https://github.com/wso2/api-platform) provides enterprise API management capabilities — including rate limiting, authentication, and API lifecycle management — through its own CRDs (`RestApi`, `APIGateway`).
+OpenChoreo uses the [Kubernetes Gateway API](https://gateway-api.sigs.k8s.io/) as the standard API for exposing component endpoints to public or internal networks. The [WSO2 API Platform](https://github.com/wso2/api-platform) provides enterprise API management capabilities, including rate limiting, authentication, and API lifecycle management.
 
-Unlike Kong, Traefik, or Envoy Gateway, **WSO2 API Platform does not implement the Kubernetes Gateway API**. It cannot serve as a drop-in replacement for kgateway. Instead, this module deploys WSO2 API Platform alongside the default kgateway and routes traffic through the WSO2 router by replacing the HTTPRoute's `backendRef` with a kgateway `Backend` resource pointing to the WSO2 API Platform router.
+The WSO2 API Platform gateway can run in **two modes**:
+
+- **Behind kgateway (the default).** kgateway stays the Kubernetes Gateway API controller at the edge, and WSO2 API Platform sits behind it to provide API management capabilities like rate limiting, authentication, and API lifecycle management to applications running as OpenChoreo components. Traffic to web application components is routed directly to the applications; components that opt into the `api-management` trait are routed through the WSO2 API Platform Gateway for policy enforcement. This is the recommended setup and the one documented throughout most of this guide.
+
+- **At the edge.** WSO2 API Platform Gateway runs as the Kubernetes Gateway API controller itself. The default kgateway is removed from the data plane and the WSO2 API Platform gateway terminates client traffic directly. Some endpoint types (such as gRPC and WebSocket) and certain TLS capabilities are not yet supported in this mode, due to the current state of WSO2 API Platform Kubernetes Gateway API implementation. See [Running at the Edge](#running-at-the-edge).
 
 ### Key Design Decisions
 
-- **kgateway remains the Gateway API controller**: The default kgateway handles all `Gateway` and `HTTPRoute` resources. WSO2 API Platform does not replace kgateway — it sits behind it as an API management layer.
+- **kgateway remains the Gateway API controller**: The default kgateway handles all `Gateway` and `HTTPRoute` resources. WSO2 API Platform does not replace kgateway, it sits behind it as an API management layer.
 - **Traffic routing via kgateway Backend**: The trait creates a kgateway `Backend` (static type) pointing to the WSO2 API Platform router, and patches the HTTPRoute's `backendRef` to route through the WSO2 router instead of directly to the component's Service.
 - **WSO2 RestApi CRD for API management**: The trait creates a `RestApi` resource that defines the API's context path, version, upstream, operations, and policies. WSO2's operator reconciles this into its internal gateway configuration.
 - **No control plane changes required**: The rendering pipeline, endpoint resolution, and release controllers work unchanged. Only a ClusterTrait is added to inject the WSO2 resources.
@@ -434,13 +439,13 @@ The trait uses OpenChoreo's template rendering pipeline to:
 
 #### Key Differences from Other Gateway Modules
 
-| Feature           | Kong                    | Envoy Gateway                    | Traefik                       | WSO2 API Platform                    |
-| ----------------- | ----------------------- | -------------------------------- | ----------------------------- | ------------------------------------ |
-| Replaces kgateway | Yes                     | Yes                              | Yes                           | **No** — runs alongside kgateway     |
-| Gateway API       | Native support          | Native support                   | Native support                | **Not supported** — uses own CRDs    |
-| Rate limiting     | `KongPlugin` annotation | `BackendTrafficPolicy` targetRef | `Middleware` + `ExtensionRef` | `RestApi` policies                   |
-| Authentication    | `KongPlugin` annotation | `SecurityPolicy` targetRef       | `Middleware` + `ExtensionRef` | `RestApi` policies                   |
-| Traffic routing   | Direct (Gateway API)    | Direct (Gateway API)             | Direct (Gateway API)          | Via kgateway `Backend` → WSO2 router |
+| Feature           | Kong                    | Envoy Gateway                    | Traefik                       | WSO2 API Platform                                                                            |
+| ----------------- | ----------------------- | -------------------------------- | ----------------------------- | -------------------------------------------------------------------------------------------- |
+| Replaces kgateway | Yes                     | Yes                              | Yes                           | **No** — runs alongside kgateway                                                             |
+| Gateway API       | Native support          | Native support                   | Native support                | **Limited** — Gateway + HTTPRoute ([edge mode](#running-at-the-edge)); default uses own CRDs |
+| Rate limiting     | `KongPlugin` annotation | `BackendTrafficPolicy` targetRef | `Middleware` + `ExtensionRef` | `RestApi` policies                                                                           |
+| Authentication    | `KongPlugin` annotation | `SecurityPolicy` targetRef       | `Middleware` + `ExtensionRef` | `RestApi` policies                                                                           |
+| Traffic routing   | Direct (Gateway API)    | Direct (Gateway API)             | Direct (Gateway API)          | Via kgateway `Backend` → WSO2 router                                                         |
 
 #### Example Usage
 
@@ -478,6 +483,204 @@ spec:
             - name: X-Powered-By
               value: OpenChoreo
 ```
+
+---
+
+## Running at the Edge
+
+Everything above runs WSO2 API Platform **behind kgateway**. kgateway stays the Kubernetes Gateway API controller, and the `api-management` trait routes traffic through the WSO2 router via a kgateway `Backend` and a `RestApi`. This is the default, recommended setup.
+
+Recent versions of WSO2 API Platform also provide **limited native support for the Kubernetes Gateway API**. Currently the `Gateway` and `HTTPRoute` resources. This lets you **remove kgateway from the data plane** and run the WSO2 gateway directly at the edge, where it terminates client traffic and routes straight to your component Services.
+
+What changes in this mode:
+
+- WSO2 operator reconciles a standard `Gateway` (through a WSO2 `GatewayClass`) and the `HTTPRoute`s attached to it. There is **no kgateway, no kgateway `Backend`, and no `RestApi`**.
+- The **standard OpenChoreo ComponentTypes work unchanged** — the `HTTPRoute` they render (with the component `Service` as its `backendRef`) is consumed directly by WSO2 API Platform Gateway. **The `api-management` trait is not used.**
+- The edge gateway is swapped in through the data plane Helm chart. The same way you would switch to Kong, Traefik, or Envoy Gateway.
+
+> Use this mode when you want WSO2 API Platform Gateway to be the only data plane gateway. If you need the `RestApi`/trait-driven API management features, keep the default kgateway-fronted setup described above.
+
+### Prerequisites
+
+- The WSO2 API Platform **operator** installed in the data plane ([Installation → Step 1](#step-1-install-the-wso2-api-platform-operator)). You do **not** need the `APIGateway` CR or the `api-management` trait for this mode.
+- Helm 3.x and `kubectl`.
+
+### Step 1: Create the WSO2 API Platform GatewayClass
+
+```bash
+kubectl apply -f - <<EOF
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: wso2-api-platform
+spec:
+  controllerName: gateway.api-platform.wso2.com/gateway-operator
+EOF
+
+kubectl get gatewayclass wso2-api-platform   # ACCEPTED should be True
+```
+
+> **Note:** The operator selects the GatewayClass by **name**, from its `gateway_api.gateway_class_names` allowlist (default `wso2-api-platform`). To use a different name, update that operator value. The `controllerName` is recorded on the class and is immutable once set.
+
+### Step 2: Remove the default data plane gateway
+
+Delete the existing data plane `Gateway` CR so it can be recreated with the WSO2 class:
+
+```bash
+kubectl delete gateway gateway-default -n openchoreo-data-plane
+```
+
+If you previously created the WSO2 `APIGateway` CR for the kgateway-fronted mode, delete it as well — edge mode uses a `Gateway` instead, and a leftover `APIGateway` would run a second, unused gateway runtime:
+
+```bash
+kubectl delete apigateway api-platform-default -n openchoreo-data-plane
+```
+
+> **Single cluster mode:** Do not remove the kgateway controller or its GatewayClass — the control and observability planes still depend on it. Only the **data plane** `gateway-default` is being swapped.
+
+### Step 3: Point the data plane gateway at the WSO2 GatewayClass
+
+Create a values overlay for the data plane Helm chart:
+
+```yaml
+# wso2-edge-values.yaml
+gateway:
+  gatewayClassName: wso2-api-platform
+  httpPort: 19080
+  # metadata.annotations on the Gateway. Tells the operator which ConfigMap of
+  # Helm values to use for the gateway it deploys (reuses gateway-configuration.yaml).
+  annotations:
+    gateway.api-platform.wso2.com/helm-values-configmap: api-platform-operator-gateway-values
+  # spec.infrastructure is propagated to the WSO2 gateway-runtime Service.
+  infrastructure:
+    labels:
+      openchoreo.dev/system-component: gateway
+    annotations:
+      # Expose the runtime as a LoadBalancer so it owns the edge port.
+      gateway.api-platform.wso2.com/service-type: LoadBalancer
+```
+
+Apply it with a Helm upgrade of the data plane chart (use the same chart version as your existing install):
+
+```bash
+helm upgrade openchoreo-data-plane \
+  oci://ghcr.io/openchoreo/helm-charts/openchoreo-data-plane \
+  --version 0.0.0-latest-dev \
+  --namespace openchoreo-data-plane \
+  --reuse-values \
+  -f wso2-edge-values.yaml
+```
+
+This re-creates the `gateway-default` Gateway CR referencing `wso2-api-platform`:
+
+```yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: gateway-default
+  namespace: openchoreo-data-plane
+  annotations:
+    gateway.api-platform.wso2.com/helm-values-configmap: api-platform-operator-gateway-values
+spec:
+  gatewayClassName: wso2-api-platform
+  infrastructure:
+    annotations:
+      gateway.api-platform.wso2.com/service-type: LoadBalancer
+  listeners:
+    - name: http
+      port: 19080
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: All
+```
+
+The operator reconciles it and installs a per Gateway runtime Helm release (`gateway-default-gateway`), deploying the WSO2 controller + gateway-runtime (Envoy) and exposing the runtime as a LoadBalancer on the listener port.
+
+> **About the annotations:**
+>
+> - `gateway.api-platform.wso2.com/helm-values-configmap` — the operator merges this ConfigMap's values (your `gateway-configuration.yaml`) into the gateway it deploys. Omit it to use operator defaults.
+> - `gateway.api-platform.wso2.com/service-type: LoadBalancer` — makes the gateway-runtime Service a LoadBalancer so it can serve external traffic directly. Use `ClusterIP` if another load balancer or ingress fronts it.
+
+### Step 4: Verify the gateway is programmed
+
+```bash
+kubectl get gatewayclass wso2-api-platform
+kubectl get gateway gateway-default -n openchoreo-data-plane   # ACCEPTED + PROGRAMMED = True
+kubectl get pods,svc -n openchoreo-data-plane \
+  -l app.kubernetes.io/instance=gateway-default-gateway
+```
+
+Expected:
+
+| Resource                                          | Description                                      |
+| ------------------------------------------------- | ------------------------------------------------ |
+| `gateway-default-gateway-controller-*` pod        | WSO2 controller — manages API config, xDS server |
+| `gateway-default-gateway-gateway-runtime-*` pod   | WSO2 gateway runtime (Envoy + policy engine)     |
+| `gateway-default-gateway-gateway-runtime` Service | `LoadBalancer` exposing the HTTP listener port   |
+
+### Step 5: Deploy and invoke a component (no trait)
+
+Because WSO2 consumes the standard HTTPRoute directly, **do not attach the `api-management` trait**. Deploy any component that uses a default ComponentType and exposes an external HTTP endpoint, for example:
+
+```yaml
+apiVersion: openchoreo.dev/v1alpha1
+kind: Component
+metadata:
+  name: greeter-service
+  namespace: default
+spec:
+  owner:
+    projectName: default
+  autoDeploy: true
+  componentType:
+    kind: ClusterComponentType
+    name: deployment/service
+---
+apiVersion: openchoreo.dev/v1alpha1
+kind: Workload
+metadata:
+  name: greeter-service-workload
+  namespace: default
+spec:
+  owner:
+    projectName: default
+    componentName: greeter-service
+  endpoints:
+    http:
+      type: HTTP
+      port: 9090
+      visibility: [external]
+  container:
+    image: ghcr.io/openchoreo/samples/greeter-service:latest
+    args: ["--port", "9090"]
+```
+
+The OpenChoreo pipeline renders an `HTTPRoute` whose `backendRef` is the component `Service`. Confirm WSO2 API Platform accepted it:
+
+```bash
+kubectl get httproute -A
+kubectl get httproute <name> -n <dp-namespace> \
+  -o jsonpath='{.status.parents[0].conditions}'
+# Accepted=True      ("Route accepted by platform gateway operator")
+# ResolvedRefs=True  ("API deployed to platform gateway")
+```
+
+Invoke it through the WSO2 edge gateway:
+
+```bash
+curl http://development-default.openchoreoapis.localhost:19080/greeter-service-http/greeter/greet -v
+```
+
+A `server: WSO2 API Platform` response header confirms traffic is being served by WSO2 at the edge.
+
+### Endpoint URL resolution
+
+Because the Gateway keeps the same name (`gateway-default`), namespace, and listener port (`19080`), the control plane's endpoint URL resolution and the ClusterDataPlane/DataPlane gateway config keep working unchanged. If you change the gateway name or port, update `spec.gateway.ingress` on the ClusterDataPlane/DataPlane CR to match.
+
+### Reverting to kgateway
+
+Delete the WSO2 `Gateway`, then re-run the Helm upgrade with the defaults (`gateway.gatewayClassName=kgateway`) to restore the kgateway-fronted setup.
 
 ---
 
@@ -576,18 +779,18 @@ data:
 
 **Field reference:**
 
-| Field                                                    | Required | Description                                                                                                |
-| -------------------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------- |
-| `config.controller.controlplane.gateway_name`            | Yes      | Must match the gateway name created in APIM (Step 1).                                                      |
-| `config.controller.controlplane.apim_oauth2_client_id`   | Yes      | OAuth2 client ID for APIM Publisher REST API (Step 2).                                                     |
-| `config.controller.controlplane.apim_oauth2_client_secret` | Yes    | OAuth2 client secret (Step 2).                                                                             |
-| `config.controller.controlplane.apim_oauth2_username`    | Yes      | APIM user with publisher permissions (default `admin`).                                                    |
-| `config.controller.controlplane.apim_oauth2_password`    | Yes      | Password for the above user.                                                                               |
-| `config.controller.controlplane.insecure_skip_verify`    | No       | Skip TLS verification for the control-plane WebSocket. Default `true`. Set `false` for production.         |
-| `controller.controlPlane.host`                           | Yes      | APIM Management host:port (in-cluster Service DNS or external FQDN).                                       |
-| `controller.controlPlane.port`                           | Yes      | APIM Management HTTPS port (typically `9443`).                                                             |
-| `controller.controlPlane.token.value`                    | One of   | Gateway registration token inline (Step 1).                                                                |
-| `controller.controlPlane.token.secretName` / `.key`      | One of   | Or a reference to an existing Secret holding the token under the given key.                                |
+| Field                                                      | Required | Description                                                                                        |
+| ---------------------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------- |
+| `config.controller.controlplane.gateway_name`              | Yes      | Must match the gateway name created in APIM (Step 1).                                              |
+| `config.controller.controlplane.apim_oauth2_client_id`     | Yes      | OAuth2 client ID for APIM Publisher REST API (Step 2).                                             |
+| `config.controller.controlplane.apim_oauth2_client_secret` | Yes      | OAuth2 client secret (Step 2).                                                                     |
+| `config.controller.controlplane.apim_oauth2_username`      | Yes      | APIM user with publisher permissions (default `admin`).                                            |
+| `config.controller.controlplane.apim_oauth2_password`      | Yes      | Password for the above user.                                                                       |
+| `config.controller.controlplane.insecure_skip_verify`      | No       | Skip TLS verification for the control-plane WebSocket. Default `true`. Set `false` for production. |
+| `controller.controlPlane.host`                             | Yes      | APIM Management host:port (in-cluster Service DNS or external FQDN).                               |
+| `controller.controlPlane.port`                             | Yes      | APIM Management HTTPS port (typically `9443`).                                                     |
+| `controller.controlPlane.token.value`                      | One of   | Gateway registration token inline (Step 1).                                                        |
+| `controller.controlPlane.token.secretName` / `.key`        | One of   | Or a reference to an existing Secret holding the token under the given key.                        |
 
 ### Step 4: Apply the Changes
 

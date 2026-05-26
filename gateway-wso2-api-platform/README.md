@@ -21,9 +21,9 @@ OpenChoreo uses the [Kubernetes Gateway API](https://gateway-api.sigs.k8s.io/) a
 
 The WSO2 API Platform gateway can run in **two modes**:
 
-- **Behind kgateway (the default).** kgateway stays the Kubernetes Gateway API controller at the edge, and WSO2 API Platform sits behind it to provide API management capabilities like rate limiting, authentication, and API lifecycle management to applications running as OpenChoreo components. Traffic to web application components is routed directly to the applications; components that opt into the `api-management` trait are routed through the WSO2 API Platform Gateway for policy enforcement. This is the recommended setup and the one documented throughout most of this guide.
+- **Behind kgateway (default):** kgateway stays the Kubernetes Gateway API controller at the edge, and WSO2 API Platform sits behind it to provide API management capabilities like rate limiting, authentication, and API lifecycle management to applications running as OpenChoreo components. Traffic to web application components is routed directly to the applications; components that opt into the `api-management` trait are routed through the WSO2 API Platform Gateway for policy enforcement. This is the recommended setup and the one documented throughout most of this guide.
 
-- **At the edge.** WSO2 API Platform Gateway runs as the Kubernetes Gateway API controller itself. The default kgateway is removed from the data plane and the WSO2 API Platform gateway terminates client traffic directly. Some endpoint types (such as gRPC and WebSocket) and certain TLS capabilities are not yet supported in this mode, due to the current state of WSO2 API Platform Kubernetes Gateway API implementation. See [Running at the Edge](#running-at-the-edge).
+- **At the edge:** WSO2 API Platform Gateway runs as the Kubernetes Gateway API controller itself. The default kgateway is removed from the data plane and the WSO2 API Platform gateway terminates client traffic directly. Some endpoint types (such as gRPC and WebSocket) and certain TLS capabilities are not yet supported in this mode, due to the current state of WSO2 API Platform Kubernetes Gateway API implementation. See `Running at the Edge` section.
 
 ### Key Design Decisions
 
@@ -488,9 +488,9 @@ spec:
 
 ## Running at the Edge
 
-Everything above runs WSO2 API Platform **behind kgateway**. kgateway stays the Kubernetes Gateway API controller, and the `api-management` trait routes traffic through the WSO2 router via a kgateway `Backend` and a `RestApi`. This is the default, recommended setup.
+By default WSO2 API Platform runs **behind kgateway**. kgateway stays the Kubernetes Gateway API controller, and the `api-management` trait routes traffic through the WSO2 router via a kgateway `Backend` and a `RestApi`. This is the default, recommended setup.
 
-Recent versions of WSO2 API Platform also provide **limited native support for the Kubernetes Gateway API**. Currently the `Gateway` and `HTTPRoute` resources. This lets you **remove kgateway from the data plane** and run the WSO2 gateway directly at the edge, where it terminates client traffic and routes straight to your component Services.
+With the release of WSO2 API Platform 1.1.0, **Kubernetes Gateway API** is supported. Currently only the `Gateway` and `HTTPRoute` resources are supported. This lets you **remove kgateway from the data plane** and run the WSO2 API Platform gateway directly at the edge, where it terminates client traffic and routes straight to your component Services.
 
 What changes in this mode:
 

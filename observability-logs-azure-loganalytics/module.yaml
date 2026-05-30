@@ -1,0 +1,10 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+# Module manifest used by the CI workflow to discover Docker images to build.
+# Each entry defines the image name, build context, and Dockerfile path.
+
+images:
+  - name: observability-logs-azure-loganalytics-adapter
+    context: .
+    dockerfile: Dockerfile

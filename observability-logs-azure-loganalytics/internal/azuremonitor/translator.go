@@ -13,9 +13,6 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/monitor/armmonitor"
 )
 
-// RuleInput is the adapter's internal, decoupled representation of an
-// alert rule. The generated OpenAPI types are mapped to this shape in
-// the handler layer to keep this package free of OpenAPI imports.
 type RuleInput struct {
 	Namespace      string
 	RuleName       string
@@ -23,12 +20,12 @@ type RuleInput struct {
 	ProjectUID     string
 	EnvironmentUID string
 
-	Query    string
-	Operator string  // "gt" | "gte" | "lt" | "lte" | "eq"
+	Query     string
+	Operator  string // "gt" | "gte" | "lt" | "lte" | "eq"
 	Threshold float64
-	Interval string  // ISO 8601 duration
-	Window   string  // ISO 8601 duration
-	Enabled  bool
+	Interval  string // ISO 8601 duration
+	Window    string // ISO 8601 duration
+	Enabled   bool
 }
 
 // TranslatorConfig holds settings that don't vary per rule.
@@ -40,8 +37,6 @@ type TranslatorConfig struct {
 	DefaultWindowSize          string
 }
 
-// ToScheduledQueryRule converts a RuleInput into the SDK resource. Defaults
-// are applied for evaluationFrequency and windowSize when empty.
 func ToScheduledQueryRule(in RuleInput, cfg TranslatorConfig) (*armmonitor.ScheduledQueryRuleResource, error) {
 	if err := validate(in, cfg); err != nil {
 		return nil, err

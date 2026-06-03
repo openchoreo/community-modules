@@ -16,13 +16,11 @@ import (
 	"time"
 )
 
-// Client posts alerts to the Observer's webhook ingestion endpoint.
 type Client struct {
 	baseURL    string
 	httpClient *http.Client
 }
 
-// NewClient constructs an observer client targeting baseURL.
 func NewClient(baseURL string) *Client {
 	return &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
@@ -32,8 +30,6 @@ func NewClient(baseURL string) *Client {
 	}
 }
 
-// alertWebhookRequest is the shape the Observer expects, matching the AWS
-// adapter's payload exactly so the Observer treats both adapters identically.
 type alertWebhookRequest struct {
 	RuleName       string    `json:"ruleName"`
 	RuleNamespace  string    `json:"ruleNamespace"`

@@ -1,10 +1,6 @@
 // Copyright 2026 The OpenChoreo Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package auth holds the webhook authentication middleware. The adapter
-// exposes /api/v1alpha1/alerts/webhook publicly (via HTTPRoute) so calls
-// from Azure's Logic App forwarder can reach it; this middleware gates
-// that path with a shared-secret header.
 package auth
 
 import (
@@ -14,15 +10,9 @@ import (
 )
 
 const (
-	// WebhookAuthHeader is the header Logic App injects with the shared secret.
 	WebhookAuthHeader = "X-OpenChoreo-Webhook-Token"
-
-	// WebhookAuthQuery is the URL query parameter used when the caller (e.g.
-	// Azure Action Groups' plain Webhook receiver) cannot set custom headers.
-	WebhookAuthQuery = "token"
-
-	// webhookPath is the only path this middleware gates.
-	webhookPath = "/api/v1alpha1/alerts/webhook"
+	WebhookAuthQuery  = "token"
+	webhookPath       = "/api/v1alpha1/alerts/webhook"
 )
 
 // WebhookAuthMiddleware checks the shared-secret header on the webhook path.

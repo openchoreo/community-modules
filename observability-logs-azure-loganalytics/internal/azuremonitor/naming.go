@@ -9,7 +9,6 @@ import (
 )
 
 const (
-	// azureNamePrefix marks rules created by this adapter.
 	azureNamePrefix = "oc-"
 
 	// CustomPropOpenChoreoNamespace carries the OpenChoreo namespace of the
@@ -22,12 +21,7 @@ const (
 )
 
 // DeriveAzureName produces a deterministic Azure resource name from the
-// OpenChoreo (namespace, ruleName) pair. The Azure rule-name regex is
-// ^[^#<>%&:?/{}*]{1,260}$ — a hex digest fits comfortably and avoids the
-// disallowed characters entirely.
-//
-// The OpenChoreo identity is NOT recoverable from this name alone; it is
-// carried through customProperties on the rule (see CustomProp* constants).
+// OpenChoreo (namespace, ruleName) pair. The name is a truncated SHA-256 hash of the pair, with an "oc-" prefix
 func DeriveAzureName(namespace, ruleName string) string {
 	h := sha256.Sum256([]byte(namespace + "/" + ruleName))
 	return azureNamePrefix + hex.EncodeToString(h[:16])

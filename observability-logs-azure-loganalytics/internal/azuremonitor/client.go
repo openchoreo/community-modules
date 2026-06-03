@@ -1,8 +1,6 @@
 // Copyright 2026 The OpenChoreo Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package azuremonitor implements alert rule CRUD against Azure Monitor's
-// scheduledQueryRules and verifies a configured Action Group at boot.
 package azuremonitor
 
 import (
@@ -18,7 +16,6 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/monitor/armmonitor"
 )
 
-// ErrNotFound is returned when an alert rule does not exist.
 var ErrNotFound = errors.New("alert rule not found")
 
 // Client wraps armmonitor's ScheduledQueryRulesClient and ActionGroupsClient
@@ -32,7 +29,6 @@ type Client struct {
 	logger   *slog.Logger
 }
 
-// Config bundles the inputs required to construct a Client.
 type Config struct {
 	SubscriptionID string
 	ResourceGroup  string
@@ -45,7 +41,6 @@ type Config struct {
 	DefaultWindowSize          string
 }
 
-// NewClient constructs the wrapped SDK clients.
 func NewClient(cred azcore.TokenCredential, cfg Config, logger *slog.Logger) (*Client, error) {
 	if cfg.SubscriptionID == "" {
 		return nil, errors.New("subscriptionID is required")
@@ -76,8 +71,6 @@ func NewClient(cred azcore.TokenCredential, cfg Config, logger *slog.Logger) (*C
 	}, nil
 }
 
-// VerifyActionGroup confirms the configured Action Group exists in the
-// adapter's RG. Called at boot — equivalent of laClient.Ping().
 func (c *Client) VerifyActionGroup(ctx context.Context) error {
 	name, err := parseActionGroupName(c.cfg.ActionGroupID)
 	if err != nil {
@@ -89,7 +82,6 @@ func (c *Client) VerifyActionGroup(ctx context.Context) error {
 	return nil
 }
 
-// RuleResult is what handlers receive after a successful create/update/get.
 type RuleResult struct {
 	BackendID   string // ARM ID of the rule
 	LogicalID   string // OpenChoreo (namespace, ruleName) → derived Azure name
@@ -97,8 +89,6 @@ type RuleResult struct {
 	DisplayName string
 }
 
-// CreateRule provisions a new scheduled query rule. The Azure resource name
-// is derived deterministically; CreateOrUpdate makes this idempotent.
 func (c *Client) CreateRule(ctx context.Context, in RuleInput) (*RuleResult, error) {
 	res, err := ToScheduledQueryRule(in, c.cfg)
 	if err != nil {
@@ -113,7 +103,6 @@ func (c *Client) CreateRule(ctx context.Context, in RuleInput) (*RuleResult, err
 	return ruleResultFrom(resp.ScheduledQueryRuleResource, name), nil
 }
 
-// GetRule fetches the rule by its derived Azure name.
 func (c *Client) GetRule(ctx context.Context, namespace, ruleName string) (*RuleResult, error) {
 	name := DeriveAzureName(namespace, ruleName)
 	resp, err := c.rules.Get(ctx, c.resGroup, name, nil)
@@ -166,7 +155,6 @@ func (c *Client) UpdateRule(ctx context.Context, in RuleInput) (*RuleResult, err
 	return c.CreateRule(ctx, in)
 }
 
-// DeleteRule removes the rule by namespace/ruleName.
 func (c *Client) DeleteRule(ctx context.Context, namespace, ruleName string) error {
 	name := DeriveAzureName(namespace, ruleName)
 	if _, err := c.rules.Delete(ctx, c.resGroup, name, nil); err != nil {
@@ -178,9 +166,6 @@ func (c *Client) DeleteRule(ctx context.Context, namespace, ruleName string) err
 	return nil
 }
 
-// DeleteRuleByAzureName removes the rule by its already-derived Azure name.
-// Used when only the Observer-supplied rule name is known and the namespace
-// was recovered via tag lookup.
 func (c *Client) DeleteRuleByAzureName(ctx context.Context, azureName string) error {
 	if _, err := c.rules.Delete(ctx, c.resGroup, azureName, nil); err != nil {
 		if isNotFoundError(err) {

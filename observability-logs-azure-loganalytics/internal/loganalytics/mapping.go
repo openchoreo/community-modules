@@ -13,10 +13,6 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/monitor/query/azlogs"
 )
 
-// mapComponentRows converts the azlogs response into a slice of
-// ComponentLogEntry. Column order in the response matches the project()
-// clause in BuildComponentLogsKQL, so we resolve by column name to stay
-// resilient to future query changes.
 func mapComponentRows(resp azlogs.QueryWorkspaceResponse) ([]ComponentLogEntry, error) {
 	if len(resp.Tables) == 0 {
 		return nil, nil
@@ -46,7 +42,6 @@ func mapComponentRows(resp azlogs.QueryWorkspaceResponse) ([]ComponentLogEntry, 
 	return out, nil
 }
 
-// mapWorkflowRows converts the azlogs response into WorkflowLogEntry rows.
 func mapWorkflowRows(resp azlogs.QueryWorkspaceResponse) ([]WorkflowLogEntry, error) {
 	if len(resp.Tables) == 0 {
 		return nil, nil

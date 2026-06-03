@@ -17,10 +17,6 @@ func BuildComponentLogsKQL(p ComponentLogsParams) string {
 	var sb strings.Builder
 
 	sb.WriteString(ContainerLogV2Table)
-	// Scope by the openchoreo.dev/namespace pod label — the logical OpenChoreo
-	// namespace. Observer passes its searchScope.namespace (the logical name,
-	// e.g. "default") through as p.Namespace, matching the AWS adapter's
-	// kubernetes.labels."openchoreo.dev/namespace" filter.
 	sb.WriteString("\n| where tostring(parse_json(tostring(KubernetesMetadata.podLabels))[")
 	sb.WriteString(kqlString(LabelNamespace))
 	sb.WriteString("]) == ")
@@ -150,10 +146,6 @@ func sortOrderOrDefault(s SortOrder) SortOrder {
 	return SortDesc
 }
 
-// kqlString quotes a string literal for safe KQL embedding. KQL string
-// literals are wrapped in double quotes; the only required escape is the
-// double quote itself (and backslash, to be safe). We disallow newlines
-// to make accidental query injection harder.
 func kqlString(s string) string {
 	// Replace control characters that KQL would otherwise interpret.
 	s = strings.ReplaceAll(s, `\`, `\\`)

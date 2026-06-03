@@ -1,11 +1,6 @@
 // Copyright 2026 The OpenChoreo Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package webhook parses Azure Monitor's Common Alert Schema and recovers
-// the OpenChoreo identity from a fired alert payload.
-//
-// Schema reference:
-// https://learn.microsoft.com/en-us/azure/azure-monitor/alerts/alerts-common-schema
 package webhook
 
 import (
@@ -58,14 +53,10 @@ type AlertContext struct {
 		RowCount int `json:"rowCount,omitempty"`
 	} `json:"SearchResults,omitempty"`
 }
-
-// AlertCondition is a single fired condition in the V2 alertContext.
 type AlertCondition struct {
 	SearchQuery string  `json:"searchQuery,omitempty"`
 	MetricValue float64 `json:"metricValue,omitempty"`
 }
-
-// AlertDetails is the adapter's normalized form, ready to forward.
 type AlertDetails struct {
 	RuleNamespace  string
 	RuleName       string
@@ -90,9 +81,6 @@ func Parse(raw []byte) (*AlertDetails, error) {
 
 	namespace, ruleName := identityFromCustomProperties(payload.Data.CustomProperties)
 	if namespace == "" || ruleName == "" {
-		// Fallback: parse essentials.alertRuleId. The docs warn this field
-		// may be absent in some payloads, so it's a fallback and not the
-		// primary source.
 		if ns, name, ok := parseAlertRuleID(payload.Data.Essentials.AlertRuleID); ok && ns != "" && name != "" {
 			namespace, ruleName = ns, name
 		}
@@ -116,7 +104,7 @@ func Parse(raw []byte) (*AlertDetails, error) {
 }
 
 // extractValueAndQuery prefers the V2 condition.allOf[] shape emitted by the
-// 2021-08-01+ scheduledQueryRules API and falls back to the legacy V1
+// v2 scheduledQueryRules API and falls back to the legacy V1
 // SearchQuery / SearchResults.rowCount fields when V2 is absent.
 func extractValueAndQuery(ctx AlertContext) (float64, string) {
 	for _, c := range ctx.Condition.AllOf {
@@ -135,11 +123,6 @@ func identityFromCustomProperties(props map[string]string) (namespace, ruleName 
 		strings.TrimSpace(props[customPropRuleName])
 }
 
-// parseAlertRuleID is a best-effort fallback when customProperties is absent.
-// The ARM ID format is /subscriptions/<sub>/resourceGroups/<rg>/providers/microsoft.insights/scheduledQueryRules/<name>
-// — the name encodes a hash, so we can't recover namespace/ruleName from it
-// without an external map. Returns (rgName, ruleResourceName, true) so the
-// caller can use them as a degraded identity rather than failing outright.
 func parseAlertRuleID(armID string) (rg, name string, ok bool) {
 	if armID == "" {
 		return "", "", false

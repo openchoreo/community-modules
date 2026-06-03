@@ -11,8 +11,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 
 	app "github.com/openchoreo/community-modules/observability-logs-azure-loganalytics/internal"
@@ -21,14 +19,6 @@ import (
 	"github.com/openchoreo/community-modules/observability-logs-azure-loganalytics/internal/loganalytics"
 	"github.com/openchoreo/community-modules/observability-logs-azure-loganalytics/internal/observer"
 )
-
-// staticTokenCredential satisfies azcore.TokenCredential using a pre-fetched
-// bearer token. Dev/testing only — tokens expire after ~1 hour.
-type staticTokenCredential struct{ token string }
-
-func (s *staticTokenCredential) GetToken(_ context.Context, _ policy.TokenRequestOptions) (azcore.AccessToken, error) {
-	return azcore.AccessToken{Token: s.token, ExpiresOn: time.Now().Add(time.Hour)}, nil
-}
 
 func main() {
 	cfg, err := app.LoadConfig()
@@ -49,41 +39,17 @@ func main() {
 	bootstrapCtx, bootstrapCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer bootstrapCancel()
 
-	// Log Analytics queries need a token with audience https://api.loganalytics.io.
-	// ARM operations (scheduledQueryRules, actionGroups) need a token with audience
-	// https://management.azure.com. Azure access tokens are audience-scoped, so the
-	// static-token path needs two separate tokens. When both env vars are unset, we
-	// fall back to DefaultAzureCredential which handles audience switching itself.
-	var laCred, armCred azcore.TokenCredential
-	staticLA := os.Getenv("AZURE_STATIC_TOKEN")
-	staticARM := os.Getenv("AZURE_STATIC_TOKEN_ARM")
-	if staticLA != "" || staticARM != "" {
-		logger.Warn("using static bearer token(s) — dev only, tokens expire in ~1h",
-			slog.Bool("la", staticLA != ""),
-			slog.Bool("arm", staticARM != ""),
-		)
-		if staticLA != "" {
-			laCred = &staticTokenCredential{token: staticLA}
-		}
-		if staticARM != "" {
-			armCred = &staticTokenCredential{token: staticARM}
-		}
-	}
-	if laCred == nil || armCred == nil {
-		def, err := azidentity.NewDefaultAzureCredential(nil)
-		if err != nil {
-			logger.Error("failed to construct DefaultAzureCredential", slog.Any("error", err))
-			os.Exit(1)
-		}
-		if laCred == nil {
-			laCred = def
-		}
-		if armCred == nil {
-			armCred = def
-		}
+	// DefaultAzureCredential walks the standard chain: env vars, Workload
+	// Identity, Managed Identity, Azure CLI. It handles audience switching
+	// (api.loganalytics.io for queries, management.azure.com for ARM) so the
+	// same credential is reused for both clients.
+	cred, err := azidentity.NewDefaultAzureCredential(nil)
+	if err != nil {
+		logger.Error("failed to construct DefaultAzureCredential", slog.Any("error", err))
+		os.Exit(1)
 	}
 
-	laClient, err := loganalytics.NewClient(laCred, loganalytics.Config{
+	laClient, err := loganalytics.NewClient(cred, loganalytics.Config{
 		WorkspaceID:  cfg.WorkspaceID,
 		QueryTimeout: cfg.QueryTimeout,
 	}, logger.With("component", "loganalytics"))
@@ -101,7 +67,7 @@ func main() {
 	}
 	logger.Info("Log Analytics workspace reachable", slog.String("workspaceId", cfg.WorkspaceID))
 
-	alertClient, err := azuremonitor.NewClient(armCred, azuremonitor.Config{
+	alertClient, err := azuremonitor.NewClient(cred, azuremonitor.Config{
 		SubscriptionID:             cfg.SubscriptionID,
 		ResourceGroup:              cfg.ResourceGroup,
 		Region:                     cfg.Region,

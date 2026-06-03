@@ -17,15 +17,13 @@ func BuildComponentLogsKQL(p ComponentLogsParams) string {
 	var sb strings.Builder
 
 	sb.WriteString(ContainerLogV2Table)
-	// Scope by PodNamespace — the actual k8s namespace where pods run.
-	// OpenChoreo workloads land in synthesised DP namespaces
-	// (dp-<ns>-<proj>-<env>-<hash>), which is what the caller (Observer)
-	// passes through as p.Namespace.
-	//
-	// The openchoreo.dev/namespace pod label carries the *logical* OpenChoreo
-	// namespace ("default") which doesn't equal the DP namespace, so filtering
-	// by that label produces zero matches.
-	sb.WriteString("\n| where PodNamespace == ")
+	// Scope by the openchoreo.dev/namespace pod label — the logical OpenChoreo
+	// namespace. Observer passes its searchScope.namespace (the logical name,
+	// e.g. "default") through as p.Namespace, matching the AWS adapter's
+	// kubernetes.labels."openchoreo.dev/namespace" filter.
+	sb.WriteString("\n| where tostring(parse_json(tostring(KubernetesMetadata.podLabels))[")
+	sb.WriteString(kqlString(LabelNamespace))
+	sb.WriteString("]) == ")
 	sb.WriteString(kqlString(p.Namespace))
 
 	if p.ComponentUID != "" {

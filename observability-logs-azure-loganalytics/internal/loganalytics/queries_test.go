@@ -11,7 +11,7 @@ import (
 
 func TestBuildComponentLogsKQL_AllFiltersPresent(t *testing.T) {
 	p := ComponentLogsParams{
-		Namespace:      "dp-default-default-development-f8e58905",
+		Namespace:      "default",
 		ComponentUID:   "comp-uid-1",
 		ProjectUID:     "proj-uid-1",
 		EnvironmentUID: "env-uid-1",
@@ -27,7 +27,8 @@ func TestBuildComponentLogsKQL_AllFiltersPresent(t *testing.T) {
 
 	expects := []string{
 		"ContainerLogV2",
-		`PodNamespace == "dp-default-default-development-f8e58905"`,
+		`parse_json(tostring(KubernetesMetadata.podLabels))["openchoreo.dev/namespace"]`,
+		`"default"`,
 		`parse_json(tostring(KubernetesMetadata.podLabels))["openchoreo.dev/component-uid"]`,
 		`parse_json(tostring(KubernetesMetadata.podLabels))["openchoreo.dev/project-uid"]`,
 		`parse_json(tostring(KubernetesMetadata.podLabels))["openchoreo.dev/environment-uid"]`,
@@ -49,14 +50,15 @@ func TestBuildComponentLogsKQL_AllFiltersPresent(t *testing.T) {
 
 func TestBuildComponentLogsKQL_OnlyNamespace(t *testing.T) {
 	p := ComponentLogsParams{
-		Namespace: "openchoreo-obs",
+		Namespace: "default",
 		Limit:     100,
 	}
 	got := BuildComponentLogsKQL(p)
 
 	mustContain := []string{
 		"ContainerLogV2",
-		`PodNamespace == "openchoreo-obs"`,
+		`parse_json(tostring(KubernetesMetadata.podLabels))["openchoreo.dev/namespace"]`,
+		`"default"`,
 		`order by TimeGenerated desc`,
 		`take 100`,
 	}

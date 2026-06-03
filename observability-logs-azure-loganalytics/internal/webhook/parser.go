@@ -38,14 +38,31 @@ type CommonAlertSchema struct {
 			FiredDateTime    string `json:"firedDateTime"`
 			ResolvedDateTime string `json:"resolvedDateTime,omitempty"`
 		} `json:"essentials"`
-		AlertContext struct {
-			SearchQuery   string `json:"SearchQuery,omitempty"`
-			SearchResults struct {
-				RowCount int `json:"rowCount,omitempty"`
-			} `json:"SearchResults,omitempty"`
-		} `json:"alertContext"`
+		AlertContext     AlertContext      `json:"alertContext"`
 		CustomProperties map[string]string `json:"customProperties,omitempty"`
 	} `json:"data"`
+}
+
+// AlertContext covers both shapes Azure Monitor emits for log alerts:
+//   - V2 (scheduledQueryRules API 2021-08-01 and later) puts the fired
+//     conditions under condition.allOf[].
+//   - V1 (legacy scheduledQueryRules API 2018-04-16) puts SearchQuery and
+//     SearchResults at the top of alertContext.
+type AlertContext struct {
+	Condition struct {
+		AllOf []AlertCondition `json:"allOf,omitempty"`
+	} `json:"condition,omitempty"`
+
+	SearchQuery   string `json:"SearchQuery,omitempty"`
+	SearchResults struct {
+		RowCount int `json:"rowCount,omitempty"`
+	} `json:"SearchResults,omitempty"`
+}
+
+// AlertCondition is a single fired condition in the V2 alertContext.
+type AlertCondition struct {
+	SearchQuery string  `json:"searchQuery,omitempty"`
+	MetricValue float64 `json:"metricValue,omitempty"`
 }
 
 // AlertDetails is the adapter's normalized form, ready to forward.
@@ -85,16 +102,29 @@ func Parse(raw []byte) (*AlertDetails, error) {
 	}
 
 	ts := parseTime(payload.Data.Essentials.FiredDateTime)
+	alertValue, searchQuery := extractValueAndQuery(payload.Data.AlertContext)
 
 	return &AlertDetails{
 		RuleNamespace:  namespace,
 		RuleName:       ruleName,
 		Severity:       payload.Data.Essentials.Severity,
-		AlertValue:     float64(payload.Data.AlertContext.SearchResults.RowCount),
+		AlertValue:     alertValue,
 		AlertTimestamp: ts,
 		AlertRuleID:    payload.Data.Essentials.AlertRuleID,
-		SearchQuery:    payload.Data.AlertContext.SearchQuery,
+		SearchQuery:    searchQuery,
 	}, nil
+}
+
+// extractValueAndQuery prefers the V2 condition.allOf[] shape emitted by the
+// 2021-08-01+ scheduledQueryRules API and falls back to the legacy V1
+// SearchQuery / SearchResults.rowCount fields when V2 is absent.
+func extractValueAndQuery(ctx AlertContext) (float64, string) {
+	for _, c := range ctx.Condition.AllOf {
+		if c.SearchQuery != "" || c.MetricValue != 0 {
+			return c.MetricValue, c.SearchQuery
+		}
+	}
+	return float64(ctx.SearchResults.RowCount), ctx.SearchQuery
 }
 
 func identityFromCustomProperties(props map[string]string) (namespace, ruleName string) {

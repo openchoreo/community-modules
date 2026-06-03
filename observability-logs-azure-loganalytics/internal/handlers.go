@@ -188,7 +188,7 @@ func (h *LogsHandler) GetAlertRule(ctx context.Context, request gen.GetAlertRule
 	if request.RuleName == "" {
 		return gen.GetAlertRule400JSONResponse(makeError(gen.BadRequest, errCodeBadRequest, "ruleName is required")), nil
 	}
-	res, _, err := h.alertClient.FindRuleByName(ctx, request.RuleName)
+	_, namespace, err := h.alertClient.FindRuleByName(ctx, request.RuleName)
 	if err != nil {
 		if errors.Is(err, azuremonitor.ErrNotFound) {
 			return gen.GetAlertRule404JSONResponse(makeError(gen.NotFound, errCodeNotFound, "alert rule not found")), nil
@@ -200,15 +200,17 @@ func (h *LogsHandler) GetAlertRule(ctx context.Context, request gen.GetAlertRule
 		return gen.GetAlertRule500JSONResponse(makeError(gen.InternalServerError, errCodeInternal, "failed to get alert rule")), nil
 	}
 	resp := gen.AlertRuleResponse{}
-	name := res.LogicalID
-	resp.Metadata = &struct {
+	metadata := &struct {
 		ComponentUid   *openapi_types.UUID `json:"componentUid,omitempty"`
 		EnvironmentUid *openapi_types.UUID `json:"environmentUid,omitempty"`
 		Name           *string             `json:"name,omitempty"`
 		Namespace      *string             `json:"namespace,omitempty"`
 		ProjectUid     *openapi_types.UUID `json:"projectUid,omitempty"`
 	}{Name: &request.RuleName}
-	_ = name
+	if namespace != "" {
+		metadata.Namespace = &namespace
+	}
+	resp.Metadata = metadata
 	return gen.GetAlertRule200JSONResponse(resp), nil
 }
 

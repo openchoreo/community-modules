@@ -21,10 +21,10 @@ const (
 // BuildAlertKQL constructs a Log Analytics query for an alert rule. If the
 // input already starts with "ContainerLogV2" it is treated as a literal KQL
 // statement and returned unchanged. Otherwise it is treated as a search
-// phrase and wrapped in a count-by-scope KQL that mirrors the Phase 1 log
-// query path: filter by openchoreo.dev/* pod labels, scope by namespace +
-// UIDs, contains the phrase, project a single integer count column for
-// Azure to compare against the threshold.
+// phrase and wrapped in a count-by-scope KQL that mirrors the log query
+// path: filter by openchoreo.dev/* pod labels, scope by namespace + UIDs,
+// contains the phrase, project a single integer count column for Azure to
+// compare against the threshold.
 func BuildAlertKQL(in RuleInput) string {
 	if isKQLStatement(in.Query) {
 		return in.Query

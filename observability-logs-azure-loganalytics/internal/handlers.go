@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"strings"
 
@@ -21,17 +20,15 @@ import (
 )
 
 const (
-	errCodePrefix         = "OBS-V1-L-AZURE"
-	errCodeBadRequest     = errCodePrefix + "-400"
-	errCodeNotFound       = errCodePrefix + "-404"
-	errCodeInternal       = errCodePrefix + "-500"
-	errCodeNotImplemented = errCodePrefix + "-501"
+	errCodePrefix     = "OBS-V1-L-AZURE"
+	errCodeBadRequest = errCodePrefix + "-400"
+	errCodeNotFound   = errCodePrefix + "-404"
+	errCodeInternal   = errCodePrefix + "-500"
 )
 
 // LogsHandler implements the generated StrictServerInterface backed by
-// the Log Analytics client. When alertClient and observerClient are nil,
-// the five alert endpoints return a structured "not implemented" error
-// (Phase 1 behaviour). When set, they are fully wired (Phase 2).
+// the Log Analytics client (for log queries) and the Azure Monitor +
+// Observer clients (for alert CRUD and webhook forwarding).
 type LogsHandler struct {
 	client         *loganalytics.Client
 	alertClient    *azuremonitor.Client
@@ -39,14 +36,8 @@ type LogsHandler struct {
 	logger         *slog.Logger
 }
 
-// NewLogsHandler constructs a Phase 1 handler.
-func NewLogsHandler(client *loganalytics.Client, logger *slog.Logger) *LogsHandler {
-	return &LogsHandler{client: client, logger: logger}
-}
-
-// NewLogsHandlerWithAlerts constructs a Phase 2 handler with the alert
-// CRUD and webhook forwarder wired in.
-func NewLogsHandlerWithAlerts(
+// NewLogsHandler constructs a handler with all dependencies wired in.
+func NewLogsHandler(
 	client *loganalytics.Client,
 	alertClient *azuremonitor.Client,
 	observerClient *observer.Client,
@@ -173,9 +164,6 @@ func (h *LogsHandler) QueryLogs(ctx context.Context, request gen.QueryLogsReques
 
 // CreateAlertRule provisions a new Azure Monitor scheduled query rule.
 func (h *LogsHandler) CreateAlertRule(ctx context.Context, request gen.CreateAlertRuleRequestObject) (gen.CreateAlertRuleResponseObject, error) {
-	if h.alertClient == nil {
-		return gen.CreateAlertRule500JSONResponse(notImplementedError("CreateAlertRule")), nil
-	}
 	if request.Body == nil {
 		return gen.CreateAlertRule400JSONResponse(makeError(gen.BadRequest, errCodeBadRequest, "request body is required")), nil
 	}
@@ -197,9 +185,6 @@ func (h *LogsHandler) CreateAlertRule(ctx context.Context, request gen.CreateAle
 
 // GetAlertRule returns the rule matching the Observer-supplied ruleName.
 func (h *LogsHandler) GetAlertRule(ctx context.Context, request gen.GetAlertRuleRequestObject) (gen.GetAlertRuleResponseObject, error) {
-	if h.alertClient == nil {
-		return gen.GetAlertRule500JSONResponse(notImplementedError("GetAlertRule")), nil
-	}
 	if request.RuleName == "" {
 		return gen.GetAlertRule400JSONResponse(makeError(gen.BadRequest, errCodeBadRequest, "ruleName is required")), nil
 	}
@@ -229,9 +214,6 @@ func (h *LogsHandler) GetAlertRule(ctx context.Context, request gen.GetAlertRule
 
 // UpdateAlertRule is idempotent — CreateOrUpdate.
 func (h *LogsHandler) UpdateAlertRule(ctx context.Context, request gen.UpdateAlertRuleRequestObject) (gen.UpdateAlertRuleResponseObject, error) {
-	if h.alertClient == nil {
-		return gen.UpdateAlertRule500JSONResponse(notImplementedError("UpdateAlertRule")), nil
-	}
 	if request.Body == nil {
 		return gen.UpdateAlertRule400JSONResponse(makeError(gen.BadRequest, errCodeBadRequest, "request body is required")), nil
 	}
@@ -253,9 +235,6 @@ func (h *LogsHandler) UpdateAlertRule(ctx context.Context, request gen.UpdateAle
 
 // DeleteAlertRule removes the Azure rule matching the Observer-supplied ruleName.
 func (h *LogsHandler) DeleteAlertRule(ctx context.Context, request gen.DeleteAlertRuleRequestObject) (gen.DeleteAlertRuleResponseObject, error) {
-	if h.alertClient == nil {
-		return gen.DeleteAlertRule500JSONResponse(notImplementedError("DeleteAlertRule")), nil
-	}
 	if request.RuleName == "" {
 		return gen.DeleteAlertRule400JSONResponse(makeError(gen.BadRequest, errCodeBadRequest, "ruleName is required")), nil
 	}
@@ -287,9 +266,6 @@ func (h *LogsHandler) DeleteAlertRule(ctx context.Context, request gen.DeleteAle
 // HandleAlertWebhook accepts a Common Alert Schema payload, validates the
 // identity, and forwards a normalized alert to the Observer.
 func (h *LogsHandler) HandleAlertWebhook(ctx context.Context, request gen.HandleAlertWebhookRequestObject) (gen.HandleAlertWebhookResponseObject, error) {
-	if h.observerClient == nil {
-		return gen.HandleAlertWebhook500JSONResponse(notImplementedError("HandleAlertWebhook")), nil
-	}
 	if request.Body == nil {
 		return gen.HandleAlertWebhook400JSONResponse(makeError(gen.BadRequest, errCodeBadRequest, "request body is required")), nil
 	}
@@ -391,17 +367,6 @@ func internalError(message string) gen.QueryLogs500JSONResponse {
 		Title:     &t,
 		ErrorCode: &c,
 		Message:   &message,
-	}
-}
-
-func notImplementedError(method string) gen.ErrorResponse {
-	t := gen.InternalServerError
-	c := errCodeNotImplemented
-	msg := fmt.Sprintf("%s is not implemented in this adapter version", method)
-	return gen.ErrorResponse{
-		Title:     &t,
-		ErrorCode: &c,
-		Message:   &msg,
 	}
 }
 

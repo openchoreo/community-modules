@@ -2,9 +2,9 @@
 
 An OpenChoreo logs adapter backed by Azure Log Analytics (`ContainerLogV2`
 populated by Azure Monitor Agent via the AKS Container Insights addon).
-
-Status: Phase 1 — `Health` and `QueryLogs` implemented. Alert endpoints
-return `500 Not Implemented`.
+Implements log queries, alert rule CRUD via Azure Monitor scheduled query
+rules, and webhook ingress for alerts delivered through Action Groups in
+the Common Alert Schema.
 
 ## Prerequisites
 
@@ -12,20 +12,34 @@ return `500 Not Implemented`.
   the `ContainerLogV2` schema (set via the `container-azm-ms-agentconfig`
   ConfigMap in `kube-system` with `containerlog_schema_version = "v2"`).
 - A Log Analytics workspace on the Analytics table plan (the default).
-  `ContainerLogV2` on the Basic plan is not supported in Phase 1 — the
-  adapter uses the official `azlogs` SDK which targets `/query`, and Basic
-  tables require `/search`.
+  `ContainerLogV2` on the Basic plan is not supported — the adapter uses
+  the official `azlogs` SDK which targets `/query`, and Basic tables
+  require `/search`.
+- An Action Group in the same subscription with `useCommonAlertSchema=true`
+  on its webhook receiver, pointed at this adapter's `/api/v1alpha1/alerts/webhook`.
 - For in-cluster deployment: AKS OIDC issuer + Workload Identity enabled,
   and a User-Assigned Managed Identity federated to the adapter's
-  ServiceAccount with the `Log Analytics Reader` role on the workspace.
+  ServiceAccount with `Log Analytics Reader` on the workspace and
+  `Monitoring Contributor` on the resource group holding the scheduled
+  query rules.
 - For local development: an `az login` session and an Azure account with
-  read access to the workspace.
+  the same role grants.
 
 ## Environment variables
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `LOG_ANALYTICS_WORKSPACE_ID` | **yes** | — | Workspace `customerId` (GUID), not the ARM ID. |
+| `AZURE_SUBSCRIPTION_ID` | **yes** | — | Subscription that hosts the scheduled query rules and Action Group. |
+| `AZURE_RESOURCE_GROUP` | **yes** | — | Resource group that holds the rules and Action Group. |
+| `WORKSPACE_RESOURCE_ID` | **yes** | — | Fully-qualified ARM ID of the Log Analytics workspace (used as the rule scope). |
+| `ACTION_GROUP_ID` | **yes** | — | ARM ID of the Action Group that rules invoke when they fire. |
+| `OBSERVER_URL` | **yes** | — | Observer base URL; fired alerts are forwarded to `${OBSERVER_URL}/api/v1alpha1/alerts/webhook`. |
+| `WEBHOOK_SHARED_SECRET` | **yes** when `WEBHOOK_AUTH_ENABLED=true` | — | Bearer token compared in constant time against the `X-OpenChoreo-Webhook-Token` header or `?token=` query parameter. Min 16 bytes. |
+| `WEBHOOK_AUTH_ENABLED` | no | `true` | Set to `false` to disable webhook auth (testing only). |
+| `AZURE_REGION` | no | `eastus2` | Region for newly created rules. Must match the workspace region. |
+| `DEFAULT_EVALUATION_FREQUENCY` | no | `PT5M` | ISO 8601 duration used when a request omits one. |
+| `DEFAULT_WINDOW_SIZE` | no | `PT5M` | ISO 8601 duration used when a request omits one. |
 | `SERVER_PORT` | no | `8080` | HTTP listener port. |
 | `LOG_LEVEL` | no | `info` | `debug` \| `info` \| `warn` \| `error`. |
 | `QUERY_TIMEOUT` | no | `30s` | Per-query timeout (Go duration string). |
@@ -67,15 +81,15 @@ curl -s -X POST http://localhost:8080/api/v1/logs/query \
 
 ## Endpoints
 
-| Method | Path | Status |
-|--------|------|--------|
-| `GET`  | `/health` | implemented |
-| `POST` | `/api/v1/logs/query` | implemented |
-| `POST` | `/api/v1alpha1/alerts/rules` | 500 Not Implemented (Phase 2) |
-| `GET`  | `/api/v1alpha1/alerts/rules/{ruleName}` | 500 Not Implemented (Phase 2) |
-| `PUT`  | `/api/v1alpha1/alerts/rules/{ruleName}` | 500 Not Implemented (Phase 2) |
-| `DELETE` | `/api/v1alpha1/alerts/rules/{ruleName}` | 500 Not Implemented (Phase 2) |
-| `POST` | `/api/v1alpha1/alerts/webhook` | 500 Not Implemented (Phase 2) |
+| Method | Path |
+|--------|------|
+| `GET`  | `/health` |
+| `POST` | `/api/v1/logs/query` |
+| `POST` | `/api/v1alpha1/alerts/rules` |
+| `GET`  | `/api/v1alpha1/alerts/rules/{ruleName}` |
+| `PUT`  | `/api/v1alpha1/alerts/rules/{ruleName}` |
+| `DELETE` | `/api/v1alpha1/alerts/rules/{ruleName}` |
+| `POST` | `/api/v1alpha1/alerts/webhook` |
 
 The OpenAPI contract is vendored from
 https://openchoreo.dev/api-specs/observability-logs-adapter-api.yaml
@@ -112,12 +126,10 @@ plane). When the request's `searchScope` is a `WorkflowSearchScope` with a
 `PodNamespace == "workflows-" + namespace` and filters out the Argo infra
 containers (`init`, `wait`).
 
-## Not in Phase 1
+## Not yet covered
 
-- Alert rule CRUD and webhook handling (Phase 2 — Azure Monitor Scheduled
-  Query Alert Rules and Action Group webhooks via the Common Alert Schema).
-- Helm chart (Phase 3 — adapter Deployment, Service, ServiceAccount with
-  Workload Identity annotation, HTTPRoute, NetworkPolicy).
+- Helm chart (adapter Deployment, Service, ServiceAccount with Workload
+  Identity annotation, HTTPRoute, NetworkPolicy).
 - Support for Basic-plan `ContainerLogV2` (would require the `/search`
   endpoint, not exposed by the `azlogs` SDK).
 - Fallback log shipper (this module assumes AMA via Container Insights;

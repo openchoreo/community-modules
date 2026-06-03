@@ -44,7 +44,6 @@ func main() {
 		slog.String("serverPort", cfg.ServerPort),
 		slog.String("workspaceId", cfg.WorkspaceID),
 		slog.Duration("queryTimeout", cfg.QueryTimeout),
-		slog.Bool("alertsEnabled", cfg.AlertsEnabled),
 	)
 
 	bootstrapCtx, bootstrapCancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -102,46 +101,37 @@ func main() {
 	}
 	logger.Info("Log Analytics workspace reachable", slog.String("workspaceId", cfg.WorkspaceID))
 
-	var (
-		handler          *app.LogsHandler
-		extraMiddlewares []app.Middleware
-	)
-
-	if cfg.AlertsEnabled {
-		alertClient, err := azuremonitor.NewClient(armCred, azuremonitor.Config{
-			SubscriptionID:             cfg.SubscriptionID,
-			ResourceGroup:              cfg.ResourceGroup,
-			Region:                     cfg.Region,
-			WorkspaceResourceID:        cfg.WorkspaceResourceID,
-			ActionGroupID:              cfg.ActionGroupID,
-			DefaultEvaluationFrequency: cfg.DefaultEvaluationFrequency,
-			DefaultWindowSize:          cfg.DefaultWindowSize,
-		}, logger.With("component", "azuremonitor"))
-		if err != nil {
-			logger.Error("failed to construct Azure Monitor client", slog.Any("error", err))
-			os.Exit(1)
-		}
-
-		if err := alertClient.VerifyActionGroup(bootstrapCtx); err != nil {
-			logger.Error("action group verification failed at boot",
-				slog.String("actionGroupId", cfg.ActionGroupID),
-				slog.Any("error", err),
-			)
-			os.Exit(1)
-		}
-		logger.Info("Action Group reachable", slog.String("actionGroupId", cfg.ActionGroupID))
-
-		obsClient := observer.NewClient(cfg.ObserverURL)
-		handler = app.NewLogsHandlerWithAlerts(laClient, alertClient, obsClient, logger.With("component", "handler"))
-
-		extraMiddlewares = append(extraMiddlewares, app.Middleware(
-			auth.WebhookAuthMiddleware(cfg.WebhookSharedSecret, cfg.WebhookAuthEnabled, logger.With("component", "webhook-auth")),
-		))
-	} else {
-		handler = app.NewLogsHandler(laClient, logger.With("component", "handler"))
+	alertClient, err := azuremonitor.NewClient(armCred, azuremonitor.Config{
+		SubscriptionID:             cfg.SubscriptionID,
+		ResourceGroup:              cfg.ResourceGroup,
+		Region:                     cfg.Region,
+		WorkspaceResourceID:        cfg.WorkspaceResourceID,
+		ActionGroupID:              cfg.ActionGroupID,
+		DefaultEvaluationFrequency: cfg.DefaultEvaluationFrequency,
+		DefaultWindowSize:          cfg.DefaultWindowSize,
+	}, logger.With("component", "azuremonitor"))
+	if err != nil {
+		logger.Error("failed to construct Azure Monitor client", slog.Any("error", err))
+		os.Exit(1)
 	}
 
-	srv := app.NewServer(cfg.ServerPort, handler, logger.With("component", "server"), extraMiddlewares...)
+	if err := alertClient.VerifyActionGroup(bootstrapCtx); err != nil {
+		logger.Error("action group verification failed at boot",
+			slog.String("actionGroupId", cfg.ActionGroupID),
+			slog.Any("error", err),
+		)
+		os.Exit(1)
+	}
+	logger.Info("Action Group reachable", slog.String("actionGroupId", cfg.ActionGroupID))
+
+	obsClient := observer.NewClient(cfg.ObserverURL)
+	handler := app.NewLogsHandler(laClient, alertClient, obsClient, logger.With("component", "handler"))
+
+	webhookAuth := app.Middleware(
+		auth.WebhookAuthMiddleware(cfg.WebhookSharedSecret, cfg.WebhookAuthEnabled, logger.With("component", "webhook-auth")),
+	)
+
+	srv := app.NewServer(cfg.ServerPort, handler, logger.With("component", "server"), webhookAuth)
 
 	serverErrCh := make(chan error, 1)
 	go func() {

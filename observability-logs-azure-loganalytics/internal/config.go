@@ -28,35 +28,27 @@ type Config struct {
 	// QueryTimeout caps a single Log Analytics query. Default 30s.
 	QueryTimeout time.Duration
 
-	// --- Phase 2: alert rule CRUD + webhook ingress ---
-
-	// AlertsEnabled gates the entire alert subsystem. When false, the
-	// adapter behaves like Phase 1 — alert endpoints return 501.
-	AlertsEnabled bool
-
 	// SubscriptionID is the Azure subscription that hosts the
-	// scheduledQueryRules and actionGroups. Required when AlertsEnabled.
+	// scheduledQueryRules and actionGroups.
 	SubscriptionID string
 
 	// ResourceGroup is the RG that holds the rules and action group.
-	// Required when AlertsEnabled.
 	ResourceGroup string
 
 	// Region is the Azure region for newly created rules (must match
-	// the workspace region in practice). Required when AlertsEnabled.
+	// the workspace region in practice).
 	Region string
 
 	// WorkspaceResourceID is the fully-qualified ARM ID of the Log
-	// Analytics workspace. Used as the rule's `scopes`. Required when
-	// AlertsEnabled.
+	// Analytics workspace. Used as the rule's `scopes`.
 	WorkspaceResourceID string
 
 	// ActionGroupID is the ARM ID of the shared Action Group that all
-	// rules invoke when they fire. Required when AlertsEnabled.
+	// rules invoke when they fire.
 	ActionGroupID string
 
 	// ObserverURL is where fired alerts are forwarded after the adapter
-	// receives them on its webhook. Required when AlertsEnabled.
+	// receives them on its webhook.
 	ObserverURL string
 
 	// WebhookAuthEnabled toggles the X-OpenChoreo-Webhook-Token check.
@@ -100,40 +92,37 @@ func LoadConfig() (*Config, error) {
 		cfg.QueryTimeout = d
 	}
 
-	cfg.AlertsEnabled = strings.EqualFold(getEnvDefault("ALERTS_ENABLED", "false"), "true")
-	if cfg.AlertsEnabled {
-		cfg.SubscriptionID = strings.TrimSpace(os.Getenv("AZURE_SUBSCRIPTION_ID"))
-		cfg.ResourceGroup = strings.TrimSpace(os.Getenv("AZURE_RESOURCE_GROUP"))
-		cfg.Region = strings.TrimSpace(getEnvDefault("AZURE_REGION", "eastus2"))
-		cfg.WorkspaceResourceID = strings.TrimSpace(os.Getenv("WORKSPACE_RESOURCE_ID"))
-		cfg.ActionGroupID = strings.TrimSpace(os.Getenv("ACTION_GROUP_ID"))
-		cfg.ObserverURL = strings.TrimSpace(os.Getenv("OBSERVER_URL"))
+	cfg.SubscriptionID = strings.TrimSpace(os.Getenv("AZURE_SUBSCRIPTION_ID"))
+	cfg.ResourceGroup = strings.TrimSpace(os.Getenv("AZURE_RESOURCE_GROUP"))
+	cfg.Region = strings.TrimSpace(getEnvDefault("AZURE_REGION", "eastus2"))
+	cfg.WorkspaceResourceID = strings.TrimSpace(os.Getenv("WORKSPACE_RESOURCE_ID"))
+	cfg.ActionGroupID = strings.TrimSpace(os.Getenv("ACTION_GROUP_ID"))
+	cfg.ObserverURL = strings.TrimSpace(os.Getenv("OBSERVER_URL"))
 
-		missing := []string{}
-		if cfg.SubscriptionID == "" {
-			missing = append(missing, "AZURE_SUBSCRIPTION_ID")
-		}
-		if cfg.ResourceGroup == "" {
-			missing = append(missing, "AZURE_RESOURCE_GROUP")
-		}
-		if cfg.WorkspaceResourceID == "" {
-			missing = append(missing, "WORKSPACE_RESOURCE_ID")
-		}
-		if cfg.ActionGroupID == "" {
-			missing = append(missing, "ACTION_GROUP_ID")
-		}
-		if cfg.ObserverURL == "" {
-			missing = append(missing, "OBSERVER_URL")
-		}
-		if len(missing) > 0 {
-			return nil, fmt.Errorf("ALERTS_ENABLED=true but missing: %s", strings.Join(missing, ", "))
-		}
+	missing := []string{}
+	if cfg.SubscriptionID == "" {
+		missing = append(missing, "AZURE_SUBSCRIPTION_ID")
+	}
+	if cfg.ResourceGroup == "" {
+		missing = append(missing, "AZURE_RESOURCE_GROUP")
+	}
+	if cfg.WorkspaceResourceID == "" {
+		missing = append(missing, "WORKSPACE_RESOURCE_ID")
+	}
+	if cfg.ActionGroupID == "" {
+		missing = append(missing, "ACTION_GROUP_ID")
+	}
+	if cfg.ObserverURL == "" {
+		missing = append(missing, "OBSERVER_URL")
+	}
+	if len(missing) > 0 {
+		return nil, fmt.Errorf("missing required env vars: %s", strings.Join(missing, ", "))
+	}
 
-		cfg.WebhookAuthEnabled = strings.EqualFold(getEnvDefault("WEBHOOK_AUTH_ENABLED", "true"), "true")
-		cfg.WebhookSharedSecret = os.Getenv("WEBHOOK_SHARED_SECRET")
-		if cfg.WebhookAuthEnabled && len(cfg.WebhookSharedSecret) < 16 {
-			return nil, errors.New("WEBHOOK_SHARED_SECRET must be at least 16 bytes when WEBHOOK_AUTH_ENABLED=true")
-		}
+	cfg.WebhookAuthEnabled = strings.EqualFold(getEnvDefault("WEBHOOK_AUTH_ENABLED", "true"), "true")
+	cfg.WebhookSharedSecret = os.Getenv("WEBHOOK_SHARED_SECRET")
+	if cfg.WebhookAuthEnabled && len(cfg.WebhookSharedSecret) < 16 {
+		return nil, errors.New("WEBHOOK_SHARED_SECRET must be at least 16 bytes when WEBHOOK_AUTH_ENABLED=true")
 	}
 
 	return cfg, nil

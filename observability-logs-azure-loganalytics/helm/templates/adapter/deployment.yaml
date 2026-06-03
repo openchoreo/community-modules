@@ -1,0 +1,72 @@
+{{- if .Values.adapter.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: logs-adapter
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: logs-adapter-azure-loganalytics
+spec:
+  replicas: {{ .Values.adapter.replicas }}
+  selector:
+    matchLabels:
+      app: logs-adapter-azure-loganalytics
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/adapter/configmap.yaml") . | sha256sum }}
+        {{- if and .Values.adapter.webhookAuth.enabled (not .Values.adapter.webhookAuth.sharedSecretRef.name) }}
+        checksum/webhook-secret: {{ include (print $.Template.BasePath "/adapter/webhook-secret.yaml") . | sha256sum }}
+        {{- end }}
+      labels:
+        app: logs-adapter-azure-loganalytics
+        {{- if .Values.adapter.serviceAccount.annotations }}
+        azure.workload.identity/use: "true"
+        {{- end }}
+        {{- with .Values.adapter.serviceAccount.labels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: logs-adapter-azure-loganalytics
+      securityContext:
+        runAsUser: 10500
+        runAsGroup: 10500
+        runAsNonRoot: true
+      containers:
+        - name: adapter
+          image: "{{ .Values.adapter.image.repository }}:{{ .Values.adapter.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.adapter.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.adapter.service.port }}
+          envFrom:
+            - configMapRef:
+                name: logs-adapter-azure-loganalytics
+          env:
+            - name: WEBHOOK_AUTH_ENABLED
+              value: {{ .Values.adapter.webhookAuth.enabled | quote }}
+            {{- if .Values.adapter.webhookAuth.enabled }}
+            - name: WEBHOOK_SHARED_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "logs-azure-loganalytics.webhookSecretName" . }}
+                  key: {{ .Values.adapter.webhookAuth.sharedSecretRef.key | default "token" | quote }}
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.adapter.service.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.adapter.service.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.adapter.resources | nindent 12 }}
+{{- end }}

@@ -79,6 +79,45 @@ curl -s -X POST http://localhost:8080/api/v1/logs/query \
   }'
 ```
 
+## Installation on AKS
+
+The chart in `helm/` ships the adapter Deployment, Service, ServiceAccount,
+ConfigMap, optional webhook Secret, optional HTTPRoute, and optional
+NetworkPolicy. It assumes Workload Identity for Azure auth and that the
+Container Insights addon + Action Group already exist (see Prerequisites).
+
+```bash
+# 1. Federate a User-Assigned Managed Identity to the chart's ServiceAccount.
+#    Replace UAMI_CLIENT_ID with the client ID of an identity that has:
+#      - Log Analytics Reader on the workspace
+#      - Monitoring Contributor on the resource group holding the rules
+#      - Reader on the Action Group
+helm install logs-adapter helm/ \
+  --namespace openchoreo-obs --create-namespace \
+  --set azure.subscriptionId="$AZURE_SUBSCRIPTION_ID" \
+  --set azure.resourceGroup="$AZURE_RESOURCE_GROUP" \
+  --set azure.region="$AZURE_REGION" \
+  --set logAnalytics.workspaceId="$WORKSPACE_CUSTOMER_ID" \
+  --set logAnalytics.workspaceResourceId="$WORKSPACE_ARM_ID" \
+  --set actionGroup.id="$ACTION_GROUP_ARM_ID" \
+  --set adapter.observerUrl="http://observer.openchoreo-observability-plane.svc.cluster.local:8080" \
+  --set adapter.webhookAuth.sharedSecret="$WEBHOOK_TOKEN" \
+  --set adapter.serviceAccount.annotations."azure\.workload\.identity/client-id"="$UAMI_CLIENT_ID"
+
+# 2. Point the Action Group's webhook receiver at the adapter and pass the
+#    same token via ?token=... (Azure's plain Webhook receiver cannot set
+#    custom headers). The X-OpenChoreo-Webhook-Token header is also accepted
+#    if you front the adapter with a Logic App.
+```
+
+To expose the webhook path through a Gateway API HTTPRoute (e.g. when the
+Action Group's webhook URL must be public), enable `adapter.webhookRoute`:
+
+```bash
+--set adapter.webhookRoute.enabled=true \
+--set adapter.webhookRoute.parentRef.name=gateway-default
+```
+
 ## Endpoints
 
 | Method | Path |
@@ -128,8 +167,6 @@ containers (`init`, `wait`).
 
 ## Not yet covered
 
-- Helm chart (adapter Deployment, Service, ServiceAccount with Workload
-  Identity annotation, HTTPRoute, NetworkPolicy).
 - Support for Basic-plan `ContainerLogV2` (would require the `/search`
   endpoint, not exposed by the `azlogs` SDK).
 - Fallback log shipper (this module assumes AMA via Container Insights;

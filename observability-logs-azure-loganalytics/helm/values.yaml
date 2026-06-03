@@ -1,0 +1,100 @@
+# Azure subscription, resource group, and region where the alert rules and
+# Action Group live. Required.
+azure:
+  subscriptionId: ""
+  resourceGroup: ""
+  region: ""
+
+# Log Analytics workspace the adapter queries. Both IDs are required: the
+# customerId (GUID) is used by the /query API; the ARM resource ID is used as
+# the `scopes` for scheduled query rules the adapter creates.
+logAnalytics:
+  workspaceId: ""
+  workspaceResourceId: ""
+
+# Pre-existing Action Group ARM ID that all rules invoke when they fire. The
+# Action Group's webhook receiver must point at this adapter's
+# /api/v1alpha1/alerts/webhook endpoint and set useCommonAlertSchema=true.
+actionGroup:
+  id: ""
+
+# ---------------------------------------------------------------------------
+# Adapter — the Go service that answers Observer logs queries and Action
+# Group webhooks.
+# ---------------------------------------------------------------------------
+adapter:
+  enabled: true
+  replicas: 1
+  image:
+    repository: "ghcr.io/openchoreo/observability-logs-azure-loganalytics-adapter"
+    tag: ""
+    pullPolicy: IfNotPresent
+  service:
+    port: 8080
+  # Annotations applied to the adapter ServiceAccount. Use this to attach the
+  # AKS Workload Identity client-id annotation, e.g.:
+  #   azure.workload.identity/client-id: <user-assigned-managed-identity-client-id>
+  serviceAccount:
+    annotations: {}
+    # Pod labels used by Workload Identity webhook mutation. The
+    # `azure.workload.identity/use: "true"` label on the Pod is what triggers
+    # the webhook to project the federated token; the chart sets it whenever
+    # serviceAccount.annotations is non-empty.
+    labels: {}
+
+  # Upper bound for how long a single Log Analytics query may run.
+  queryTimeoutSeconds: 30
+  logLevel: INFO
+
+  # URL of the OpenChoreo Observer; webhook payloads are forwarded here.
+  observerUrl: "http://observer.openchoreo-observability-plane.svc.cluster.local:8080"
+
+  # Default evaluation frequency + window applied when an alert rule request
+  # omits one. ISO 8601 durations.
+  alertRuleDefaults:
+    evaluationFrequency: "PT5M"
+    windowSize: "PT5M"
+
+  # Shared-secret auth on the public webhook endpoint. Azure Action Group plain
+  # Webhook receivers cannot set custom request headers, so the adapter accepts
+  # the secret in either X-OpenChoreo-Webhook-Token or ?token=. Provide the
+  # secret inline via `sharedSecret` (chart creates a Secret), or reference an
+  # existing one via `sharedSecretRef.name`.
+  webhookAuth:
+    enabled: true
+    sharedSecret: ""
+    sharedSecretRef:
+      name: ""
+      key: token
+
+  # Optional Gateway API HTTPRoute that exposes only the public webhook path
+  # via an existing Gateway. TLS termination, listener-level auth, and any
+  # rate limiting belong on the parent Gateway listener — this route only
+  # carves out the webhook endpoint.
+  webhookRoute:
+    enabled: false
+    parentRef:
+      name: gateway-default
+      namespace: ""
+      sectionName: ""
+    hostnames: []
+
+  networkPolicy:
+    enabled: false
+    observerNamespaceLabels:
+      kubernetes.io/metadata.name: openchoreo-observability-plane
+    observerPodLabels: {}
+    # Namespace labels for the Gateway data-plane pods that proxy the webhook
+    # to the adapter. Default empty: when the route is enabled, set this to
+    # match your Gateway controller's data-plane namespace
+    # (e.g. `kubernetes.io/metadata.name: openchoreo-data-plane`).
+    gatewayNamespaceLabels: {}
+    allowProbeIPBlock: ""
+
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 128Mi

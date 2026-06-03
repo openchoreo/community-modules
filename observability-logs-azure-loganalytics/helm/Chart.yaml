@@ -1,0 +1,15 @@
+apiVersion: v2
+name: observability-logs-azure-loganalytics
+description: A Helm chart for OpenChoreo Logs Module for Azure Log Analytics
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - azure
+  - loganalytics
+  - aks
+  - openchoreo
+  - logs
+maintainers:
+  - name: OpenChoreo Team
+home: https://github.com/openchoreo/community-modules

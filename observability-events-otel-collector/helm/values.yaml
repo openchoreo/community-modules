@@ -65,8 +65,9 @@ serviceAccount:
 # Persists the receiver's watch resourceVersion on a PVC (via the file_storage
 # extension) so a pod restart does not re-emit already-seen events. Disabled by
 # default for a zero-dependency install (a restart may then re-emit recent
-# events). To enable, set enabled=true and provide a storageClassName (or ensure
-# the cluster has a default StorageClass).
+# events). To enable, set enabled=true and provide a storageClassName. If left
+# empty (""), the cluster's default StorageClass is used; if no default exists,
+# the PVC stays Pending and the pod will fail to start.
 persistence:
   enabled: false
   size: 1Gi

@@ -1,0 +1,9 @@
+# Build artifacts and files not needed in the OCB build context.
+dist/
+helm/
+*.md
+**/*.md
+.gitignore
+.dockerignore
+module.yaml
+Makefile

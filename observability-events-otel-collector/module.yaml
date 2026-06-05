@@ -1,0 +1,11 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+# Module manifest used by the CI workflow to discover Docker images to build.
+# Each entry defines the image name, build context, and Dockerfile path. The
+# image is published as ghcr.io/<owner>/<name>:<chart version> on release.
+
+images:
+  - name: observability-events-otel-collector
+    context: .
+    dockerfile: Dockerfile

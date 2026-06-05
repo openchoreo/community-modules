@@ -1,0 +1,19 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+{{- if .Values.rbac.create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "events-collector.clusterScopedName" . }}
+  labels:
+    {{- include "events-collector.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "events-collector.clusterScopedName" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "events-collector.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

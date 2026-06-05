@@ -1,0 +1,63 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "events-collector.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "events-collector.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    {{- if .Values.configOverride }}
+    {{- toYaml .Values.configOverride | nindent 4 }}
+    {{- else }}
+    {{- range $e := .Values.pipelineExporters }}
+    {{- if not (hasKey $.Values.exporters $e) }}
+    {{- fail (printf "pipelineExporters references %q, which is not defined under .Values.exporters" $e) }}
+    {{- end }}
+    {{- end }}
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+      {{- if .Values.persistence.enabled }}
+      file_storage:
+        directory: {{ .Values.persistence.mountPath }}
+        create_directory: true
+      {{- end }}
+      {{- with .Values.extraExtensions }}
+      {{- toYaml . | nindent 6 }}
+      {{- end }}
+
+    receivers:
+      k8s_events:
+        auth_type: serviceAccount
+        {{- if .Values.persistence.enabled }}
+        storage: file_storage
+        {{- end }}
+
+    processors:
+      k8seventenrich:
+        {{- toYaml .Values.enrichment | nindent 8 }}
+      batch: {}
+
+    exporters:
+      {{- range $name, $cfg := .Values.exporters }}
+      {{- if has $name $.Values.pipelineExporters }}
+      {{ $name }}:
+        {{- toYaml $cfg | nindent 8 }}
+      {{- end }}
+      {{- end }}
+
+    service:
+      extensions: [{{ include "events-collector.serviceExtensions" . }}]
+      telemetry:
+        logs:
+          level: {{ .Values.collector.logLevel }}
+      pipelines:
+        logs:
+          receivers: [k8s_events]
+          processors: [k8seventenrich, batch]
+          exporters: [{{ join ", " .Values.pipelineExporters }}]
+    {{- end }}

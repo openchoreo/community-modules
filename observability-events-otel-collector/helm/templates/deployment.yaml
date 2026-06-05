@@ -1,0 +1,114 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+{{- if gt (int .Values.collector.replicaCount) 1 }}
+{{- fail "collector.replicaCount must be 0 or 1: the k8seventsreceiver is single-instance and the informer caches assume one collector owns the event stream" }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "events-collector.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "events-collector.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.collector.replicaCount }}
+  # Recreate (not RollingUpdate): one instance owns the event stream and the RWO PVC.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "events-collector.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.collector.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "events-collector.selectorLabels" . | nindent 8 }}
+        {{- with .Values.collector.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "events-collector.serviceAccountName" . }}
+      {{- with .Values.collector.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.collector.podSecurityContext | nindent 8 }}
+      containers:
+        - name: collector
+          image: "{{ .Values.collector.image.repository }}:{{ .Values.collector.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.collector.image.pullPolicy }}
+          args: ["--config", "/etc/otelcol/config.yaml"]
+          {{- with .Values.collector.extraEnv }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: health
+              containerPort: 13133
+          startupProbe:
+            httpGet:
+              path: /
+              port: health
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /
+              port: health
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          securityContext:
+            {{- toYaml .Values.collector.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.collector.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/otelcol
+              readOnly: true
+            # Writable /tmp because the root filesystem is read-only.
+            - name: tmp
+              mountPath: /tmp
+            {{- if .Values.persistence.enabled }}
+            - name: storage
+              mountPath: {{ .Values.persistence.mountPath }}
+            {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "events-collector.fullname" . }}
+        - name: tmp
+          emptyDir: {}
+        {{- if .Values.persistence.enabled }}
+        - name: storage
+          persistentVolumeClaim:
+            claimName: {{ include "events-collector.fullname" . }}-storage
+        {{- end }}
+      {{- with .Values.collector.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.collector.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.collector.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

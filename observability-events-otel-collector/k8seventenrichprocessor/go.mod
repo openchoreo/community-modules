@@ -1,6 +1,6 @@
 module github.com/openchoreo/community-modules/observability-events-otel-collector/k8seventenrichprocessor
 
-go 1.26.0
+go 1.26.4
 
 require (
 	go.opentelemetry.io/collector/component v1.59.0

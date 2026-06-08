@@ -46,7 +46,7 @@ type WorkflowLogsParams struct {
 }
 
 // ComponentLogEntry is the projected row shape from ContainerLogV2 for
-// the component-log query. It maps 1:1 onto the OpenChoreo API
+// the component-log query. It maps 1:1 onto the Observer API
 // ComponentLogEntry response model (handlers.go does that final map).
 type ComponentLogEntry struct {
 	Timestamp           time.Time

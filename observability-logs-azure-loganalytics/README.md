@@ -202,10 +202,12 @@ query rules. The flow is:
    subsequent GET/DELETE calls.
 3. When the rule fires, the Action Group POSTs a Common Alert Schema
    payload to the adapter's `/api/v1alpha1/alerts/webhook` endpoint.
-4. The adapter validates the shared secret, parses the payload (both V2
-   `condition.allOf[].metricValue` and legacy V1 `SearchResults.rowCount`
-   shapes are supported), and forwards a normalised alert to the
-   Observer's webhook endpoint.
+4. The adapter validates the shared secret, parses the V2 payload
+   (`alertContext.condition.allOf[].metricValue` and `searchQuery`,
+   emitted by `scheduledQueryRules` API `2021-08-01` and later), and
+   forwards a normalised alert to the Observer's webhook endpoint. The
+   legacy V1 envelope from the `2018-04-16` API is not supported — the
+   adapter only ever creates V2 rules.
 
 The OpenChoreo identity round-trips via Azure's
 `actions.customProperties` (`openchoreo-namespace`,

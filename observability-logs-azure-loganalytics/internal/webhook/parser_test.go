@@ -20,8 +20,14 @@ const samplePayload = `{
       "firedDateTime": "2026-05-28T05:30:00.0000000Z"
     },
     "alertContext": {
-      "SearchQuery": "ContainerLogV2 | take 1",
-      "SearchResults": { "rowCount": 42 }
+      "condition": {
+        "allOf": [
+          {
+            "searchQuery": "ContainerLogV2 | where LogMessage contains \"rpc error\" | count",
+            "metricValue": 552
+          }
+        ]
+      }
     },
     "customProperties": {
       "openchoreo-namespace": "default",
@@ -41,53 +47,17 @@ func TestParse_HappyPath(t *testing.T) {
 	if got.RuleName != "high-error-rate" {
 		t.Errorf("ruleName: want high-error-rate, got %q", got.RuleName)
 	}
-	if got.AlertValue != 42 {
-		t.Errorf("alertValue: want 42, got %v", got.AlertValue)
+	if got.AlertValue != 552 {
+		t.Errorf("alertValue: want 552 (from condition.allOf[0].metricValue), got %v", got.AlertValue)
+	}
+	if got.SearchQuery == "" {
+		t.Errorf("searchQuery should be populated from condition.allOf[0].searchQuery, got empty")
 	}
 	if got.Severity != "Sev3" {
 		t.Errorf("severity: want Sev3, got %q", got.Severity)
 	}
 	if got.AlertTimestamp.IsZero() {
 		t.Errorf("alertTimestamp not parsed")
-	}
-}
-
-func TestParse_V2ConditionAllOf(t *testing.T) {
-	const v2Payload = `{
-  "schemaId": "azureMonitorCommonAlertSchema",
-  "data": {
-    "essentials": {
-      "alertRuleId": "/subscriptions/sub/resourceGroups/rg/providers/microsoft.insights/scheduledQueryRules/oc-9f86d081884c7d65",
-      "severity": "Sev3",
-      "signalType": "Log",
-      "monitorCondition": "Fired",
-      "firedDateTime": "2026-05-28T05:30:00Z"
-    },
-    "alertContext": {
-      "condition": {
-        "allOf": [
-          {
-            "searchQuery": "ContainerLogV2 | where LogMessage contains \"rpc error\" | count",
-            "metricValue": 552
-          }
-        ]
-      }
-    },
-    "customProperties": {
-      "openchoreo-namespace": "default",
-      "openchoreo-rule-name": "high-error-rate"
-    }
-  }
-}`
-	got, err := Parse([]byte(v2Payload))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got.AlertValue != 552 {
-		t.Errorf("alertValue: want 552 (from condition.allOf[0].metricValue), got %v", got.AlertValue)
-	}
-	if got.SearchQuery == "" {
-		t.Errorf("searchQuery should be populated from condition.allOf[0].searchQuery, got empty")
 	}
 }
 

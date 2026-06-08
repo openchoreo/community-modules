@@ -21,10 +21,11 @@ the adapter's ServiceAccount — the same model as the sibling
 2. [Why the Perf table](#why-the-perf-table)
 3. [Prerequisites](#prerequisites)
 4. [Azure role assignments](#azure-role-assignments)
-5. [Local development](#local-development)
-6. [Configuration reference](#configuration-reference)
-7. [Limitations](#limitations)
-8. [Compatibility](#compatibility)
+5. [Install with Helm](#install-with-helm)
+6. [Local development](#local-development)
+7. [Configuration reference](#configuration-reference)
+8. [Limitations](#limitations)
+9. [Compatibility](#compatibility)
 
 ## Architecture
 
@@ -94,7 +95,7 @@ Azure offers two metric backends; this module uses the first:
 
 - `go` (1.26+)
 - `az` CLI
-- `kubectl`, `helm` (for in-cluster deployment, a later phase)
+- `kubectl`, `helm` (for the in-cluster deployment in [Install with Helm](#install-with-helm))
 
 ### Azure prerequisites
 
@@ -138,6 +139,43 @@ az identity federated-credential create \
   --subject "system:serviceaccount:openchoreo-observability-plane:metrics-adapter-azure-monitor" \
   --audience api://AzureADTokenExchange
 ```
+
+The federated-credential `--subject` must match the namespace and ServiceAccount
+the chart deploys (`metrics-adapter-azure-monitor` by default).
+
+## Install with Helm
+
+The chart deploys the adapter with Workload Identity (no static credentials): a
+Deployment with the `azure.workload.identity/use: "true"` pod label, a
+ServiceAccount annotated with the UAMI `client-id`, the Service, and the webhook
+Secret. Optionally it renders an HTTPRoute so the Action Group can reach the
+webhook through the observability-plane gateway.
+
+```bash
+helm install metrics-adapter-azure-monitor ./helm \
+  --namespace openchoreo-observability-plane \
+  --set region=eastus2 \
+  --set workspace.id=<workspace customerId GUID> \
+  --set workspace.resourceId=<workspace ARM resource ID> \
+  --set azure.subscriptionId=<subscription id> \
+  --set azure.resourceGroup=<resource group> \
+  --set adapter.serviceAccount.clientId=<UAMI client id> \
+  --set adapter.alerting.actionGroupId=<action group ARM id> \
+  --set adapter.alerting.observerUrl=http://observer-internal.openchoreo-observability-plane:8081 \
+  --set adapter.alerting.webhookAuth.sharedSecret=<>=16-byte secret>
+```
+
+To expose the webhook through the gateway, also set
+`adapter.alerting.webhookRoute.enabled=true`,
+`adapter.alerting.webhookRoute.parentRef.name=<gateway>`, and a hostname under
+`adapter.alerting.webhookRoute.hostnames`.
+
+The chart fails fast at render time if any required value (region, workspace,
+subscription/resource group, action group, observer URL, or the SA `client-id`
+when it creates the ServiceAccount) is missing.
+
+Point the Observer at the adapter by setting its `METRICS_ADAPTER_URL` to
+`http://metrics-adapter.openchoreo-observability-plane.svc.cluster.local:9099`.
 
 ## Local development
 

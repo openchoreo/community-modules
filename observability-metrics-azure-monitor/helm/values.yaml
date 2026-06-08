@@ -1,0 +1,78 @@
+# Default values for the observability-metrics-azure-monitor chart.
+
+# Azure region the scheduled query rules are created in. Required.
+# Example: --set region=eastus2
+region: ""
+
+# Log Analytics workspace customerId GUID the adapter queries. Required.
+# Example: --set workspace.id=00000000-0000-0000-0000-000000000000
+workspace:
+  id: ""
+  # Fully-qualified ARM resource ID of the workspace; used as the alert scope.
+  resourceId: ""
+
+# Azure subscription + resource group that hold the scheduledQueryRules.
+azure:
+  subscriptionId: ""
+  resourceGroup: ""
+
+adapter:
+  enabled: true
+  replicas: 1
+  image:
+    repository: ghcr.io/openchoreo/observability-metrics-azure-monitor-adapter
+    tag: ""
+    pullPolicy: IfNotPresent
+  logLevel: info
+  # Caps a single Log Analytics query. Go duration string.
+  queryTimeout: 30s
+
+  service:
+    port: 9099
+
+  # Workload Identity. The adapter authenticates to Azure via
+  # DefaultAzureCredential, which resolves the federated token of the
+  # User-Assigned Managed Identity bound to this ServiceAccount.
+  serviceAccount:
+    create: true
+    name: ""
+    # azure.workload.identity/client-id of the UAMI. Required for in-cluster auth.
+    clientId: ""
+    annotations: {}
+
+  alerting:
+    # ARM ID of the pre-existing Action Group the rules notify. Required.
+    actionGroupId: ""
+    # Where forwarded alerts are POSTed (the OpenChoreo Observer).
+    observerUrl: ""
+    # Azure scheduledQueryRules ISO-8601 defaults. Window is snapped up to the
+    # nearest Azure-supported granularity at rule-create time.
+    defaultEvaluationFrequency: PT5M
+    defaultWindowSize: PT5M
+
+    webhookAuth:
+      enabled: true
+      # Inline secret (chart creates the Secret) ...
+      sharedSecret: ""
+      # ... or reference an existing Secret.
+      sharedSecretRef:
+        name: ""
+        key: token
+
+    # HTTPRoute exposing /api/v1alpha1/alerts/webhook so the Action Group can
+    # reach the adapter over the gateway.
+    webhookRoute:
+      enabled: false
+      parentRef:
+        name: ""
+        namespace: ""
+        sectionName: ""
+      hostnames: []
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi

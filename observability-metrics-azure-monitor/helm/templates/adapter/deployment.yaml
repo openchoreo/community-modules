@@ -1,0 +1,98 @@
+{{- if .Values.adapter.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: metrics-adapter-azure-monitor
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: metrics-adapter-azure-monitor
+spec:
+  replicas: {{ .Values.adapter.replicas }}
+  selector:
+    matchLabels:
+      app: metrics-adapter-azure-monitor
+  template:
+    metadata:
+      annotations:
+        {{- if and .Values.adapter.alerting.webhookAuth.enabled (not .Values.adapter.alerting.webhookAuth.sharedSecretRef.name) }}
+        checksum/webhook-secret: {{ include (print $.Template.BasePath "/adapter/webhook-secret.yaml") . | sha256sum }}
+        {{- end }}
+      labels:
+        app: metrics-adapter-azure-monitor
+        # Triggers the Azure Workload Identity webhook to project the federated
+        # token so DefaultAzureCredential can authenticate as the UAMI.
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: {{ include "metrics-azure-monitor.serviceAccountName" . }}
+      securityContext:
+        runAsUser: 10500
+        runAsGroup: 10500
+        runAsNonRoot: true
+      containers:
+        - name: metrics-adapter-azure-monitor
+          image: "{{ .Values.adapter.image.repository }}:{{ .Values.adapter.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.adapter.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          ports:
+            - containerPort: {{ .Values.adapter.service.port }}
+          env:
+            - name: SERVER_PORT
+              value: {{ .Values.adapter.service.port | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.adapter.logLevel | quote }}
+            - name: QUERY_TIMEOUT
+              value: {{ .Values.adapter.queryTimeout | quote }}
+            - name: LOG_ANALYTICS_WORKSPACE_ID
+              value: {{ .Values.workspace.id | quote }}
+            - name: AZURE_REGION
+              value: {{ .Values.region | quote }}
+            - name: AZURE_SUBSCRIPTION_ID
+              value: {{ .Values.azure.subscriptionId | quote }}
+            - name: AZURE_RESOURCE_GROUP
+              value: {{ .Values.azure.resourceGroup | quote }}
+            - name: WORKSPACE_RESOURCE_ID
+              value: {{ .Values.workspace.resourceId | quote }}
+            - name: ACTION_GROUP_ID
+              value: {{ .Values.adapter.alerting.actionGroupId | quote }}
+            - name: OBSERVER_URL
+              value: {{ .Values.adapter.alerting.observerUrl | quote }}
+            - name: DEFAULT_EVALUATION_FREQUENCY
+              value: {{ .Values.adapter.alerting.defaultEvaluationFrequency | quote }}
+            - name: DEFAULT_WINDOW_SIZE
+              value: {{ .Values.adapter.alerting.defaultWindowSize | quote }}
+            - name: WEBHOOK_AUTH_ENABLED
+              value: {{ .Values.adapter.alerting.webhookAuth.enabled | quote }}
+            {{- if .Values.adapter.alerting.webhookAuth.enabled }}
+            - name: WEBHOOK_SHARED_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "metrics-azure-monitor.webhookSecretName" . }}
+                  key: {{ .Values.adapter.alerting.webhookAuth.sharedSecretRef.key | default "token" | quote }}
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.adapter.service.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.adapter.service.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.adapter.resources | nindent 12 }}
+{{- end }}

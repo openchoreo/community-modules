@@ -1,0 +1,15 @@
+apiVersion: v2
+name: observability-metrics-azure-monitor
+description: A Helm chart for OpenChoreo Metrics Module for Azure Monitor
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - azure
+  - azure-monitor
+  - container-insights
+  - openchoreo
+  - metrics
+maintainers:
+  - name: OpenChoreo Team
+home: https://github.com/openchoreo/community-modules

@@ -48,3 +48,7 @@ component_management:
       name: observability-tracing-openobserve
       paths:
         - observability-tracing-openobserve/**
+    - component_id: observability_events_otel_collector
+      name: observability-events-otel-collector
+      paths:
+        - observability-events-otel-collector/**

@@ -1,0 +1,32 @@
+{{ .Chart.Name }} {{ .Chart.AppVersion }} installed as "{{ .Release.Name }}" in namespace "{{ .Release.Namespace }}".
+
+The collector is now watching Kubernetes events cluster-wide and enriching them
+with the involved object's labels, annotations, and owner reference.
+
+Watch it work:
+  kubectl -n {{ .Release.Namespace }} rollout status deploy/{{ include "events-collector.fullname" . }}
+  kubectl -n {{ .Release.Namespace }} logs -f deploy/{{ include "events-collector.fullname" . }}
+
+{{ if has "debug" .Values.pipelineExporters -}}
+⚠  This release uses the DEBUG exporter — enriched events are only printed to the
+   pod log above, not sent anywhere durable. Point it at a real backend by
+   overriding `exporters` and `pipelineExporters`. See the module README for
+   ready-to-use OpenSearch / OpenObserve / CloudWatch snippets, for example:
+
+     helm upgrade {{ .Release.Name }} oci://ghcr.io/openchoreo/helm-charts/{{ .Chart.Name }} \
+       --namespace {{ .Release.Namespace }} --reuse-values \
+       --set-json 'exporters={"otlphttp":{"endpoint":"https://<backend>/api/<org>"}}' \
+       --set-json 'pipelineExporters=["otlphttp"]'
+{{- else -}}
+Exporting enriched events to: {{ join ", " .Values.pipelineExporters }}.
+{{- end }}
+
+{{ if not .Values.persistence.enabled -}}
+Note: persistence is disabled, so a pod restart may re-emit recently-seen events.
+For restart-replay de-duplication, set `persistence.enabled=true` and provide a
+`persistence.storageClassName` (or rely on the cluster's default StorageClass).
+{{- end }}
+
+Reminder: run a single replica only — the k8seventsreceiver is not horizontally
+scalable. If RBAC is managed outside this chart, ensure the service account has
+cluster-wide get/list/watch on events plus every watched workload kind.

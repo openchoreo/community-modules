@@ -1,0 +1,122 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+# Override the generated resource names (optional).
+fullnameOverride: ""
+
+# opentelemetry-collector configuration values.
+collector:
+  # Must be 0 or 1. The k8seventsreceiver is not horizontally scalable and the
+  # processor's informer caches assume a single collector owns the event stream;
+  # running two would duplicate events.
+  replicaCount: 1
+
+  image:
+    repository: ghcr.io/openchoreo/observability-events-otel-collector
+    tag: "" # defaults to .Chart.AppVersion
+    pullPolicy: IfNotPresent
+  imagePullSecrets: []
+
+  logLevel: info
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      # No CPU limit is set (to avoid CFS throttling).
+      memory: 512Mi
+
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    fsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+
+  extraEnv: []
+  #  - name: OPENSEARCH_USERNAME
+  #    valueFrom:
+  #      secretKeyRef:
+  #        name: opensearch-admin-credentials
+  #        key: username
+
+  podAnnotations: {}
+  podLabels: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# RBAC and ServiceAccount settings.
+rbac:
+  create: true
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# Persists the receiver's watch resourceVersion on a PVC (via the file_storage
+# extension) so a pod restart does not re-emit already-seen events. Disabled by
+# default for a zero-dependency install (a restart may then re-emit recent
+# events). To enable, set enabled=true and provide a storageClassName. If left
+# empty (""), the cluster's default StorageClass is used; if no default exists,
+# the PVC stays Pending and the pod will fail to start.
+persistence:
+  enabled: false
+  size: 1Gi
+  storageClassName: ""
+  accessMode: ReadWriteOnce
+  mountPath: /var/lib/otelcol/storage
+
+# k8seventenrich processor configurations.
+enrichment:
+  resync_period: 10m
+  # How long to wait for informer caches to warm up before failing startup.
+  # cache_sync_timeout: 2m
+  labels:
+    enabled: true
+    # include: ["openchoreo.dev/component", "openchoreo.dev/project"]
+    # exclude: ["pod-template-hash", "controller-revision-hash"]
+  annotations:
+    # Disabled by default: annotations may be noisy (helm/kubectl/CNI dumps) and
+    # may carry sensitive values. Enable explicitly, ideally with an `include`
+    # allow-list. The last-applied dump stays excluded even when enabled.
+    enabled: false
+    # include: ["prometheus.io/scrape"]
+    exclude:
+      - kubectl.kubernetes.io/last-applied-configuration
+  owner_references:
+    enabled: true
+
+# Exporters and pipelines configurations.
+# By default the chart ships ONLY the `debug` exporter, which prints enriched
+# events to the pod log. Point at a real backend by overriding `exporters` and
+# `pipelineExporters` (e.g. OpenSearch / OpenObserve / CloudWatch).
+# Supply any credentials via `collector.extraEnv` and auth via `extraExtensions`.
+exporters:
+  debug:
+    verbosity: detailed
+# Exporters wired into the logs pipeline.
+pipelineExporters:
+  - debug
+
+# Extra collector extension (e.g. a basicauth extension for the OpenSearch exporter).
+# Every key defined here is automatically added to the active service extensions list.
+extraExtensions: {}
+#   basicauth/opensearch:
+#     client_auth:
+#       username: ${env:OPENSEARCH_USERNAME}
+#       password: ${env:OPENSEARCH_PASSWORD}
+
+# Full configuration override.
+# If set (non-empty), this raw map REPLACES the entire rendered collector config
+# above. Use it for advanced pipelines the structured values don't cover. You
+# own the whole config — extensions, receiver storage, pipelines, everything.
+configOverride: {}

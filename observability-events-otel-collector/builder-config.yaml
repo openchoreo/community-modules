@@ -1,0 +1,38 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+# OpenTelemetry Collector Builder (OCB) manifest. Bundles the custom
+# k8seventenrich processor with a curated, minimal set of upstream components
+# (not full contrib) for a smaller CVE/SBOM surface. Keep versions in lockstep
+# with the Dockerfile's builder tag and k8seventenrichprocessor/go.mod.
+dist:
+  name: otelcol-k8s-events
+  description: "OpenTelemetry Collector for Kubernetes events, with the k8seventenrich processor"
+  output_path: ./dist
+  otelcol_version: "0.153.0"
+
+receivers:
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/k8seventsreceiver v0.153.0
+
+processors:
+  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.153.0
+  # The custom processor that adds Kubernetes metadata to events emitted by the k8seventsreceiver.
+  - gomod: github.com/openchoreo/community-modules/observability-events-otel-collector/k8seventenrichprocessor v0.1.0
+    path: ./k8seventenrichprocessor
+
+exporters:
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/opensearchexporter v0.153.0
+  # OTLP — covers OpenObserve (native OTLP/HTTP ingest) and any OTLP backend.
+  - gomod: go.opentelemetry.io/collector/exporter/otlphttpexporter v0.153.0
+  - gomod: go.opentelemetry.io/collector/exporter/otlpexporter v0.153.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awscloudwatchlogsexporter v0.153.0
+  # Debug exporter — dumps enriched events to stdout. (Default)
+  - gomod: go.opentelemetry.io/collector/exporter/debugexporter v0.153.0
+
+extensions:
+  # Supplies basic-auth credentials to the opensearch exporter's HTTP client.
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/basicauthextension v0.153.0
+  # Persists the receiver's watch resourceVersion so a pod restart doesn't re-emit seen events.
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/storage/filestorage v0.153.0
+  # Liveness/readiness endpoint for Kubernetes probes.
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension v0.153.0

@@ -231,4 +231,4 @@ make docker-build  # container image (override DOCKER=... for a nerdctl wrapper)
 
 | Module Version | OpenChoreo Version |
 | -------------- | ------------------ |
-| >= v0.1.x      | >= v1.0.x          |
+| >= v0.1.x      | >= v1.2.x          |

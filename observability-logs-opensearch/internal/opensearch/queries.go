@@ -252,6 +252,143 @@ func (qb *QueryBuilder) BuildWorkflowRunLogsQuery(params WorkflowRunQueryParams)
 	return query
 }
 
+// BuildComponentEventsQueryV1 builds a query for the API component events endpoint.
+func (qb *QueryBuilder) BuildComponentEventsQueryV1(params EventsQueryParamsV1) (map[string]interface{}, error) {
+	if params.StartTime == "" || params.EndTime == "" || params.NamespaceName == "" {
+		return nil, fmt.Errorf("start time, end time, and namespace name are required")
+	}
+	mustConditions := []map[string]interface{}{}
+
+	mustConditions = addTimeRangeFilter(mustConditions, params.StartTime, params.EndTime)
+
+	namespaceFilter := map[string]interface{}{
+		"term": map[string]interface{}{
+			EvNamespaceName: params.NamespaceName,
+		},
+	}
+	mustConditions = append(mustConditions, namespaceFilter)
+
+	if params.ProjectID != "" {
+		mustConditions = append(mustConditions, map[string]interface{}{
+			"term": map[string]interface{}{
+				EvProjectID: params.ProjectID,
+			},
+		})
+	}
+
+	if params.ComponentID != "" {
+		mustConditions = append(mustConditions, map[string]interface{}{
+			"term": map[string]interface{}{
+				EvComponentID: params.ComponentID,
+			},
+		})
+	}
+
+	if params.EnvironmentID != "" {
+		mustConditions = append(mustConditions, map[string]interface{}{
+			"term": map[string]interface{}{
+				EvEnvironmentID: params.EnvironmentID,
+			},
+		})
+	}
+
+	limit := params.Limit
+	if limit <= 0 {
+		limit = 100
+	}
+
+	sortOrder := params.SortOrder
+	if sortOrder == "" {
+		sortOrder = "desc"
+	}
+
+	query := map[string]interface{}{
+		"size": limit,
+		"query": map[string]interface{}{
+			"bool": map[string]interface{}{
+				"must": mustConditions,
+			},
+		},
+		"sort": []map[string]interface{}{
+			{
+				EvTimestamp: map[string]interface{}{
+					"order": sortOrder,
+				},
+			},
+		},
+	}
+
+	return query, nil
+}
+
+// BuildWorkflowEventsQuery builds a query for workflow run events.
+//
+// It mirrors the workflow logs convention: events are matched by the involved object
+// name (the workflow pod/job names are prefixed with the workflow run ID) within the
+// "workflows-<namespace>" Kubernetes namespace.
+func (qb *QueryBuilder) BuildWorkflowEventsQuery(params WorkflowEventsQueryParams) (map[string]interface{}, error) {
+	if params.StartTime == "" || params.EndTime == "" || params.NamespaceName == "" || params.WorkflowRunID == "" {
+		return nil, fmt.Errorf("start time, end time, namespace name, and workflow run ID are required")
+	}
+
+	objectNamePattern := sanitizeWildcardValue(params.WorkflowRunID) + "*"
+	mustConditions := []map[string]interface{}{
+		{
+			"wildcard": map[string]interface{}{
+				EvObjectName: objectNamePattern,
+			},
+		},
+	}
+
+	// Narrow to a specific workflow task when requested. Event resource attributes do not carry
+	// the Argo node-name annotation (annotation enrichment is disabled by default), so we match on
+	// the involved object name, whose pod/job names embed the task name.
+	if params.TaskName != "" {
+		mustConditions = append(mustConditions, map[string]interface{}{
+			"wildcard": map[string]interface{}{
+				EvObjectName: "*" + sanitizeWildcardValue(params.TaskName) + "*",
+			},
+		})
+	}
+
+	mustConditions = addTimeRangeFilter(mustConditions, params.StartTime, params.EndTime)
+
+	k8sNamespace := fmt.Sprintf("workflows-%s", params.NamespaceName)
+	mustConditions = append(mustConditions, map[string]interface{}{
+		"term": map[string]interface{}{
+			EvObjectNamespace: k8sNamespace,
+		},
+	})
+
+	limit := params.Limit
+	if limit <= 0 {
+		limit = 100
+	}
+
+	sortOrder := params.SortOrder
+	if sortOrder == "" {
+		sortOrder = "desc"
+	}
+
+	query := map[string]interface{}{
+		"size": limit,
+		"query": map[string]interface{}{
+			"bool": map[string]interface{}{
+				"must": mustConditions,
+			},
+		},
+		"sort": []map[string]interface{}{
+			{
+				EvTimestamp: map[string]interface{}{
+					"order": sortOrder,
+				},
+			},
+		},
+	}
+
+	return query, nil
+}
+
 // GenerateIndices generates the list of indices to search based on time range.
 func (qb *QueryBuilder) GenerateIndices(startTime, endTime string) ([]string, error) {
 	if startTime == "" || endTime == "" {

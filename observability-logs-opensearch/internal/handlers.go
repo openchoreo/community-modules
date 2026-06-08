@@ -21,24 +21,27 @@ import (
 
 // LogsHandler implements the generated StrictServerInterface.
 type LogsHandler struct {
-	osClient       *opensearch.Client
-	queryBuilder   *opensearch.QueryBuilder
-	observerClient *observer.Client
-	logger         *slog.Logger
+	osClient           *opensearch.Client
+	queryBuilder       *opensearch.QueryBuilder
+	eventsQueryBuilder *opensearch.QueryBuilder
+	observerClient     *observer.Client
+	logger             *slog.Logger
 }
 
 // NewLogsHandler creates a new LogsHandler.
 func NewLogsHandler(
 	osClient *opensearch.Client,
 	queryBuilder *opensearch.QueryBuilder,
+	eventsQueryBuilder *opensearch.QueryBuilder,
 	observerClient *observer.Client,
 	logger *slog.Logger,
 ) *LogsHandler {
 	return &LogsHandler{
-		osClient:       osClient,
-		queryBuilder:   queryBuilder,
-		observerClient: observerClient,
-		logger:         logger,
+		osClient:           osClient,
+		queryBuilder:       queryBuilder,
+		eventsQueryBuilder: eventsQueryBuilder,
+		observerClient:     observerClient,
+		logger:             logger,
 	}
 }
 
@@ -219,9 +222,15 @@ func (h *LogsHandler) queryWorkflowLogs(ctx context.Context, req *gen.LogsQueryR
 		workflowRunName = *scope.WorkflowRunName
 	}
 
+	stepName := ""
+	if scope.TaskName != nil {
+		stepName = *scope.TaskName
+	}
+
 	params := opensearch.WorkflowRunQueryParams{
 		QueryParams:   queryParams,
 		WorkflowRunID: workflowRunName,
+		StepName:      stepName,
 	}
 
 	query := h.queryBuilder.BuildWorkflowRunLogsQuery(params)
@@ -290,6 +299,161 @@ func (h *LogsHandler) queryWorkflowLogs(ctx context.Context, req *gen.LogsQueryR
 	resp.Logs = &logs
 
 	return gen.QueryLogs200JSONResponse(resp), nil
+}
+
+// QueryEvents implements POST /api/v1/events/query.
+func (h *LogsHandler) QueryEvents(ctx context.Context, request gen.QueryEventsRequestObject) (gen.QueryEventsResponseObject, error) {
+	if request.Body == nil {
+		return gen.QueryEvents400JSONResponse{
+			Title:   ptr(gen.BadRequest),
+			Message: ptr("request body is required"),
+		}, nil
+	}
+
+	// Try to interpret the search scope as a WorkflowSearchScope first
+	workflowScope, err := request.Body.SearchScope.AsWorkflowSearchScope()
+	if err == nil && workflowScope.WorkflowRunName != nil {
+		if strings.TrimSpace(workflowScope.Namespace) == "" {
+			return gen.QueryEvents400JSONResponse{
+				Title:   ptr(gen.BadRequest),
+				Message: ptr("searchScope with a valid namespace is required"),
+			}, nil
+		}
+
+		return h.queryWorkflowEvents(ctx, request.Body, &workflowScope)
+	}
+
+	// Fall back to ComponentSearchScope
+	scope, err := request.Body.SearchScope.AsComponentSearchScope()
+	if err != nil || strings.TrimSpace(scope.Namespace) == "" {
+		return gen.QueryEvents400JSONResponse{
+			Title:   ptr(gen.BadRequest),
+			Message: ptr("searchScope with a valid namespace is required"),
+		}, nil
+	}
+
+	return h.queryComponentEvents(ctx, request.Body, &scope)
+}
+
+func (h *LogsHandler) queryComponentEvents(ctx context.Context, req *gen.EventsQueryRequest, scope *gen.ComponentSearchScope) (gen.QueryEventsResponseObject, error) {
+	startTime := req.StartTime.Format(time.RFC3339)
+	endTime := req.EndTime.Format(time.RFC3339)
+
+	params := opensearch.EventsQueryParamsV1{
+		StartTime:     startTime,
+		EndTime:       endTime,
+		NamespaceName: scope.Namespace,
+	}
+	if scope.ProjectUid != nil {
+		params.ProjectID = *scope.ProjectUid
+	}
+	if scope.EnvironmentUid != nil {
+		params.EnvironmentID = *scope.EnvironmentUid
+	}
+	if scope.ComponentUid != nil {
+		params.ComponentID = *scope.ComponentUid
+	}
+	if req.Limit != nil {
+		params.Limit = *req.Limit
+	}
+	if req.SortOrder != nil {
+		params.SortOrder = string(*req.SortOrder)
+	}
+
+	query, err := h.eventsQueryBuilder.BuildComponentEventsQueryV1(params)
+	if err != nil {
+		h.logger.Error("Failed to build component events query",
+			slog.String("function", "QueryEvents"),
+			slog.Any("error", err),
+		)
+		return gen.QueryEvents500JSONResponse{
+			Title:   ptr(gen.InternalServerError),
+			Message: ptr("internal server error"),
+		}, nil
+	}
+
+	return h.executeEventsQuery(ctx, query, startTime, endTime, scope.Namespace)
+}
+
+func (h *LogsHandler) queryWorkflowEvents(ctx context.Context, req *gen.EventsQueryRequest, scope *gen.WorkflowSearchScope) (gen.QueryEventsResponseObject, error) {
+	startTime := req.StartTime.Format(time.RFC3339)
+	endTime := req.EndTime.Format(time.RFC3339)
+
+	params := opensearch.WorkflowEventsQueryParams{
+		StartTime:     startTime,
+		EndTime:       endTime,
+		NamespaceName: scope.Namespace,
+	}
+	if scope.WorkflowRunName != nil {
+		params.WorkflowRunID = *scope.WorkflowRunName
+	}
+	if scope.TaskName != nil {
+		params.TaskName = *scope.TaskName
+	}
+	if req.Limit != nil {
+		params.Limit = *req.Limit
+	}
+	if req.SortOrder != nil {
+		params.SortOrder = string(*req.SortOrder)
+	}
+
+	query, err := h.eventsQueryBuilder.BuildWorkflowEventsQuery(params)
+	if err != nil {
+		h.logger.Error("Failed to build workflow events query",
+			slog.String("function", "QueryEvents"),
+			slog.Any("error", err),
+		)
+		return gen.QueryEvents500JSONResponse{
+			Title:   ptr(gen.InternalServerError),
+			Message: ptr("internal server error"),
+		}, nil
+	}
+
+	return h.executeEventsQuery(ctx, query, startTime, endTime, scope.Namespace)
+}
+
+// executeEventsQuery runs an events query against the events indices and assembles the response.
+func (h *LogsHandler) executeEventsQuery(ctx context.Context, query map[string]interface{}, startTime, endTime, namespace string) (gen.QueryEventsResponseObject, error) {
+	indices, err := h.eventsQueryBuilder.GenerateIndices(startTime, endTime)
+	if err != nil {
+		h.logger.Error("Failed to generate event indices",
+			slog.String("function", "QueryEvents"),
+			slog.Any("error", err),
+		)
+		return gen.QueryEvents500JSONResponse{
+			Title:   ptr(gen.InternalServerError),
+			Message: ptr("internal server error"),
+		}, nil
+	}
+
+	result, err := h.osClient.Search(ctx, indices, query)
+	if err != nil {
+		h.logger.Error("Failed to query events",
+			slog.String("function", "QueryEvents"),
+			slog.String("namespace", namespace),
+			slog.Any("error", err),
+		)
+		return gen.QueryEvents500JSONResponse{
+			Title:   ptr(gen.InternalServerError),
+			Message: ptr("internal server error"),
+		}, nil
+	}
+
+	entries := make([]gen.EventEntry, 0, len(result.Hits.Hits))
+	for _, hit := range result.Hits.Hits {
+		eventEntry := opensearch.ParseEventHit(hit)
+		entries = append(entries, toEventEntry(&eventEntry))
+	}
+
+	total := result.Hits.Total.Value
+	took := result.Took
+	resp := gen.EventsQueryResponse{
+		Events: &entries,
+		Total:  &total,
+		TookMs: &took,
+	}
+
+	return gen.QueryEvents200JSONResponse(resp), nil
 }
 
 // CreateAlertRule implements POST /api/v1alpha1/alerts/rules.
@@ -696,11 +860,11 @@ func parseMonitorToAlertRuleResponse(monitor map[string]interface{}) (gen.AlertR
 			Query:  &searchQuery,
 		},
 		Condition: &struct {
-			Enabled   *bool                                  `json:"enabled,omitempty"`
-			Interval  *string                                `json:"interval,omitempty"`
+			Enabled   *bool                                   `json:"enabled,omitempty"`
+			Interval  *string                                 `json:"interval,omitempty"`
 			Operator  *gen.AlertRuleResponseConditionOperator `json:"operator,omitempty"`
-			Threshold *float32                               `json:"threshold,omitempty"`
-			Window    *string                                `json:"window,omitempty"`
+			Threshold *float32                                `json:"threshold,omitempty"`
+			Window    *string                                 `json:"window,omitempty"`
 		}{
 			Enabled:   &enabled,
 			Operator:  &operatorEnum,
@@ -829,15 +993,15 @@ func toComponentLogEntry(l *opensearch.LogEntry) gen.ComponentLogEntry {
 		Log:       &l.Log,
 		Level:     &l.LogLevel,
 		Metadata: &struct {
-			ComponentName   *string            `json:"componentName,omitempty"`
+			ComponentName   *string             `json:"componentName,omitempty"`
 			ComponentUid    *openapi_types.UUID `json:"componentUid,omitempty"`
-			ContainerName   *string            `json:"containerName,omitempty"`
-			EnvironmentName *string            `json:"environmentName,omitempty"`
+			ContainerName   *string             `json:"containerName,omitempty"`
+			EnvironmentName *string             `json:"environmentName,omitempty"`
 			EnvironmentUid  *openapi_types.UUID `json:"environmentUid,omitempty"`
-			NamespaceName   *string            `json:"namespaceName,omitempty"`
-			PodName         *string            `json:"podName,omitempty"`
-			PodNamespace    *string            `json:"podNamespace,omitempty"`
-			ProjectName     *string            `json:"projectName,omitempty"`
+			NamespaceName   *string             `json:"namespaceName,omitempty"`
+			PodName         *string             `json:"podName,omitempty"`
+			PodNamespace    *string             `json:"podNamespace,omitempty"`
+			ProjectName     *string             `json:"projectName,omitempty"`
 			ProjectUid      *openapi_types.UUID `json:"projectUid,omitempty"`
 		}{
 			NamespaceName:   strPtr(l.NamespaceName),
@@ -862,6 +1026,54 @@ func toComponentLogEntry(l *opensearch.LogEntry) gen.ComponentLogEntry {
 	}
 	if l.EnvironmentID != "" {
 		if uid, ok := parseUUID(l.EnvironmentID); ok {
+			entry.Metadata.EnvironmentUid = &uid
+		}
+	}
+
+	return entry
+}
+
+func toEventEntry(e *opensearch.EventEntry) gen.EventEntry {
+	ts := e.Timestamp
+	entry := gen.EventEntry{
+		Timestamp: &ts,
+		Message:   strPtr(e.Message),
+		Type:      strPtr(e.Type),
+		Reason:    strPtr(e.Reason),
+		Metadata: &struct {
+			ComponentName   *string             `json:"componentName,omitempty"`
+			ComponentUid    *openapi_types.UUID `json:"componentUid,omitempty"`
+			EnvironmentName *string             `json:"environmentName,omitempty"`
+			EnvironmentUid  *openapi_types.UUID `json:"environmentUid,omitempty"`
+			NamespaceName   *string             `json:"namespaceName,omitempty"`
+			ObjectKind      *string             `json:"objectKind,omitempty"`
+			ObjectName      *string             `json:"objectName,omitempty"`
+			ObjectNamespace *string             `json:"objectNamespace,omitempty"`
+			ProjectName     *string             `json:"projectName,omitempty"`
+			ProjectUid      *openapi_types.UUID `json:"projectUid,omitempty"`
+		}{
+			ComponentName:   strPtr(e.ComponentName),
+			EnvironmentName: strPtr(e.EnvironmentName),
+			NamespaceName:   strPtr(e.NamespaceName),
+			ObjectKind:      strPtr(e.ObjectKind),
+			ObjectName:      strPtr(e.ObjectName),
+			ObjectNamespace: strPtr(e.ObjectNamespace),
+			ProjectName:     strPtr(e.ProjectName),
+		},
+	}
+
+	if e.ComponentID != "" {
+		if uid, ok := parseUUID(e.ComponentID); ok {
+			entry.Metadata.ComponentUid = &uid
+		}
+	}
+	if e.ProjectID != "" {
+		if uid, ok := parseUUID(e.ProjectID); ok {
+			entry.Metadata.ProjectUid = &uid
+		}
+	}
+	if e.EnvironmentID != "" {
+		if uid, ok := parseUUID(e.EnvironmentID); ok {
 			entry.Metadata.EnvironmentUid = &uid
 		}
 	}

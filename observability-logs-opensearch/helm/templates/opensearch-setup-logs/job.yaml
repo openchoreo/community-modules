@@ -36,6 +36,8 @@ spec:
           value: "{{ .Values.openSearchSetup.alertingWebhookUrl }}"
         - name: CONTAINER_LOGS_MIN_INDEX_AGE
           value: "{{ .Values.openSearchSetup.dataRetentionTime.containerLogs }}"
+        - name: K8S_EVENTS_MIN_INDEX_AGE
+          value: "{{ .Values.openSearchSetup.dataRetentionTime.k8sEvents }}"
         image: "{{ .Values.openSearchSetup.image.repository }}:{{ .Values.openSearchSetup.image.tag | default .Chart.AppVersion }}"
         imagePullPolicy: {{ .Values.openSearchSetup.image.pullPolicy | default "IfNotPresent" }}
         resources:

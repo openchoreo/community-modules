@@ -14,14 +14,15 @@ import (
 
 // Config holds the application configuration.
 type Config struct {
-	ServerPort         string
-	OpenSearchAddress  string
-	OpenSearchUsername string
-	OpenSearchPassword string
-	OpenSearchIndexPrefix string
-	TLSSkipVerify      bool
-	ObserverURL        string
-	LogLevel           slog.Level
+	ServerPort                  string
+	OpenSearchAddress           string
+	OpenSearchUsername          string
+	OpenSearchPassword          string
+	OpenSearchIndexPrefix       string
+	OpenSearchEventsIndexPrefix string
+	TLSSkipVerify               bool
+	ObserverURL                 string
+	LogLevel                    slog.Level
 }
 
 // LoadConfig loads configuration from environment variables.
@@ -31,6 +32,7 @@ func LoadConfig() (*Config, error) {
 	openSearchUsername := getEnv("OPENSEARCH_USERNAME", "")
 	openSearchPassword := getEnv("OPENSEARCH_PASSWORD", "")
 	openSearchIndexPrefix := getEnv("OPENSEARCH_INDEX_PREFIX", "container-logs-")
+	openSearchEventsIndexPrefix := getEnv("OPENSEARCH_EVENTS_INDEX_PREFIX", "k8s-events-")
 	observerURL := getEnv("OBSERVER_URL", "")
 
 	tlsSkipVerify := true
@@ -81,14 +83,15 @@ func LoadConfig() (*Config, error) {
 	}
 
 	return &Config{
-		ServerPort:         serverPort,
-		OpenSearchAddress:  openSearchAddress,
-		OpenSearchUsername: openSearchUsername,
-		OpenSearchPassword: openSearchPassword,
-		OpenSearchIndexPrefix: openSearchIndexPrefix,
-		TLSSkipVerify:      tlsSkipVerify,
-		ObserverURL:        observerURL,
-		LogLevel:           logLevel,
+		ServerPort:                  serverPort,
+		OpenSearchAddress:           openSearchAddress,
+		OpenSearchUsername:          openSearchUsername,
+		OpenSearchPassword:          openSearchPassword,
+		OpenSearchIndexPrefix:       openSearchIndexPrefix,
+		OpenSearchEventsIndexPrefix: openSearchEventsIndexPrefix,
+		TLSSkipVerify:               tlsSkipVerify,
+		ObserverURL:                 observerURL,
+		LogLevel:                    logLevel,
 	}, nil
 }
 

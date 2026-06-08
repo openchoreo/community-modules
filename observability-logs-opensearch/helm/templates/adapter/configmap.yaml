@@ -13,5 +13,6 @@ data:
   SERVER_PORT: "9098"
   OPENSEARCH_ADDRESS: "https://opensearch:9200"
   OPENSEARCH_INDEX_PREFIX: "container-logs-"
+  OPENSEARCH_EVENTS_INDEX_PREFIX: "k8s-events-"
   OBSERVER_URL: {{ .Values.adapter.observerUrl | quote }}
 {{- end }}

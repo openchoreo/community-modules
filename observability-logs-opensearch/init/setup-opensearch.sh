@@ -141,10 +141,52 @@ containerLogsIndexTemplate='
   }
 }'
 
+# Template for indices which hold Kubernetes events.
+# Events are written by the OpenTelemetry collector's opensearchexporter into daily
+# "k8s-events-YYYY-MM-DD" indices. Unlike container logs, the event documents carry an
+# unbounded set of label/annotation keys (one per object label), so rather than enumerating
+# every field we use a dynamic template that maps all strings to keyword. This keeps term
+# queries working on the base (dotted) field paths the adapter uses, while mapping the event
+# body as wildcard for substring search/alerting and @timestamp as a date.
+# NOTE: the "k8s-events-*" pattern intentionally does NOT match the bare "k8s-events" index.
+k8sEventsIndexTemplate='
+{
+  "index_patterns": [
+    "k8s-events-*"
+  ],
+  "template": {
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 1
+    },
+    "mappings": {
+      "dynamic_templates": [
+        {
+          "strings_as_keyword": {
+            "match_mapping_type": "string",
+            "mapping": {
+              "type": "keyword",
+              "ignore_above": 2048
+            }
+          }
+        }
+      ],
+      "properties": {
+        "@timestamp": {
+          "type": "date"
+        },
+        "body": {
+          "type": "wildcard"
+        }
+      }
+    }
+  }
+}'
+
 # The following array holds pairs of index template names and their definitions. Define more templates above
 # and add them to this array.
 # Format: (templateName1 templateDefinition1 templateName2 templateDefinition2 ...)
-indexTemplates=("container-logs" "containerLogsIndexTemplate")
+indexTemplates=("container-logs" "containerLogsIndexTemplate" "k8s-events" "k8sEventsIndexTemplate")
 
 # Create index templates through a loop using the above array
 echo "Creating index templates..."
@@ -254,6 +296,7 @@ echo -e "\nManaging ISM Policies..."
 
 # Read retention periods from environment variables or use defaults
 containerLogsRetention="${CONTAINER_LOGS_MIN_INDEX_AGE:-30d}"
+k8sEventsRetention="${K8S_EVENTS_MIN_INDEX_AGE:-30d}"
 
 # container logs
 containerLogsIsmPolicy='{
@@ -292,9 +335,46 @@ containerLogsIsmPolicy='{
   }
 }'
 
+# k8s events
+k8sEventsIsmPolicy='{
+  "policy": {
+    "description": "Delete Kubernetes events older than '"$k8sEventsRetention"'",
+    "default_state": "active",
+    "states": [
+      {
+        "name": "active",
+        "actions": [],
+        "transitions": [
+          {
+            "state_name": "delete",
+            "conditions": {
+              "min_index_age": "'"$k8sEventsRetention"'"
+            }
+          }
+        ]
+      },
+      {
+        "name": "delete",
+        "actions": [
+          {
+            "delete": {}
+          }
+        ],
+        "transitions": []
+      }
+    ],
+    "ism_template": [
+      {
+        "index_patterns": ["k8s-events-*"],
+        "priority": 100
+      }
+    ]
+  }
+}'
+
 # Array to hold policy names and their definitions
 # Format: (ismPolicyName1 ismPolicyDefinition1 ismPolicyName2 ismPolicyDefinition2 ...)
-ismPolicies=("container-logs" "containerLogsIsmPolicy")
+ismPolicies=("container-logs" "containerLogsIsmPolicy" "k8s-events" "k8sEventsIsmPolicy")
 
 # Function to normalize JSON for comparison (removes whitespace differences)
 normalize_json() {

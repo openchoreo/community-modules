@@ -26,8 +26,8 @@ type EventEntry struct {
 	NamespaceName   string    `json:"namespaceName"`
 }
 
-// EventsQueryParamsV1 holds query parameters for the component-scoped events query.
-type EventsQueryParamsV1 struct {
+// EventsQueryParams holds query parameters for the component-scoped events query.
+type EventsQueryParams struct {
 	StartTime     string `json:"startTime"`
 	EndTime       string `json:"endTime"`
 	NamespaceName string `json:"namespaceName"`

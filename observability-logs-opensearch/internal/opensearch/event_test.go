@@ -64,9 +64,9 @@ func hasWildcardFilter(conds []interface{}, field, value string) bool {
 	return false
 }
 
-func TestBuildComponentEventsQueryV1(t *testing.T) {
+func TestBuildComponentEventsQuery(t *testing.T) {
 	qb := NewQueryBuilder("k8s-events-")
-	query, err := qb.BuildComponentEventsQueryV1(EventsQueryParamsV1{
+	query, err := qb.BuildComponentEventsQuery(EventsQueryParams{
 		StartTime:     "2026-06-05T00:00:00Z",
 		EndTime:       "2026-06-06T00:00:00Z",
 		NamespaceName: "default",
@@ -104,9 +104,9 @@ func TestBuildComponentEventsQueryV1(t *testing.T) {
 	}
 }
 
-func TestBuildComponentEventsQueryV1_Defaults(t *testing.T) {
+func TestBuildComponentEventsQuery_Defaults(t *testing.T) {
 	qb := NewQueryBuilder("k8s-events-")
-	query, err := qb.BuildComponentEventsQueryV1(EventsQueryParamsV1{
+	query, err := qb.BuildComponentEventsQuery(EventsQueryParams{
 		StartTime:     "2026-06-05T00:00:00Z",
 		EndTime:       "2026-06-06T00:00:00Z",
 		NamespaceName: "default",
@@ -127,9 +127,9 @@ func TestBuildComponentEventsQueryV1_Defaults(t *testing.T) {
 	}
 }
 
-func TestBuildComponentEventsQueryV1_MissingRequired(t *testing.T) {
+func TestBuildComponentEventsQuery_MissingRequired(t *testing.T) {
 	qb := NewQueryBuilder("k8s-events-")
-	if _, err := qb.BuildComponentEventsQueryV1(EventsQueryParamsV1{
+	if _, err := qb.BuildComponentEventsQuery(EventsQueryParams{
 		StartTime: "2026-06-05T00:00:00Z",
 		EndTime:   "2026-06-06T00:00:00Z",
 	}); err == nil {

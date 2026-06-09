@@ -142,13 +142,6 @@ containerLogsIndexTemplate='
 }'
 
 # Template for indices which hold Kubernetes events.
-# Events are written by the OpenTelemetry collector's opensearchexporter into daily
-# "k8s-events-YYYY-MM-DD" indices. Unlike container logs, the event documents carry an
-# unbounded set of label/annotation keys (one per object label), so rather than enumerating
-# every field we use a dynamic template that maps all strings to keyword. This keeps term
-# queries working on the base (dotted) field paths the adapter uses, while mapping the event
-# body as wildcard for substring search/alerting and @timestamp as a date.
-# NOTE: the "k8s-events-*" pattern intentionally does NOT match the bare "k8s-events" index.
 k8sEventsIndexTemplate='
 {
   "index_patterns": [
@@ -160,23 +153,89 @@ k8sEventsIndexTemplate='
       "number_of_replicas": 1
     },
     "mappings": {
-      "dynamic_templates": [
-        {
-          "strings_as_keyword": {
-            "match_mapping_type": "string",
-            "mapping": {
-              "type": "keyword",
-              "ignore_above": 2048
-            }
-          }
-        }
-      ],
+      "dynamic": "false",
       "properties": {
         "@timestamp": {
           "type": "date"
         },
         "body": {
           "type": "wildcard"
+        },
+        "severity": {
+          "properties": {
+            "text": {
+              "type": "keyword"
+            }
+          }
+        },
+        "attributes": {
+          "properties": {
+            "k8s": {
+              "properties": {
+                "event": {
+                  "properties": {
+                    "reason": {
+                      "type": "keyword"
+                    }
+                  }
+                },
+                "namespace": {
+                  "properties": {
+                    "name": {
+                      "type": "keyword"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "resource": {
+          "properties": {
+            "k8s": {
+              "properties": {
+                "object": {
+                  "properties": {
+                    "kind": {
+                      "type": "keyword"
+                    },
+                    "name": {
+                      "type": "keyword"
+                    },
+                    "label": {
+                      "properties": {
+                        "openchoreo": {
+                          "properties": {
+                            "dev/component": {
+                              "type": "keyword"
+                            },
+                            "dev/component-uid": {
+                              "type": "keyword"
+                            },
+                            "dev/project": {
+                              "type": "keyword"
+                            },
+                            "dev/project-uid": {
+                              "type": "keyword"
+                            },
+                            "dev/environment": {
+                              "type": "keyword"
+                            },
+                            "dev/environment-uid": {
+                              "type": "keyword"
+                            },
+                            "dev/namespace": {
+                              "type": "keyword"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       }
     }

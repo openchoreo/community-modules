@@ -252,8 +252,8 @@ func (qb *QueryBuilder) BuildWorkflowRunLogsQuery(params WorkflowRunQueryParams)
 	return query
 }
 
-// BuildComponentEventsQueryV1 builds a query for the API component events endpoint.
-func (qb *QueryBuilder) BuildComponentEventsQueryV1(params EventsQueryParamsV1) (map[string]interface{}, error) {
+// BuildComponentEventsQuery builds a query for the API component events endpoint.
+func (qb *QueryBuilder) BuildComponentEventsQuery(params EventsQueryParams) (map[string]interface{}, error) {
 	if params.StartTime == "" || params.EndTime == "" || params.NamespaceName == "" {
 		return nil, fmt.Errorf("start time, end time, and namespace name are required")
 	}

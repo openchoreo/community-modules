@@ -339,7 +339,7 @@ func (h *LogsHandler) queryComponentEvents(ctx context.Context, req *gen.EventsQ
 	startTime := req.StartTime.Format(time.RFC3339)
 	endTime := req.EndTime.Format(time.RFC3339)
 
-	params := opensearch.EventsQueryParamsV1{
+	params := opensearch.EventsQueryParams{
 		StartTime:     startTime,
 		EndTime:       endTime,
 		NamespaceName: scope.Namespace,
@@ -360,7 +360,7 @@ func (h *LogsHandler) queryComponentEvents(ctx context.Context, req *gen.EventsQ
 		params.SortOrder = string(*req.SortOrder)
 	}
 
-	query, err := h.eventsQueryBuilder.BuildComponentEventsQueryV1(params)
+	query, err := h.eventsQueryBuilder.BuildComponentEventsQuery(params)
 	if err != nil {
 		h.logger.Error("Failed to build component events query",
 			slog.String("function", "QueryEvents"),

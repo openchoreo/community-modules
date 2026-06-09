@@ -45,7 +45,7 @@ Adapter API:
 | Endpoint | Purpose |
 | --- | --- |
 | `POST /api/v1/metrics/query` | `metric: resource` runs a `Perf ⋈ KubePodInventory` query and returns the six CPU/memory series, scoped by the OpenChoreo component/project/environment UID pod labels. `metric: http` returns empty series with an `X-OpenChoreo-Adapter-Notice: http-metrics-not-implemented` header. |
-| `POST /api/v1alpha1/metrics/runtime-topology` | Not supported by this backend. Returns a not-implemented error (`500` with error code `OBS-V1-M-AZURE-MON-501`, the spec has no `501` variant) and the `X-OpenChoreo-Adapter-Notice: runtime-topology-not-supported` header (Log Analytics has no pod-to-pod traffic data). |
+| `POST /api/v1alpha1/metrics/runtime-topology` | Not supported by this backend. Returns `501 Not Implemented` (error code `OBS-V1-M-AZURE-MON-501`) — Log Analytics has no pod-to-pod traffic data to build a graph from. |
 | `POST /api/v1alpha1/alerts/rules` | Creates an Azure Monitor `scheduledQueryRule` evaluating `(usage / limit) * 100` against the threshold percentage, wired to the configured Action Group. |
 | `GET /api/v1alpha1/alerts/rules/{ruleName}` | Gets the alert rule identified by `{ruleName}`. |
 | `PUT /api/v1alpha1/alerts/rules/{ruleName}` | Updates the alert rule identified by `{ruleName}`. |
@@ -74,18 +74,6 @@ summed across a pod's containers per time bin. The pod labels live inside the
 `KubePodInventory.PodLabel` JSON array, so the adapter parses it
 (`parse_json(PodLabel)[0]["openchoreo.dev/..."]`) rather than substring
 matching — the stored JSON escapes the `/` in the label keys.
-
-## Why the Perf table
-
-Azure offers two metric backends; this module uses the first:
-
-- **Container Insights `Perf` table (this module).** Same Log Analytics
-  workspace as the logs adapter, the same `azlogs` SDK, the same UAMI, and
-  **no extra Azure resources or cluster collector**. Container Insights is
-  already enabled on the standard AKS setup.
-- **Azure Monitor managed Prometheus (Azure Monitor Workspace).** A
-  cloud-native Prometheus path, but it adds a second backend (AMW), a second
-  collector (`ama-metrics`), and a separate alerting subsystem. Not used.
 
 ## Prerequisites
 
@@ -325,11 +313,10 @@ Auth (no env needed — set by the Workload Identity webhook in-cluster)
 - **Runtime topology is not supported** by the Log Analytics backend. A
   topology graph is built from pod-to-pod L7 traffic, which lives in traces or
   L7/RED metrics — not in Container Insights' `Perf` / `KubePodInventory`. The
-  endpoint returns a not-implemented error (`500` with error code
-  `OBS-V1-M-AZURE-MON-501`) and the
-  `X-OpenChoreo-Adapter-Notice: runtime-topology-not-supported` header.
-  Populated topology on Azure would require a different backend (managed
-  Prometheus fed by Cilium/Hubble L7 metrics, or Application Insights traces).
+  endpoint returns `501 Not Implemented` (error code
+  `OBS-V1-M-AZURE-MON-501`). Populated topology on Azure would require a
+  different backend (managed Prometheus fed by Cilium/Hubble L7 metrics, or
+  Application Insights traces).
 - **Only `cpu_usage` and `memory_usage` alert sources** are supported; `budget`
   (FinOps) returns a `400`.
 - **Alert evaluation floor.** Azure Monitor `scheduledQueryRules` evaluate at a

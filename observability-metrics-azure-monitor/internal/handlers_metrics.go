@@ -150,11 +150,9 @@ func (h *MetricsHandler) queryHTTPMetrics() gen.QueryMetricsResponseObject {
 // data in the workspace to build nodes/edges from. This data source is
 // therefore not supported for topology.
 func (h *MetricsHandler) QueryRuntimeTopology(_ context.Context, _ gen.QueryRuntimeTopologyRequestObject) (gen.QueryRuntimeTopologyResponseObject, error) {
-	return runtimeTopologyNotSupportedResponse{
-		gen.QueryRuntimeTopology500JSONResponse(
-			makeError(gen.InternalServerError, errCodeNotImplemented, "runtime topology is not supported by the Azure Container Insights backend"),
-		),
-	}, nil
+	return gen.QueryRuntimeTopology501JSONResponse(
+		makeError(gen.NotImplemented, errCodeNotImplemented, "runtime topology is not supported by the Azure Container Insights backend"),
+	), nil
 }
 
 // --- mapping helpers -----------------------------------------------------
@@ -219,19 +217,4 @@ func (r httpMetricsQueryOKResponse) VisitQueryMetricsResponse(w http.ResponseWri
 	w.Header().Set("X-OpenChoreo-Adapter-Notice", "http-metrics-not-implemented")
 	w.WriteHeader(http.StatusOK)
 	return json.NewEncoder(w).Encode(r.MetricsQueryResponse)
-}
-
-// runtimeTopologyNotSupportedResponse wraps the not-implemented 500 response
-// with a notice header so callers can tell the endpoint is unsupported by this
-// backend (the Log Analytics backend has no traffic data) rather than a
-// transient server error.
-type runtimeTopologyNotSupportedResponse struct {
-	gen.QueryRuntimeTopology500JSONResponse
-}
-
-func (r runtimeTopologyNotSupportedResponse) VisitQueryRuntimeTopologyResponse(w http.ResponseWriter) error {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("X-OpenChoreo-Adapter-Notice", "runtime-topology-not-supported")
-	w.WriteHeader(http.StatusInternalServerError)
-	return json.NewEncoder(w).Encode(gen.ErrorResponse(r.QueryRuntimeTopology500JSONResponse))
 }

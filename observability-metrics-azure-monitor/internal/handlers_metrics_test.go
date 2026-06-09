@@ -170,24 +170,21 @@ func TestQueryRuntimeTopology_NotImplemented(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	wrapped, isType := resp.(runtimeTopologyNotSupportedResponse)
+	notImpl, isType := resp.(gen.QueryRuntimeTopology501JSONResponse)
 	if !isType {
-		t.Fatalf("expected runtimeTopologyNotSupportedResponse, got %T", resp)
+		t.Fatalf("expected QueryRuntimeTopology501JSONResponse, got %T", resp)
 	}
-	if wrapped.ErrorCode == nil || *wrapped.ErrorCode != "OBS-V1-M-AZURE-MON-501" {
-		t.Errorf("expected not-implemented error code, got %v", wrapped.ErrorCode)
+	if notImpl.ErrorCode == nil || *notImpl.ErrorCode != "OBS-V1-M-AZURE-MON-501" {
+		t.Errorf("expected not-implemented error code, got %v", notImpl.ErrorCode)
 	}
 
-	// The response must be 500 and carry the not-supported notice header.
+	// The response must be 501.
 	rec := httptest.NewRecorder()
 	if err := resp.VisitQueryRuntimeTopologyResponse(rec); err != nil {
 		t.Fatalf("visit error: %v", err)
 	}
-	if rec.Code != http.StatusInternalServerError {
-		t.Errorf("expected 500, got %d", rec.Code)
-	}
-	if got := rec.Header().Get("X-OpenChoreo-Adapter-Notice"); got != "runtime-topology-not-supported" {
-		t.Errorf("expected not-supported header, got %q", got)
+	if rec.Code != http.StatusNotImplemented {
+		t.Errorf("expected 501, got %d", rec.Code)
 	}
 }
 

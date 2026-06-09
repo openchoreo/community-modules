@@ -47,7 +47,7 @@ helm upgrade --install observability-events-otel-collector \
   oci://ghcr.io/openchoreo/helm-charts/observability-events-otel-collector \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.1.0
+  --version 0.1.1
 ```
 
 Out of the box the collector enriches events and prints them to its pod log via
@@ -108,7 +108,7 @@ pipelineExporters:
 ```bash
 helm upgrade --install observability-events-otel-collector \
   oci://ghcr.io/openchoreo/helm-charts/observability-events-otel-collector \
-  --namespace openchoreo-observability-plane --version 0.1.0 \
+  --namespace openchoreo-observability-plane --version 0.1.1 \
   -f opensearch-values.yaml
 ```
 
@@ -196,7 +196,7 @@ persistence:
 ```bash
 helm upgrade --install observability-events-otel-collector \
   oci://ghcr.io/openchoreo/helm-charts/observability-events-otel-collector \
-  --namespace openchoreo-observability-plane --version 0.1.0 --reuse-values \
+  --namespace openchoreo-observability-plane --version 0.1.1 --reuse-values \
   --set persistence.enabled=true \
   --set persistence.storageClassName=<your-storage-class>
 ```

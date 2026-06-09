@@ -5,8 +5,8 @@ apiVersion: v2
 name: observability-events-otel-collector
 description: A custom OpenTelemetry Collector for OpenChoreo that watches Kubernetes events and enriches them with their involved object's labels, annotations, and owner reference.
 type: application
-version: 0.1.0
-appVersion: "0.1.0"
+version: 0.1.1
+appVersion: "0.1.1"
 keywords:
   - openchoreo
   - observability

@@ -3,17 +3,13 @@
 This module exposes **Azure Container Insights** as an OpenChoreo metrics
 backend. It serves per-pod CPU and memory time series by querying the `Perf`
 and `KubePodInventory` tables in the Log Analytics workspace that the Azure
-Monitor Agent (AMA) already populates on an AKS cluster.
+Monitor Agent (AMA) already populates on an AKS cluster, and it manages Azure
+Monitor `scheduledQueryRules` for metric alerting.
 
-It targets AKS clusters with Workload Identity. Authentication uses
-`DefaultAzureCredential` against a User-Assigned Managed Identity federated to
+Authentication uses `DefaultAzureCredential`. In-cluster this resolves the
+Workload Identity federated token of a User-Assigned Managed Identity bound to
 the adapter's ServiceAccount — the same model as the sibling
 `observability-logs-azure-loganalytics` module.
-
-> **Status:** Phases 1–2 implemented — resource-metrics query, health, and
-> alert-rule CRUD + webhook (via Azure Monitor `scheduledQueryRules`). The
-> runtime-topology graph is not supported by this backend; see
-> [Limitations](#limitations).
 
 ## Table of contents
 
@@ -22,33 +18,40 @@ the adapter's ServiceAccount — the same model as the sibling
 3. [Prerequisites](#prerequisites)
 4. [Azure role assignments](#azure-role-assignments)
 5. [Install with Helm](#install-with-helm)
-6. [Local development](#local-development)
-7. [Configuration reference](#configuration-reference)
-8. [Limitations](#limitations)
-9. [Compatibility](#compatibility)
+6. [Metric alerting](#metric-alerting)
+7. [Shared webhook secret](#shared-webhook-secret)
+8. [Local development](#local-development)
+9. [Troubleshooting](#troubleshooting)
+10. [Configuration reference](#configuration-reference)
+11. [Limitations](#limitations)
+12. [Compatibility](#compatibility)
 
 ## Architecture
 
-The adapter has two responsibilities: **resource-metric query** against Azure
-Container Insights, and **alerting** through Azure Monitor scheduled query
-rules.
+This module has two main responsibilities:
 
-Metric collection is **not** in scope for this module — the AKS Container
+1. **Metric query** against Azure Container Insights.
+2. **Alerting** through Azure Monitor scheduled query rules.
+
+Metric **collection** is not in scope for this module. The AKS Container
 Insights addon installs the Azure Monitor Agent, which writes per-container
 CPU/memory counters to the `Perf` table and pod inventory (including pod
-labels) to `KubePodInventory`. This module reads from those tables.
+labels) to `KubePodInventory`. The adapter reads from those tables; there is no
+collector to deploy.
+
+The adapter is a single Go Deployment that implements the OpenChoreo Metrics
+Adapter API:
 
 | Endpoint | Purpose |
 | --- | --- |
-| `POST /api/v1/metrics/query` | `metric: resource` runs a `Perf ⋈ KubePodInventory` query and returns the six CPU/memory series, scoped by the OpenChoreo namespace label plus optional component/project/environment UIDs. `metric: http` returns empty series (see [Limitations](#limitations)). |
-| `POST /api/v1alpha1/metrics/runtime-topology` | **Not supported by this backend.** Returns an empty graph + populated summary window with the `X-OpenChoreo-Adapter-Notice: runtime-topology-not-supported` header — Log Analytics has no pod-to-pod traffic data to build a graph from. |
-| `POST /api/v1alpha1/alerts/rules` | Creates an Azure Monitor `scheduledQueryRule` that thresholds the `cpu_usage`/`memory_usage` Perf counter (as a percentage of the pod's limit) over the scoped pods, wired to the configured Action Group. |
-| `GET/PUT/DELETE /api/v1alpha1/alerts/rules/{ruleName}` | Look up by `openchoreo-rule-name` tag / CreateOrUpdate / delete the rule. |
+| `POST /api/v1/metrics/query` | `metric: resource` runs a `Perf ⋈ KubePodInventory` query and returns the six CPU/memory series, scoped by the OpenChoreo component/project/environment UID pod labels. `metric: http` returns empty series with an `X-OpenChoreo-Adapter-Notice: http-metrics-not-implemented` header. |
+| `POST /api/v1alpha1/metrics/runtime-topology` | Not supported by this backend. Returns an empty graph with the `X-OpenChoreo-Adapter-Notice: runtime-topology-not-supported` header (Log Analytics has no pod-to-pod traffic data). |
+| `POST /api/v1alpha1/alerts/rules` | Creates an Azure Monitor `scheduledQueryRule` evaluating `(usage / limit) * 100` against the threshold percentage, wired to the configured Action Group. |
+| `GET /api/v1alpha1/alerts/rules/{ruleName}` | Gets the alert rule identified by `{ruleName}`. |
+| `PUT /api/v1alpha1/alerts/rules/{ruleName}` | Updates the alert rule identified by `{ruleName}`. |
+| `DELETE /api/v1alpha1/alerts/rules/{ruleName}` | Deletes the `scheduledQueryRule` for the alert rule identified by `{ruleName}`. |
 | `POST /api/v1alpha1/alerts/webhook` | Receives a Common Alert Schema payload from the Action Group and forwards a normalized alert to the Observer. Protected by the webhook shared-secret. |
 | `GET /healthz` | Readiness/liveness check. |
-
-Alerting is always wired (matching the AWS CloudWatch and Prometheus metrics
-adapters), so the Azure Monitor alert configuration below is required at boot.
 
 ### How the resource query maps to Container Insights
 
@@ -77,14 +80,16 @@ matching — the stored JSON escapes the `/` in the label keys.
 Azure offers two metric backends; this module uses the first:
 
 - **Container Insights `Perf` table (this module).** Same Log Analytics
-  workspace as the logs adapter, the same `azlogs` SDK, the same UAMI role,
-  and **no extra Azure resources or cluster collector**. Container Insights is
+  workspace as the logs adapter, the same `azlogs` SDK, the same UAMI, and
+  **no extra Azure resources or cluster collector**. Container Insights is
   already enabled on the standard AKS setup.
 - **Azure Monitor managed Prometheus (Azure Monitor Workspace).** A
   cloud-native Prometheus path, but it adds a second backend (AMW), a second
-  collector (`ama-metrics`), and a separate alerting subsystem. Deferred.
+  collector (`ama-metrics`), and a separate alerting subsystem. Not used.
 
 ## Prerequisites
+
+Before installing this module, make sure the following are available.
 
 ### OpenChoreo prerequisites
 
@@ -95,7 +100,7 @@ Azure offers two metric backends; this module uses the first:
 
 - `go` (1.26+)
 - `az` CLI
-- `kubectl`, `helm` (for the in-cluster deployment in [Install with Helm](#install-with-helm))
+- `kubectl`, `helm`
 
 ### Azure prerequisites
 
@@ -107,13 +112,13 @@ Azure offers two metric backends; this module uses the first:
     that writes `Perf` and `KubePodInventory`.
   - **Performance data collection left enabled** in the Container Insights
     DCR. A cost-optimization DCR that disables performance counters empties
-    the `Perf` table and every query returns nothing. The adapter logs a
-    warning at boot if `Perf` has no `K8SContainer` rows.
+    the `Perf` table and every query returns nothing.
   - **Pod label collection enabled** so `KubePodInventory.PodLabel` carries
     the `openchoreo.dev/*` labels.
 - A **Log Analytics workspace** on the **Analytics** table plan (the default).
 - A **User-Assigned Managed Identity** federated to the adapter's
-  ServiceAccount, with the role assignment described below.
+  ServiceAccount, with the role assignments described below.
+- A pre-existing **Action Group** the alert rules notify.
 
 ## Azure role assignments
 
@@ -162,13 +167,8 @@ helm install metrics-adapter-azure-monitor ./helm \
   --set adapter.serviceAccount.clientId=<UAMI client id> \
   --set adapter.alerting.actionGroupId=<action group ARM id> \
   --set adapter.alerting.observerUrl=http://observer-internal.openchoreo-observability-plane:8081 \
-  --set adapter.alerting.webhookAuth.sharedSecret=<>=16-byte secret>
+  --set adapter.alerting.webhookAuth.sharedSecret=<at-least-16-byte secret>
 ```
-
-To expose the webhook through the gateway, also set
-`adapter.alerting.webhookRoute.enabled=true`,
-`adapter.alerting.webhookRoute.parentRef.name=<gateway>`, and a hostname under
-`adapter.alerting.webhookRoute.hostnames`.
 
 The chart fails fast at render time if any required value (region, workspace,
 subscription/resource group, action group, observer URL, or the SA `client-id`
@@ -176,6 +176,64 @@ when it creates the ServiceAccount) is missing.
 
 Point the Observer at the adapter by setting its `METRICS_ADAPTER_URL` to
 `http://metrics-adapter.openchoreo-observability-plane.svc.cluster.local:9099`.
+
+## Metric alerting
+
+Metric alerting is enabled by default when the adapter is installed. The chart
+injects `OBSERVER_URL` so forwarded alert events reach the Observer, and the
+adapter verifies the Action Group is reachable at boot.
+
+The module implements metric alerts using native Azure Monitor resources:
+
+1. A `scheduledQueryRule` whose KQL evaluates `(usage / limit) * 100` over the
+   scoped pods and thresholds it (`TimeAggregation = Average`,
+   `MetricMeasureColumn = AggregatedValue`).
+2. The configured **Action Group**, which POSTs a Common Alert Schema payload
+   to the adapter's `/api/v1alpha1/alerts/webhook` when the rule fires.
+
+Important constraints:
+
+- **Threshold is a percentage (0–100) of the pod's CPU or memory limit.** Only
+  `cpu_usage` and `memory_usage` sources are supported; `budget` returns `400`.
+- **WindowSize is snapped up** to the nearest Azure-supported granularity
+  (1, 5, 10, 15, 30, 45, 60, … minutes) at rule-create time, so a window like
+  `2m` becomes `5m` instead of being rejected.
+- **Minimum 5-minute evaluation frequency.** Azure clamps sub-5-minute
+  `interval` values.
+
+### Alert identity mapping
+
+The adapter stores the logical OpenChoreo rule identity in the
+`scheduledQueryRule` tags (`openchoreo-rule-name`, `openchoreo-namespace`) and
+derives a deterministic Azure resource name (`oc-<sha256(...)>`) for fast
+lookup on `GET`/`PUT`/`DELETE`, which the API addresses by `ruleName` only.
+
+### Webhook exposure
+
+The Action Group reaches the adapter webhook from outside the cluster. To
+expose it through the observability-plane gateway, set
+`adapter.alerting.webhookRoute.enabled=true`,
+`adapter.alerting.webhookRoute.parentRef.name=<gateway>`, and a hostname under
+`adapter.alerting.webhookRoute.hostnames`.
+
+### Test alerting
+
+For an end-to-end OpenChoreo alert and incident flow, see the
+[Component Alerts and Incidents tutorial](https://openchoreo.dev/docs/tutorials/component-alerts-and-incidents/).
+
+## Shared webhook secret
+
+When webhook authentication is enabled (`adapter.alerting.webhookAuth.enabled=true`,
+the default), the adapter rejects webhook requests that do not include the
+configured token. The token is accepted either in the header:
+
+```text
+X-OpenChoreo-Webhook-Token
+```
+
+or as a `?token=` URL query parameter (used when the Action Group posts
+directly to the gateway HTTPRoute). The same value must be configured on the
+Action Group's webhook receiver URL.
 
 ## Local development
 
@@ -185,6 +243,12 @@ session — no code change required.
 ```bash
 az login
 export LOG_ANALYTICS_WORKSPACE_ID="<workspace customerId GUID>"
+export AZURE_SUBSCRIPTION_ID="<subscription id>"
+export AZURE_RESOURCE_GROUP="<resource group>"
+export WORKSPACE_RESOURCE_ID="<workspace ARM resource ID>"
+export ACTION_GROUP_ID="<action group ARM id>"
+export OBSERVER_URL="http://localhost:8081"
+export WEBHOOK_AUTH_ENABLED=false
 make run            # builds ./bin/adapter and runs it on :9099
 ```
 
@@ -203,9 +267,28 @@ curl -s -X POST localhost:9099/api/v1/metrics/query \
          \"componentUid\":\"<component-uid>\"}}"
 ```
 
-The adapter pings the workspace at boot and exits non-zero if the workspace is
-unreachable, so a misconfigured pod crash-loops loudly instead of silently
-serving empty results.
+The adapter pings the workspace and verifies the Action Group at boot, exiting
+non-zero if either is unreachable, so a misconfigured pod crash-loops loudly
+instead of silently serving empty results.
+
+## Troubleshooting
+
+### Start with these logs
+
+```bash
+kubectl -n openchoreo-observability-plane logs deployment/metrics-adapter-azure-monitor --tail=200
+```
+
+### Common issues
+
+| Symptom | Likely cause | What to check |
+| --- | --- | --- |
+| Adapter pod crash-loops at boot | Workspace or Action Group unreachable, or missing role assignment | Check the boot logs for the ping / Action Group verification error; confirm the UAMI role assignments. |
+| `403 InvalidTokenError` on queries | Federated token not projected, or UAMI lacks Log Analytics Reader | Confirm the pod has the `azure.workload.identity/use: "true"` label and the SA `client-id` annotation; check the role assignment. |
+| Query returns empty series | No matching pods, or Container Insights performance collection disabled | Verify `Perf` has `K8SContainer` rows and `KubePodInventory.PodLabel` carries `openchoreo.dev/*` labels for the queried UID. |
+| Alert create returns `400` | Unsupported metric source | Only `cpu_usage` and `memory_usage` are supported; `budget` is rejected. |
+| Alert create returns `500` with `InvalidRequestContent` | Window not a supported Azure granularity | The adapter snaps windows up automatically; if seen, confirm the running image includes the snapping fix. |
+| Webhook returns unauthorized | Missing or incorrect `X-OpenChoreo-Webhook-Token` / `?token=` | Check the Action Group webhook URL and the chart webhook secret. |
 
 ## Configuration reference
 
@@ -217,7 +300,7 @@ Required
   WORKSPACE_RESOURCE_ID
   ACTION_GROUP_ID
   OBSERVER_URL
-  WEBHOOK_SHARED_SECRET          ≥16 bytes when WEBHOOK_AUTH_ENABLED=true
+  WEBHOOK_SHARED_SECRET          >=16 bytes when WEBHOOK_AUTH_ENABLED=true
 
 Optional
   SERVER_PORT                    default 9099
@@ -225,6 +308,8 @@ Optional
   QUERY_TIMEOUT                  default 30s
   AZURE_REGION                   default eastus2
   WEBHOOK_AUTH_ENABLED           default true
+  DEFAULT_EVALUATION_FREQUENCY   default PT5M
+  DEFAULT_WINDOW_SIZE            default PT5M
 
 Auth (no env needed — set by the Workload Identity webhook in-cluster)
   AZURE_CLIENT_ID
@@ -235,21 +320,19 @@ Auth (no env needed — set by the Workload Identity webhook in-cluster)
 ## Limitations
 
 - **HTTP RED metrics** (`metric: http`) are not implemented. The endpoint
-  returns empty series and sets the
-  `X-OpenChoreo-Adapter-Notice: http-metrics-not-implemented` response header.
+  returns empty series with the
+  `X-OpenChoreo-Adapter-Notice: http-metrics-not-implemented` header.
 - **Runtime topology is not supported** by the Log Analytics backend. A
-  topology graph is built from pod-to-pod L7 traffic (request counts and
-  latencies), which lives in traces or L7/RED metrics — not in Container
-  Insights' `Perf` / `KubePodInventory`. The endpoint returns a well-formed
-  empty graph with the `X-OpenChoreo-Adapter-Notice: runtime-topology-not-supported`
-  header so the Observer does not error. Populated topology on Azure would
-  require a different backend (managed Prometheus fed by Cilium/Hubble L7
-  metrics, or Application Insights traces).
-- **Only `cpu_usage` and `memory_usage` alert sources** are supported. The
-  `budget` source (FinOps) returns a `400`.
+  topology graph is built from pod-to-pod L7 traffic, which lives in traces or
+  L7/RED metrics — not in Container Insights' `Perf` / `KubePodInventory`. The
+  endpoint returns a well-formed empty graph with the
+  `X-OpenChoreo-Adapter-Notice: runtime-topology-not-supported` header.
+  Populated topology on Azure would require a different backend (managed
+  Prometheus fed by Cilium/Hubble L7 metrics, or Application Insights traces).
+- **Only `cpu_usage` and `memory_usage` alert sources** are supported; `budget`
+  (FinOps) returns a `400`.
 - **Alert evaluation floor.** Azure Monitor `scheduledQueryRules` evaluate at a
-  minimum 5-minute frequency, so sub-5-minute `interval` values are effectively
-  clamped by Azure.
+  minimum 5-minute frequency, so sub-5-minute `interval` values are clamped.
 - **Metric latency.** `Perf` lands at ~1-minute cadence with a few minutes of
   ingestion lag — fine for dashboards and 5-minute alerts, not for sub-minute
   SLOs.

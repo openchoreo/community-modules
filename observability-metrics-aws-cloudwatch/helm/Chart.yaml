@@ -2,8 +2,8 @@ apiVersion: v2
 name: observability-metrics-aws-cloudwatch
 description: A Helm chart for OpenChoreo Metrics Module for AWS CloudWatch
 type: application
-version: 0.2.2
-appVersion: "0.2.2"
+version: 0.2.3
+appVersion: "0.2.3"
 keywords:
   - cloudwatch
   - aws

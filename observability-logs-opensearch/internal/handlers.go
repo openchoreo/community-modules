@@ -313,10 +313,10 @@ func (h *LogsHandler) QueryEvents(ctx context.Context, request gen.QueryEventsRe
 	// Try to interpret the search scope as a WorkflowSearchScope first
 	workflowScope, err := request.Body.SearchScope.AsWorkflowSearchScope()
 	if err == nil && workflowScope.WorkflowRunName != nil {
-		if strings.TrimSpace(workflowScope.Namespace) == "" {
+		if strings.TrimSpace(workflowScope.Namespace) == "" || strings.TrimSpace(*workflowScope.WorkflowRunName) == "" {
 			return gen.QueryEvents400JSONResponse{
 				Title:   ptr(gen.BadRequest),
-				Message: ptr("searchScope with a valid namespace is required"),
+				Message: ptr("searchScope with a valid namespace and workflowRunName is required"),
 			}, nil
 		}
 

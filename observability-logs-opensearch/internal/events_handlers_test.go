@@ -54,7 +54,9 @@ func eventsSearchServer(t *testing.T) *httptest.Server {
 				},
 			},
 		}
-		_ = json.NewEncoder(w).Encode(resp)
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			t.Errorf("failed to encode response: %v", err)
+		}
 	}))
 }
 

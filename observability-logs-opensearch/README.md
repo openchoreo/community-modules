@@ -11,7 +11,7 @@ This module collects logs using [Fluent Bit](https://fluentbit.io) and stores th
 ### Pre-requisites
 
 1. OpenSearch setup scripts in this helm chart need admin credentials to connect to OpenSearch and configure it. OpenChoreo uses the External Secrets Operator to manage secrets. Add your OpenSearch credentials (username and password) to a secret store and use an `ExternalSecret` resource to generate a Kubernetes secret from it.
-Refer to the [secret management guide](https://openchoreo.dev/docs/platform-engineer-guide/secret-management/) for more details.
+   Refer to the [secret management guide](https://openchoreo.dev/docs/platform-engineer-guide/secret-management/) for more details.
 
 For example, the command below pulls values from the `ClusterSecretStore` created earlier in the [OpenChoreo installation guide](https://openchoreo.dev/docs).
 
@@ -42,6 +42,7 @@ EOF
 ```
 
 2. If you wish to use the Kubernetes operator-based OpenSearch version included with this Helm chart, install the operator as follows
+
 ```bash
 helm repo add opensearch-operator https://opensearch-project.github.io/opensearch-k8s-operator/
 helm repo update
@@ -62,7 +63,7 @@ helm upgrade --install observability-logs-opensearch \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.4.1 \
+  --version 0.5.0 \
   --set adapter.openSearchSecretName="opensearch-admin-credentials" \
   --set openSearchSetup.openSearchSecretName="opensearch-admin-credentials"
 ```
@@ -74,7 +75,7 @@ helm upgrade --install observability-logs-opensearch \
 >   oci://ghcr.io/openchoreo/helm-charts/observability-logs-opensearch \
 >   --create-namespace \
 >   --namespace openchoreo-observability-plane \
->   --version 0.4.1 \
+>   --version 0.5.0 \
 >   --set adapter.openSearchSecretName="opensearch-admin-credentials" \
 >   --set openSearch.enabled=false \
 >   --set openSearchSetup.openSearchSecretName="opensearch-admin-credentials"
@@ -83,6 +84,7 @@ helm upgrade --install observability-logs-opensearch \
 ## Enable log collection
 
 ### Single-cluster topology
+
 In a **single-cluster topology**, where the observability plane runs in the same cluster
 as the data-plane / workflow-plane clusters, enable Fluent Bit in the already installed Helm chart
 to start collecting logs from the cluster and publish them to OpenSearch:
@@ -92,7 +94,7 @@ helm upgrade observability-logs-opensearch \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.4.1 \
+  --version 0.5.0 \
   --reuse-values \
   --set fluent-bit.enabled=true
 ```
@@ -114,7 +116,7 @@ helm upgrade --install observability-logs-opensearch \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.4.1 \
+  --version 0.5.0 \
   --set adapter.openSearchSecretName="opensearch-admin-credentials" \
   --set openSearch.enabled=false \
   --set openSearchCluster.enabled=true \
@@ -142,7 +144,7 @@ helm upgrade --install observability-logs-opensearch \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.4.1 \
+  --version 0.5.0 \
   --set adapter.enabled=false \
   --set openSearch.enabled=false \
   --set openSearchCluster.enabled=false \
@@ -178,6 +180,7 @@ Only logs written after the deletion will appear (Fluent Bit's tail cursor persi
 > **Note:** The Helm chart versions specified in the installation commands above are for the latest module version compatible with the development version of OpenChoreo. Refer to the compatibility table below to determine the appropriate module version for your OpenChoreo installation.
 
 | Module Version | OpenChoreo Version |
-|----------------|--------------------|
+| -------------- | ------------------ |
+| v0.5.x         | v1.2.x             |
 | v0.4.x         | v1.1.x             |
 | v0.3.x         | v1.0.x             |

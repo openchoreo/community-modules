@@ -39,7 +39,7 @@ func newTestOSClient(t *testing.T, serverURL string) *osearch.Client {
 }
 
 func TestHealth(t *testing.T) {
-	handler := NewLogsHandler(nil, nil, nil, testLogger())
+	handler := NewLogsHandler(nil, nil, nil, nil, testLogger())
 	resp, err := handler.Health(context.Background(), gen.HealthRequestObject{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -54,7 +54,7 @@ func TestHealth(t *testing.T) {
 }
 
 func TestQueryLogs_NilBody(t *testing.T) {
-	handler := NewLogsHandler(nil, nil, nil, testLogger())
+	handler := NewLogsHandler(nil, nil, nil, nil, testLogger())
 	resp, err := handler.QueryLogs(context.Background(), gen.QueryLogsRequestObject{Body: nil})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -100,7 +100,7 @@ func TestQueryLogs_ComponentScope_Success(t *testing.T) {
 
 	osClient := newTestOSClient(t, server.URL)
 	qb := osearch.NewQueryBuilder("logs-")
-	handler := NewLogsHandler(osClient, qb, nil, testLogger())
+	handler := NewLogsHandler(osClient, qb, nil, nil, testLogger())
 
 	startTime := time.Date(2025, 6, 15, 0, 0, 0, 0, time.UTC)
 	endTime := time.Date(2025, 6, 15, 23, 59, 59, 0, time.UTC)
@@ -131,7 +131,7 @@ func TestQueryLogs_ComponentScope_Success(t *testing.T) {
 }
 
 func TestQueryLogs_ComponentScope_EmptyNamespace(t *testing.T) {
-	handler := NewLogsHandler(nil, nil, nil, testLogger())
+	handler := NewLogsHandler(nil, nil, nil, nil, testLogger())
 
 	searchScope := gen.LogsQueryRequest_SearchScope{}
 	_ = searchScope.FromComponentSearchScope(gen.ComponentSearchScope{
@@ -163,7 +163,7 @@ func TestQueryLogs_ComponentScope_SearchError(t *testing.T) {
 
 	osClient := newTestOSClient(t, server.URL)
 	qb := osearch.NewQueryBuilder("logs-")
-	handler := NewLogsHandler(osClient, qb, nil, testLogger())
+	handler := NewLogsHandler(osClient, qb, nil, nil, testLogger())
 
 	searchScope := gen.LogsQueryRequest_SearchScope{}
 	_ = searchScope.FromComponentSearchScope(gen.ComponentSearchScope{
@@ -215,7 +215,7 @@ func TestQueryLogs_WorkflowScope_Success(t *testing.T) {
 
 	osClient := newTestOSClient(t, server.URL)
 	qb := osearch.NewQueryBuilder("logs-")
-	handler := NewLogsHandler(osClient, qb, nil, testLogger())
+	handler := NewLogsHandler(osClient, qb, nil, nil, testLogger())
 
 	workflowRunName := "run-123"
 	searchScope := gen.LogsQueryRequest_SearchScope{}
@@ -245,7 +245,7 @@ func TestQueryLogs_WorkflowScope_Success(t *testing.T) {
 }
 
 func TestQueryLogs_WorkflowScope_EmptyNamespace(t *testing.T) {
-	handler := NewLogsHandler(nil, nil, nil, testLogger())
+	handler := NewLogsHandler(nil, nil, nil, nil, testLogger())
 
 	workflowRunName := "run-123"
 	searchScope := gen.LogsQueryRequest_SearchScope{}
@@ -270,7 +270,7 @@ func TestQueryLogs_WorkflowScope_EmptyNamespace(t *testing.T) {
 }
 
 func TestCreateAlertRule_NilBody(t *testing.T) {
-	handler := NewLogsHandler(nil, nil, nil, testLogger())
+	handler := NewLogsHandler(nil, nil, nil, nil, testLogger())
 	resp, err := handler.CreateAlertRule(context.Background(), gen.CreateAlertRuleRequestObject{Body: nil})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -294,7 +294,7 @@ func TestCreateAlertRule_Success(t *testing.T) {
 
 	osClient := newTestOSClient(t, server.URL)
 	qb := osearch.NewQueryBuilder("logs-")
-	handler := NewLogsHandler(osClient, qb, nil, testLogger())
+	handler := NewLogsHandler(osClient, qb, nil, nil, testLogger())
 
 	body := gen.AlertRuleRequest{
 		Metadata: struct {
@@ -351,7 +351,7 @@ func TestCreateAlertRule_CreateError(t *testing.T) {
 
 	osClient := newTestOSClient(t, server.URL)
 	qb := osearch.NewQueryBuilder("logs-")
-	handler := NewLogsHandler(osClient, qb, nil, testLogger())
+	handler := NewLogsHandler(osClient, qb, nil, nil, testLogger())
 
 	body := gen.AlertRuleRequest{
 		Metadata: struct {
@@ -412,7 +412,7 @@ func TestDeleteAlertRule_Success(t *testing.T) {
 	defer server.Close()
 
 	osClient := newTestOSClient(t, server.URL)
-	handler := NewLogsHandler(osClient, nil, nil, testLogger())
+	handler := NewLogsHandler(osClient, nil, nil, nil, testLogger())
 
 	resp, err := handler.DeleteAlertRule(context.Background(), gen.DeleteAlertRuleRequestObject{RuleName: "test-rule"})
 	if err != nil {
@@ -428,7 +428,7 @@ func TestDeleteAlertRule_NotFound(t *testing.T) {
 	defer server.Close()
 
 	osClient := newTestOSClient(t, server.URL)
-	handler := NewLogsHandler(osClient, nil, nil, testLogger())
+	handler := NewLogsHandler(osClient, nil, nil, nil, testLogger())
 
 	resp, err := handler.DeleteAlertRule(context.Background(), gen.DeleteAlertRuleRequestObject{RuleName: "nonexistent"})
 	if err != nil {
@@ -446,7 +446,7 @@ func TestDeleteAlertRule_SearchError(t *testing.T) {
 	defer server.Close()
 
 	osClient := newTestOSClient(t, server.URL)
-	handler := NewLogsHandler(osClient, nil, nil, testLogger())
+	handler := NewLogsHandler(osClient, nil, nil, nil, testLogger())
 
 	resp, err := handler.DeleteAlertRule(context.Background(), gen.DeleteAlertRuleRequestObject{RuleName: "test-rule"})
 	if err != nil {
@@ -542,7 +542,7 @@ func TestGetAlertRule_Success(t *testing.T) {
 	defer server.Close()
 
 	osClient := newTestOSClient(t, server.URL)
-	handler := NewLogsHandler(osClient, nil, nil, testLogger())
+	handler := NewLogsHandler(osClient, nil, nil, nil, testLogger())
 
 	resp, err := handler.GetAlertRule(context.Background(), gen.GetAlertRuleRequestObject{RuleName: "test-rule"})
 	if err != nil {
@@ -563,7 +563,7 @@ func TestGetAlertRule_NotFound(t *testing.T) {
 	defer server.Close()
 
 	osClient := newTestOSClient(t, server.URL)
-	handler := NewLogsHandler(osClient, nil, nil, testLogger())
+	handler := NewLogsHandler(osClient, nil, nil, nil, testLogger())
 
 	resp, err := handler.GetAlertRule(context.Background(), gen.GetAlertRuleRequestObject{RuleName: "nonexistent"})
 	if err != nil {
@@ -592,7 +592,7 @@ func TestGetAlertRule_GetError(t *testing.T) {
 	defer server.Close()
 
 	osClient := newTestOSClient(t, server.URL)
-	handler := NewLogsHandler(osClient, nil, nil, testLogger())
+	handler := NewLogsHandler(osClient, nil, nil, nil, testLogger())
 
 	resp, err := handler.GetAlertRule(context.Background(), gen.GetAlertRuleRequestObject{RuleName: "test-rule"})
 	if err != nil {
@@ -604,7 +604,7 @@ func TestGetAlertRule_GetError(t *testing.T) {
 }
 
 func TestUpdateAlertRule_NilBody(t *testing.T) {
-	handler := NewLogsHandler(nil, nil, nil, testLogger())
+	handler := NewLogsHandler(nil, nil, nil, nil, testLogger())
 	resp, err := handler.UpdateAlertRule(context.Background(), gen.UpdateAlertRuleRequestObject{
 		RuleName: "test",
 		Body:     nil,
@@ -637,7 +637,7 @@ func TestUpdateAlertRule_Success(t *testing.T) {
 
 	osClient := newTestOSClient(t, server.URL)
 	qb := osearch.NewQueryBuilder("logs-")
-	handler := NewLogsHandler(osClient, qb, nil, testLogger())
+	handler := NewLogsHandler(osClient, qb, nil, nil, testLogger())
 
 	body := gen.AlertRuleRequest{
 		Metadata: struct {
@@ -685,7 +685,7 @@ func TestUpdateAlertRule_NotFound(t *testing.T) {
 
 	osClient := newTestOSClient(t, server.URL)
 	qb := osearch.NewQueryBuilder("logs-")
-	handler := NewLogsHandler(osClient, qb, nil, testLogger())
+	handler := NewLogsHandler(osClient, qb, nil, nil, testLogger())
 
 	body := gen.AlertRuleRequest{
 		Metadata: struct {
@@ -720,7 +720,7 @@ func TestUpdateAlertRule_NotFound(t *testing.T) {
 }
 
 func TestHandleAlertWebhook_NilBody(t *testing.T) {
-	handler := NewLogsHandler(nil, nil, nil, testLogger())
+	handler := NewLogsHandler(nil, nil, nil, nil, testLogger())
 	resp, err := handler.HandleAlertWebhook(context.Background(), gen.HandleAlertWebhookRequestObject{Body: nil})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -743,7 +743,7 @@ func TestHandleAlertWebhook_ValidBody(t *testing.T) {
 	defer observerServer.Close()
 
 	observerClient := observer.NewClient(observerServer.URL)
-	handler := NewLogsHandler(nil, nil, observerClient, testLogger())
+	handler := NewLogsHandler(nil, nil, nil, observerClient, testLogger())
 
 	ts := time.Date(2025, 6, 15, 10, 30, 0, 0, time.UTC)
 	body := map[string]interface{}{

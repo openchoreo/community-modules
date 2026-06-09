@@ -34,6 +34,7 @@ func main() {
 		slog.String("logLevel", cfg.LogLevel.String()),
 		slog.String("openSearchAddress", cfg.OpenSearchAddress),
 		slog.String("openSearchIndexPrefix", cfg.OpenSearchIndexPrefix),
+		slog.String("openSearchEventsIndexPrefix", cfg.OpenSearchEventsIndexPrefix),
 		slog.String("serverPort", cfg.ServerPort),
 		slog.String("observerURL", cfg.ObserverURL),
 	)
@@ -66,8 +67,9 @@ func main() {
 	logger.Info("Successfully connected to OpenSearch")
 
 	queryBuilder := opensearch.NewQueryBuilder(cfg.OpenSearchIndexPrefix)
+	eventsQueryBuilder := opensearch.NewQueryBuilder(cfg.OpenSearchEventsIndexPrefix)
 	observerClient := observer.NewClient(cfg.ObserverURL)
-	logsHandler := app.NewLogsHandler(osClient, queryBuilder, observerClient, logger)
+	logsHandler := app.NewLogsHandler(osClient, queryBuilder, eventsQueryBuilder, observerClient, logger)
 	srv := app.NewServer(cfg.ServerPort, logsHandler, logger)
 
 	errCh := make(chan error, 1)

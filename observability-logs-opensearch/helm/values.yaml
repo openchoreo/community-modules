@@ -194,3 +194,4 @@ openSearchSetup:
 
   dataRetentionTime:
     containerLogs: "30d"
+    k8sEvents: "30d"

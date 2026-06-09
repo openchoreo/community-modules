@@ -20,8 +20,14 @@ const samplePayload = `{
       "firedDateTime": "2026-05-28T05:30:00.0000000Z"
     },
     "alertContext": {
-      "SearchQuery": "ContainerLogV2 | take 1",
-      "SearchResults": { "rowCount": 42 }
+      "condition": {
+        "allOf": [
+          {
+            "searchQuery": "Perf | take 1",
+            "metricValue": 42
+          }
+        ]
+      }
     },
     "customProperties": {
       "openchoreo-namespace": "default",

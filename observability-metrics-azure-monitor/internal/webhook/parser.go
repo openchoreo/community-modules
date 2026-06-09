@@ -38,20 +38,14 @@ type CommonAlertSchema struct {
 	} `json:"data"`
 }
 
-// AlertContext covers both shapes Azure Monitor emits for log alerts:
-//   - V2 (scheduledQueryRules API 2021-08-01 and later) puts the fired
-//     conditions under condition.allOf[].
-//   - V1 (legacy scheduledQueryRules API 2018-04-16) puts SearchQuery and
-//     SearchResults at the top of alertContext.
+// AlertContext is the alertContext Azure Monitor emits for log alerts created
+// through the v2 scheduledQueryRules API (2021-08-01 and later), which puts the
+// fired conditions under condition.allOf[]. The adapter only creates v2 rules,
+// so the legacy V1 (2018-04-16) SearchQuery / SearchResults shape is not handled.
 type AlertContext struct {
 	Condition struct {
 		AllOf []AlertCondition `json:"allOf,omitempty"`
 	} `json:"condition,omitempty"`
-
-	SearchQuery   string `json:"SearchQuery,omitempty"`
-	SearchResults struct {
-		RowCount int `json:"rowCount,omitempty"`
-	} `json:"SearchResults,omitempty"`
 }
 type AlertCondition struct {
 	SearchQuery string  `json:"searchQuery,omitempty"`
@@ -103,16 +97,15 @@ func Parse(raw []byte) (*AlertDetails, error) {
 	}, nil
 }
 
-// extractValueAndQuery prefers the V2 condition.allOf[] shape emitted by the
-// v2 scheduledQueryRules API and falls back to the legacy V1
-// SearchQuery / SearchResults.rowCount fields when V2 is absent.
+// extractValueAndQuery reads the fired condition from the v2
+// condition.allOf[] shape.
 func extractValueAndQuery(ctx AlertContext) (float64, string) {
 	for _, c := range ctx.Condition.AllOf {
 		if c.SearchQuery != "" || c.MetricValue != 0 {
 			return c.MetricValue, c.SearchQuery
 		}
 	}
-	return float64(ctx.SearchResults.RowCount), ctx.SearchQuery
+	return 0, ""
 }
 
 func identityFromCustomProperties(props map[string]string) (namespace, ruleName string) {

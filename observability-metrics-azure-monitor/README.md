@@ -45,7 +45,7 @@ Adapter API:
 | Endpoint | Purpose |
 | --- | --- |
 | `POST /api/v1/metrics/query` | `metric: resource` runs a `Perf ⋈ KubePodInventory` query and returns the six CPU/memory series, scoped by the OpenChoreo component/project/environment UID pod labels. `metric: http` returns empty series with an `X-OpenChoreo-Adapter-Notice: http-metrics-not-implemented` header. |
-| `POST /api/v1alpha1/metrics/runtime-topology` | Not supported by this backend. Returns an empty graph with the `X-OpenChoreo-Adapter-Notice: runtime-topology-not-supported` header (Log Analytics has no pod-to-pod traffic data). |
+| `POST /api/v1alpha1/metrics/runtime-topology` | Not supported by this backend. Returns a not-implemented error (`500` with error code `OBS-V1-M-AZURE-MON-501`, the spec has no `501` variant) and the `X-OpenChoreo-Adapter-Notice: runtime-topology-not-supported` header (Log Analytics has no pod-to-pod traffic data). |
 | `POST /api/v1alpha1/alerts/rules` | Creates an Azure Monitor `scheduledQueryRule` evaluating `(usage / limit) * 100` against the threshold percentage, wired to the configured Action Group. |
 | `GET /api/v1alpha1/alerts/rules/{ruleName}` | Gets the alert rule identified by `{ruleName}`. |
 | `PUT /api/v1alpha1/alerts/rules/{ruleName}` | Updates the alert rule identified by `{ruleName}`. |
@@ -325,7 +325,8 @@ Auth (no env needed — set by the Workload Identity webhook in-cluster)
 - **Runtime topology is not supported** by the Log Analytics backend. A
   topology graph is built from pod-to-pod L7 traffic, which lives in traces or
   L7/RED metrics — not in Container Insights' `Perf` / `KubePodInventory`. The
-  endpoint returns a well-formed empty graph with the
+  endpoint returns a not-implemented error (`500` with error code
+  `OBS-V1-M-AZURE-MON-501`) and the
   `X-OpenChoreo-Adapter-Notice: runtime-topology-not-supported` header.
   Populated topology on Azure would require a different backend (managed
   Prometheus fed by Cilium/Hubble L7 metrics, or Application Insights traces).

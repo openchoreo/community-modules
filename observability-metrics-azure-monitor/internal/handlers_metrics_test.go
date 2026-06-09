@@ -159,14 +159,12 @@ func TestQueryMetrics_HTTP_EmptyWithHeader(t *testing.T) {
 	}
 }
 
-func TestQueryRuntimeTopology_EmptyGraph(t *testing.T) {
+func TestQueryRuntimeTopology_NotImplemented(t *testing.T) {
 	h := newHandler(&fakeClient{})
-	start := time.Now().Add(-2 * time.Hour)
-	end := time.Now()
 	body := &gen.RuntimeTopologyRequest{
 		SearchScope: gen.ComponentSearchScope{Namespace: "ns"},
-		StartTime:   start,
-		EndTime:     end,
+		StartTime:   time.Now().Add(-2 * time.Hour),
+		EndTime:     time.Now(),
 	}
 	resp, err := h.QueryRuntimeTopology(context.Background(), gen.QueryRuntimeTopologyRequestObject{Body: body})
 	if err != nil {
@@ -176,21 +174,17 @@ func TestQueryRuntimeTopology_EmptyGraph(t *testing.T) {
 	if !isType {
 		t.Fatalf("expected runtimeTopologyNotSupportedResponse, got %T", resp)
 	}
-	ok := wrapped.QueryRuntimeTopology200JSONResponse
-	if ok.Nodes == nil || len(*ok.Nodes) != 0 {
-		t.Errorf("expected empty nodes")
-	}
-	if ok.Edges == nil || len(*ok.Edges) != 0 {
-		t.Errorf("expected empty edges")
-	}
-	if !ok.Summary.StartTime.Equal(start) || !ok.Summary.EndTime.Equal(end) {
-		t.Errorf("summary window mismatch")
+	if wrapped.ErrorCode == nil || *wrapped.ErrorCode != "OBS-V1-M-AZURE-MON-501" {
+		t.Errorf("expected not-implemented error code, got %v", wrapped.ErrorCode)
 	}
 
-	// The response must carry the not-supported notice header.
+	// The response must be 500 and carry the not-supported notice header.
 	rec := httptest.NewRecorder()
 	if err := resp.VisitQueryRuntimeTopologyResponse(rec); err != nil {
 		t.Fatalf("visit error: %v", err)
+	}
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500, got %d", rec.Code)
 	}
 	if got := rec.Header().Get("X-OpenChoreo-Adapter-Notice"); got != "runtime-topology-not-supported" {
 		t.Errorf("expected not-supported header, got %q", got)

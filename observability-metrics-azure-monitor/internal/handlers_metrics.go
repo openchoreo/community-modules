@@ -18,14 +18,10 @@ import (
 
 const defaultStep = 5 * time.Minute
 
-// metricsClient is the perfmetrics surface the handler depends on.
 type metricsClient interface {
 	GetResourceMetrics(context.Context, perfmetrics.MetricsQueryParams) (*perfmetrics.ResourceMetricsResult, error)
 }
 
-// alertClient is the azuremonitor surface the alert handlers depend on.
-// Nil only in the query-only handler used by tests; the alert endpoints then
-// return 501. main.go always wires a real client.
 type alertClient interface {
 	CreateRule(context.Context, azuremonitor.RuleInput) (*azuremonitor.RuleResult, error)
 	UpdateRule(context.Context, azuremonitor.RuleInput) (*azuremonitor.RuleResult, error)
@@ -33,12 +29,10 @@ type alertClient interface {
 	DeleteRuleByAzureName(context.Context, string) error
 }
 
-// observerForwarder forwards a fired alert to the OpenChoreo Observer.
 type observerForwarder interface {
 	ForwardAlert(ctx context.Context, ruleName, ruleNamespace string, alertValue float64, alertTimestamp time.Time) error
 }
 
-// MetricsHandler implements the generated StrictServerInterface.
 type MetricsHandler struct {
 	client         metricsClient
 	alertClient    alertClient
@@ -46,23 +40,16 @@ type MetricsHandler struct {
 	logger         *slog.Logger
 }
 
-// NewMetricsHandler builds a query-only handler whose alert endpoints return
-// 501. Used by tests that exercise only the metrics-query path; production
-// uses NewMetricsHandlerWithAlerting.
 func NewMetricsHandler(client metricsClient, logger *slog.Logger) *MetricsHandler {
 	return &MetricsHandler{client: client, logger: logger}
 }
 
-// NewMetricsHandlerWithAlerting builds a handler with the alert + webhook path
-// wired. This is what main.go constructs.
 func NewMetricsHandlerWithAlerting(client metricsClient, ac alertClient, of observerForwarder, logger *slog.Logger) *MetricsHandler {
 	return &MetricsHandler{client: client, alertClient: ac, observerClient: of, logger: logger}
 }
 
 var _ gen.StrictServerInterface = (*MetricsHandler)(nil)
 
-// Health confirms the process is up. Azure/workspace reachability is verified
-// once at boot (see perfmetrics.Client.Ping), so this stays cheap.
 func (h *MetricsHandler) Health(_ context.Context, _ gen.HealthRequestObject) (gen.HealthResponseObject, error) {
 	status := "healthy"
 	return gen.Health200JSONResponse{Status: &status}, nil
@@ -161,31 +148,13 @@ func (h *MetricsHandler) queryHTTPMetrics() gen.QueryMetricsResponseObject {
 // Container Insights Log Analytics backend (Perf / KubePodInventory) carries
 // only CPU/memory counters and pod inventory — there is no pod-to-pod traffic
 // data in the workspace to build nodes/edges from. This data source is
-// therefore **not supported** for topology.
-//
-// We return a well-formed empty graph (200, populated summary window) rather
-// than 404/501 so the Observer does not error when it probes the endpoint, and
-// signal the limitation with the X-OpenChoreo-Adapter-Notice header. Populated
-// topology on Azure requires a different backend (managed Prometheus fed by
-// Cilium/Hubble L7 metrics, or Application Insights traces) — out of scope for
-// this Log Analytics metrics module.
-func (h *MetricsHandler) QueryRuntimeTopology(_ context.Context, request gen.QueryRuntimeTopologyRequestObject) (gen.QueryRuntimeTopologyResponseObject, error) {
-	now := time.Now().UTC()
-	start, end := now.Add(-1*time.Hour), now
-	if request.Body != nil {
-		start, end = request.Body.StartTime, request.Body.EndTime
-	}
-	nodes := []gen.RuntimeTopologyNode{}
-	edges := []gen.RuntimeTopologyEdge{}
-	return runtimeTopologyNotSupportedResponse{gen.QueryRuntimeTopology200JSONResponse{
-		Nodes: &nodes,
-		Edges: &edges,
-		Summary: gen.RuntimeTopologySummary{
-			StartTime:   start,
-			EndTime:     end,
-			GeneratedAt: now,
-		},
-	}}, nil
+// therefore not supported for topology.
+func (h *MetricsHandler) QueryRuntimeTopology(_ context.Context, _ gen.QueryRuntimeTopologyRequestObject) (gen.QueryRuntimeTopologyResponseObject, error) {
+	return runtimeTopologyNotSupportedResponse{
+		gen.QueryRuntimeTopology500JSONResponse(
+			makeError(gen.InternalServerError, errCodeNotImplemented, "runtime topology is not supported by the Azure Container Insights backend"),
+		),
+	}, nil
 }
 
 // --- mapping helpers -----------------------------------------------------
@@ -252,17 +221,17 @@ func (r httpMetricsQueryOKResponse) VisitQueryMetricsResponse(w http.ResponseWri
 	return json.NewEncoder(w).Encode(r.MetricsQueryResponse)
 }
 
-// runtimeTopologyNotSupportedResponse wraps the empty-graph 200 response with a
-// notice header so callers can tell the empty graph is a backend limitation
-// (the Log Analytics backend has no traffic data) rather than "no traffic in
-// the window".
+// runtimeTopologyNotSupportedResponse wraps the not-implemented 500 response
+// with a notice header so callers can tell the endpoint is unsupported by this
+// backend (the Log Analytics backend has no traffic data) rather than a
+// transient server error.
 type runtimeTopologyNotSupportedResponse struct {
-	gen.QueryRuntimeTopology200JSONResponse
+	gen.QueryRuntimeTopology500JSONResponse
 }
 
 func (r runtimeTopologyNotSupportedResponse) VisitQueryRuntimeTopologyResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("X-OpenChoreo-Adapter-Notice", "runtime-topology-not-supported")
-	w.WriteHeader(http.StatusOK)
-	return json.NewEncoder(w).Encode(r.QueryRuntimeTopology200JSONResponse)
+	w.WriteHeader(http.StatusInternalServerError)
+	return json.NewEncoder(w).Encode(gen.ErrorResponse(r.QueryRuntimeTopology500JSONResponse))
 }

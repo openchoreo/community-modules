@@ -18,8 +18,6 @@ const (
 	customPropRuleName  = "openchoreo-rule-name"
 )
 
-// CommonAlertSchema mirrors only the fields the adapter needs. Anything
-// the adapter does not consume is intentionally elided.
 type CommonAlertSchema struct {
 	SchemaID string `json:"schemaId"`
 	Data     struct {
@@ -38,10 +36,6 @@ type CommonAlertSchema struct {
 	} `json:"data"`
 }
 
-// AlertContext is the alertContext Azure Monitor emits for log alerts created
-// through the v2 scheduledQueryRules API (2021-08-01 and later), which puts the
-// fired conditions under condition.allOf[]. The adapter only creates v2 rules,
-// so the legacy V1 (2018-04-16) SearchQuery / SearchResults shape is not handled.
 type AlertContext struct {
 	Condition struct {
 		AllOf []AlertCondition `json:"allOf,omitempty"`
@@ -61,9 +55,6 @@ type AlertDetails struct {
 	SearchQuery    string
 }
 
-// Parse turns a webhook body into AlertDetails. Returns an error if the
-// payload is unparseable, the schemaId is wrong, or the OpenChoreo identity
-// cannot be recovered from either customProperties or essentials.alertRuleId.
 func Parse(raw []byte) (*AlertDetails, error) {
 	var payload CommonAlertSchema
 	if err := json.Unmarshal(raw, &payload); err != nil {
@@ -97,8 +88,6 @@ func Parse(raw []byte) (*AlertDetails, error) {
 	}, nil
 }
 
-// extractValueAndQuery reads the fired condition from the v2
-// condition.allOf[] shape.
 func extractValueAndQuery(ctx AlertContext) (float64, string) {
 	for _, c := range ctx.Condition.AllOf {
 		if c.SearchQuery != "" || c.MetricValue != 0 {

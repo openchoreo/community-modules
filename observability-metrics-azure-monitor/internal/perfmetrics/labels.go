@@ -20,11 +20,7 @@ const (
 )
 
 // Perf.CounterName values emitted by the Azure Monitor Agent for the
-// K8SContainer object. These are the per-container resource counters the
-// adapter maps onto the six ResourceMetricsTimeSeries series.
-//
-// Verified against Microsoft's Container Insights log-query reference:
-// https://learn.microsoft.com/en-us/azure/azure-monitor/containers/container-insights-log-query
+// K8SContainer object.
 const (
 	CounterCPUUsageNanoCores     = "cpuUsageNanoCores"
 	CounterCPURequestNanoCores   = "cpuRequestNanoCores"

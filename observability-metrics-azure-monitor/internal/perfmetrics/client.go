@@ -1,9 +1,6 @@
 // Copyright 2026 The OpenChoreo Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package perfmetrics wraps the Azure Monitor Log Analytics query SDK
-// (azlogs) and serves OpenChoreo resource metrics from Azure Container
-// Insights' Perf and KubePodInventory tables.
 package perfmetrics
 
 import (
@@ -18,29 +15,22 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/monitor/query/azlogs"
 )
 
-// azlogsAPI is the subset of azlogs.Client the adapter uses. Declared as an
-// interface so tests can inject a fake.
 type azlogsAPI interface {
 	QueryWorkspace(ctx context.Context, workspaceID string, body azlogs.QueryBody,
 		options *azlogs.QueryWorkspaceOptions) (azlogs.QueryWorkspaceResponse, error)
 }
-
-// Client wraps azlogs for the metrics adapter.
 type Client struct {
 	api          azlogsAPI
 	workspaceID  string
 	queryTimeout time.Duration
 	logger       *slog.Logger
 }
-
-// Config holds static configuration for Client.
 type Config struct {
 	// WorkspaceID is the Log Analytics workspace customerId GUID.
 	WorkspaceID  string
 	QueryTimeout time.Duration
 }
 
-// NewClient builds a Client from an Azure credential.
 func NewClient(cred azcore.TokenCredential, cfg Config, logger *slog.Logger) (*Client, error) {
 	if cfg.WorkspaceID == "" {
 		return nil, errors.New("perfmetrics: WorkspaceID is required")
@@ -60,7 +50,6 @@ func NewClient(cred azcore.TokenCredential, cfg Config, logger *slog.Logger) (*C
 	}, nil
 }
 
-// NewClientWithAPI lets tests inject a fake azlogs API.
 func NewClientWithAPI(api azlogsAPI, cfg Config, logger *slog.Logger) *Client {
 	qt := cfg.QueryTimeout
 	if qt == 0 {
@@ -74,10 +63,6 @@ func NewClientWithAPI(api azlogsAPI, cfg Config, logger *slog.Logger) *Client {
 	}
 }
 
-// Ping issues a near-zero-cost query against Perf to validate credentials and
-// workspace reachability. Called once at boot; the pod crashes if it errors.
-// An empty result is not an error — it is logged so a DCR that disabled Perf
-// collection is visible in the boot log.
 func (c *Client) Ping(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, c.queryTimeout)
 	defer cancel()
@@ -99,8 +84,6 @@ func (c *Client) Ping(ctx context.Context) error {
 	return nil
 }
 
-// GetResourceMetrics issues one QueryWorkspace call covering all six series
-// and maps the rows onto the per-counter slices.
 func (c *Client) GetResourceMetrics(ctx context.Context, p MetricsQueryParams) (*ResourceMetricsResult, error) {
 	if p.StartTime.IsZero() || p.EndTime.IsZero() {
 		return nil, errors.New("startTime and endTime are required")
@@ -123,7 +106,6 @@ func (c *Client) GetResourceMetrics(ctx context.Context, p MetricsQueryParams) (
 	return mapResourceRows(resp)
 }
 
-// rowCount returns the number of rows in the first table, or 0.
 func rowCount(resp azlogs.QueryWorkspaceResponse) int {
 	if len(resp.Tables) == 0 {
 		return 0

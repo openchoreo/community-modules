@@ -18,9 +18,6 @@ import (
 
 var ErrNotFound = errors.New("alert rule not found")
 
-// Client wraps armmonitor's ScheduledQueryRulesClient and ActionGroupsClient
-// with adapter-shaped helpers. The underlying SDK clients are exported as
-// fields for tests that need to substitute fakes via interface assertions.
 type Client struct {
 	rules    *armmonitor.ScheduledQueryRulesClient
 	groups   *armmonitor.ActionGroupsClient
@@ -115,11 +112,6 @@ func (c *Client) GetRule(ctx context.Context, namespace, ruleName string) (*Rule
 	return ruleResultFrom(resp.ScheduledQueryRuleResource, name), nil
 }
 
-// FindRuleByName searches the resource group for a rule whose
-// openchoreo-rule-name tag matches. Used by Observer-issued requests that
-// only carry the OpenChoreo rule name and not the namespace.
-//
-// Returns ErrNotFound when no matching rule exists.
 func (c *Client) FindRuleByName(ctx context.Context, ruleName string) (*RuleResult, string, error) {
 	pager := c.rules.NewListByResourceGroupPager(c.resGroup, nil)
 	for pager.More() {
@@ -149,8 +141,6 @@ func (c *Client) FindRuleByName(ctx context.Context, ruleName string) (*RuleResu
 	return nil, "", ErrNotFound
 }
 
-// UpdateRule is a synonym for CreateRule — the upstream API uses
-// CreateOrUpdate, so PUT semantics fall out naturally.
 func (c *Client) UpdateRule(ctx context.Context, in RuleInput) (*RuleResult, error) {
 	return c.CreateRule(ctx, in)
 }
@@ -205,7 +195,6 @@ func parseActionGroupName(armID string) (string, error) {
 	return id.Name, nil
 }
 
-// isNotFoundError detects ARM 404 responses.
 func isNotFoundError(err error) bool {
 	var respErr *azcore.ResponseError
 	if errors.As(err, &respErr) {

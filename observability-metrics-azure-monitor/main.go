@@ -39,13 +39,6 @@ func main() {
 	bootstrapCtx, bootstrapCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer bootstrapCancel()
 
-	// DefaultAzureCredential walks the standard chain: in-cluster it resolves
-	// the Workload Identity federated token (env AZURE_CLIENT_ID +
-	// AZURE_FEDERATED_TOKEN_FILE set by the WI webhook); locally it falls back
-	// to the az login session. The same credential serves both audiences —
-	// Log Analytics queries (https://api.loganalytics.io) and ARM operations
-	// on scheduledQueryRules/actionGroups (https://management.azure.com) — the
-	// SDK requests the correct audience per call.
 	cred, err := azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {
 		logger.Error("failed to construct DefaultAzureCredential", slog.Any("error", err))

@@ -12,11 +12,8 @@ import (
 	"time"
 )
 
-// Config holds the runtime configuration for the adapter, populated from
-// environment variables.
 type Config struct {
-	// ServerPort is the HTTP listener port. Default 9099 (matches the AWS
-	// CloudWatch metrics adapter).
+	// ServerPort is the HTTP listener port. Default 9099
 	ServerPort string
 
 	// LogLevel for slog. One of debug|info|warn|error. Default info.
@@ -27,9 +24,6 @@ type Config struct {
 
 	// QueryTimeout caps a single Log Analytics query. Default 30s.
 	QueryTimeout time.Duration
-
-	// --- Alerting. Always wired (matches the AWS CloudWatch and Prometheus
-	// metrics adapters, which have no module-level alerting toggle). ---
 
 	SubscriptionID      string
 	ResourceGroup       string
@@ -45,8 +39,6 @@ type Config struct {
 	DefaultWindowSize          string
 }
 
-// LoadConfig reads environment variables and returns a populated Config or an
-// error if a required variable is missing or malformed.
 func LoadConfig() (*Config, error) {
 	cfg := &Config{
 		ServerPort:                 getEnvDefault("SERVER_PORT", "9099"),

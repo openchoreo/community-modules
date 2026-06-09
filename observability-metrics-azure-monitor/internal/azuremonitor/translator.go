@@ -19,22 +19,15 @@ type RuleInput struct {
 	ComponentUID   string
 	ProjectUID     string
 	EnvironmentUID string
-
-	// Metric is the OpenChoreo source.metric (cpu_usage | memory_usage). It
-	// selects the Perf counter the alert query aggregates.
-	Metric string
-
-	// Query is an optional hand-written KQL escape hatch. When empty, the
-	// query is generated from Metric + the scope filters.
-	Query     string
-	Operator  string // "gt" | "gte" | "lt" | "lte" | "eq"
-	Threshold float64
-	Interval  string // ISO 8601 duration
-	Window    string // ISO 8601 duration
-	Enabled   bool
+	Metric         string
+	Query          string
+	Operator       string // "gt" | "gte" | "lt" | "lte" | "eq"
+	Threshold      float64
+	Interval       string // ISO 8601 duration
+	Window         string // ISO 8601 duration
+	Enabled        bool
 }
 
-// TranslatorConfig holds settings that don't vary per rule.
 type TranslatorConfig struct {
 	Region                     string
 	WorkspaceResourceID        string
@@ -66,10 +59,7 @@ func ToScheduledQueryRule(in RuleInput, cfg TranslatorConfig) (*armmonitor.Sched
 	if err != nil {
 		return nil, fmt.Errorf("window: %w", err)
 	}
-	// Azure scheduledQueryRules only accept WindowSize from a fixed set of
-	// granularities (see azureWindowGranularitiesMin). An arbitrary developer
-	// value such as 2m is rejected with InvalidRequestContent, so snap the
-	// requested window up to the nearest supported value rather than fail.
+
 	window, err = snapWindowToAzureGranularity(window)
 	if err != nil {
 		return nil, fmt.Errorf("window: %w", err)

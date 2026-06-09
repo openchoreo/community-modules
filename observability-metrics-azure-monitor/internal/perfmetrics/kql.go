@@ -9,13 +9,7 @@ import (
 	"time"
 )
 
-// defaultBin is the time-bin width used when the request omits a step.
-// Perf is ingested at ~1-minute cadence; 5 minutes matches the AWS metrics
-// adapter's default and keeps point counts reasonable over long windows.
 const defaultBin = 5 * time.Minute
-
-// minBin is the smallest bin we honour. Perf has ~1-minute granularity, so
-// anything finer just produces sparse, noisy buckets.
 const minBin = time.Minute
 
 // BuildResourceMetricsKQL renders a MetricsQueryParams as a KQL query that
@@ -38,14 +32,6 @@ func BuildResourceMetricsKQL(p MetricsQueryParams) string {
 
 	var sb strings.Builder
 
-	// _pods: the distinct Perf join keys for the matched workload pods.
-	//
-	// KubePodInventory.PodLabel is a JSON *array* of a single object whose
-	// keys are the pod's labels (verified against the live workspace). The
-	// keys use literal forward slashes (e.g. "openchoreo.dev/namespace"), but
-	// the stored text escapes them as "\/", so a substring `has` filter would
-	// have to know the exact escaping. Parsing once into _labels and comparing
-	// the extracted value is escaping-agnostic and exact.
 	sb.WriteString("let _pods = ")
 	sb.WriteString(KubePodInventoryTable)
 	sb.WriteString("\n    | extend _labels = parse_json(PodLabel)[0]")
@@ -79,10 +65,6 @@ func BuildResourceMetricsKQL(p MetricsQueryParams) string {
 	return sb.String()
 }
 
-// PingKQL is a near-zero-cost query used at boot to validate credentials,
-// workspace reachability, and that Perf collection is enabled. If a
-// cost-optimization DCR disabled performance counters, this returns no rows
-// (still a successful call) — the boot log notes the empty result.
 func PingKQL() string {
 	return PerfTable + " | where ObjectName == \"K8SContainer\" | take 1"
 }
@@ -99,10 +81,6 @@ func allCounters() []string {
 	}
 }
 
-// podLabelEquals renders a KQL predicate that matches a single OpenChoreo
-// label against the parsed _labels object (see BuildResourceMetricsKQL). Both
-// the label key and value are KQL-quoted so a value containing quotes cannot
-// break out of the literal.
 func podLabelEquals(label, value string) string {
 	return fmt.Sprintf("tostring(_labels[%s]) == %s", kqlString(label), kqlString(value))
 }

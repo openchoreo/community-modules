@@ -26,7 +26,6 @@ const (
 	notImplementedDetail  = "alert management is not wired on this adapter"
 )
 
-// alertingEnabled reports whether the alert path is wired.
 func (h *MetricsHandler) alertingEnabled() bool {
 	return h.alertClient != nil
 }
@@ -39,7 +38,6 @@ func notImplementedErr() gen.ErrorResponse {
 	return makeError(gen.InternalServerError, errCodeNotImplemented, notImplementedDetail)
 }
 
-// CreateAlertRule handles POST /api/v1alpha1/alerts/rules.
 func (h *MetricsHandler) CreateAlertRule(ctx context.Context, request gen.CreateAlertRuleRequestObject) (gen.CreateAlertRuleResponseObject, error) {
 	if !h.alertingEnabled() {
 		return gen.CreateAlertRule500JSONResponse(notImplementedErr()), nil
@@ -66,7 +64,6 @@ func (h *MetricsHandler) CreateAlertRule(ctx context.Context, request gen.Create
 	return gen.CreateAlertRule201JSONResponse(syncResponse(res, gen.Created, gen.Synced)), nil
 }
 
-// GetAlertRule handles GET /api/v1alpha1/alerts/rules/{ruleName}.
 func (h *MetricsHandler) GetAlertRule(ctx context.Context, request gen.GetAlertRuleRequestObject) (gen.GetAlertRuleResponseObject, error) {
 	if !h.alertingEnabled() {
 		return gen.GetAlertRule500JSONResponse(notImplementedErr()), nil
@@ -97,7 +94,6 @@ func (h *MetricsHandler) GetAlertRule(ctx context.Context, request gen.GetAlertR
 	return gen.GetAlertRule200JSONResponse(resp), nil
 }
 
-// UpdateAlertRule handles PUT /api/v1alpha1/alerts/rules/{ruleName} (CreateOrUpdate).
 func (h *MetricsHandler) UpdateAlertRule(ctx context.Context, request gen.UpdateAlertRuleRequestObject) (gen.UpdateAlertRuleResponseObject, error) {
 	if !h.alertingEnabled() {
 		return gen.UpdateAlertRule500JSONResponse(notImplementedErr()), nil
@@ -128,7 +124,6 @@ func (h *MetricsHandler) UpdateAlertRule(ctx context.Context, request gen.Update
 	return gen.UpdateAlertRule200JSONResponse(syncResponse(res, gen.Updated, gen.Synced)), nil
 }
 
-// DeleteAlertRule handles DELETE /api/v1alpha1/alerts/rules/{ruleName}.
 func (h *MetricsHandler) DeleteAlertRule(ctx context.Context, request gen.DeleteAlertRuleRequestObject) (gen.DeleteAlertRuleResponseObject, error) {
 	if !h.alertingEnabled() {
 		return gen.DeleteAlertRule500JSONResponse(notImplementedErr()), nil
@@ -155,8 +150,6 @@ func (h *MetricsHandler) DeleteAlertRule(ctx context.Context, request gen.Delete
 	return gen.DeleteAlertRule200JSONResponse(syncResponse(res, gen.Deleted, gen.Synced)), nil
 }
 
-// HandleAlertWebhook handles POST /api/v1alpha1/alerts/webhook. It validates a
-// Common Alert Schema payload and forwards a normalized alert to the Observer.
 func (h *MetricsHandler) HandleAlertWebhook(ctx context.Context, request gen.HandleAlertWebhookRequestObject) (gen.HandleAlertWebhookResponseObject, error) {
 	if !h.alertingEnabled() || h.observerClient == nil {
 		return gen.HandleAlertWebhook500JSONResponse(notImplementedErr()), nil
@@ -186,9 +179,6 @@ func (h *MetricsHandler) HandleAlertWebhook(ctx context.Context, request gen.Han
 	return gen.HandleAlertWebhook200JSONResponse(gen.AlertWebhookResponse{Status: &status, Message: &msg}), nil
 }
 
-// ruleInputFromRequest converts the generated AlertRuleRequest into the
-// adapter-internal RuleInput. Unlike the logs adapter, the metrics source is a
-// metric name (cpu_usage|memory_usage), not a search phrase.
 func ruleInputFromRequest(req gen.AlertRuleRequest) (azuremonitor.RuleInput, error) {
 	in := azuremonitor.RuleInput{
 		Namespace:      req.Metadata.Namespace,
@@ -222,7 +212,6 @@ func ruleInputFromRequest(req gen.AlertRuleRequest) (azuremonitor.RuleInput, err
 	return in, nil
 }
 
-// syncResponse builds the standard sync response shape used by 201/200 paths.
 func syncResponse(r *azuremonitor.RuleResult, action gen.AlertingRuleSyncResponseAction, status gen.AlertingRuleSyncResponseStatus) gen.AlertingRuleSyncResponse {
 	backendID := r.BackendID
 	logicalID := r.LogicalID
@@ -236,8 +225,6 @@ func syncResponse(r *azuremonitor.RuleResult, action gen.AlertingRuleSyncRespons
 	}
 }
 
-// isValidationErr reports whether err is a translator/metric validation error
-// that should surface as 400 rather than 500.
 func isValidationErr(err error) bool {
 	if err == nil {
 		return false

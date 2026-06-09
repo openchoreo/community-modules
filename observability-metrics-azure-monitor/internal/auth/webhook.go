@@ -15,9 +15,6 @@ const (
 	webhookPath       = "/api/v1alpha1/alerts/webhook"
 )
 
-// WebhookAuthMiddleware checks the shared-secret header on the webhook path.
-// When `enabled` is false the middleware is a passthrough. When enabled and
-// the secret is empty, all webhook calls are rejected.
 func WebhookAuthMiddleware(secret string, enabled bool, logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -36,10 +33,7 @@ func WebhookAuthMiddleware(secret string, enabled bool, logger *slog.Logger) fun
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
-			// Accept the secret from either the header (preferred, used by
-			// the Logic App forwarder pattern) or the URL query string
-			// (fallback, used by Azure Action Groups' plain Webhook receiver
-			// which cannot set custom headers).
+
 			supplied := r.Header.Get(WebhookAuthHeader)
 			if supplied == "" {
 				supplied = r.URL.Query().Get(WebhookAuthQuery)

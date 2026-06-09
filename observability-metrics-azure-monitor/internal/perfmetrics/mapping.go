@@ -12,9 +12,6 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/monitor/query/azlogs"
 )
 
-// mapResourceRows turns the (CounterName, TimeGenerated, Value) result table
-// into the six ResourceMetricsResult series. CPU counters are converted from
-// nanocores to whole cores; memory counters pass through as bytes.
 func mapResourceRows(resp azlogs.QueryWorkspaceResponse) (*ResourceMetricsResult, error) {
 	res := &ResourceMetricsResult{}
 	if len(resp.Tables) == 0 {
@@ -67,8 +64,6 @@ func buildColumnIndex(cols []azlogs.Column) (map[string]int, error) {
 	return idx, nil
 }
 
-// rowString returns the string value at the named column, or "" if the row is
-// too short or the cell is nil/non-string.
 func rowString(row azlogs.Row, idx map[string]int, name string) string {
 	i, ok := idx[name]
 	if !ok || i >= len(row) {
@@ -84,8 +79,6 @@ func rowString(row azlogs.Row, idx map[string]int, name string) string {
 	}
 }
 
-// rowFloat returns the numeric value at the named column. azlogs decodes real
-// columns as float64, but defensively handles json.Number-style strings too.
 func rowFloat(row azlogs.Row, idx map[string]int, name string) float64 {
 	i, ok := idx[name]
 	if !ok || i >= len(row) {
@@ -111,8 +104,6 @@ func rowFloat(row azlogs.Row, idx map[string]int, name string) float64 {
 	}
 }
 
-// rowTime parses an ISO-8601 timestamp cell. azlogs returns datetime values as
-// RFC3339Nano strings; returns the zero time on any failure.
 func rowTime(row azlogs.Row, idx map[string]int, name string) time.Time {
 	s := rowString(row, idx, name)
 	if s == "" {

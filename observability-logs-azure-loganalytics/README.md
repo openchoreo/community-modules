@@ -155,8 +155,10 @@ projects the federated token (see
 ## Installation on AKS
 
 ```bash
-helm install logs-adapter helm/ \
+helm upgrade --install logs-adapter \
+  oci://ghcr.io/openchoreo/helm-charts/observability-logs-azure-loganalytics \
   --namespace openchoreo-observability-plane --create-namespace \
+  --version 0.1.1 \
   --set azure.subscriptionId="$AZURE_SUBSCRIPTION_ID" \
   --set azure.resourceGroup="$AZURE_RESOURCE_GROUP" \
   --set azure.region="$AZURE_REGION" \

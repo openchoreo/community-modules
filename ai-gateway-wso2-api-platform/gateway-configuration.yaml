@@ -274,10 +274,10 @@ data:
           jwtauth_v1:
             keymanagers:
               - name: ThunderKeyManager
-                issuer: https://api.asgardeo.io/t/lahirude/oauth2/token
+                issuer: http://thunder.openchoreo.localhost:8080
                 jwks:
                   remote:
-                    uri: https://api.asgardeo.io/t/lahirude/oauth2/jwks
+                    uri: http://thunder-service.thunder:8090/oauth2/jwks
                     skipTlsVerify: true
             jwkscachettl: "5m"
             jwksfetchtimeout: "5s"

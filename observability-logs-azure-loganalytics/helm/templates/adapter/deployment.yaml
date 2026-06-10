@@ -2,7 +2,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: logs-adapter
+  name: logs-adapter-azure-loganalytics
   namespace: {{ .Release.Namespace }}
   labels:
     app: logs-adapter-azure-loganalytics

@@ -155,10 +155,10 @@ projects the federated token (see
 ## Installation on AKS
 
 ```bash
-helm upgrade --install logs-adapter \
+helm upgrade --install observability-logs-azure-loganalytics \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-azure-loganalytics \
   --namespace openchoreo-observability-plane --create-namespace \
-  --version 0.1.1 \
+  --version 0.1.2 \
   --set azure.subscriptionId="$AZURE_SUBSCRIPTION_ID" \
   --set azure.resourceGroup="$AZURE_RESOURCE_GROUP" \
   --set azure.region="$AZURE_REGION" \
@@ -280,7 +280,7 @@ The adapter's startup health check failed against
 `api.loganalytics.io`. Check the boot logs:
 
 ```bash
-kubectl -n openchoreo-observability-plane logs deploy/logs-adapter --tail=20
+kubectl -n openchoreo-observability-plane logs deploy/logs-adapter-azure-loganalytics --tail=100
 ```
 
 Common causes:

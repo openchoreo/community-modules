@@ -96,7 +96,7 @@ jobs:
         uses: mikefarah/yq@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build Docker images for changed modules
         run: |

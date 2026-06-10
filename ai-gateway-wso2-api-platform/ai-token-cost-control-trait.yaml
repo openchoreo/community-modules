@@ -1,0 +1,214 @@
+# ClusterTrait: ai-token-cost-control
+#
+# Token & cost control trait for the WSO2 API Platform AI gateway. Attach it to
+# an in-cluster component that calls an LLM to get per-request cost/token
+# tracking plus optional token-based and budget-based rate limiting — without
+# the application implementing any of it.
+#
+# It is a GOVERNED PASSTHROUGH: like `ai-llm-proxy`, the application chooses the
+# model (the request `model` field is forwarded unchanged); on top of that the
+# gateway attaches:
+#   - llm-cost                 : always. Computes the cost of each request from
+#                                the provider template's token paths and the
+#                                gateway's bundled model_prices.json. Powers cost
+#                                analytics and the budget limiter below.
+#   - token-based-ratelimit    : when any token limit is set. Caps prompt /
+#                                completion / total tokens per time window.
+#   - llm-cost-based-ratelimit : when a cost budget is set. Caps spend (USD) per
+#                                time window.
+#
+# Limits are per-environment (dev loose, prod tight) and set via
+# ReleaseBinding.spec.traitEnvironmentConfigs. With no limits set, the trait
+# still attaches llm-cost so usage/cost is tracked.
+#
+# Composition: each AI gateway trait creates its own LlmProxy and injects one
+# OPENAI_BASE_URL, so a component uses ONE LLM trait per endpoint. Use
+# ai-token-cost-control when you want client-selected models WITH cost/token
+# governance. (To combine limits with gateway-side model routing instead, add
+# these policies to the ai-model-routing trait rather than stacking traits.)
+#
+# Token extraction comes from the shared LlmProvider's template (the built-in
+# `openai` template already maps $.usage.prompt_tokens / completion_tokens /
+# total_tokens), so no per-trait token configuration is needed.
+#
+# Prerequisites:
+#   - WSO2 API Platform gateway installed in the data plane (see README.md).
+#   - A shared LlmProvider deployed once (its name is `providerRef`).
+#   - The gateway's llmPricing data is enabled (it is, in gateway-configuration.yaml)
+#     so llm-cost / llm-cost-based-ratelimit can price requests.
+#   - The cluster-agent has RBAC for `gateway.api-platform.wso2.com` llmproxies.
+#   - "ai-token-cost-control" is listed in the ComponentType's allowedTraits.
+#
+---
+apiVersion: openchoreo.dev/v1alpha1
+kind: ClusterTrait
+metadata:
+  name: ai-token-cost-control
+spec:
+  parameters:
+    openAPIV3Schema:
+      type: object
+      properties:
+        gatewayRuntimeName:
+          type: string
+          default: "api-platform-default-gateway-gateway-runtime"
+          description: "Name of the WSO2 API Platform gateway-runtime Service in the data plane"
+        gatewayRuntimeNamespace:
+          type: string
+          default: "openchoreo-data-plane"
+          description: "Namespace of the WSO2 API Platform gateway-runtime Service"
+        gatewayRuntimePort:
+          type: integer
+          default: 8080
+          description: "HTTP listener port of the gateway-runtime Service"
+        providerRef:
+          type: string
+          default: "openai-provider"
+          description: "Name (id) of the platform-managed LlmProvider this proxy fronts"
+        apiPath:
+          type: string
+          default: "/v1/chat/completions"
+          description: "API path the policies match (the OpenAI wire path the client sends)"
+
+  # Per-environment limits set via ReleaseBinding.spec.traitEnvironmentConfigs.
+  environmentConfigs:
+    openAPIV3Schema:
+      type: object
+      $defs:
+        # token-based-ratelimit window: a token count per duration (Go duration).
+        TokenLimit:
+          type: object
+          properties:
+            count:
+              type: integer
+              description: "Maximum tokens allowed in the window"
+            duration:
+              type: string
+              description: "Window length (e.g. 1m, 1h, 24h)"
+        # llm-cost-based-ratelimit window: a USD budget per duration.
+        BudgetLimit:
+          type: object
+          properties:
+            amount:
+              type: number
+              description: "Maximum spend (USD) in the window"
+            duration:
+              type: string
+              description: "Window length (e.g. 1h, 24h)"
+      properties:
+        promptTokenLimits:
+          type: array
+          items:
+            $ref: "#/$defs/TokenLimit"
+          default: []
+          description: "Limits on prompt (input) tokens"
+        completionTokenLimits:
+          type: array
+          items:
+            $ref: "#/$defs/TokenLimit"
+          default: []
+          description: "Limits on completion (output) tokens"
+        totalTokenLimits:
+          type: array
+          items:
+            $ref: "#/$defs/TokenLimit"
+          default: []
+          description: "Limits on total tokens (prompt + completion)"
+        costBudgets:
+          type: array
+          items:
+            $ref: "#/$defs/BudgetLimit"
+          default: []
+          description: "Spend budgets (USD) per time window"
+        algorithm:
+          type: string
+          default: "fixed-window"
+          description: "Rate-limit algorithm for token-based-ratelimit"
+        backend:
+          type: string
+          default: "memory"
+          description: "Counter backend for token-based-ratelimit"
+
+  validations:
+    - rule: "${size(parameters.providerRef) > 0}"
+      message: "providerRef must reference a deployed LlmProvider (e.g. openai-provider)"
+
+  creates:
+    # ==================================================================
+    #  LlmProxy — passthrough endpoint fronting the shared provider, with
+    #  cost tracking (always) and rate-limit policies (when limits are set).
+    #  The request `model` is forwarded unchanged; policies act on token/cost.
+    # ==================================================================
+    - targetPlane: dataplane
+      template:
+        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        kind: LlmProxy
+        metadata:
+          name: ${metadata.name}-${trait.instanceName}-llm
+          namespace: ${metadata.namespace}
+        spec:
+          displayName: ${metadata.environmentName}-${metadata.componentName}-${trait.instanceName}
+          version: v1.0
+          context: /${metadata.environmentName}-${metadata.componentNamespace}-${metadata.componentName}-${trait.instanceName}
+          provider:
+            id: ${parameters.providerRef}
+          policies: >-
+            ${[
+              {
+                "name": "llm-cost",
+                "version": "v1",
+                "paths": [{"path": parameters.apiPath, "methods": ["POST"]}]
+              },
+              (size(environmentConfigs.promptTokenLimits) > 0
+                || size(environmentConfigs.completionTokenLimits) > 0
+                || size(environmentConfigs.totalTokenLimits) > 0)
+                ? {
+                    "name": "token-based-ratelimit",
+                    "version": "v1",
+                    "paths": [{
+                      "path": parameters.apiPath,
+                      "methods": ["POST"],
+                      "params": {
+                        "promptTokenLimits": environmentConfigs.promptTokenLimits,
+                        "completionTokenLimits": environmentConfigs.completionTokenLimits,
+                        "totalTokenLimits": environmentConfigs.totalTokenLimits,
+                        "algorithm": environmentConfigs.algorithm,
+                        "backend": environmentConfigs.backend
+                      }
+                    }]
+                  }
+                : oc_omit(),
+              size(environmentConfigs.costBudgets) > 0
+                ? {
+                    "name": "llm-cost-based-ratelimit",
+                    "version": "v1",
+                    "paths": [{
+                      "path": parameters.apiPath,
+                      "methods": ["POST"],
+                      "params": {"budgetLimits": environmentConfigs.costBudgets}
+                    }]
+                  }
+                : oc_omit()
+            ]}
+
+  # ------------------------------------------------------------------
+  #  Patches — inject the gateway endpoint into the component Deployment.
+  # ------------------------------------------------------------------
+  patches:
+    - target:
+        group: apps
+        version: v1
+        kind: Deployment
+      operations:
+        - op: add
+          path: /spec/template/spec/containers/0/env/-
+          value:
+            name: OPENAI_BASE_URL
+            value: "http://${parameters.gatewayRuntimeName}.${parameters.gatewayRuntimeNamespace}:${parameters.gatewayRuntimePort}/${metadata.environmentName}-${metadata.componentNamespace}-${metadata.componentName}-${trait.instanceName}"
+        - op: add
+          path: /spec/template/spec/containers/0/env/-
+          value:
+            name: OPENAI_API_KEY
+            value: "managed-by-gateway"
+
+---

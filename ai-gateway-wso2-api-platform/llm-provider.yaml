@@ -1,0 +1,48 @@
+# Shared, platform-managed LLM provider for the WSO2 API Platform AI gateway.
+#
+# Created ONCE by a platform engineer (not per component). It holds the upstream
+# LLM endpoint, the credential, and access control. Per-component LlmProxy
+# resources (created by the `ai-model-routing` trait) reference it by name via
+# the trait's `providerRef` parameter (default: openai-provider).
+#
+# `template: openai` is a built-in LlmProviderTemplate auto-loaded by the
+# gateway. Other built-ins: anthropic, gemini, mistralai, azure-openai,
+# azureai-foundry, awsbedrock.
+#
+# Credential: this sample sources the API key from a Kubernetes Secret in the
+# data-plane namespace. Create it first, e.g.:
+#
+#   kubectl create secret generic openai-provider-auth \
+#     -n openchoreo-data-plane \
+#     --from-literal=authorization="Bearer sk-..."
+#
+# Or provision it with External Secrets Operator / OpenBao instead of a literal.
+---
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: LlmProvider
+metadata:
+  name: openai-provider
+  namespace: openchoreo-data-plane
+spec:
+  displayName: OpenAI Provider
+  version: v1.0
+  template: openai
+  context: /openai-provider
+  accessControl:
+    mode: deny_all
+    exceptions:
+      - path: /v1/chat/completions
+        methods: [POST]
+      - path: /v1/models
+        methods: [GET]
+  # Host root (NOT .../v1): OpenAI-compatible clients send the full wire path
+  # /v1/chat/completions, so the upstream must not also carry /v1.
+  upstream:
+    url: https://api.openai.com
+    auth:
+      type: api-key
+      header: Authorization
+      value:
+        valueFrom:
+          name: openai-provider-auth
+          key: authorization

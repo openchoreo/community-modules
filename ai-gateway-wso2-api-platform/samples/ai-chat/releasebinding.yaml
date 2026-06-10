@@ -1,0 +1,50 @@
+# =============================================================================
+# ReleaseBindings: per-environment overrides for the AI Chat Service
+# =============================================================================
+#
+# traitEnvironmentConfigs must match the trait active in component.yaml — keep
+# only the keys that trait's environmentConfigs schema defines, or rendering
+# fails on unknown fields. The key "llm" matches the trait instanceName.
+#
+#   - ai-model-routing     : suspendDuration (shown active below)
+#   - ai-llm-proxy         : no env config (these bindings are a no-op)
+#   - ai-token-cost-control: token/cost limits — when using this trait, REPLACE
+#     the `llm:` block below with, e.g.:
+#         llm:
+#           totalTokenLimits:
+#             - { count: 60, duration: "1h" }
+#           costBudgets:
+#             - { amount: 0.01, duration: "1h" }
+# =============================================================================
+
+# --- Development Environment ---
+apiVersion: openchoreo.dev/v1alpha1
+kind: ReleaseBinding
+metadata:
+  name: ai-chat-service-dev
+  namespace: default
+spec:
+  owner:
+    projectName: default
+    componentName: ai-chat-service
+  environment: development
+  traitEnvironmentConfigs:
+    llm:
+      suspendDuration: 30
+
+---
+
+# --- Production Environment ---
+apiVersion: openchoreo.dev/v1alpha1
+kind: ReleaseBinding
+metadata:
+  name: ai-chat-service-prod
+  namespace: default
+spec:
+  owner:
+    projectName: default
+    componentName: ai-chat-service
+  environment: production
+  traitEnvironmentConfigs:
+    llm:
+      suspendDuration: 120

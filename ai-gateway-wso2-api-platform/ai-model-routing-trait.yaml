@@ -1,0 +1,223 @@
+# ClusterTrait: ai-model-routing
+#
+# Model-aware routing trait for the WSO2 API Platform AI gateway. Attach it to
+# any in-cluster component (an AI agent or service) that calls an LLM. The trait
+# exposes a per-component LLM endpoint (an LlmProxy) that fronts a shared,
+# platform-managed LlmProvider and distributes requests across multiple models
+# using the gateway's model-aware routing policies — `model-round-robin` (even
+# distribution) or `model-weighted-round-robin` (proportional distribution).
+#
+# Resource model (WSO2 API Platform personas):
+#   - LlmProviderTemplate : wire-format mapping (where the model name / tokens
+#                           live). Built-in defaults are loaded by the gateway:
+#                           openai, anthropic, gemini, mistralai, azure-openai,
+#                           azureai-foundry, awsbedrock. Not managed here.
+#   - LlmProvider         : the upstream backend + credentials + access control.
+#                           PLATFORM-ADMIN owned, created ONCE at install time
+#                           (see README.md). Holds the API key; never per app.
+#   - LlmProxy            : the AI-developer-facing API on top of a provider.
+#                           THIS is what the trait creates, one per component:
+#                           its own context + model-routing policy, referencing
+#                           the shared provider by id. No upstream URL or secret
+#                           lives in the component namespace.
+#
+# Traffic is east-west: the component (agent) calls the WSO2 gateway-runtime
+# Service directly inside the cluster. The trait therefore does NOT create a
+# kgateway Backend or patch an HTTPRoute — there is no public ingress. It only:
+#   - Creates a WSO2 LlmProxy (context + model-routing policy)
+#   - Injects OPENAI_BASE_URL (and OPENAI_API_KEY) into the component Deployment
+#
+# The component talks to OPENAI_BASE_URL using the standard OpenAI SDK; the
+# gateway reads the `model` field from each request and rewrites it to the next
+# selected model per the routing strategy, then forwards through the provider to
+# the upstream with the platform-managed credential.
+#
+# How model-aware routing works (WSO2 API Platform):
+#   - `requestModel` tells the gateway where the model name is in the request
+#     (default JSONPath `$.model`); supplied inline in the policy params here so
+#     it works regardless of the provider's template.
+#   - `model-round-robin`         : cycles evenly across the configured models.
+#   - `model-weighted-round-robin`: distributes proportionally by `weight`.
+#   - `suspendDuration` auto-suspends a model on 5xx/429 for N seconds; all
+#     suspended -> HTTP 503 "All models are currently unavailable".
+#
+# Prerequisites:
+#   - WSO2 API Platform gateway installed in the data plane (see README.md).
+#   - A shared LlmProvider deployed once (its name is `providerRef`), holding the
+#     upstream URL + credential (see README.md install step).
+#   - The APIGateway uses `apiSelector.scope: Cluster` so LLM resources in any
+#     namespace are picked up automatically (no target label required).
+#   - The cluster-agent has RBAC for `gateway.api-platform.wso2.com` llmproxies
+#     (see README.md Step 4).
+#   - "ai-model-routing" is listed in the ComponentType's allowedTraits.
+#
+---
+apiVersion: openchoreo.dev/v1alpha1
+kind: ClusterTrait
+metadata:
+  name: ai-model-routing
+spec:
+  parameters:
+    openAPIV3Schema:
+      type: object
+      properties:
+        # --- Gateway runtime reference (in-cluster Service the agent calls) ---
+        gatewayRuntimeName:
+          type: string
+          default: "api-platform-default-gateway-gateway-runtime"
+          description: "Name of the WSO2 API Platform gateway-runtime Service in the data plane"
+        gatewayRuntimeNamespace:
+          type: string
+          default: "openchoreo-data-plane"
+          description: "Namespace of the WSO2 API Platform gateway-runtime Service"
+        gatewayRuntimePort:
+          type: integer
+          default: 8080
+          description: "HTTP listener port of the gateway-runtime Service"
+
+        # --- Shared LLM provider (created once at install time) ---
+        providerRef:
+          type: string
+          default: "openai-provider"
+          description: "Name (id) of the platform-managed LlmProvider this proxy fronts"
+
+        # --- API path the model-routing policy matches (relative to the proxy
+        #     context). For OpenAI-compatible chat clients this is the full wire
+        #     path /v1/chat/completions (clients append it to OPENAI_BASE_URL).
+        #     The shared LlmProvider's upstream must be the host root (no /v1)
+        #     and allow this path. ---
+        apiPath:
+          type: string
+          default: "/v1/chat/completions"
+          description: "API path matched by the routing policy (e.g. /v1/chat/completions)"
+
+        # --- Model-aware routing ---
+        routing:
+          type: object
+          default:
+            strategy: "round-robin"
+            models: []
+            requestModel:
+              location: "payload"
+              identifier: "$.model"
+          description: "Model-aware routing configuration"
+          properties:
+            strategy:
+              type: string
+              enum: ["round-robin", "weighted"]
+              default: "round-robin"
+              description: "round-robin = even distribution; weighted = proportional by weight"
+            models:
+              type: array
+              default: []
+              description: "Models to route across"
+              items:
+                type: object
+                properties:
+                  model:
+                    type: string
+                    description: "Model name (e.g. gpt-4, gpt-3.5-turbo)"
+                  weight:
+                    type: integer
+                    default: 1
+                    description: "Relative weight (weighted strategy only; ignored for round-robin)"
+            requestModel:
+              type: object
+              default:
+                location: "payload"
+                identifier: "$.model"
+              description: "Where to read the model name from the request"
+              properties:
+                location:
+                  type: string
+                  enum: ["payload", "header", "queryParam", "pathParam"]
+                  default: "payload"
+                  description: "Location of the model identifier in the request"
+                identifier:
+                  type: string
+                  default: "$.model"
+                  description: "JSONPath (payload), header/query name, or regex (pathParam)"
+
+  # Per-environment overrides set via ReleaseBinding.spec.traitEnvironmentConfigs.
+  environmentConfigs:
+    openAPIV3Schema:
+      type: object
+      properties:
+        suspendDuration:
+          type: integer
+          default: 60
+          description: "Seconds to suspend a model after a 5xx/429 response (0 = do not persist failures)"
+
+  validations:
+    - rule: "${size(parameters.providerRef) > 0}"
+      message: "providerRef must reference a deployed LlmProvider (e.g. openai-provider)"
+    - rule: "${size(parameters.routing.models) > 0}"
+      message: "routing.models must contain at least one model"
+
+  creates:
+    # ==================================================================
+    #  LlmProxy — the per-component AI endpoint fronting the shared provider.
+    #  context is derived per component+environment so it is unique across the
+    #  cluster-scoped gateway; the injected OPENAI_BASE_URL points at it. The
+    #  model-routing policy rewrites the request `model` before the request is
+    #  forwarded through the provider to the upstream.
+    # ==================================================================
+    - targetPlane: dataplane
+      template:
+        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        kind: LlmProxy
+        metadata:
+          name: ${metadata.name}-${trait.instanceName}-llm
+          namespace: ${metadata.namespace}
+        spec:
+          displayName: ${metadata.environmentName}-${metadata.componentName}-${trait.instanceName}
+          version: v1.0
+          context: /${metadata.environmentName}-${metadata.componentNamespace}-${metadata.componentName}-${trait.instanceName}
+          provider:
+            id: ${parameters.providerRef}
+          policies: >-
+            ${[{
+              "name": parameters.routing.strategy == "weighted" ? "model-weighted-round-robin" : "model-round-robin",
+              "version": "v1",
+              "paths": [{
+                "path": parameters.apiPath,
+                "methods": ["POST"],
+                "params": {
+                  "models": parameters.routing.strategy == "weighted"
+                    ? parameters.routing.models.map(m, {"model": m.model, "weight": m.weight})
+                    : parameters.routing.models.map(m, {"model": m.model}),
+                  "requestModel": {
+                    "location": parameters.routing.requestModel.location,
+                    "identifier": parameters.routing.requestModel.identifier
+                  },
+                  "suspendDuration": environmentConfigs.suspendDuration
+                }
+              }]
+            }]}
+
+  # ------------------------------------------------------------------
+  #  Patches — inject the gateway endpoint into the component Deployment.
+  #  The agent uses the standard OpenAI SDK against OPENAI_BASE_URL; the model
+  #  in the request body is rewritten by the routing policy at the gateway.
+  # ------------------------------------------------------------------
+  patches:
+    - target:
+        group: apps
+        version: v1
+        kind: Deployment
+      operations:
+        # OPENAI_BASE_URL — the LlmProxy context on the in-cluster gateway.
+        - op: add
+          path: /spec/template/spec/containers/0/env/-
+          value:
+            name: OPENAI_BASE_URL
+            value: "http://${parameters.gatewayRuntimeName}.${parameters.gatewayRuntimeNamespace}:${parameters.gatewayRuntimePort}/${metadata.environmentName}-${metadata.componentNamespace}-${metadata.componentName}-${trait.instanceName}"
+        # OPENAI_API_KEY — placeholder so OpenAI SDKs initialize. The real
+        # upstream credential lives on the shared LlmProvider at the gateway.
+        - op: add
+          path: /spec/template/spec/containers/0/env/-
+          value:
+            name: OPENAI_API_KEY
+            value: "managed-by-gateway"
+
+---

@@ -1,0 +1,96 @@
+# =============================================================================
+# Sample: AI Chat Service — works with BOTH AI gateway traits
+# =============================================================================
+#
+# One sample, three traits. The app (github.com/openchoreo/sample-workloads
+# /service-go-ai-chat) is gateway-agnostic: it calls OPENAI_BASE_URL with the
+# OpenAI SDK (injected by the trait) and its POST /chat accepts an optional
+# `model` field that it forwards to the gateway. The SAME component demonstrates
+# all three behaviors — just swap the trait block below:
+#
+#   - ai-model-routing (active below): the GATEWAY picks the model. Whatever
+#     `model` the app sends is overwritten and distributed across the configured
+#     set (weighted 3:1 here).
+#   - ai-llm-proxy: PASSTHROUGH. The APP's `model` is honored and forwarded
+#     unchanged. Replace the `traits:` block with:
+#         traits:
+#           - kind: ClusterTrait
+#             name: ai-llm-proxy
+#             instanceName: llm
+#             parameters:
+#               providerRef: openai-provider
+#   - ai-token-cost-control: governed passthrough (app picks model) with cost
+#     tracking + token/budget rate limits. Replace the `traits:` block with:
+#         traits:
+#           - kind: ClusterTrait
+#             name: ai-token-cost-control
+#             instanceName: llm
+#             parameters:
+#               providerRef: openai-provider
+#     and set limits in releasebinding.yaml (see that file).
+#
+# Prerequisites:
+#   - WSO2 API Platform AI gateway installed (README.md Steps 1-4)
+#   - Shared LlmProvider "openai-provider" deployed (README.md Step 5)
+#   - The chosen trait applied and allowed on the ComponentType
+# =============================================================================
+
+apiVersion: openchoreo.dev/v1alpha1
+kind: Component
+metadata:
+  name: ai-chat-service
+  namespace: default
+spec:
+  owner:
+    projectName: default
+  autoDeploy: true
+  componentType:
+    kind: ClusterComponentType
+    name: deployment/service
+  traits:
+    - kind: ClusterTrait
+      name: ai-model-routing
+      instanceName: llm
+      parameters:
+        providerRef: openai-provider
+        routing:
+          strategy: weighted # or round-robin
+          models:
+            - { model: gpt-4o, weight: 3 }
+            - { model: gpt-4o-mini, weight: 1 }
+  workflow:
+    kind: ClusterWorkflow
+    name: dockerfile-builder
+    parameters:
+      repository:
+        url: "https://github.com/openchoreo/sample-workloads"
+        revision:
+          branch: "main"
+        appPath: "/service-go-ai-chat"
+      docker:
+        context: "/service-go-ai-chat"
+        filePath: "/service-go-ai-chat/Dockerfile"
+
+---
+
+apiVersion: openchoreo.dev/v1alpha1
+kind: WorkflowRun
+metadata:
+  name: ai-chat-service-build-01
+  namespace: default
+  labels:
+    openchoreo.dev/project: "default"
+    openchoreo.dev/component: "ai-chat-service"
+spec:
+  workflow:
+    kind: ClusterWorkflow
+    name: dockerfile-builder
+    parameters:
+      repository:
+        url: "https://github.com/openchoreo/sample-workloads"
+        revision:
+          branch: "main"
+        appPath: "/service-go-ai-chat"
+      docker:
+        context: "/service-go-ai-chat"
+        filePath: "/service-go-ai-chat/Dockerfile"

@@ -9,7 +9,7 @@ spec:
         parameters:
           - name: git-revision
       container:
-        image: ghcr.io/openchoreo/podman-runner:v1.1
+        image: ghcr.io/openchoreo/podman-runner:v1.2
         command:
           - sh
           - -c

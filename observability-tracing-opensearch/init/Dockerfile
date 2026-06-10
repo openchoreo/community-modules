@@ -1,7 +1,7 @@
 # Copyright 2026 The OpenChoreo Authors
 # SPDX-License-Identifier: Apache-2.0
 
-FROM alpine:3.23
+FROM alpine:3.24
 
 RUN apk upgrade --no-cache && \
     apk add --no-cache bash curl jq && \

@@ -1,0 +1,175 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 700" font-family="'Segoe UI', system-ui, -apple-system, sans-serif">
+  <defs>
+    <linearGradient id="controlPlane" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#e8eaf6"/>
+      <stop offset="100%" stop-color="#c5cae9"/>
+    </linearGradient>
+    <linearGradient id="dataPlane" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ede7f6"/>
+      <stop offset="100%" stop-color="#d1c4e9"/>
+    </linearGradient>
+    <linearGradient id="controllerGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#5c6bc0"/>
+      <stop offset="100%" stop-color="#3949ab"/>
+    </linearGradient>
+    <linearGradient id="componentGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#42a5f5"/>
+      <stop offset="100%" stop-color="#1e88e5"/>
+    </linearGradient>
+    <linearGradient id="wso2Grad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffa726"/>
+      <stop offset="100%" stop-color="#fb8c00"/>
+    </linearGradient>
+    <linearGradient id="wso2CtrlGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffb74d"/>
+      <stop offset="100%" stop-color="#ff9800"/>
+    </linearGradient>
+    <linearGradient id="llmGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#26a69a"/>
+      <stop offset="100%" stop-color="#00897b"/>
+    </linearGradient>
+    <filter id="shadow" x="-2%" y="-2%" width="104%" height="108%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.12"/>
+    </filter>
+    <filter id="shadowSm" x="-2%" y="-2%" width="104%" height="108%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-opacity="0.1"/>
+    </filter>
+    <marker id="arrowHead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#546e7a"/>
+    </marker>
+    <marker id="arrowHeadOrange" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#ef6c00"/>
+    </marker>
+    <marker id="arrowHeadTeal" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#00897b"/>
+    </marker>
+    <marker id="arrowHeadBlue" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#1e88e5"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="780" height="700" rx="12" fill="#fafafa"/>
+
+  <!-- Title -->
+  <text x="390" y="36" text-anchor="middle" font-size="18" font-weight="700" fill="#263238">WSO2 API Platform AI Gateway Module &#x2014; Architecture</text>
+  <text x="390" y="56" text-anchor="middle" font-size="11" fill="#78909c">Model-aware routing &#x00B7; LLM passthrough &#x00B7; Token &amp; cost control &#x2014; via WSO2 LlmProxy / LlmProvider</text>
+
+  <!-- ==================== CONTROL PLANE ==================== -->
+  <rect x="40" y="76" width="700" height="74" rx="8" fill="url(#controlPlane)" filter="url(#shadow)" stroke="#9fa8da" stroke-width="1"/>
+  <text x="52" y="94" font-size="9" font-weight="600" fill="#3949ab" letter-spacing="1">CONTROL PLANE</text>
+
+  <!-- OpenChoreo Controllers -->
+  <rect x="52" y="102" width="300" height="36" rx="5" fill="url(#controllerGrad)" filter="url(#shadowSm)"/>
+  <text x="202" y="120" text-anchor="middle" font-size="11" font-weight="500" fill="#fff">OpenChoreo Controllers</text>
+  <text x="202" y="133" text-anchor="middle" font-size="8" fill="#c5cae9">Render AI ClusterTrait &#x2192; LlmProxy + inject OPENAI_BASE_URL</text>
+
+  <!-- ClusterTrait badge -->
+  <rect x="366" y="102" width="360" height="36" rx="5" fill="#fff" filter="url(#shadowSm)" stroke="#9fa8da" stroke-width="1"/>
+  <text x="378" y="117" font-size="9" font-weight="600" fill="#3949ab">AI Gateway ClusterTraits</text>
+  <text x="378" y="131" font-size="8" fill="#546e7a">ai-llm-proxy &#x00B7; ai-model-routing &#x00B7; ai-token-cost-control</text>
+
+  <!-- Arrow: Control Plane to Data Plane -->
+  <line x1="202" y1="150" x2="202" y2="184" stroke="#546e7a" stroke-width="1.5" marker-end="url(#arrowHead)"/>
+  <text x="214" y="171" font-size="8" fill="#78909c">applies (LlmProxy + env patch)</text>
+
+  <!-- ==================== DATA PLANE ==================== -->
+  <rect x="40" y="188" width="700" height="450" rx="8" fill="url(#dataPlane)" filter="url(#shadow)" stroke="#b39ddb" stroke-width="1"/>
+  <text x="52" y="206" font-size="9" font-weight="600" fill="#4527a0" letter-spacing="1">DATA PLANE</text>
+
+  <!-- Component Pod -->
+  <rect x="60" y="224" width="180" height="60" rx="6" fill="url(#componentGrad)" filter="url(#shadow)"/>
+  <text x="150" y="245" text-anchor="middle" font-size="11" font-weight="600" fill="#fff">Component Pod</text>
+  <text x="150" y="259" text-anchor="middle" font-size="9" fill="#e3f2fd">AI agent / service</text>
+  <text x="150" y="274" text-anchor="middle" font-size="8" fill="#e3f2fd">env: OPENAI_BASE_URL</text>
+
+  <!-- Arrow: Component to gateway-runtime (east-west) -->
+  <line x1="240" y1="258" x2="298" y2="264" stroke="#1e88e5" stroke-width="1.6" marker-end="url(#arrowHeadBlue)"/>
+  <text x="250" y="250" font-size="8" fill="#1565c0" font-weight="500">OpenAI SDK</text>
+  <text x="252" y="280" font-size="7" fill="#1565c0">east-west</text>
+
+  <!-- ==================== gateway-runtime container ==================== -->
+  <rect x="300" y="216" width="300" height="178" rx="8" fill="#fff3e0" filter="url(#shadow)" stroke="#ffb74d" stroke-width="1.2"/>
+  <text x="312" y="234" font-size="10" font-weight="700" fill="#e65100">WSO2 API Platform gateway-runtime (Envoy)</text>
+
+  <!-- LlmProxy card -->
+  <rect x="312" y="244" width="276" height="60" rx="6" fill="#fff" filter="url(#shadowSm)" stroke="#ef6c00" stroke-width="1"/>
+  <text x="324" y="262" font-size="9.5" font-weight="600" fill="#ef6c00">LlmProxy (per component)</text>
+  <text x="324" y="277" font-size="8" fill="#546e7a">context: /&lt;env&gt;-&lt;ns&gt;-&lt;component&gt;-&lt;instance&gt;</text>
+  <text x="324" y="291" font-size="8" fill="#546e7a">policy: routing / passthrough / cost (per trait)</text>
+
+  <!-- Arrow: LlmProxy to LlmProvider -->
+  <line x1="440" y1="304" x2="440" y2="316" stroke="#ef6c00" stroke-width="1.4" marker-end="url(#arrowHeadOrange)"/>
+  <text x="448" y="313" font-size="7" fill="#ef6c00">provider.id</text>
+
+  <!-- LlmProvider card -->
+  <rect x="312" y="316" width="276" height="64" rx="6" fill="#fff" filter="url(#shadowSm)" stroke="#ef6c00" stroke-width="1"/>
+  <text x="324" y="334" font-size="9.5" font-weight="600" fill="#ef6c00">LlmProvider (shared, install-once)</text>
+  <text x="324" y="349" font-size="8" fill="#546e7a">upstream URL + credential (Secret)</text>
+  <text x="324" y="362" font-size="8" fill="#546e7a">accessControl &#x00B7; template (openai, ...)</text>
+  <text x="324" y="374" font-size="8" fill="#90a4ae">platform-managed &#x2014; not per component</text>
+
+  <!-- WSO2 Operator -->
+  <rect x="300" y="410" width="300" height="44" rx="8" fill="url(#wso2CtrlGrad)" filter="url(#shadow)"/>
+  <text x="450" y="430" text-anchor="middle" font-size="11" font-weight="600" fill="#fff">WSO2 API Platform Operator</text>
+  <text x="450" y="444" text-anchor="middle" font-size="8" fill="#fff3e0">watches &amp; reconciles LlmProxy + LlmProvider CRDs</text>
+
+  <!-- Arrow: Operator to container -->
+  <line x1="450" y1="410" x2="450" y2="396" stroke="#ef6c00" stroke-width="1.4" stroke-dasharray="4,3" marker-end="url(#arrowHeadOrange)"/>
+  <text x="458" y="406" font-size="7" fill="#ef6c00">reconciles</text>
+
+  <!-- ==================== LLM Providers (external upstream) ==================== -->
+  <rect x="620" y="248" width="120" height="100" rx="8" fill="url(#llmGrad)" filter="url(#shadow)"/>
+  <text x="680" y="270" text-anchor="middle" font-size="10" font-weight="600" fill="#fff">LLM Providers</text>
+  <text x="680" y="288" text-anchor="middle" font-size="8" fill="#e0f2f1">OpenAI</text>
+  <text x="680" y="301" text-anchor="middle" font-size="8" fill="#e0f2f1">Anthropic</text>
+  <text x="680" y="314" text-anchor="middle" font-size="8" fill="#e0f2f1">Azure OpenAI</text>
+  <text x="680" y="327" text-anchor="middle" font-size="8" fill="#e0f2f1">Mistral &#x00B7; ...</text>
+  <text x="680" y="342" text-anchor="middle" font-size="7" fill="#b2dfdb">(OpenAI-compatible)</text>
+
+  <!-- Arrow: LlmProvider to LLM Providers -->
+  <line x1="588" y1="346" x2="618" y2="320" stroke="#00897b" stroke-width="1.6" marker-end="url(#arrowHeadTeal)"/>
+  <text x="592" y="360" font-size="7" fill="#00695c">upstream (TLS)</text>
+
+  <!-- ==================== PER-TRAIT POLICY legend (left column) ==================== -->
+  <text x="60" y="312" font-size="9" font-weight="600" fill="#4527a0" letter-spacing="0.5">PER-TRAIT LlmProxy POLICY</text>
+
+  <rect x="60" y="320" width="200" height="42" rx="5" fill="#fff" filter="url(#shadowSm)" stroke="#1e88e5" stroke-width="1"/>
+  <text x="72" y="337" font-size="9" font-weight="600" fill="#1565c0">ai-llm-proxy</text>
+  <text x="72" y="351" font-size="8" fill="#546e7a">passthrough &#x2014; app picks model</text>
+
+  <rect x="60" y="370" width="200" height="42" rx="5" fill="#fff" filter="url(#shadowSm)" stroke="#5e35b1" stroke-width="1"/>
+  <text x="72" y="387" font-size="9" font-weight="600" fill="#5e35b1">ai-model-routing</text>
+  <text x="72" y="401" font-size="8" fill="#546e7a">model-round-robin / weighted</text>
+
+  <rect x="60" y="420" width="200" height="42" rx="5" fill="#fff" filter="url(#shadowSm)" stroke="#2e7d32" stroke-width="1"/>
+  <text x="72" y="437" font-size="9" font-weight="600" fill="#2e7d32">ai-token-cost-control</text>
+  <text x="72" y="451" font-size="8" fill="#546e7a">llm-cost + token / budget ratelimit</text>
+
+  <!-- ==================== TRAFFIC FLOW (bottom) ==================== -->
+  <rect x="60" y="492" width="660" height="118" rx="6" fill="#fff" filter="url(#shadowSm)" stroke="#b0bec5" stroke-width="1"/>
+  <text x="72" y="510" font-size="9" font-weight="600" fill="#37474f" letter-spacing="0.5">TRAFFIC FLOW &#x2014; east-west (in-cluster, no public ingress)</text>
+
+  <rect x="80" y="528" width="110" height="26" rx="4" fill="url(#componentGrad)"/>
+  <text x="135" y="545" text-anchor="middle" font-size="9" font-weight="500" fill="#fff">Agent Pod</text>
+  <line x1="190" y1="541" x2="214" y2="541" stroke="#546e7a" stroke-width="1.5" marker-end="url(#arrowHead)"/>
+
+  <rect x="218" y="528" width="250" height="26" rx="4" fill="url(#wso2Grad)"/>
+  <text x="343" y="545" text-anchor="middle" font-size="9" font-weight="500" fill="#fff">gateway-runtime (LlmProxy &#x2192; LlmProvider)</text>
+  <line x1="468" y1="541" x2="492" y2="541" stroke="#546e7a" stroke-width="1.5" marker-end="url(#arrowHead)"/>
+
+  <rect x="496" y="528" width="130" height="26" rx="4" fill="url(#llmGrad)"/>
+  <text x="561" y="545" text-anchor="middle" font-size="9" font-weight="500" fill="#fff">LLM provider</text>
+
+  <text x="100" y="572" font-size="7" fill="#78909c">calls OPENAI_BASE_URL</text>
+  <text x="100" y="581" font-size="7" fill="#78909c">/v1/chat/completions</text>
+  <text x="240" y="572" font-size="7" fill="#78909c">apply policy (routing / cost / passthrough),</text>
+  <text x="240" y="581" font-size="7" fill="#78909c">attach upstream credential, forward</text>
+  <text x="510" y="572" font-size="7" fill="#78909c">model selected by app</text>
+  <text x="510" y="581" font-size="7" fill="#78909c">or gateway (routing)</text>
+
+  <text x="390" y="600" text-anchor="middle" font-size="8" fill="#90a4ae">The app never holds provider credentials; the gateway injects them on the upstream call.</text>
+
+  <!-- Footer -->
+  <text x="390" y="630" text-anchor="middle" font-size="10" fill="#90a4ae">No public ingress, kgateway Backend, or HTTPRoute on this path &#x2014; agents call the gateway-runtime Service directly.</text>
+</svg>

@@ -82,43 +82,7 @@ module reuses the same operator install, the same `APIGateway` CR, and the same
 
 ## High-Level Architecture
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     CONTROL PLANE                           │
-│                                                             │
-│   Renders component templates and applies resources         │
-│   (Deployment, Service, LlmProxy) to the data plane         │
-│                                                             │
-└─────────────────────────┬───────────────────────────────────┘
-                          │ applies resources
-                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│                     DATA PLANE                              │
-│                                                             │
-│   ┌──────────────┐                                          │
-│   │ Component    │  OPENAI_BASE_URL =                       │
-│   │ (agent/svc)  │  http://<gw-runtime>:8080/<proxy ctx>    │
-│   └──────┬───────┘                                          │
-│          │ east-west (in-cluster), OpenAI SDK               │
-│          ▼                                                  │
-│   ┌───────────────────────────────────────────────┐        │
-│   │   WSO2 API Platform gateway-runtime (Envoy)    │        │
-│   │                                                 │        │
-│   │   LlmProxy (per component)                      │        │
-│   │     - context: /<env>-<ns>-<comp>-<inst>        │        │
-│   │     - model-routing policy (reads `model`,      │        │
-│   │       rewrites to selected model)               │        │
-│   │            │ provider.id                        │        │
-│   │            ▼                                    │        │
-│   │   LlmProvider (shared, install-once)            │        │
-│   │     - upstream URL + credential + accessControl │        │
-│   └───────────────────────┬─────────────────────────┘        │
-│                           │                                  │
-└────────────────────────────┼─────────────────────────────────┘
-                            ▼
-             LLM providers (OpenAI, Anthropic,
-             Azure OpenAI, Mistral, ...)
-```
+![WSO2 API Platform AI Gateway Module — Architecture](wso2-api-platform-ai-gateway.svg)
 
 There is no public ingress, kgateway `Backend`, or `HTTPRoute` in this path —
 components call the gateway-runtime Service directly inside the cluster. The

@@ -17,7 +17,9 @@ This module enables advanced network security and observability in OpenChoreo us
 - Cell Diagram runtime observability
   ![Screenshot](cell-diagram-runtime.png)
 
-- Network wirelogs (Coming Soon)
+- Network wirelogs
+  ![Screenshot](wirelogs-table.png)
+  ![Screenshot](wirelogs-details.png)
 
 ## Prerequisites
 
@@ -46,6 +48,8 @@ This module enables advanced network security and observability in OpenChoreo us
          - tcp
        serviceMonitor:
          enabled: true
+     relay:
+       enabled: true
 
    envoy:
      enabled: true
@@ -62,6 +66,7 @@ This module enables advanced network security and observability in OpenChoreo us
    --helm-set hubble.enabled=true \
    --helm-set hubble.metrics.enabled="{httpV2:exemplars=true;labelsContext=source_ip\,source_namespace\,source_workload\,destination_ip\,destination_namespace\,destination_workload\,traffic_direction\,source_pod\,destination_pod,dns,drop,tcp}" \
    --helm-set hubble.metrics.serviceMonitor.enabled=true \
+   --helm-set hubble.relay.enabled=true \
    --helm-set envoy.enabled=true
    ```
 
@@ -71,6 +76,20 @@ Example:
 
 ```bash
 kubectl annotate clusterdataplanes.openchoreo.dev default openchoreo.dev/networkpolicyprovider=cilium --overwrite
+```
+
+3. Add `HUBBLE_RELAY_ADDR` environment variable to OpenChoreo Cluster Agent system component to query from hubble relay.
+
+Example:
+
+```bash
+helm upgrade --install openchoreo-data-plane oci://ghcr.io/openchoreo/helm-charts/openchoreo-data-plane \
+  --version 1.2.0 \
+  --namespace openchoreo-data-plane \
+  --create-namespace \
+  --reuse-values \
+  --set "clusterAgent.extraEnvs[0].name=HUBBLE_RELAY_ADDR" \
+  --set "clusterAgent.extraEnvs[0].value=hubble-relay.kube-system:80"
 ```
 
 ## Verification
@@ -95,6 +114,8 @@ kubectl get ciliumnetworkpolicies.cilium.io -A
 
 This module integrates Cilium, OpenChoreo, and observability-metrics-prometheus (an OpenChoreo community module), and is compatible with the following versions.
 
-- Cilium Version: 1.19.x
-- OpenChoreo Version: 1.1.x
-- Observability-Metrics-Prometheus Module Version: 0.6.x
+| Component                            | Compatible Version | Notes                         |
+| :----------------------------------- | :----------------- | :---------------------------- |
+| **Cilium**                           | `1.19.x`           |                               |
+| **OpenChoreo**                       | `>=1.1.x`          | Requires `1.2.x` for Wirelogs |
+| **Observability-Metrics-Prometheus** | `0.6.x`            | OpenChoreo community module   |

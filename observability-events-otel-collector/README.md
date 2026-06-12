@@ -110,7 +110,11 @@ EOF
 
 Compatible with `observability-logs-openobserve` community module (>= version 0.5.0):
 
-```yaml
+```bash
+helm upgrade --install observability-events-otel-collector \
+  oci://ghcr.io/openchoreo/helm-charts/observability-events-otel-collector \
+  --namespace openchoreo-observability-plane --create-namespace --version 0.1.1 \
+  -f - <<'EOF'
 collector:
   extraEnv:
     - name: OPENOBSERVE_USERNAME

@@ -67,10 +67,13 @@ OTLP (gRPC + HTTP), AWS CloudWatch Logs, and debug exporters.
 
 ### OpenSearch
 
-Reuses the in-cluster OpenSearch and its `opensearch-admin-credentials` secret.
-Save as `opensearch-values.yaml`:
+Compatible with `observability-logs-opensearch` community module (>= version 0.6.1):
 
-```yaml
+```bash
+helm upgrade --install observability-events-otel-collector \
+  oci://ghcr.io/openchoreo/helm-charts/observability-events-otel-collector \
+  --namespace openchoreo-observability-plane --version 0.1.1 \
+  -f - <<'EOF'
 collector:
   extraEnv:
     - name: OPENSEARCH_USERNAME
@@ -83,33 +86,24 @@ collector:
         secretKeyRef:
           name: opensearch-admin-credentials
           key: password
-
 extraExtensions:
   basicauth/opensearch:
     client_auth:
       username: ${env:OPENSEARCH_USERNAME}
       password: ${env:OPENSEARCH_PASSWORD}
-
 exporters:
   opensearch:
     logs_index: "k8s-events"
-    logs_index_time_format: "yyyy-MM-dd" # daily indices
+    logs_index_time_format: "yyyy-MM-dd"
     http:
       endpoint: "https://opensearch:9200"
       tls:
         insecure_skip_verify: true
       auth:
         authenticator: basicauth/opensearch
-
 pipelineExporters:
   - opensearch
-```
-
-```bash
-helm upgrade --install observability-events-otel-collector \
-  oci://ghcr.io/openchoreo/helm-charts/observability-events-otel-collector \
-  --namespace openchoreo-observability-plane --version 0.1.1 \
-  -f opensearch-values.yaml
+EOF
 ```
 
 ### OpenObserve (native OTLP/HTTP)

@@ -37,11 +37,11 @@ func isCountQuery(r *http.Request) bool {
 }
 
 func newTestClient(serverURL string) *Client {
-	return NewClient(serverURL, "default", "default", "admin", "token", testLogger())
+	return NewClient(serverURL, "default", "default", "k8s_events", "admin", "token", testLogger())
 }
 
 func TestNewClient(t *testing.T) {
-	c := NewClient("http://localhost:5080/", "myorg", "mystream", "user", "pass", testLogger())
+	c := NewClient("http://localhost:5080/", "myorg", "mystream", "myevents", "user", "pass", testLogger())
 
 	if c.baseURL != "http://localhost:5080" {
 		t.Errorf("expected trailing slash removed, got %q", c.baseURL)
@@ -51,6 +51,9 @@ func TestNewClient(t *testing.T) {
 	}
 	if c.stream != "mystream" {
 		t.Errorf("unexpected stream: %q", c.stream)
+	}
+	if c.eventsStream != "myevents" {
+		t.Errorf("unexpected events stream: %q", c.eventsStream)
 	}
 	if c.user != "user" {
 		t.Errorf("unexpected user: %q", c.user)

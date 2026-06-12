@@ -118,22 +118,24 @@ type OpenObserveResponse struct {
 }
 
 type Client struct {
-	baseURL    string
-	org        string
-	stream     string
-	user       string
-	token      string
-	httpClient *http.Client
-	logger     *slog.Logger
+	baseURL      string
+	org          string
+	stream       string
+	eventsStream string
+	user         string
+	token        string
+	httpClient   *http.Client
+	logger       *slog.Logger
 }
 
-func NewClient(baseURL, org, stream, user, token string, logger *slog.Logger) *Client {
+func NewClient(baseURL, org, stream, eventsStream, user, token string, logger *slog.Logger) *Client {
 	return &Client{
-		baseURL: strings.TrimSuffix(baseURL, "/"),
-		org:     org,
-		stream:  stream,
-		user:    user,
-		token:   token,
+		baseURL:      strings.TrimSuffix(baseURL, "/"),
+		org:          org,
+		stream:       stream,
+		eventsStream: eventsStream,
+		user:         user,
+		token:        token,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -276,6 +278,67 @@ func (c *Client) GetWorkflowLogs(ctx context.Context, params WorkflowLogsParams)
 		Logs:       logs,
 		TotalCount: extractTotalCount(countResp),
 		Took:       openObserveResp.Took,
+	}, nil
+}
+
+// GetComponentEvents queries OpenObserve for Kubernetes events scoped to a component,
+// project, or environment within an OpenChoreo namespace.
+func (c *Client) GetComponentEvents(ctx context.Context, params EventsQueryParams) (*EventsResult, error) {
+	queryJSON, err := generateComponentEventsQuery(params, c.eventsStream, c.logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate component events query: %w", err)
+	}
+
+	countJSON, err := generateComponentEventsCountQuery(params, c.eventsStream, c.logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate component events count query: %w", err)
+	}
+
+	return c.executeEventsQuery(ctx, queryJSON, countJSON)
+}
+
+// GetWorkflowEvents queries OpenObserve for Kubernetes events scoped to a workflow run
+// (and optionally a specific task) within a workflows namespace.
+func (c *Client) GetWorkflowEvents(ctx context.Context, params WorkflowEventsQueryParams) (*EventsResult, error) {
+	queryJSON, err := generateWorkflowEventsQuery(params, c.eventsStream, c.logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate workflow events query: %w", err)
+	}
+
+	countJSON, err := generateWorkflowEventsCountQuery(params, c.eventsStream, c.logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate workflow events count query: %w", err)
+	}
+
+	return c.executeEventsQuery(ctx, queryJSON, countJSON)
+}
+
+// executeEventsQuery runs the search query and a separate count query, returning the
+// parsed events together with the true total of matching events.
+func (c *Client) executeEventsQuery(ctx context.Context, queryJSON, countJSON []byte) (*EventsResult, error) {
+	resp, err := c.executeSearchQuery(ctx, queryJSON)
+	if err != nil {
+		return nil, err
+	}
+
+	events := make([]EventEntry, 0, len(resp.Hits))
+	for _, hit := range resp.Hits {
+		timestamp := int64(0)
+		if ts, ok := hit["_timestamp"].(float64); ok {
+			timestamp = int64(ts)
+		}
+		events = append(events, parseEventEntry(timestamp, hit))
+	}
+
+	countResp, err := c.executeSearchQuery(ctx, countJSON)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute events count query: %w", err)
+	}
+
+	return &EventsResult{
+		Events:     events,
+		TotalCount: extractTotalCount(countResp),
+		Took:       resp.Took,
 	}, nil
 }
 

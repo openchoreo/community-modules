@@ -4,12 +4,15 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -515,7 +518,7 @@ func TestQueryLogs_ComponentScope(t *testing.T) {
 	}))
 	defer ooServer.Close()
 
-	client := openobserve.NewClient(ooServer.URL, "default", "default", "admin", "pass", testLogger())
+	client := openobserve.NewClient(ooServer.URL, "default", "default", "k8s_events", "admin", "pass", testLogger())
 	handler := NewLogsHandler(client, nil, testLogger())
 
 	scope := gen.LogsQueryRequest_SearchScope{}
@@ -547,7 +550,7 @@ func TestCreateAlertRule_Success(t *testing.T) {
 	}))
 	defer ooServer.Close()
 
-	client := openobserve.NewClient(ooServer.URL, "default", "default", "admin", "pass", testLogger())
+	client := openobserve.NewClient(ooServer.URL, "default", "default", "k8s_events", "admin", "pass", testLogger())
 	handler := NewLogsHandler(client, nil, testLogger())
 
 	enabled := true
@@ -622,7 +625,7 @@ func TestDeleteAlertRule_Success(t *testing.T) {
 	}))
 	defer ooServer.Close()
 
-	client := openobserve.NewClient(ooServer.URL, "default", "default", "admin", "pass", testLogger())
+	client := openobserve.NewClient(ooServer.URL, "default", "default", "k8s_events", "admin", "pass", testLogger())
 	handler := NewLogsHandler(client, nil, testLogger())
 
 	resp, err := handler.DeleteAlertRule(context.Background(), gen.DeleteAlertRuleRequestObject{
@@ -674,7 +677,7 @@ func TestGetAlertRule_Success(t *testing.T) {
 	}))
 	defer ooServer.Close()
 
-	client := openobserve.NewClient(ooServer.URL, "default", "default", "admin", "pass", testLogger())
+	client := openobserve.NewClient(ooServer.URL, "default", "default", "k8s_events", "admin", "pass", testLogger())
 	handler := NewLogsHandler(client, nil, testLogger())
 
 	resp, err := handler.GetAlertRule(context.Background(), gen.GetAlertRuleRequestObject{
@@ -705,7 +708,7 @@ func TestGetAlertRule_NotFound(t *testing.T) {
 	}))
 	defer ooServer.Close()
 
-	client := openobserve.NewClient(ooServer.URL, "default", "default", "admin", "pass", testLogger())
+	client := openobserve.NewClient(ooServer.URL, "default", "default", "k8s_events", "admin", "pass", testLogger())
 	handler := NewLogsHandler(client, nil, testLogger())
 
 	resp, err := handler.GetAlertRule(context.Background(), gen.GetAlertRuleRequestObject{
@@ -736,7 +739,7 @@ func TestUpdateAlertRule_Success(t *testing.T) {
 	}))
 	defer ooServer.Close()
 
-	client := openobserve.NewClient(ooServer.URL, "default", "default", "admin", "pass", testLogger())
+	client := openobserve.NewClient(ooServer.URL, "default", "default", "k8s_events", "admin", "pass", testLogger())
 	handler := NewLogsHandler(client, nil, testLogger())
 
 	enabled := true
@@ -800,7 +803,7 @@ func TestUpdateAlertRule_NotFound(t *testing.T) {
 	}))
 	defer ooServer.Close()
 
-	client := openobserve.NewClient(ooServer.URL, "default", "default", "admin", "pass", testLogger())
+	client := openobserve.NewClient(ooServer.URL, "default", "default", "k8s_events", "admin", "pass", testLogger())
 	handler := NewLogsHandler(client, nil, testLogger())
 
 	enabled := true
@@ -851,7 +854,7 @@ func TestUpdateAlertRule_InvalidError(t *testing.T) {
 	}))
 	defer ooServer.Close()
 
-	client := openobserve.NewClient(ooServer.URL, "default", "default", "admin", "pass", testLogger())
+	client := openobserve.NewClient(ooServer.URL, "default", "default", "k8s_events", "admin", "pass", testLogger())
 	handler := NewLogsHandler(client, nil, testLogger())
 
 	enabled := true
@@ -902,7 +905,7 @@ func TestUpdateAlertRule_GenericError(t *testing.T) {
 	}))
 	defer ooServer.Close()
 
-	client := openobserve.NewClient(ooServer.URL, "default", "default", "admin", "pass", testLogger())
+	client := openobserve.NewClient(ooServer.URL, "default", "default", "k8s_events", "admin", "pass", testLogger())
 	handler := NewLogsHandler(client, nil, testLogger())
 
 	enabled := true
@@ -953,7 +956,7 @@ func TestQueryLogs_WorkflowScope_Success(t *testing.T) {
 	}))
 	defer ooServer.Close()
 
-	client := openobserve.NewClient(ooServer.URL, "default", "default", "admin", "pass", testLogger())
+	client := openobserve.NewClient(ooServer.URL, "default", "default", "k8s_events", "admin", "pass", testLogger())
 	handler := NewLogsHandler(client, nil, testLogger())
 
 	scope := gen.LogsQueryRequest_SearchScope{}
@@ -986,7 +989,7 @@ func TestQueryLogs_WorkflowScope_Error(t *testing.T) {
 	}))
 	defer ooServer.Close()
 
-	client := openobserve.NewClient(ooServer.URL, "default", "default", "admin", "pass", testLogger())
+	client := openobserve.NewClient(ooServer.URL, "default", "default", "k8s_events", "admin", "pass", testLogger())
 	handler := NewLogsHandler(client, nil, testLogger())
 
 	scope := gen.LogsQueryRequest_SearchScope{}
@@ -1045,7 +1048,7 @@ func TestQueryLogs_ComponentScope_Error(t *testing.T) {
 	}))
 	defer ooServer.Close()
 
-	client := openobserve.NewClient(ooServer.URL, "default", "default", "admin", "pass", testLogger())
+	client := openobserve.NewClient(ooServer.URL, "default", "default", "k8s_events", "admin", "pass", testLogger())
 	handler := NewLogsHandler(client, nil, testLogger())
 
 	scope := gen.LogsQueryRequest_SearchScope{}
@@ -1078,7 +1081,7 @@ func TestDeleteAlertRule_Error(t *testing.T) {
 	}))
 	defer ooServer.Close()
 
-	client := openobserve.NewClient(ooServer.URL, "default", "default", "admin", "pass", testLogger())
+	client := openobserve.NewClient(ooServer.URL, "default", "default", "k8s_events", "admin", "pass", testLogger())
 	handler := NewLogsHandler(client, nil, testLogger())
 
 	resp, err := handler.DeleteAlertRule(context.Background(), gen.DeleteAlertRuleRequestObject{
@@ -1100,7 +1103,7 @@ func TestCreateAlertRule_Error(t *testing.T) {
 	}))
 	defer ooServer.Close()
 
-	client := openobserve.NewClient(ooServer.URL, "default", "default", "admin", "pass", testLogger())
+	client := openobserve.NewClient(ooServer.URL, "default", "default", "k8s_events", "admin", "pass", testLogger())
 	handler := NewLogsHandler(client, nil, testLogger())
 
 	enabled := true
@@ -1188,7 +1191,7 @@ func TestGetAlertRule_InvalidUUIDs(t *testing.T) {
 	}))
 	defer ooServer.Close()
 
-	client := openobserve.NewClient(ooServer.URL, "default", "default", "admin", "pass", testLogger())
+	client := openobserve.NewClient(ooServer.URL, "default", "default", "k8s_events", "admin", "pass", testLogger())
 	handler := NewLogsHandler(client, nil, testLogger())
 
 	resp, err := handler.GetAlertRule(context.Background(), gen.GetAlertRuleRequestObject{
@@ -1231,7 +1234,7 @@ func TestGetAlertRule_ServerError(t *testing.T) {
 	}))
 	defer ooServer.Close()
 
-	client := openobserve.NewClient(ooServer.URL, "default", "default", "admin", "pass", testLogger())
+	client := openobserve.NewClient(ooServer.URL, "default", "default", "k8s_events", "admin", "pass", testLogger())
 	handler := NewLogsHandler(client, nil, testLogger())
 
 	resp, err := handler.GetAlertRule(context.Background(), gen.GetAlertRuleRequestObject{
@@ -1369,7 +1372,7 @@ func TestHandleAlertWebhook_ValidBody(t *testing.T) {
 	}))
 	defer observerServer.Close()
 
-	client := openobserve.NewClient(ooServer.URL, "default", "default", "admin", "pass", testLogger())
+	client := openobserve.NewClient(ooServer.URL, "default", "default", "k8s_events", "admin", "pass", testLogger())
 	obsClient := observer.NewClient(observerServer.URL)
 	handler := NewLogsHandler(client, obsClient, testLogger())
 
@@ -1416,4 +1419,187 @@ func TestHandleAlertWebhook_ValidBody(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for observer webhook to be called")
 	}
+}
+
+func TestQueryEvents_NilBody(t *testing.T) {
+	handler := NewLogsHandler(nil, nil, testLogger())
+	resp, err := handler.QueryEvents(context.Background(), gen.QueryEventsRequestObject{Body: nil})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, ok := resp.(gen.QueryEvents400JSONResponse); !ok {
+		t.Fatalf("expected 400 response, got %T", resp)
+	}
+}
+
+func TestQueryEvents_MissingNamespace(t *testing.T) {
+	handler := NewLogsHandler(nil, nil, testLogger())
+
+	scope := gen.EventsQueryRequest_SearchScope{}
+	_ = scope.FromComponentSearchScope(gen.ComponentSearchScope{Namespace: "   "})
+
+	resp, err := handler.QueryEvents(context.Background(), gen.QueryEventsRequestObject{
+		Body: &gen.EventsQueryRequest{
+			StartTime:   time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+			EndTime:     time.Date(2025, 1, 2, 0, 0, 0, 0, time.UTC),
+			SearchScope: scope,
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, ok := resp.(gen.QueryEvents400JSONResponse); !ok {
+		t.Fatalf("expected 400 response, got %T", resp)
+	}
+}
+
+func TestQueryEvents_ComponentScope(t *testing.T) {
+	ooServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := openobserve.OpenObserveResponse{Took: 5, Total: 1}
+		if isEventsCountQuery(r) {
+			resp.Hits = []map[string]interface{}{{"total": float64(9)}}
+		} else {
+			resp.Hits = []map[string]interface{}{
+				{
+					"_timestamp":       float64(time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC).UnixMicro()),
+					"body":             "Job completed",
+					"severity":         "Normal",
+					"k8s_event_reason": "Completed",
+					"k8s_object_kind":  "Job",
+					"k8s_object_name":  "build-123-abc",
+				},
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer ooServer.Close()
+
+	client := openobserve.NewClient(ooServer.URL, "default", "default", "k8s_events", "admin", "pass", testLogger())
+	handler := NewLogsHandler(client, nil, testLogger())
+
+	scope := gen.EventsQueryRequest_SearchScope{}
+	_ = scope.FromComponentSearchScope(gen.ComponentSearchScope{Namespace: "default"})
+
+	resp, err := handler.QueryEvents(context.Background(), gen.QueryEventsRequestObject{
+		Body: &gen.EventsQueryRequest{
+			StartTime:   time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+			EndTime:     time.Date(2025, 1, 2, 0, 0, 0, 0, time.UTC),
+			SearchScope: scope,
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	ok200, ok := resp.(gen.QueryEvents200JSONResponse)
+	if !ok {
+		t.Fatalf("expected 200 response, got %T", resp)
+	}
+	if ok200.Events == nil || len(*ok200.Events) != 1 {
+		t.Fatalf("expected 1 event in response, got %v", ok200.Events)
+	}
+	event := (*ok200.Events)[0]
+	if event.Type == nil || *event.Type != "Normal" {
+		t.Errorf("expected type Normal, got %v", event.Type)
+	}
+	if event.Reason == nil || *event.Reason != "Completed" {
+		t.Errorf("expected reason Completed, got %v", event.Reason)
+	}
+	if ok200.Total == nil || *ok200.Total != 9 {
+		t.Errorf("expected total 9, got %v", ok200.Total)
+	}
+}
+
+func TestQueryEvents_WorkflowScope(t *testing.T) {
+	var capturedSQL string
+	ooServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var parsed map[string]interface{}
+		_ = json.Unmarshal(body, &parsed)
+		if q, ok := parsed["query"].(map[string]interface{}); ok {
+			if sql, ok := q["sql"].(string); ok && !strings.Contains(strings.ToLower(sql), "count") {
+				capturedSQL = sql
+			}
+		}
+		resp := openobserve.OpenObserveResponse{Took: 2, Hits: []map[string]interface{}{}}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer ooServer.Close()
+
+	client := openobserve.NewClient(ooServer.URL, "default", "default", "k8s_events", "admin", "pass", testLogger())
+	handler := NewLogsHandler(client, nil, testLogger())
+
+	runName := "build-123"
+	scope := gen.EventsQueryRequest_SearchScope{}
+	_ = scope.FromWorkflowSearchScope(gen.WorkflowSearchScope{
+		Namespace:       "default",
+		WorkflowRunName: &runName,
+	})
+
+	resp, err := handler.QueryEvents(context.Background(), gen.QueryEventsRequestObject{
+		Body: &gen.EventsQueryRequest{
+			StartTime:   time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+			EndTime:     time.Date(2025, 1, 2, 0, 0, 0, 0, time.UTC),
+			SearchScope: scope,
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, ok := resp.(gen.QueryEvents200JSONResponse); !ok {
+		t.Fatalf("expected 200 response, got %T", resp)
+	}
+	if !strings.Contains(capturedSQL, "k8s_object_name LIKE 'build-123%'") {
+		t.Errorf("expected workflow object-name filter in SQL, got: %s", capturedSQL)
+	}
+	if !strings.Contains(capturedSQL, "k8s_namespace_name = 'workflows-default'") {
+		t.Errorf("expected workflows namespace filter in SQL, got: %s", capturedSQL)
+	}
+}
+
+func TestQueryEvents_WorkflowScope_MissingRunName(t *testing.T) {
+	handler := NewLogsHandler(nil, nil, testLogger())
+
+	empty := "   "
+	scope := gen.EventsQueryRequest_SearchScope{}
+	_ = scope.FromWorkflowSearchScope(gen.WorkflowSearchScope{
+		Namespace:       "default",
+		WorkflowRunName: &empty,
+	})
+
+	resp, err := handler.QueryEvents(context.Background(), gen.QueryEventsRequestObject{
+		Body: &gen.EventsQueryRequest{
+			StartTime:   time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+			EndTime:     time.Date(2025, 1, 2, 0, 0, 0, 0, time.UTC),
+			SearchScope: scope,
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, ok := resp.(gen.QueryEvents400JSONResponse); !ok {
+		t.Fatalf("expected 400 response, got %T", resp)
+	}
+}
+
+// isEventsCountQuery reports whether the request body is a count query (size 0 + SELECT count).
+func isEventsCountQuery(r *http.Request) bool {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		return false
+	}
+	r.Body = io.NopCloser(bytes.NewBuffer(body))
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return false
+	}
+	q, ok := parsed["query"].(map[string]interface{})
+	if !ok {
+		return false
+	}
+	size, _ := q["size"].(float64)
+	sql, _ := q["sql"].(string)
+	return size == 0 && strings.Contains(strings.ToLower(sql), "count")
 }

@@ -14,5 +14,6 @@ data:
   OPENOBSERVE_URL: "http://openobserve:5080"
   OPENOBSERVE_ORG: {{ .Values.common.openObserveOrg | quote }}
   OPENOBSERVE_STREAM: {{ .Values.common.openObserveStream | quote }}
+  OPENOBSERVE_EVENTS_STREAM: {{ .Values.common.openObserveEventsStream | quote }}
   OBSERVER_URL: {{ .Values.adapter.observerUrl | quote }}
 {{- end }}

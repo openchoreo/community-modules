@@ -13,14 +13,15 @@ import (
 )
 
 type Config struct {
-	ServerPort        string
-	OpenObserveURL    string
-	OpenObserveOrg    string
-	OpenObserveStream string
-	OpenObserveUser   string
-	OpenObservePassword string
-	ObserverURL       string
-	LogLevel          slog.Level
+	ServerPort              string
+	OpenObserveURL          string
+	OpenObserveOrg          string
+	OpenObserveStream       string
+	OpenObserveEventsStream string
+	OpenObserveUser         string
+	OpenObservePassword     string
+	ObserverURL             string
+	LogLevel                slog.Level
 }
 
 // LoadConfig loads configuration from environment variables
@@ -29,6 +30,7 @@ func LoadConfig() (*Config, error) {
 	openObserveURL := getEnv("OPENOBSERVE_URL", "")
 	openObserveOrg := getEnv("OPENOBSERVE_ORG", "default")
 	openObserveStream := getEnv("OPENOBSERVE_STREAM", "default")
+	openObserveEventsStream := getEnv("OPENOBSERVE_EVENTS_STREAM", "k8s_events")
 	openObserveUser := getEnv("OPENOBSERVE_USER", "")
 	openObservePassword := getEnv("OPENOBSERVE_PASSWORD", "")
 	observerURL := getEnv("OBSERVER_URL", "")
@@ -73,14 +75,15 @@ func LoadConfig() (*Config, error) {
 	}
 
 	return &Config{
-		ServerPort:      serverPort,
-		OpenObserveURL:  openObserveURL,
-		OpenObserveOrg:  openObserveOrg,
-		OpenObserveStream: openObserveStream,
-		OpenObserveUser: openObserveUser,
-		OpenObservePassword: openObservePassword,
-		ObserverURL:     observerURL,
-		LogLevel:        logLevel,
+		ServerPort:              serverPort,
+		OpenObserveURL:          openObserveURL,
+		OpenObserveOrg:          openObserveOrg,
+		OpenObserveStream:       openObserveStream,
+		OpenObserveEventsStream: openObserveEventsStream,
+		OpenObserveUser:         openObserveUser,
+		OpenObservePassword:     openObservePassword,
+		ObserverURL:             observerURL,
+		LogLevel:                logLevel,
 	}, nil
 }
 

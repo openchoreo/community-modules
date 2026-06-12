@@ -108,22 +108,39 @@ EOF
 
 ### OpenObserve (native OTLP/HTTP)
 
+Compatible with `observability-logs-openobserve` community module (>= version 0.5.0):
+
 ```yaml
 collector:
   extraEnv:
-    - name: OPENOBSERVE_TOKEN # base64(user:pass), from a secret
+    - name: OPENOBSERVE_USERNAME
       valueFrom:
         secretKeyRef:
           name: openobserve-admin-credentials
-          key: token
+          key: ZO_ROOT_USER_EMAIL
+    - name: OPENOBSERVE_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: openobserve-admin-credentials
+          key: ZO_ROOT_USER_PASSWORD
+
+extraExtensions:
+  basicauth/openobserve:
+    client_auth:
+      username: ${env:OPENOBSERVE_USERNAME}
+      password: ${env:OPENOBSERVE_PASSWORD}
+
 exporters:
   otlphttp/openobserve:
-    endpoint: "https://<openobserve-host>/api/<org>" # exporter appends /v1/logs
+    endpoint: "http://openobserve:5080/api/default"
+    auth:
+      authenticator: basicauth/openobserve
     headers:
-      Authorization: "Basic ${env:OPENOBSERVE_TOKEN}"
       stream-name: "k8s-events"
+
 pipelineExporters:
   - otlphttp/openobserve
+EOF
 ```
 
 ### AWS CloudWatch Logs

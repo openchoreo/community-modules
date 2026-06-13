@@ -20,10 +20,10 @@ dependencies:
     repository: https://fluent.github.io/helm-charts
     condition: fluent-bit.enabled
   - name: openobserve-standalone
-    version: "0.60.3"
+    version: 0.80.3
     repository: https://charts.openobserve.ai
     condition: openobserve-standalone.enabled
   - name: openobserve
-    version: "0.60.3"
+    version: 0.80.3
     repository: https://charts.openobserve.ai
     condition: openobserve.enabled

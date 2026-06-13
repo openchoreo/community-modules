@@ -67,10 +67,13 @@ OTLP (gRPC + HTTP), AWS CloudWatch Logs, and debug exporters.
 
 ### OpenSearch
 
-Reuses the in-cluster OpenSearch and its `opensearch-admin-credentials` secret.
-Save as `opensearch-values.yaml`:
+Compatible with `observability-logs-opensearch` community module (>= version 0.6.1):
 
-```yaml
+```bash
+helm upgrade --install observability-events-otel-collector \
+  oci://ghcr.io/openchoreo/helm-charts/observability-events-otel-collector \
+  --namespace openchoreo-observability-plane --version 0.1.1 \
+  -f - <<'EOF'
 collector:
   extraEnv:
     - name: OPENSEARCH_USERNAME
@@ -83,53 +86,65 @@ collector:
         secretKeyRef:
           name: opensearch-admin-credentials
           key: password
-
 extraExtensions:
   basicauth/opensearch:
     client_auth:
       username: ${env:OPENSEARCH_USERNAME}
       password: ${env:OPENSEARCH_PASSWORD}
-
 exporters:
   opensearch:
     logs_index: "k8s-events"
-    logs_index_time_format: "yyyy-MM-dd" # daily indices
+    logs_index_time_format: "yyyy-MM-dd"
     http:
       endpoint: "https://opensearch:9200"
       tls:
         insecure_skip_verify: true
       auth:
         authenticator: basicauth/opensearch
-
 pipelineExporters:
   - opensearch
-```
-
-```bash
-helm upgrade --install observability-events-otel-collector \
-  oci://ghcr.io/openchoreo/helm-charts/observability-events-otel-collector \
-  --namespace openchoreo-observability-plane --version 0.1.1 \
-  -f opensearch-values.yaml
+EOF
 ```
 
 ### OpenObserve (native OTLP/HTTP)
 
-```yaml
+Compatible with `observability-logs-openobserve` community module (>= version 0.5.0):
+
+```bash
+helm upgrade --install observability-events-otel-collector \
+  oci://ghcr.io/openchoreo/helm-charts/observability-events-otel-collector \
+  --namespace openchoreo-observability-plane --create-namespace --version 0.1.1 \
+  -f - <<'EOF'
 collector:
   extraEnv:
-    - name: OPENOBSERVE_TOKEN # base64(user:pass), from a secret
+    - name: OPENOBSERVE_USERNAME
       valueFrom:
         secretKeyRef:
           name: openobserve-admin-credentials
-          key: token
+          key: ZO_ROOT_USER_EMAIL
+    - name: OPENOBSERVE_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: openobserve-admin-credentials
+          key: ZO_ROOT_USER_PASSWORD
+
+extraExtensions:
+  basicauth/openobserve:
+    client_auth:
+      username: ${env:OPENOBSERVE_USERNAME}
+      password: ${env:OPENOBSERVE_PASSWORD}
+
 exporters:
   otlphttp/openobserve:
-    endpoint: "https://<openobserve-host>/api/<org>" # exporter appends /v1/logs
+    endpoint: "http://openobserve:5080/api/default"
+    auth:
+      authenticator: basicauth/openobserve
     headers:
-      Authorization: "Basic ${env:OPENOBSERVE_TOKEN}"
       stream-name: "k8s-events"
+
 pipelineExporters:
   - otlphttp/openobserve
+EOF
 ```
 
 ### AWS CloudWatch Logs

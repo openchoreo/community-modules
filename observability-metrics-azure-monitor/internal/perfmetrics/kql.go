@@ -36,40 +36,38 @@ const minBin = time.Minute
 func BuildResourceMetricsKQL(p MetricsQueryParams) string {
 	bin := binOrDefault(p.Step)
 
-	var sb strings.Builder
-
-	sb.WriteString("let _pods = ")
-	sb.WriteString(KubePodInventoryTable)
-	sb.WriteString("\n    | extend _labels = parse_json(PodLabel)[0]")
-	sb.WriteString("\n    | where ")
-	sb.WriteString(podLabelEquals(LabelNamespace, p.Namespace))
-	if p.ComponentUID != "" {
-		sb.WriteString("\n    | where ")
-		sb.WriteString(podLabelEquals(LabelComponentUID, p.ComponentUID))
+	// Optional UID filters; only the namespace label is always present.
+	var scopeFilters strings.Builder
+	for _, f := range []struct{ label, value string }{
+		{LabelComponentUID, p.ComponentUID},
+		{LabelProjectUID, p.ProjectUID},
+		{LabelEnvironmentUID, p.EnvironmentUID},
+	} {
+		if f.value != "" {
+			scopeFilters.WriteString("\n    | where ")
+			scopeFilters.WriteString(podLabelEquals(f.label, f.value))
+		}
 	}
-	if p.ProjectUID != "" {
-		sb.WriteString("\n    | where ")
-		sb.WriteString(podLabelEquals(LabelProjectUID, p.ProjectUID))
-	}
-	if p.EnvironmentUID != "" {
-		sb.WriteString("\n    | where ")
-		sb.WriteString(podLabelEquals(LabelEnvironmentUID, p.EnvironmentUID))
-	}
-	sb.WriteString("\n    | extend _instance = strcat(ClusterId, \"/\", ContainerName)")
-	sb.WriteString("\n    | distinct _instance;\n")
 
-	sb.WriteString(PerfTable)
-	sb.WriteString("\n| where ObjectName == \"K8SContainer\"")
-	sb.WriteString("\n| where CounterName in (")
-	sb.WriteString(strings.Join(quoteAll(allCounters()), ", "))
-	sb.WriteString(")")
-	sb.WriteString("\n| where InstanceName in (_pods)")
-	sb.WriteString(fmt.Sprintf("\n| summarize _instanceValue = avg(CounterValue) by CounterName, InstanceName, TimeGenerated = bin(TimeGenerated, %s)", kqlTimespan(bin)))
-	sb.WriteString("\n| summarize Value = sum(_instanceValue) by CounterName, TimeGenerated")
-	sb.WriteString("\n| order by TimeGenerated asc")
-	sb.WriteString("\n| project CounterName, TimeGenerated, Value")
-
-	return sb.String()
+	return fmt.Sprintf(`let _pods = %s
+    | extend _labels = parse_json(PodLabel)[0]
+    | where %s%s
+    | extend _instance = strcat(ClusterId, "/", ContainerName)
+    | distinct _instance;
+%s
+| where ObjectName == "K8SContainer"
+| where CounterName in (%s)
+| where InstanceName in (_pods)
+| summarize _instanceValue = avg(CounterValue) by CounterName, InstanceName, TimeGenerated = bin(TimeGenerated, %s)
+| summarize Value = sum(_instanceValue) by CounterName, TimeGenerated
+| order by TimeGenerated asc
+| project CounterName, TimeGenerated, Value`,
+		KubePodInventoryTable,
+		podLabelEquals(LabelNamespace, p.Namespace),
+		scopeFilters.String(),
+		PerfTable,
+		strings.Join(quoteAll(allCounters()), ", "),
+		kqlTimespan(bin))
 }
 
 func PingKQL() string {

@@ -48,6 +48,13 @@ func TestLoadConfig_Defaults(t *testing.T) {
 
 func TestLoadConfig_RequiresAzureVars(t *testing.T) {
 	t.Setenv("LOG_ANALYTICS_WORKSPACE_ID", "ws-guid")
+	// Explicitly blank the alerting vars so the test is deterministic even when
+	// the runner environment already has Azure vars set.
+	t.Setenv("AZURE_SUBSCRIPTION_ID", "")
+	t.Setenv("AZURE_RESOURCE_GROUP", "")
+	t.Setenv("WORKSPACE_RESOURCE_ID", "")
+	t.Setenv("ACTION_GROUP_ID", "")
+	t.Setenv("OBSERVER_URL", "")
 	// No AZURE_* vars set: alerting config is mandatory, so this must error.
 	if _, err := LoadConfig(); err == nil {
 		t.Fatal("expected error when alerting Azure vars missing")

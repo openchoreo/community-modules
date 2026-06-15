@@ -40,7 +40,7 @@ func NewClient(cred azcore.TokenCredential, cfg Config, logger *slog.Logger) (*C
 	if cfg.WorkspaceID == "" {
 		return nil, errors.New("appinsights: WorkspaceID is required")
 	}
-	if cfg.QueryTimeout == 0 {
+	if cfg.QueryTimeout <= 0 {
 		cfg.QueryTimeout = 30 * time.Second
 	}
 	api, err := azlogs.NewClient(cred, nil)

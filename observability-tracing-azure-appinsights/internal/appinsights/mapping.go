@@ -64,10 +64,15 @@ func mapSpanRows(resp azlogs.QueryWorkspaceResponse) ([]Span, error) {
 
 		if props := rowDynamic(row, idx, "Properties"); props != nil {
 			span.Attributes, span.ResourceAttributes = splitAttributes(props)
-			if m := rowDynamic(row, idx, "Measurements"); m != nil {
-				for k, v := range m {
-					span.Attributes[k] = v
-				}
+		}
+		// Measurements carry numeric span attributes and can be present even
+		// when Properties is empty, so merge them independently.
+		if m := rowDynamic(row, idx, "Measurements"); m != nil {
+			if span.Attributes == nil {
+				span.Attributes = make(map[string]interface{}, len(m))
+			}
+			for k, v := range m {
+				span.Attributes[k] = v
 			}
 		}
 		out = append(out, span)

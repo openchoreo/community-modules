@@ -129,8 +129,8 @@ func (h *TracingHandler) QuerySpansForTrace(ctx context.Context, request gen.Que
 // GetSpanDetailsForTrace implements GET /api/v1alpha1/traces/{traceId}/spans/{spanId}.
 func (h *TracingHandler) GetSpanDetailsForTrace(ctx context.Context, request gen.GetSpanDetailsForTraceRequestObject) (gen.GetSpanDetailsForTraceResponseObject, error) {
 	if !appinsights.ValidID(request.TraceId) || !appinsights.ValidID(request.SpanId) {
-		return gen.GetSpanDetailsForTrace500JSONResponse{
-			Title:  ptr(gen.InternalServerError),
+		return gen.GetSpanDetailsForTrace400JSONResponse{
+			Title:  ptr(gen.BadRequest),
 			Detail: ptr("traceId and spanId must be hex strings"),
 		}, nil
 	}
@@ -159,7 +159,7 @@ func toTracesParams(req *gen.TracesQueryRequest) appinsights.TracesParams {
 	params := appinsights.TracesParams{
 		StartTime: req.StartTime,
 		EndTime:   req.EndTime,
-		Namespace: req.SearchScope.Namespace,
+		Namespace: strings.TrimSpace(req.SearchScope.Namespace),
 	}
 	if req.Limit != nil {
 		params.Limit = *req.Limit
@@ -177,13 +177,13 @@ func toTracesParams(req *gen.TracesQueryRequest) appinsights.TracesParams {
 		params.SortOrder = "desc"
 	}
 	if req.SearchScope.Project != nil {
-		params.ProjectUID = *req.SearchScope.Project
+		params.ProjectUID = strings.TrimSpace(*req.SearchScope.Project)
 	}
 	if req.SearchScope.Component != nil {
-		params.ComponentUID = *req.SearchScope.Component
+		params.ComponentUID = strings.TrimSpace(*req.SearchScope.Component)
 	}
 	if req.SearchScope.Environment != nil {
-		params.EnvironmentUID = *req.SearchScope.Environment
+		params.EnvironmentUID = strings.TrimSpace(*req.SearchScope.Environment)
 	}
 	if req.IncludeAttributes != nil {
 		params.IncludeAttributes = *req.IncludeAttributes

@@ -71,17 +71,24 @@ func main() {
 	tracingHandler := app.NewTracingHandler(client, logger)
 	srv := app.NewServer(cfg.ServerPort, tracingHandler, logger)
 
+	serverErr := make(chan error, 1)
 	go func() {
-		if err := srv.Start(); err != nil {
-			logger.Error("Server error", slog.Any("error", err))
-			os.Exit(1)
-		}
+		serverErr <- srv.Start()
 	}()
 
 	// Shutdown logic
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
+
+	select {
+	case <-quit:
+	case err := <-serverErr:
+		if err != nil {
+			logger.Error("Server error", slog.Any("error", err))
+			os.Exit(1)
+		}
+		return
+	}
 
 	logger.Info("Shutting down gracefully")
 

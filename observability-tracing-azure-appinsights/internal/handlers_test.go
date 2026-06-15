@@ -227,6 +227,20 @@ func TestQuerySpansForTrace_Success(t *testing.T) {
 	}
 }
 
+func TestGetSpanDetailsForTrace_RejectsBadIDs(t *testing.T) {
+	h := testHandler(&mockClient{})
+	resp, err := h.GetSpanDetailsForTrace(context.Background(), gen.GetSpanDetailsForTraceRequestObject{
+		TraceId: `" | take 1`,
+		SpanId:  "2419e7552dfbe055",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := resp.(gen.GetSpanDetailsForTrace400JSONResponse); !ok {
+		t.Errorf("got %T, want 400", resp)
+	}
+}
+
 func TestGetSpanDetailsForTrace_NotFound(t *testing.T) {
 	h := testHandler(&mockClient{})
 	resp, err := h.GetSpanDetailsForTrace(context.Background(), gen.GetSpanDetailsForTraceRequestObject{

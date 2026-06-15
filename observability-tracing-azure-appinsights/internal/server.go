@@ -26,11 +26,12 @@ func NewServer(port string, tracingHandler *TracingHandler, logger *slog.Logger)
 	handler := gen.HandlerFromMux(strictHandler, mux)
 
 	httpServer := &http.Server{
-		Addr:         ":" + port,
-		Handler:      handler,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 60 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		Addr:              ":" + port,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 
 	return &Server{

@@ -132,6 +132,31 @@ func TestMapSpanRows(t *testing.T) {
 	}
 }
 
+func TestMapSpanRows_MeasurementsWithoutProperties(t *testing.T) {
+	// A span can carry Measurements (numeric attributes) even when Properties
+	// is empty; those attributes must not be dropped.
+	resp := tableResponse(
+		[]string{"TimeGenerated", "SpanId", "ParentSpanId", "Name", "SpanKind", "DurationMs", "Success", "SpanEnd", "Properties", "Measurements"},
+		[]azlogs.Row{
+			{
+				"2026-06-11T12:17:35.123Z", "a1", "", "n", "SERVER",
+				float64(1), true, "2026-06-11T12:17:35.124Z",
+				nil, `{"retry.count":2}`,
+			},
+		},
+	)
+	spans, err := mapSpanRows(resp)
+	if err != nil {
+		t.Fatalf("mapSpanRows: %v", err)
+	}
+	if v, ok := spans[0].Attributes["retry.count"]; !ok || v != float64(2) {
+		t.Errorf("Measurements not merged when Properties nil: %v", spans[0].Attributes)
+	}
+	if spans[0].ResourceAttributes != nil {
+		t.Errorf("ResourceAttributes = %v, want nil", spans[0].ResourceAttributes)
+	}
+}
+
 func TestMapSpanRows_SuccessAsString(t *testing.T) {
 	// The query API can deliver booleans as strings depending on column type.
 	resp := tableResponse(

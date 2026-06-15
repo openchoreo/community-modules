@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 {{- if eq .Values.global.installationMode "multiClusterReceiver" }}
+{{- $collectorServiceName := (index .Values "opentelemetry-collector" "fullnameOverride" | default "otel-collector-azure") }}
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -27,7 +28,7 @@ spec:
             - name: content-type
               value: application/grpc+proto
       backendRefs:
-        - name: otel-collector-azure
+        - name: {{ $collectorServiceName }}
           port: 4317
 
     # OTLP HTTP (4318): default route for HTTP OTLP endpoints like /v1/traces.
@@ -36,6 +37,6 @@ spec:
             type: PathPrefix
             value: /
       backendRefs:
-        - name: otel-collector-azure
+        - name: {{ $collectorServiceName }}
           port: 4318
 {{- end }}

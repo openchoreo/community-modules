@@ -16,7 +16,10 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/monitor/armmonitor"
 )
 
-var ErrNotFound = errors.New("alert rule not found")
+var (
+	ErrNotFound      = errors.New("alert rule not found")
+	ErrAlreadyExists = errors.New("alert rule already exists")
+)
 
 type Client struct {
 	rules    *armmonitor.ScheduledQueryRulesClient
@@ -93,7 +96,23 @@ func (c *Client) CreateRule(ctx context.Context, in RuleInput) (*RuleResult, err
 	}
 	name := DeriveAzureName(in.Namespace, in.RuleName)
 
-	resp, err := c.rules.CreateOrUpdate(ctx, c.resGroup, name, *res, nil)
+	// Create must not silently overwrite an existing rule (the Observer uses a
+	// separate Update for that). The Azure ARM API only exposes CreateOrUpdate,
+	// so guard with a namespace-scoped existence check first. DeriveAzureName
+	// hashes (namespace, ruleName), so this is exact and tenant-safe.
+	if _, err := c.GetRule(ctx, in.Namespace, in.RuleName); err == nil {
+		return nil, ErrAlreadyExists
+	} else if !errors.Is(err, ErrNotFound) {
+		return nil, fmt.Errorf("pre-create existence check %q: %w", name, err)
+	}
+
+	return c.upsertRule(ctx, name, *res)
+}
+
+// upsertRule performs the raw ARM CreateOrUpdate without an existence check.
+// Shared by CreateRule (after its guard) and UpdateRule.
+func (c *Client) upsertRule(ctx context.Context, name string, res armmonitor.ScheduledQueryRuleResource) (*RuleResult, error) {
+	resp, err := c.rules.CreateOrUpdate(ctx, c.resGroup, name, res, nil)
 	if err != nil {
 		return nil, fmt.Errorf("CreateOrUpdate %q: %w", name, err)
 	}
@@ -142,7 +161,12 @@ func (c *Client) FindRuleByName(ctx context.Context, ruleName string) (*RuleResu
 }
 
 func (c *Client) UpdateRule(ctx context.Context, in RuleInput) (*RuleResult, error) {
-	return c.CreateRule(ctx, in)
+	res, err := ToScheduledQueryRule(in, c.cfg)
+	if err != nil {
+		return nil, err
+	}
+	name := DeriveAzureName(in.Namespace, in.RuleName)
+	return c.upsertRule(ctx, name, *res)
 }
 
 func (c *Client) DeleteRule(ctx context.Context, namespace, ruleName string) error {

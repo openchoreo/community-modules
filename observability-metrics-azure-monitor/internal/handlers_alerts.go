@@ -21,6 +21,7 @@ import (
 const (
 	errCodeBadRequest     = "OBS-V1-M-AZURE-MON-400"
 	errCodeNotFound       = "OBS-V1-M-AZURE-MON-404"
+	errCodeConflict       = "OBS-V1-M-AZURE-MON-409"
 	errCodeInternal       = "OBS-V1-M-AZURE-MON-500"
 	errCodeNotImplemented = "OBS-V1-M-AZURE-MON-501"
 	notImplementedDetail  = "alert management is not wired on this adapter"
@@ -51,6 +52,9 @@ func (h *MetricsHandler) CreateAlertRule(ctx context.Context, request gen.Create
 	}
 	res, err := h.alertClient.CreateRule(ctx, in)
 	if err != nil {
+		if errors.Is(err, azuremonitor.ErrAlreadyExists) {
+			return gen.CreateAlertRule409JSONResponse(makeError(gen.BadRequest, errCodeConflict, "alert rule already exists")), nil
+		}
 		if isValidationErr(err) {
 			return gen.CreateAlertRule400JSONResponse(makeError(gen.BadRequest, errCodeBadRequest, err.Error())), nil
 		}

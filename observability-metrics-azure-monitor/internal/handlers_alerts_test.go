@@ -88,6 +88,15 @@ func TestCreateAlertRule_OK(t *testing.T) {
 	}
 }
 
+func TestCreateAlertRule_Conflict(t *testing.T) {
+	ac := &fakeAlertClient{createErr: azuremonitor.ErrAlreadyExists}
+	h := newAlertingHandler(ac, &fakeObserver{})
+	resp, _ := h.CreateAlertRule(context.Background(), gen.CreateAlertRuleRequestObject{Body: validAlertBody()})
+	if _, ok := resp.(gen.CreateAlertRule409JSONResponse); !ok {
+		t.Fatalf("expected 409 when rule already exists, got %T", resp)
+	}
+}
+
 func TestCreateAlertRule_BadMetric(t *testing.T) {
 	h := newAlertingHandler(&fakeAlertClient{}, &fakeObserver{})
 	body := validAlertBody()

@@ -112,15 +112,79 @@ func TestExtractLogLevel(t *testing.T) {
 		input    string
 		expected string
 	}{
+		// Keyword fallback on unstructured lines.
 		{"2025-01-01 ERROR something failed", "ERROR"},
 		{"WARN disk space low", "WARN"},
 		{"WARNING: deprecated function", "WARN"},
+		{"[ERROR] connection refused", "ERROR"},
 		{"INFO application started", "INFO"},
 		{"DEBUG variable x = 5", "DEBUG"},
 		{"FATAL out of memory", "FATAL"},
 		{"SEVERE critical failure", "SEVERE"},
-		{"just a regular log message", "INFO"},
 		{"error in lowercase", "ERROR"},
+		{"just a regular log message", "INFO"},
+		{"", "INFO"},
+		{"   ", "INFO"},
+
+		// Declared logfmt level, trusted over level words in the body.
+		{`time="2026-05-05T07:56:21.304Z" level=info msg="sub-process exited" argo=true error="<nil>"`, "INFO"},
+		{"level=info request failed: connection ERROR", "INFO"},
+		{`level=debug msg="retrying after error"`, "DEBUG"},
+		{`level=error msg="boom"`, "ERROR"},
+		{`level="warn" msg=disk`, "WARN"},
+		{"level = debug starting up", "DEBUG"},
+		{"Level=Error mixed case", "ERROR"},
+		{"lvl=warn cache miss", "WARN"},
+
+		// Declared JSON level, field anywhere in the object.
+		{`{"level":"warn","msg":"disk low"}`, "WARN"},
+		{`{"ts":"2026-01-01","msg":"db down","level":"error"}`, "ERROR"},
+		{`{"level":"info","ts":1620000000.1,"caller":"m.go:1","msg":"ok"}`, "INFO"},
+		{`{"severity":"ERROR","message":"boom"}`, "ERROR"},
+		{`{"severityText":"ERROR","body":"x"}`, "ERROR"},
+		{`{"severity_text":"WARN","body":"x"}`, "WARN"},
+		{`{"levelname":"WARNING","name":"root"}`, "WARN"},
+		{`{"@l":"Information","@m":"started"}`, "INFO"},
+
+		// Common level value vocabularies.
+		{"level=trace entering fn", "DEBUG"},
+		{"level=verbose details", "DEBUG"},
+		{"level=silly noise", "DEBUG"},
+		{"level=information started", "INFO"},
+		{"level=notice heads up", "INFO"},
+		{"level=warning deprecated", "WARN"},
+		{"level=err short alias", "ERROR"},
+		{"level=critical db down", "FATAL"},
+		{"level=crit db down", "FATAL"},
+		{"level=emerg system down", "FATAL"},
+		{"level=alert page oncall", "FATAL"},
+		{"level=panic goroutine stack", "FATAL"},
+		{"level=fatal shutting down", "FATAL"},
+		{"level=bogus unknown value", "INFO"},
+
+		// Single-letter header.
+		{"E0505 07:56:21.304123  1 reflector.go:1 watch failed", "ERROR"},
+		{"W0505 07:56:21.304123  1 throttle.go:1 slow", "WARN"},
+		{"I0505 07:56:21.304123  1 server.go:1 listening", "INFO"},
+		{"F0505 07:56:21.304123  1 panic.go:1 boom", "FATAL"},
+		{"I2024 not a klog header, no time component", "INFO"},
+
+		// A level word used as a field key is not a severity.
+		{"connection error=timeout reset", "INFO"},
+		{"connection error = timeout reset", "INFO"}, // whitespace before '='
+		{"feature warn=disabled in config", "INFO"},
+		{"processed errors=2 warnings=0", "INFO"},
+
+		// Edge cases.
+		{"TERROR raised in prose", "INFO"},                  // level word embedded in a larger word
+		{"adjust the log level for verbosity", "INFO"},      // "level" with no value is not a declared field
+		{"unexpected ERROR after INFO checkpoint", "ERROR"}, // fallback picks highest severity, not first seen
+		{"DEBUG trace then WARN raised", "WARN"},            // WARN outranks DEBUG
+		{"i0501 12:34:56.000 lowercase prefix", "INFO"},     // header match is case-sensitive
+		{"E051 12:34:56 malformed header", "INFO"},          // header needs a 4-digit date
+		{"level=warning, retrying", "WARN"},                 // declared value with trailing punctuation
+		{"level=warn nested level=error", "WARN"},           // first declared field wins
+		{"goroutine 1 [running]:", "INFO"},                  // stack dump, no level
 	}
 
 	for _, tt := range tests {

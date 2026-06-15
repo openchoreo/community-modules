@@ -140,3 +140,43 @@ func TestWebhookAuth_DisabledMeansPassthrough(t *testing.T) {
 		t.Errorf("want 200, got %d", rec.Code)
 	}
 }
+
+func TestWebhookAuth_RejectsOversizedBody(t *testing.T) {
+	mw := newMiddleware("verysecrettokenxx", true)
+	called := false
+	h := mw(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) { called = true }))
+
+	big := bytes.Repeat([]byte("a"), (256<<10)+1) // one byte over the cap
+	req := httptest.NewRequest(http.MethodPost, "/api/v1alpha1/alerts/webhook", bytes.NewReader(big))
+	req.Header.Set(WebhookAuthHeader, "verysecrettokenxx")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("want 413, got %d", rec.Code)
+	}
+	if called {
+		t.Error("handler must not be invoked for an oversized body")
+	}
+}
+
+func TestWebhookAuth_BodyReadableDownstream(t *testing.T) {
+	mw := newMiddleware("verysecrettokenxx", true)
+	var got string
+	h := mw(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		got = string(b)
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1alpha1/alerts/webhook", bytes.NewBufferString(`{"schemaId":"x"}`))
+	req.Header.Set(WebhookAuthHeader, "verysecrettokenxx")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("want 200, got %d", rec.Code)
+	}
+	if got != `{"schemaId":"x"}` {
+		t.Errorf("downstream handler must still read the full body, got %q", got)
+	}
+}

@@ -23,6 +23,15 @@ func TestBuildResourceMetricsKQL_NamespaceOnly(t *testing.T) {
 	mustContain(t, kql, `where InstanceName in (_pods)`)
 	mustContain(t, kql, `bin(TimeGenerated, 5m)`)
 
+	// Gauges must be reduced per instance (avg over the bin's samples) before
+	// summing across instances; a raw sum(CounterValue) over the bin would
+	// inflate the value by the per-instance sample count.
+	mustContain(t, kql, `_instanceValue = avg(CounterValue) by CounterName, InstanceName, TimeGenerated = bin(TimeGenerated, 5m)`)
+	mustContain(t, kql, `Value = sum(_instanceValue) by CounterName, TimeGenerated`)
+	if strings.Contains(kql, "sum(CounterValue)") {
+		t.Errorf("must not sum raw samples (inflates by sample count), got:\n%s", kql)
+	}
+
 	// UID filters must be absent when not requested.
 	if strings.Contains(kql, "component-uid") {
 		t.Errorf("did not expect component-uid filter, got:\n%s", kql)

@@ -13,7 +13,7 @@ const defaultBin = 5 * time.Minute
 const minBin = time.Minute
 
 // BuildResourceMetricsKQL renders a MetricsQueryParams as a KQL query that
-// returns one row per (CounterName, time-bin) with the summed counter value
+// returns one row per (CounterName, time-bin) with the counter value summed
 // across the matched pods' containers.
 //
 // Shape:
@@ -23,7 +23,13 @@ const minBin = time.Minute
 //     (Verified against Microsoft's Container Insights visualization queries.)
 //   - Join to Perf rows for ObjectName == 'K8SContainer' carrying the six
 //     resource counters, scoped to those instances.
-//   - summarize sum(CounterValue) by CounterName, bin(TimeGenerated, step).
+//   - Reduce in two steps: average each instance's samples within the bin, then
+//     sum across instances. These counters are gauges sampled at ~1-minute
+//     cadence, so a single bin holds several samples per container (e.g. ~5 at
+//     the 5-minute default). Summing raw samples would inflate the value by the
+//     sample count (and scale with the step); averaging per instance first
+//     collapses the samples to one value per container before the cross-
+//     container sum. This matches the avg() reduction the alert path uses.
 //
 // The time range is passed via the SDK Timespan option, not the query body,
 // matching the logs adapter.
@@ -58,7 +64,8 @@ func BuildResourceMetricsKQL(p MetricsQueryParams) string {
 	sb.WriteString(strings.Join(quoteAll(allCounters()), ", "))
 	sb.WriteString(")")
 	sb.WriteString("\n| where InstanceName in (_pods)")
-	sb.WriteString(fmt.Sprintf("\n| summarize Value = sum(CounterValue) by CounterName, TimeGenerated = bin(TimeGenerated, %s)", kqlTimespan(bin)))
+	sb.WriteString(fmt.Sprintf("\n| summarize _instanceValue = avg(CounterValue) by CounterName, InstanceName, TimeGenerated = bin(TimeGenerated, %s)", kqlTimespan(bin)))
+	sb.WriteString("\n| summarize Value = sum(_instanceValue) by CounterName, TimeGenerated")
 	sb.WriteString("\n| order by TimeGenerated asc")
 	sb.WriteString("\n| project CounterName, TimeGenerated, Value")
 

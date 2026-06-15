@@ -14,7 +14,7 @@ the adapter's ServiceAccount — the same model as the sibling
 ## Table of contents
 
 1. [Architecture](#architecture)
-2. [Why the Perf table](#why-the-perf-table)
+2. [How the resource query maps to Container Insights](#how-the-resource-query-maps-to-container-insights)
 3. [Prerequisites](#prerequisites)
 4. [Azure role assignments](#azure-role-assignments)
 5. [Install with Helm](#install-with-helm)

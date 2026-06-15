@@ -58,6 +58,9 @@ func LoadConfig() (*Config, error) {
 		if err != nil {
 			return nil, fmt.Errorf("QUERY_TIMEOUT: %w", err)
 		}
+		if d <= 0 {
+			return nil, errors.New("QUERY_TIMEOUT must be greater than 0")
+		}
 		cfg.QueryTimeout = d
 	}
 

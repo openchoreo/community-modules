@@ -70,7 +70,7 @@ func (c *Client) ForwardAlert(
 	defer resp.Body.Close()
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<10))
 		return fmt.Errorf("observer webhook returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
 	}
 

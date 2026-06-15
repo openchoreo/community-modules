@@ -36,6 +36,9 @@ metrics-adapter-azure-monitor-webhook-token
 {{- if and .Values.adapter.alerting.webhookAuth.enabled (not (or .Values.adapter.alerting.webhookAuth.sharedSecret .Values.adapter.alerting.webhookAuth.sharedSecretRef.name)) -}}
 {{- fail "adapter.alerting.webhookAuth requires either sharedSecret or sharedSecretRef.name when enabled" -}}
 {{- end -}}
+{{- if and .Values.adapter.alerting.webhookAuth.enabled .Values.adapter.alerting.webhookAuth.sharedSecret (lt (len .Values.adapter.alerting.webhookAuth.sharedSecret) 16) -}}
+{{- fail "adapter.alerting.webhookAuth.sharedSecret must be at least 16 bytes when webhookAuth.enabled=true" -}}
+{{- end -}}
 {{- if and .Values.adapter.alerting.webhookRoute.enabled (not .Values.adapter.alerting.webhookAuth.enabled) -}}
 {{- fail "adapter.alerting.webhookRoute requires adapter.alerting.webhookAuth.enabled=true so the public webhook is not exposed without header auth" -}}
 {{- end -}}

@@ -63,6 +63,12 @@ func (h *MetricsHandler) QueryMetrics(ctx context.Context, request gen.QueryMetr
 	if request.Body.SearchScope.Namespace == "" {
 		return badRequestMetrics("searchScope.namespace is required"), nil
 	}
+	if request.Body.StartTime.IsZero() || request.Body.EndTime.IsZero() {
+		return badRequestMetrics("startTime and endTime are required"), nil
+	}
+	if !request.Body.EndTime.After(request.Body.StartTime) {
+		return badRequestMetrics("endTime must be after startTime"), nil
+	}
 
 	step := defaultStep
 	if request.Body.Step != nil && *request.Body.Step != "" {
@@ -103,7 +109,7 @@ func (h *MetricsHandler) queryResourceMetrics(ctx context.Context, req *gen.Metr
 			slog.String("namespace", params.Namespace),
 			slog.Any("error", err),
 		)
-		return serverErrorMetrics(err.Error()), nil
+		return serverErrorMetrics("internal server error"), nil
 	}
 
 	resp := gen.ResourceMetricsTimeSeries{

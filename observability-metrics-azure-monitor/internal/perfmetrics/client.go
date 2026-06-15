@@ -35,6 +35,9 @@ func NewClient(cred azcore.TokenCredential, cfg Config, logger *slog.Logger) (*C
 	if cfg.WorkspaceID == "" {
 		return nil, errors.New("perfmetrics: WorkspaceID is required")
 	}
+	if cfg.QueryTimeout < 0 {
+		return nil, errors.New("perfmetrics: QueryTimeout must be >= 0")
+	}
 	if cfg.QueryTimeout == 0 {
 		cfg.QueryTimeout = 30 * time.Second
 	}
@@ -52,7 +55,7 @@ func NewClient(cred azcore.TokenCredential, cfg Config, logger *slog.Logger) (*C
 
 func NewClientWithAPI(api azlogsAPI, cfg Config, logger *slog.Logger) *Client {
 	qt := cfg.QueryTimeout
-	if qt == 0 {
+	if qt <= 0 {
 		qt = 30 * time.Second
 	}
 	return &Client{

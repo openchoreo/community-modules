@@ -22,6 +22,11 @@ func mapResourceRows(resp azlogs.QueryWorkspaceResponse) (*ResourceMetricsResult
 	if err != nil {
 		return nil, err
 	}
+	for _, required := range []string{"CounterName", "TimeGenerated", "Value"} {
+		if _, ok := idx[required]; !ok {
+			return nil, fmt.Errorf("perfmetrics: missing required column %q", required)
+		}
+	}
 
 	for _, row := range t.Rows {
 		counter := rowString(row, idx, "CounterName")

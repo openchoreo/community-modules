@@ -1,0 +1,123 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+global:
+  installationMode: "singleCluster" # supports "singleCluster", "multiClusterExporter", "multiClusterReceiver"
+
+# Log Analytics workspace backing the (workspace-based) Application Insights
+# resource. The customerId (GUID) is used by the adapter's query API.
+# Required when adapter.enabled.
+logAnalytics:
+  workspaceId: ""
+
+# Secret holding the Application Insights connection string consumed by the
+# collector's azuremonitor exporter. Create it before installing, e.g.:
+#   kubectl create secret generic appinsights-conn \
+#     --from-literal=connection-string="InstrumentationKey=...;IngestionEndpoint=..."
+# Referenced from the opentelemetry-collector.extraEnvs below; if you rename
+# the secret, update both places.
+appInsights:
+  connectionStringSecret:
+    name: "appinsights-conn"
+    key: "connection-string"
+
+# ---------------------------------------------------------------------------
+# Adapter — the Go service that answers Observer trace queries via KQL.
+# ---------------------------------------------------------------------------
+adapter:
+  enabled: true
+  replicas: 1
+  image:
+    repository: "ghcr.io/openchoreo/observability-tracing-azure-appinsights-adapter"
+    tag: ""
+    pullPolicy: IfNotPresent
+  service:
+    port: 9100
+  # Annotations applied to the adapter ServiceAccount. Use this to attach the
+  # AKS Workload Identity client-id annotation, e.g.:
+  #   azure.workload.identity/client-id: <user-assigned-managed-identity-client-id>
+  # The UAMI needs Log Analytics Reader on the workspace and a federated
+  # identity credential for this ServiceAccount.
+  serviceAccount:
+    annotations: {}
+    labels: {}
+
+  # Upper bound for how long a single Log Analytics query may run.
+  queryTimeoutSeconds: 30
+  logLevel: INFO
+
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 20m
+      memory: 64Mi
+
+# ---------------------------------------------------------------------------
+# OpenTelemetry Collector subchart. The contrib image is required: the
+# azuremonitor exporter is not part of the core distribution.
+# ---------------------------------------------------------------------------
+opentelemetry-collector:
+  enabled: true
+
+  clusterRole:
+    create: true
+    rules:
+      - apiGroups: [""]
+        resources: ["pods"]
+        verbs: ["list", "watch"]
+      - apiGroups: ["apps"]
+        resources: ["replicasets"]
+        verbs: ["list", "watch"]
+
+  configMap:
+    create: false
+    existingName: "opentelemetry-collector"
+
+  extraEnvs:
+    - name: APPINSIGHTS_CONNECTION_STRING
+      valueFrom:
+        secretKeyRef:
+          name: appinsights-conn
+          key: connection-string
+
+  # Unique fullname so the cluster-scoped RBAC objects don't collide with
+  # other tracing modules' collectors (they name a ClusterRole after this).
+  fullnameOverride: "otel-collector-azure"
+
+  image:
+    repository: otel/opentelemetry-collector-contrib
+
+  mode: deployment
+
+  resources:
+    limits:
+      cpu: 100m
+      memory: 200Mi
+    requests:
+      cpu: 50m
+      memory: 100Mi
+
+  service:
+    type: ClusterIP
+
+## -----------------------------------------------------------
+## Values for OpenChoreo specific customizations and workloads
+## -----------------------------------------------------------
+
+opentelemetryCollectorCustomizations:
+  tailSampling:
+    enabled: true
+    decisionWait: 10s
+    numTraces: 100
+    expectedNewTracesPerSec: 10
+    decisionCache:
+      sampledCacheSize: 10000
+      nonSampledCacheSize: 1000
+    spansPerSecond: 10
+
+  http:
+    observabilityPlaneUrl: ""
+    observabilityPlaneVirtualHost: ""
+    hostnames: []

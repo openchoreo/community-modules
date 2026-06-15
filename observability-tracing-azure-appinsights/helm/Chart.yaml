@@ -1,0 +1,22 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v2
+name: observability-tracing-azure-appinsights
+description: A Helm chart for OpenChoreo Observability Tracing module with OpenTelemetry Collector and Azure Application Insights
+type: application
+version: 0.1.0
+appVersion: "0.1.1"
+keywords:
+  - azure
+  - application-insights
+  - observability
+  - tracing
+home: https://github.com/openchoreo/community-modules
+maintainers:
+  - name: OpenChoreo Team
+dependencies:
+  - name: opentelemetry-collector
+    repository: https://open-telemetry.github.io/opentelemetry-helm-charts
+    version: 0.146.1
+    condition: opentelemetry-collector.enabled

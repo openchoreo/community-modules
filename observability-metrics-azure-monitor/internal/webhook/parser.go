@@ -66,12 +66,7 @@ func Parse(raw []byte) (*AlertDetails, error) {
 
 	namespace, ruleName := identityFromCustomProperties(payload.Data.CustomProperties)
 	if namespace == "" || ruleName == "" {
-		if ns, name, ok := parseAlertRuleID(payload.Data.Essentials.AlertRuleID); ok && ns != "" && name != "" {
-			namespace, ruleName = ns, name
-		}
-	}
-	if namespace == "" || ruleName == "" {
-		return nil, errors.New("OpenChoreo identity missing: neither customProperties nor alertRuleId yielded a (namespace, ruleName)")
+		return nil, errors.New("OpenChoreo identity missing: customProperties did not yield (openchoreo-namespace, openchoreo-rule-name)")
 	}
 
 	ts := parseTime(payload.Data.Essentials.FiredDateTime)
@@ -103,22 +98,6 @@ func identityFromCustomProperties(props map[string]string) (namespace, ruleName 
 	}
 	return strings.TrimSpace(props[customPropNamespace]),
 		strings.TrimSpace(props[customPropRuleName])
-}
-
-func parseAlertRuleID(armID string) (rg, name string, ok bool) {
-	if armID == "" {
-		return "", "", false
-	}
-	parts := strings.Split(armID, "/")
-	for i := 0; i+1 < len(parts); i++ {
-		switch strings.ToLower(parts[i]) {
-		case "resourcegroups":
-			rg = parts[i+1]
-		case "scheduledqueryrules":
-			name = parts[i+1]
-		}
-	}
-	return rg, name, rg != "" && name != ""
 }
 
 func parseTime(s string) time.Time {

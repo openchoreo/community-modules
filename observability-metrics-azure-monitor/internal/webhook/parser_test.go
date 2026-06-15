@@ -110,7 +110,10 @@ func TestParse_RejectsInvalidJSON(t *testing.T) {
 	}
 }
 
-func TestParse_FallsBackToAlertRuleID(t *testing.T) {
+func TestParse_DoesNotFabricateIdentityFromAlertRuleID(t *testing.T) {
+	// customProperties absent but alertRuleId present. The parser must NOT
+	// derive the identity from the ARM ID (resource group + hashed name are not
+	// the OpenChoreo namespace/ruleName) — it must fail instead.
 	const noCustomProps = `{
 		"schemaId": "azureMonitorCommonAlertSchema",
 		"data": {
@@ -121,15 +124,8 @@ func TestParse_FallsBackToAlertRuleID(t *testing.T) {
 			"alertContext": {}
 		}
 	}`
-	got, err := Parse([]byte(noCustomProps))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got.RuleNamespace != "rg-x" {
-		t.Errorf("fallback namespace: want rg-x, got %q", got.RuleNamespace)
-	}
-	if got.RuleName != "oc-abc123" {
-		t.Errorf("fallback ruleName: want oc-abc123, got %q", got.RuleName)
+	if _, err := Parse([]byte(noCustomProps)); err == nil {
+		t.Fatal("expected error when customProperties are missing (must not fabricate identity from alertRuleId)")
 	}
 }
 

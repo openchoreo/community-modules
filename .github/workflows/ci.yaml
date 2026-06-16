@@ -135,12 +135,18 @@ jobs:
 
       - name: Build images and release charts
         run: |
+          set -euo pipefail
+
           REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          GIT_SHA_SHORT=$(git rev-parse --short=8 HEAD)
+          EVENT_NAME="${{ github.event_name }}"
 
           BEFORE_SHA="${{ github.event.before }}"
 
           # Determine changed files
-          if [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ]; then
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            CHANGED_FILES=$(git ls-files)
+          elif [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ]; then
             CHANGED_FILES=$(git diff --name-only "$BEFORE_SHA" HEAD)
           else
             CHANGED_FILES=$(git ls-files)
@@ -148,6 +154,7 @@ jobs:
 
           echo "Changed files:"
           echo "$CHANGED_FILES"
+          echo "GIT_SHA_SHORT=${GIT_SHA_SHORT}"
           echo ""
 
           for module_dir in */; do
@@ -159,70 +166,123 @@ jobs:
               continue
             fi
 
-            # Determine if this module's chart version was bumped
+            # Per-module changed-file slice
+            MODULE_CHANGED=$(echo "$CHANGED_FILES" | grep "^${module}/" || true)
+
+            HELM_CHANGED=false #A change to any file under helm/
+            NON_HELM_CHANGED=false #A change to any file outside helm/ that could affect the module (module.yaml, Go files, go.mod/sum, Dockerfile, Makefile)
+            VERSION_BUMPED=false #The Chart.yaml version field was changed
+            APP_VERSION_BUMPED=false #The Chart.yaml appVersion field was changed
+
+            if echo "$MODULE_CHANGED" | grep -q "^${module}/helm/"; then
+              HELM_CHANGED=true
+            fi
+            # Substantive non-helm files only: strip helm/ paths first so files
+            # like helm/charts/foo.go don't falsely trip NON_HELM_CHANGED.
+            NON_HELM_FILES=$(echo "$MODULE_CHANGED" | grep -v "^${module}/helm/" || true)
+            if echo "$NON_HELM_FILES" | grep -qE "^${module}/(init/|module\.yaml$|.*\.go$|(.*/)?go\.mod$|(.*/)?go\.sum$|(.*/)?Dockerfile$|(.*/)?Makefile$)"; then
+              NON_HELM_CHANGED=true
+            fi
+
             CHART_VERSION=$(yq '.version' "${chart_dir}/Chart.yaml")
+            APP_VERSION=$(yq '.appVersion' "${chart_dir}/Chart.yaml")
             OLD_CHART_VERSION=$(git show "${BEFORE_SHA}:${chart_dir}/Chart.yaml" 2>/dev/null | yq '.version' 2>/dev/null || echo "")
-            VERSION_BUMPED=false
+            OLD_APP_VERSION=$(git show "${BEFORE_SHA}:${chart_dir}/Chart.yaml" 2>/dev/null | yq '.appVersion' 2>/dev/null || echo "")
 
-            if [ "$OLD_CHART_VERSION" != "$CHART_VERSION" ]; then
+            if [ -n "$OLD_CHART_VERSION" ] && [ "$OLD_CHART_VERSION" != "null" ] && [ "$OLD_CHART_VERSION" != "$CHART_VERSION" ]; then
               VERSION_BUMPED=true
             fi
-
-            # For workflow_dispatch, always publish
-            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-              VERSION_BUMPED=true
+            if [ -n "$OLD_APP_VERSION" ] && [ "$OLD_APP_VERSION" != "null" ] && [ "$OLD_APP_VERSION" != "$APP_VERSION" ]; then
+              APP_VERSION_BUMPED=true
             fi
 
-            if [ "$VERSION_BUMPED" != "true" ]; then
-              echo "Skipping ${module}: chart version unchanged (${CHART_VERSION})"
+            # workflow_dispatch: force dev publish only, never formal
+            if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+              HELM_CHANGED=true
+              NON_HELM_CHANGED=true
+              VERSION_BUMPED=false
+              APP_VERSION_BUMPED=false
+            fi
+
+            if [ "$HELM_CHANGED" = "false" ] && [ "$NON_HELM_CHANGED" = "false" ] \
+              && [ "$VERSION_BUMPED" = "false" ] && [ "$APP_VERSION_BUMPED" = "false" ]; then
+              echo "Skipping ${module}: no relevant changes"
               continue
             fi
 
-            echo "::group::${module} v${CHART_VERSION}"
+            echo "::group::${module} (helm=${HELM_CHANGED} nonhelm=${NON_HELM_CHANGED} ver=${VERSION_BUMPED} app=${APP_VERSION_BUMPED})"
 
-            # ── Build container images if this module has any ──
-            if [ -f "${module}/module.yaml" ]; then
-              image_count=$(yq '.images | length' "${module}/module.yaml")
-              if [ "$image_count" != "0" ] && [ "$image_count" != "null" ]; then
-                for i in $(seq 0 $((image_count - 1))); do
-                  image_name=$(yq ".images[${i}].name" "${module}/module.yaml")
-                  context=$(yq ".images[${i}].context" "${module}/module.yaml")
-                  dockerfile=$(yq ".images[${i}].dockerfile" "${module}/module.yaml")
+            # ── Build container images ──
+            if [ "$NON_HELM_CHANGED" = "true" ] || [ "$APP_VERSION_BUMPED" = "true" ]; then
+              if [ -f "${module}/module.yaml" ]; then
+                image_count=$(yq '.images | length' "${module}/module.yaml")
+                if [ "$image_count" != "0" ] && [ "$image_count" != "null" ]; then
+                  for i in $(seq 0 $((image_count - 1))); do
+                    image_name=$(yq ".images[${i}].name" "${module}/module.yaml")
+                    context=$(yq ".images[${i}].context" "${module}/module.yaml")
+                    dockerfile=$(yq ".images[${i}].dockerfile" "${module}/module.yaml")
 
-                  FULL_IMAGE="ghcr.io/${REPO_OWNER}/${image_name}"
+                    FULL_IMAGE="ghcr.io/${REPO_OWNER}/${image_name}"
 
-                  echo "Building and pushing ${FULL_IMAGE}:${CHART_VERSION}"
-                  docker buildx build \
-                    --platform linux/amd64,linux/arm64 \
-                    --push \
-                    -t "${FULL_IMAGE}:${CHART_VERSION}" \
-                    -t "${FULL_IMAGE}:latest" \
-                    -f "${module}/${dockerfile}" \
-                    "${module}/${context}"
-                done
+                    TAG_ARGS=()
+                    if [ "$NON_HELM_CHANGED" = "true" ]; then
+                      TAG_ARGS+=(-t "${FULL_IMAGE}:latest-dev")
+                      TAG_ARGS+=(-t "${FULL_IMAGE}:${GIT_SHA_SHORT}")
+                    fi
+                    if [ "$APP_VERSION_BUMPED" = "true" ]; then
+                      TAG_ARGS+=(-t "${FULL_IMAGE}:${APP_VERSION}")
+                    fi
+
+                    echo "Building and pushing ${FULL_IMAGE} with tags: ${TAG_ARGS[*]}"
+                    docker buildx build \
+                      --platform linux/amd64,linux/arm64 \
+                      --push \
+                      "${TAG_ARGS[@]}" \
+                      -f "${module}/${dockerfile}" \
+                      "${module}/${context}"
+                  done
+                fi
               fi
             fi
 
             # ── Package and publish the Helm chart ──
-            chart_name=$(yq '.name' "${chart_dir}/Chart.yaml")
+            if [ "$HELM_CHANGED" = "true" ] || [ "$VERSION_BUMPED" = "true" ]; then
+              chart_name=$(yq '.name' "${chart_dir}/Chart.yaml")
 
-            # Add dependency repos and build
-            dep_count=$(yq '.dependencies | length' "${chart_dir}/Chart.yaml")
-            if [ "$dep_count" != "null" ] && [ "$dep_count" != "0" ]; then
-              for i in $(seq 0 $((dep_count - 1))); do
-                dep_repo=$(yq ".dependencies[${i}].repository" "${chart_dir}/Chart.yaml")
-                if [ -n "$dep_repo" ] && [ "$dep_repo" != "null" ]; then
-                  dep_name="dep-$(echo "$dep_repo" | md5sum | cut -d' ' -f1)"
-                  helm repo add "$dep_name" "$dep_repo" 2>/dev/null || true
-                fi
-              done
-              helm dependency build "${chart_dir}"
+              # Add dependency repos and build (once per module)
+              dep_count=$(yq '.dependencies | length' "${chart_dir}/Chart.yaml")
+              if [ "$dep_count" != "null" ] && [ "$dep_count" != "0" ]; then
+                for i in $(seq 0 $((dep_count - 1))); do
+                  dep_repo=$(yq ".dependencies[${i}].repository" "${chart_dir}/Chart.yaml")
+                  if [ -n "$dep_repo" ] && [ "$dep_repo" != "null" ]; then
+                    dep_name="dep-$(echo "$dep_repo" | md5sum | cut -d' ' -f1)"
+                    helm repo add "$dep_name" "$dep_repo" 2>/dev/null || true
+                  fi
+                done
+                helm dependency build "${chart_dir}"
+              fi
+
+              # Each version override bakes into a separate .tgz, so package + push per target
+              package_and_push() {
+                local target_version="$1"
+                local target_app_version="$2"
+                rm -rf .packages
+                helm package "${chart_dir}" \
+                  --version "${target_version}" \
+                  --app-version "${target_app_version}" \
+                  -d .packages
+                echo "Pushing ${chart_name}:${target_version} to ghcr.io/${REPO_OWNER}/helm-charts..."
+                helm push ".packages/${chart_name}-${target_version}.tgz" "oci://ghcr.io/${REPO_OWNER}/helm-charts"
+              }
+
+              if [ "$HELM_CHANGED" = "true" ]; then
+                package_and_push "0.0.0-latest-dev" "latest-dev"
+                package_and_push "0.0.0-${GIT_SHA_SHORT}" "${GIT_SHA_SHORT}"
+              fi
+              if [ "$VERSION_BUMPED" = "true" ]; then
+                package_and_push "${CHART_VERSION}" "${APP_VERSION}"
+              fi
             fi
-
-            helm package "${chart_dir}" -d .packages
-
-            echo "Pushing ${chart_name}:${CHART_VERSION} to ghcr.io/${REPO_OWNER}/helm-charts..."
-            helm push ".packages/${chart_name}-${CHART_VERSION}.tgz" "oci://ghcr.io/${REPO_OWNER}/helm-charts"
 
             echo "::endgroup::"
           done

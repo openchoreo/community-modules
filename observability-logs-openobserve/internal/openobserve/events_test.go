@@ -58,9 +58,9 @@ func TestGenerateComponentEventsQuery(t *testing.T) {
 	t.Run("filters by project, component, environment and respects limit/sort", func(t *testing.T) {
 		params := EventsQueryParams{
 			Namespace:     "default",
-			ProjectID:     "proj-1",
-			ComponentID:   "comp-1",
-			EnvironmentID: "env-1",
+			ProjectID:     "1e3c0e8d-05ac-4587-b0e2-90dbb80dded5",
+			ComponentID:   "9f88452c-0f3f-4cc9-bd77-dd6158fd23b9",
+			EnvironmentID: "8430d38a-01fa-43a6-ab87-109710b5f1ae",
 			Limit:         25,
 			SortOrder:     "asc",
 			StartTime:     evStart,
@@ -73,9 +73,9 @@ func TestGenerateComponentEventsQuery(t *testing.T) {
 		sql, q := sqlOf(t, raw)
 
 		for _, want := range []string{
-			"k8s_object_label_openchoreo_dev_project_uid = 'proj-1'",
-			"k8s_object_label_openchoreo_dev_component_uid = 'comp-1'",
-			"k8s_object_label_openchoreo_dev_environment_uid = 'env-1'",
+			"k8s_object_label_openchoreo_dev_project_uid = '1e3c0e8d-05ac-4587-b0e2-90dbb80dded5'",
+			"k8s_object_label_openchoreo_dev_component_uid = '9f88452c-0f3f-4cc9-bd77-dd6158fd23b9'",
+			"k8s_object_label_openchoreo_dev_environment_uid = '8430d38a-01fa-43a6-ab87-109710b5f1ae'",
 			"ORDER BY _timestamp ASC",
 		} {
 			if !strings.Contains(sql, want) {

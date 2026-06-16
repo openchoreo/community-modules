@@ -18,16 +18,16 @@ Each module publishes its container image(s) to `ghcr.io/openchoreo/<image-name>
 
 ### Tags published on every merge to `main`
 
-For each module touched by a merge, the CI workflow publishes development artifacts so consumers can always pull the tip of `main`:
+If any file under `<module>/` changes in a merge, the CI workflow republishes both the container image(s) and the Helm chart with development tags so consumers can always pull the tip of `main`:
 
-- **Container image** — published when any file *outside* `<module>/helm/` changes ( sources, `Dockerfile`, `Makefile`, `module.yaml`, `init/`, etc.):
+- **Container image(s)** declared in the module's `module.yaml`:
   - `ghcr.io/openchoreo/<image>:latest-dev` — moving tag, always points at the latest build from `main`.
   - `ghcr.io/openchoreo/<image>:<short-sha>` — immutable tag (8-character commit SHA) for pinning.
-- **Helm chart** — published when any file under `<module>/helm/` changes:
-  - `<chart>:0.0.0-latest-dev` — moving version.
-  - `<chart>:0.0.0-<short-sha>` — immutable version.
+- **Helm chart**:
+  - `<chart>:0.0.0-latest-dev` — moving version, with `appVersion=latest-dev`.
+  - `<chart>:0.0.0-<short-sha>` — immutable version, with `appVersion=<short-sha>` matching the image tag.
 
-Use the `latest-dev` tags for tracking `main`, and the SHA-suffixed tags when you need a reproducible reference to a specific commit.
+Use the `latest-dev` tags for tracking `main`, and the SHA-suffixed tags when you need a reproducible reference to a specific commit. The chart's `appVersion` always matches an image tag published in the same run.
 
 ### Cutting a formal release
 
@@ -36,11 +36,7 @@ A formal release is triggered by editing `helm/Chart.yaml` in the module:
 - Bump **`version`** to publish the Helm chart at that version (e.g. `<chart>:0.2.1`)
 - Bump **`appVersion`** to publish the container image at that tag (e.g. `<image>:0.2.1`). 
 
-Formal tags are published **independently** of the development tags, on the same per-artifact gating described above. In practice:
-
-- A bump to `appVersion` alone publishes only `<image>:<appVersion>` — the image's `:latest-dev` and `:<short-sha>` tags do *not* fire because no file outside `helm/` changed. The chart's dev tags (`0.0.0-latest-dev`, `0.0.0-<short-sha>`) *do* fire, since `Chart.yaml` lives under `helm/`.
-- A bump to `version` alone publishes the formal chart `<chart>:<version>` and the chart's dev tags. No image tags are published.
-- A release commit that also touches code outside `helm/` (Go sources, `Dockerfile`, etc.) additionally publishes the image's `:latest-dev` and `:<short-sha>` tags.
+Formal tags are published **in addition to** the development tags. Any release commit touches a file under `<module>/` (at minimum `Chart.yaml`), so the dev tags described above always fire alongside the formal tag(s).
 
 ### Manual re-publish (`workflow_dispatch`)
 

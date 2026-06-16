@@ -5,9 +5,6 @@ package appinsights
 
 import "time"
 
-// TracesParams carries the validated inputs for the traces list and span
-// queries. UIDs are optional; Namespace is required and enforced by the
-// handler before a query is built.
 type TracesParams struct {
 	StartTime         time.Time
 	EndTime           time.Time
@@ -21,8 +18,6 @@ type TracesParams struct {
 	IncludeAttributes bool
 }
 
-// TraceEntry is one row of the traces list query: a per-OperationId summary
-// computed by the KQL summarize.
 type TraceEntry struct {
 	TraceID      string
 	TraceName    string
@@ -48,19 +43,17 @@ type Span struct {
 	StartTime           time.Time
 	EndTime             time.Time
 	DurationNanoseconds int64
-	Status              string // "ok" or "error"
+	Status              string
 	Attributes          map[string]interface{}
 	ResourceAttributes  map[string]interface{}
 }
 
-// TracesResult is the traces list query output.
 type TracesResult struct {
 	Traces []TraceEntry
 	Total  int
 	TookMs int
 }
 
-// SpansResult is the span list query output.
 type SpansResult struct {
 	Spans  []Span
 	Total  int

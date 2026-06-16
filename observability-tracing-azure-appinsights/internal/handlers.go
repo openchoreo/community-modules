@@ -19,15 +19,12 @@ const (
 	maxLimit     = 10000
 )
 
-// tracesClient is the slice of appinsights.Client the handlers use; tests
-// substitute a mock.
 type tracesClient interface {
 	QueryTraces(ctx context.Context, p appinsights.TracesParams) (*appinsights.TracesResult, error)
 	QuerySpans(ctx context.Context, p appinsights.TracesParams) (*appinsights.SpansResult, error)
 	GetSpanDetails(ctx context.Context, traceID, spanID string) (*appinsights.Span, error)
 }
 
-// TracingHandler implements the generated StrictServerInterface.
 type TracingHandler struct {
 	client tracesClient
 	logger *slog.Logger

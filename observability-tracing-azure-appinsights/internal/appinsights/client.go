@@ -55,8 +55,6 @@ func NewClient(cred azcore.TokenCredential, cfg Config, logger *slog.Logger) (*C
 	}, nil
 }
 
-// Ping issues a near-zero-cost query against the span tables to validate
-// that credentials work and the workspace is reachable. Called once at boot.
 func (c *Client) Ping(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, c.queryTimeout)
 	defer cancel()
@@ -74,7 +72,6 @@ func (c *Client) Ping(ctx context.Context) error {
 	return nil
 }
 
-// QueryTraces runs the traces list query.
 func (c *Client) QueryTraces(ctx context.Context, p TracesParams) (*TracesResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.queryTimeout)
 	defer cancel()

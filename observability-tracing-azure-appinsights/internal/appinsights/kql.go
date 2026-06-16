@@ -10,8 +10,7 @@ import (
 )
 
 // Distributed-trace spans live in AppRequests (SERVER spans) and
-// AppDependencies (CLIENT/PRODUCER/INTERNAL spans). AppTraces is the log
-// table despite its name and is never queried here.
+// AppDependencies (CLIENT/PRODUCER/INTERNAL spans).
 //
 // All builders use `union withsource=SourceTable` so span kind can be
 // derived from the table of origin, and rely on the verified exporter
@@ -30,7 +29,6 @@ const unionHead = `union withsource=SourceTable AppRequests, AppDependencies
 // never reach a query.
 var idPattern = regexp.MustCompile(`^[a-fA-F0-9]{1,64}$`)
 
-// ValidID reports whether s is a safe trace or span ID.
 func ValidID(s string) bool {
 	return idPattern.MatchString(s)
 }
@@ -63,8 +61,7 @@ func BuildTracesListKQL(p TracesParams) string {
 	return sb.String()
 }
 
-// BuildSpansKQL renders the spans-of-one-trace query. p.TraceID must already
-// be validated with ValidID.
+// BuildSpansKQL renders the spans-of-one-trace query.
 func BuildSpansKQL(p TracesParams) string {
 	var sb strings.Builder
 	sb.WriteString(unionHead)
@@ -77,8 +74,7 @@ func BuildSpansKQL(p TracesParams) string {
 	return sb.String()
 }
 
-// BuildSpanDetailsKQL renders the single-span lookup. Both IDs must already
-// be validated with ValidID. Attributes are always included.
+// BuildSpanDetailsKQL renders the single-span lookup.
 func BuildSpanDetailsKQL(traceID, spanID string) string {
 	var sb strings.Builder
 	sb.WriteString(unionHead)
@@ -91,7 +87,6 @@ func BuildSpanDetailsKQL(traceID, spanID string) string {
 	return sb.String()
 }
 
-// PingKQL is the near-zero-cost boot reachability check.
 func PingKQL() string {
 	return "union AppRequests, AppDependencies | take 1"
 }

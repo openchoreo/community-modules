@@ -105,8 +105,6 @@ func isResourceAttribute(key string) bool {
 	return false
 }
 
-// statusFromSuccess maps the App Insights Success column onto the adapter
-// API status enum ("ok" / "error" / "unset").
 func statusFromSuccess(row azlogs.Row, idx map[string]int) string {
 	i, ok := idx["Success"]
 	if !ok || i >= len(row) || row[i] == nil {

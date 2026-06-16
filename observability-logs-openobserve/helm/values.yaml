@@ -4,7 +4,7 @@
 common:
   openObserveOrg: "default"
   openObserveStream: "default"
-
+  openObserveEventsStream: "k8s_events"
 
 fluent-bit:
   enabled: true

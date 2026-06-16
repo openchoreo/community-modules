@@ -107,6 +107,176 @@ func (h *LogsHandler) QueryLogs(ctx context.Context, request gen.QueryLogsReques
 	return gen.QueryLogs200JSONResponse(toLogsQueryResponse(result)), nil
 }
 
+// QueryEvents implements POST /api/v1/events/query.
+func (h *LogsHandler) QueryEvents(ctx context.Context, request gen.QueryEventsRequestObject) (gen.QueryEventsResponseObject, error) {
+	if request.Body == nil {
+		return gen.QueryEvents400JSONResponse{
+			Title:   ptr(gen.BadRequest),
+			Message: ptr("request body is required"),
+		}, nil
+	}
+
+	// Try to interpret the search scope as a WorkflowSearchScope first.
+	// A WorkflowSearchScope is identified by having a workflowRunName field.
+	workflowScope, err := request.Body.SearchScope.AsWorkflowSearchScope()
+	if err == nil && workflowScope.WorkflowRunName != nil {
+		if strings.TrimSpace(workflowScope.Namespace) == "" || strings.TrimSpace(*workflowScope.WorkflowRunName) == "" {
+			return gen.QueryEvents400JSONResponse{
+				Title:   ptr(gen.BadRequest),
+				Message: ptr("searchScope with a valid namespace and workflowRunName is required"),
+			}, nil
+		}
+
+		return h.queryWorkflowEvents(ctx, request.Body, &workflowScope)
+	}
+
+	// Fall back to ComponentSearchScope.
+	scope, err := request.Body.SearchScope.AsComponentSearchScope()
+	if err != nil || strings.TrimSpace(scope.Namespace) == "" {
+		return gen.QueryEvents400JSONResponse{
+			Title:   ptr(gen.BadRequest),
+			Message: ptr("searchScope with a valid namespace is required"),
+		}, nil
+	}
+
+	return h.queryComponentEvents(ctx, request.Body, &scope)
+}
+
+func (h *LogsHandler) queryComponentEvents(ctx context.Context, req *gen.EventsQueryRequest, scope *gen.ComponentSearchScope) (gen.QueryEventsResponseObject, error) {
+	params := openobserve.EventsQueryParams{
+		Namespace: scope.Namespace,
+		StartTime: req.StartTime,
+		EndTime:   req.EndTime,
+	}
+	if scope.ProjectUid != nil {
+		params.ProjectID = *scope.ProjectUid
+	}
+	if scope.EnvironmentUid != nil {
+		params.EnvironmentID = *scope.EnvironmentUid
+	}
+	if scope.ComponentUid != nil {
+		params.ComponentID = *scope.ComponentUid
+	}
+	if req.Limit != nil {
+		params.Limit = *req.Limit
+	}
+	if req.SortOrder != nil {
+		params.SortOrder = string(*req.SortOrder)
+	}
+
+	result, err := h.client.GetComponentEvents(ctx, params)
+	if err != nil {
+		h.logger.Error("Failed to query component events",
+			slog.String("function", "QueryEvents"),
+			slog.String("namespace", scope.Namespace),
+			slog.Any("error", err),
+		)
+		return gen.QueryEvents500JSONResponse{
+			Title:   ptr(gen.InternalServerError),
+			Message: ptr("internal server error"),
+		}, nil
+	}
+
+	return gen.QueryEvents200JSONResponse(toEventsQueryResponse(result)), nil
+}
+
+func (h *LogsHandler) queryWorkflowEvents(ctx context.Context, req *gen.EventsQueryRequest, scope *gen.WorkflowSearchScope) (gen.QueryEventsResponseObject, error) {
+	params := openobserve.WorkflowEventsQueryParams{
+		Namespace: scope.Namespace,
+		StartTime: req.StartTime,
+		EndTime:   req.EndTime,
+	}
+	if scope.WorkflowRunName != nil {
+		params.WorkflowRunName = *scope.WorkflowRunName
+	}
+	if scope.TaskName != nil {
+		params.TaskName = *scope.TaskName
+	}
+	if req.Limit != nil {
+		params.Limit = *req.Limit
+	}
+	if req.SortOrder != nil {
+		params.SortOrder = string(*req.SortOrder)
+	}
+
+	result, err := h.client.GetWorkflowEvents(ctx, params)
+	if err != nil {
+		h.logger.Error("Failed to query workflow events",
+			slog.String("function", "QueryEvents"),
+			slog.String("namespace", scope.Namespace),
+			slog.Any("error", err),
+		)
+		return gen.QueryEvents500JSONResponse{
+			Title:   ptr(gen.InternalServerError),
+			Message: ptr("internal server error"),
+		}, nil
+	}
+
+	return gen.QueryEvents200JSONResponse(toEventsQueryResponse(result)), nil
+}
+
+// toEventsQueryResponse converts the internal events result to the generated response model.
+func toEventsQueryResponse(result *openobserve.EventsResult) gen.EventsQueryResponse {
+	entries := make([]gen.EventEntry, 0, len(result.Events))
+	for i := range result.Events {
+		entries = append(entries, toEventEntry(&result.Events[i]))
+	}
+
+	return gen.EventsQueryResponse{
+		Events: &entries,
+		Total:  &result.TotalCount,
+		TookMs: &result.Took,
+	}
+}
+
+func toEventEntry(e *openobserve.EventEntry) gen.EventEntry {
+	ts := e.Timestamp
+	entry := gen.EventEntry{
+		Timestamp: &ts,
+		Message:   strPtr(e.Message),
+		Type:      strPtr(e.Type),
+		Reason:    strPtr(e.Reason),
+		Metadata: &struct {
+			ComponentName   *string             `json:"componentName,omitempty"`
+			ComponentUid    *openapi_types.UUID `json:"componentUid,omitempty"`
+			EnvironmentName *string             `json:"environmentName,omitempty"`
+			EnvironmentUid  *openapi_types.UUID `json:"environmentUid,omitempty"`
+			NamespaceName   *string             `json:"namespaceName,omitempty"`
+			ObjectKind      *string             `json:"objectKind,omitempty"`
+			ObjectName      *string             `json:"objectName,omitempty"`
+			ObjectNamespace *string             `json:"objectNamespace,omitempty"`
+			ProjectName     *string             `json:"projectName,omitempty"`
+			ProjectUid      *openapi_types.UUID `json:"projectUid,omitempty"`
+		}{
+			ComponentName:   strPtr(e.ComponentName),
+			EnvironmentName: strPtr(e.EnvironmentName),
+			NamespaceName:   strPtr(e.NamespaceName),
+			ObjectKind:      strPtr(e.ObjectKind),
+			ObjectName:      strPtr(e.ObjectName),
+			ObjectNamespace: strPtr(e.ObjectNamespace),
+			ProjectName:     strPtr(e.ProjectName),
+		},
+	}
+
+	if e.ComponentID != "" {
+		if uid, ok := parseUUID(e.ComponentID); ok {
+			entry.Metadata.ComponentUid = &uid
+		}
+	}
+	if e.ProjectID != "" {
+		if uid, ok := parseUUID(e.ProjectID); ok {
+			entry.Metadata.ProjectUid = &uid
+		}
+	}
+	if e.EnvironmentID != "" {
+		if uid, ok := parseUUID(e.EnvironmentID); ok {
+			entry.Metadata.EnvironmentUid = &uid
+		}
+	}
+
+	return entry
+}
+
 // CreateAlertRule implements POST /api/v1alpha1/alerts/rules.
 func (h *LogsHandler) CreateAlertRule(ctx context.Context, request gen.CreateAlertRuleRequestObject) (gen.CreateAlertRuleResponseObject, error) {
 	if request.Body == nil {

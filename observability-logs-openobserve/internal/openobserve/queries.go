@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // quoteIdentifier wraps a SQL identifier (e.g. table/stream name) in double
@@ -441,4 +442,137 @@ func generateComponentLogsQuery(params ComponentLogsParams, stream string, logge
 	}
 
 	return json.Marshal(query)
+}
+
+// componentEventsConditions builds the SQL WHERE conditions for the component-scoped events query.
+func componentEventsConditions(params EventsQueryParams) []string {
+	conditions := []string{
+		evNamespaceName + " = '" + escapeSQLString(params.Namespace) + "'",
+	}
+	if params.ProjectID != "" {
+		conditions = append(conditions, evProjectID+" = '"+escapeSQLString(params.ProjectID)+"'")
+	}
+	if params.ComponentID != "" {
+		conditions = append(conditions, evComponentID+" = '"+escapeSQLString(params.ComponentID)+"'")
+	}
+	if params.EnvironmentID != "" {
+		conditions = append(conditions, evEnvironmentID+" = '"+escapeSQLString(params.EnvironmentID)+"'")
+	}
+	return conditions
+}
+
+// workflowEventsConditions builds the SQL WHERE conditions for the workflow-scoped events query.
+func workflowEventsConditions(params WorkflowEventsQueryParams) []string {
+	conditions := []string{
+		evObjectName + " LIKE '" + escapeSQLString(params.WorkflowRunName) + "%'",
+		evObjectNamespace + " = 'workflows-" + escapeSQLString(params.Namespace) + "'",
+	}
+	if params.TaskName != "" {
+		conditions = append(conditions, evObjectName+" LIKE '%"+escapeSQLString(params.TaskName)+"%'")
+	}
+	return conditions
+}
+
+// eventsSortClause returns the ORDER BY clause for events, defaulting to descending.
+func eventsSortClause(sortOrder string) string {
+	if sortOrder == "ASC" || sortOrder == "asc" {
+		return " ORDER BY " + evTimestamp + " ASC"
+	}
+	return " ORDER BY " + evTimestamp + " DESC"
+}
+
+// eventsLimit normalizes the requested limit, defaulting to 100.
+func eventsLimit(limit int) int {
+	if limit <= 0 {
+		return 100
+	}
+	return limit
+}
+
+// buildEventsQuery assembles an OpenObserve search query from the given WHERE conditions.
+func buildEventsQuery(conditions []string, stream, sortOrder string, limit int, start, end time.Time, logger *slog.Logger, label string) ([]byte, error) {
+	sql := "SELECT * FROM " + quoteIdentifier(stream)
+	if len(conditions) > 0 {
+		sql += " WHERE " + strings.Join(conditions, " AND ")
+	}
+	sql += eventsSortClause(sortOrder)
+
+	query := map[string]interface{}{
+		"query": map[string]interface{}{
+			"sql":        sql,
+			"start_time": start.UnixMicro(),
+			"end_time":   end.UnixMicro(),
+			"from":       0,
+			"size":       eventsLimit(limit),
+		},
+		"timeout": 0,
+	}
+
+	if logger.Enabled(nil, slog.LevelDebug) {
+		if prettyJSON, err := json.MarshalIndent(query, "", "    "); err == nil {
+			fmt.Printf("Generated query to fetch %s %s:\n", stream, label)
+			fmt.Println(string(prettyJSON))
+		}
+	}
+
+	return json.Marshal(query)
+}
+
+// buildEventsCountQuery assembles an OpenObserve count query from the given WHERE conditions.
+func buildEventsCountQuery(conditions []string, stream string, start, end time.Time, logger *slog.Logger, label string) ([]byte, error) {
+	sql := "SELECT count(*) as total FROM " + quoteIdentifier(stream)
+	if len(conditions) > 0 {
+		sql += " WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	query := map[string]interface{}{
+		"query": map[string]interface{}{
+			"sql":        sql,
+			"start_time": start.UnixMicro(),
+			"end_time":   end.UnixMicro(),
+			"from":       0,
+			"size":       0,
+		},
+	}
+
+	if logger.Enabled(nil, slog.LevelDebug) {
+		if prettyJSON, err := json.MarshalIndent(query, "", "    "); err == nil {
+			fmt.Printf("Generated count query for %s:\n", label)
+			fmt.Println(string(prettyJSON))
+		}
+	}
+
+	return json.Marshal(query)
+}
+
+// generateComponentEventsQuery generates the OpenObserve query for component-scoped events.
+func generateComponentEventsQuery(params EventsQueryParams, stream string, logger *slog.Logger) ([]byte, error) {
+	if params.Namespace == "" {
+		return nil, fmt.Errorf("namespace is required for component event queries")
+	}
+	return buildEventsQuery(componentEventsConditions(params), stream, params.SortOrder, params.Limit, params.StartTime, params.EndTime, logger, "component events")
+}
+
+// generateComponentEventsCountQuery generates a count query for the true total of matching component events.
+func generateComponentEventsCountQuery(params EventsQueryParams, stream string, logger *slog.Logger) ([]byte, error) {
+	if params.Namespace == "" {
+		return nil, fmt.Errorf("namespace is required for component event queries")
+	}
+	return buildEventsCountQuery(componentEventsConditions(params), stream, params.StartTime, params.EndTime, logger, "component events")
+}
+
+// generateWorkflowEventsQuery generates the OpenObserve query for workflow-scoped events.
+func generateWorkflowEventsQuery(params WorkflowEventsQueryParams, stream string, logger *slog.Logger) ([]byte, error) {
+	if params.Namespace == "" || params.WorkflowRunName == "" {
+		return nil, fmt.Errorf("namespace and workflow run name are required for workflow event queries")
+	}
+	return buildEventsQuery(workflowEventsConditions(params), stream, params.SortOrder, params.Limit, params.StartTime, params.EndTime, logger, "workflow events")
+}
+
+// generateWorkflowEventsCountQuery generates a count query for the true total of matching workflow events.
+func generateWorkflowEventsCountQuery(params WorkflowEventsQueryParams, stream string, logger *slog.Logger) ([]byte, error) {
+	if params.Namespace == "" || params.WorkflowRunName == "" {
+		return nil, fmt.Errorf("namespace and workflow run name are required for workflow event queries")
+	}
+	return buildEventsCountQuery(workflowEventsConditions(params), stream, params.StartTime, params.EndTime, logger, "workflow events")
 }

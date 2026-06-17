@@ -166,6 +166,7 @@ Open `asdlc-platform.yaml` and fill in every `<PLACEHOLDER>`:
 | Field | Description |
 |-------|-------------|
 | `thunder.publicURL` | Browser-facing Thunder URL (`THUNDER_PUBLIC_URL`) |
+| `thunder.systemClientSecret` | Secret for the ASDLC system client registered in Thunder — change for production |
 | `bff.publicURL` | Public URL for the BFF, reachable from GitHub and coding-agent pods |
 | `console.publicURL` | Public URL for the console |
 | `wso2-ae-platform.asdlcApi.hostname` | Hostname for the BFF HTTPRoute (typically the host part of `bff.publicURL`) |
@@ -237,6 +238,8 @@ kubectl get jobs -n ${AE_NS}
 | BFF API | `<ASDLC_API_PUBLIC_URL>` |
 
 Log in with the Thunder admin credentials (`admin` / `admin` by default on a standard OpenChoreo installation).
+
+> **Warning:** The default `admin` / `admin` credentials are for local and development environments only. For any production deployment, rotate and change all Thunder admin credentials before exposing the installation externally.
 
 ---
 

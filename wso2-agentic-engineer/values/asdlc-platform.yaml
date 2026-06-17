@@ -36,7 +36,7 @@ thunder:
   ouHandle: "default"
   publicURL: "<THUNDER_PUBLIC_URL>"          # e.g. http://thunder.example.com:8080
   systemClientId: "asdlc-system-client"
-  systemClientSecret: "asdlc-system-client-secret"
+  systemClientSecret: "<ASDLC_SYSTEM_CLIENT_SECRET>"  # change for production
   # K8s location of OC's Thunder — used by the bootstrap job to patch CORS config.
   # Override if your OC installation uses different names.
   namespace: "thunder"

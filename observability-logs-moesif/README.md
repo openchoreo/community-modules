@@ -130,3 +130,14 @@ To also remove the secret:
 kubectl delete secret moesif-app-secret \
   --namespace openchoreo-observability-plane
 ```
+
+
+## Dependencies
+
+Bundled upstream Helm charts:
+
+| Chart | Repository |
+| ----- | ---------- |
+| opentelemetry-collector | https://open-telemetry.github.io/opentelemetry-helm-charts |
+| fluent-bit | https://fluent.github.io/helm-charts |
+

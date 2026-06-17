@@ -12,6 +12,8 @@ Browse the available modules in the [OpenChoreo Ecosystem](https://openchoreo.de
 
 For a deeper understanding of how modules work and how to add a new OpenChoreo module, see the [modules overview](https://openchoreo.dev/docs/platform-engineer-guide/modules/overview/) documentation.
 
+Some modules bundle upstream Helm charts, listed under a **Dependencies** section in their README. Override any of their values with `--set <chart-name>.<value>=...` or by nesting them under `<chart-name>:` in your values file.
+
 ## Releases
 
 Each module publishes its container image(s) to `ghcr.io/openchoreo/<image-name>` and its Helm chart to `oci://ghcr.io/openchoreo/helm-charts`. Releases are **author-driven**: PRs may merge without any version bump, and authors choose when to cut a formal release by editing the module's `helm/Chart.yaml`.

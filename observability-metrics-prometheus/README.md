@@ -118,6 +118,14 @@ If remote write from exporter to receiver is failing:
 3. Check that queue capacity and batch settings are appropriate for your metrics volume
 4. Monitor central Prometheus for import errors: `rate(prometheus_tsdb_symbol_table_size_bytes[5m])`
 
+## Dependencies
+
+Bundled upstream Helm charts:
+
+| Chart | Repository |
+| ----- | ---------- |
+| kube-prometheus-stack | https://prometheus-community.github.io/helm-charts |
+
 ## Compatibility
 
 > **Note:** The Helm chart versions specified in the installation commands above reflect the latest module version and is compatible with the development version of OpenChoreo. Refer to the compatibility table below to determine the appropriate module version for your OpenChoreo installation.

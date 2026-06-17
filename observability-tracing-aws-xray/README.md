@@ -786,6 +786,14 @@ expose a retention value. AWS X-Ray trace retention is service-managed and fixed
 at 30 days; it is not backed by a customer-managed CloudWatch Logs log group
 with a configurable retention policy.
 
+## Dependencies
+
+Bundled upstream Helm charts:
+
+| Chart | Repository |
+| ----- | ---------- |
+| opentelemetry-collector | https://open-telemetry.github.io/opentelemetry-helm-charts |
+
 ## Compatibility
 
 > **Note:** The Helm chart versions specified in the installation commands above are for the latest module version compatible with the development version of OpenChoreo. Refer to the compatibility table below to determine the appropriate module version for your OpenChoreo installation.

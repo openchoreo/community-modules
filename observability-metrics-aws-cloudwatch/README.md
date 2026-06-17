@@ -1202,6 +1202,15 @@ kubectl -n "$NS" logs -l job-name=metrics-aws-cloudwatch-retention --tail=100
 
 If you override `metrics.logGroup`, update the CloudWatch Logs IAM policy resource ARN to match that log group.
 
+## Dependencies
+
+Bundled upstream Helm charts:
+
+| Chart | Repository |
+| ----- | ---------- |
+| opentelemetry-collector | https://open-telemetry.github.io/opentelemetry-helm-charts |
+| kube-state-metrics | https://prometheus-community.github.io/helm-charts |
+
 ## Compatibility
 
 > **Note:** The Helm chart versions specified in the installation commands above are for the latest module version compatible with the development version of OpenChoreo. Refer to the compatibility table below to determine the appropriate module version for your OpenChoreo installation.

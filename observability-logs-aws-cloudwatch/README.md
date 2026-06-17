@@ -1190,6 +1190,14 @@ kubectl -n "$NS" logs -l job-name=cloudwatch-setup-logs --tail=100
 | `adapter.networkPolicy.gatewayNamespaceLabels` | `{}` | Namespace labels of the Gateway data-plane pods allowed to proxy the webhook. Set when `webhookRoute` is enabled. |
 | `adapter.networkPolicy.allowProbeIPBlock` | `""` | Optional node CIDR for kubelet probes when required by the CNI. |
 
+## Dependencies
+
+Bundled upstream Helm charts:
+
+| Chart | Repository |
+| ----- | ---------- |
+| amazon-cloudwatch-observability | https://aws-observability.github.io/helm-charts |
+
 ## Compatibility
 
 > **Note:** The Helm chart versions specified in the installation commands above are for the latest module version compatible with the development version of OpenChoreo. Refer to the compatibility table below to determine the appropriate module version for your OpenChoreo installation.

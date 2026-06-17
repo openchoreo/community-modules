@@ -124,6 +124,16 @@ helm upgrade --install observability-logs-openobserve \
 > and `fluent-bit.openObserveHost` and `fluent-bit.openObservePort` values are set to the OpenObserve endpoint exposed from the observability plane cluster,
 > while `common.openObserveOrg` and `common.openObserveStream` match the organization and stream configured in the observability plane cluster.
 
+## Dependencies
+
+Bundled upstream Helm charts:
+
+| Chart | Repository |
+| ----- | ---------- |
+| fluent-bit | https://fluent.github.io/helm-charts |
+| openobserve-standalone | https://charts.openobserve.ai |
+| openobserve | https://charts.openobserve.ai |
+
 ## Compatibility
 
 > **Note:** The Helm chart versions specified in the installation commands above are for the latest module version compatible with the development version of OpenChoreo. Refer to the compatibility table below to determine the appropriate module version for your OpenChoreo installation.

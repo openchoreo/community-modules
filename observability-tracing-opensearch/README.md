@@ -155,6 +155,15 @@ If you are upgrading from a version before 0.4.0, reindex the older tracing data
 curl -fsSL https://raw.githubusercontent.com/openchoreo/community-modules/refs/heads/main/observability-tracing-opensearch/scripts/upgrade-to-0-4-1.sh | bash
 ```
 
+## Dependencies
+
+Bundled upstream Helm charts:
+
+| Chart | Repository |
+| ----- | ---------- |
+| opensearch | https://opensearch-project.github.io/helm-charts/ |
+| opentelemetry-collector | https://open-telemetry.github.io/opentelemetry-helm-charts |
+
 ## Compatibility
 
 > **Note:** The Helm chart versions specified in the installation commands above are for the latest module version compatible with the development version of OpenChoreo. Refer to the compatibility table below to determine the appropriate module version for your OpenChoreo installation.

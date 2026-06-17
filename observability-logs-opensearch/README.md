@@ -175,6 +175,15 @@ kubectl exec -n openchoreo-observability-plane opensearch-master-0 \
 
 Only logs written after the deletion will appear (Fluent Bit's tail cursor persists at `/var/lib/fluent-bit/db/tail-container-logs.db`). Generate fresh traffic, or remove that DB and restart the DaemonSet to backfill.
 
+## Dependencies
+
+Bundled upstream Helm charts:
+
+| Chart | Repository |
+| ----- | ---------- |
+| opensearch | https://opensearch-project.github.io/helm-charts/ |
+| fluent-bit | https://fluent.github.io/helm-charts |
+
 ## Compatibility
 
 > **Note:** The Helm chart versions specified in the installation commands above are for the latest module version compatible with the development version of OpenChoreo. Refer to the compatibility table below to determine the appropriate module version for your OpenChoreo installation.

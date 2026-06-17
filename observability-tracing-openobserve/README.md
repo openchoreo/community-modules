@@ -95,6 +95,16 @@ Refer to the [openobserve Helm chart documentation](https://github.com/openobser
 > ```
 
 
+## Dependencies
+
+Bundled upstream Helm charts:
+
+| Chart | Repository |
+| ----- | ---------- |
+| opentelemetry-collector | https://open-telemetry.github.io/opentelemetry-helm-charts |
+| openobserve-standalone | https://charts.openobserve.ai |
+| openobserve | https://charts.openobserve.ai |
+
 ## Compatibility
 
 > **Note:** The Helm chart versions specified in the installation commands above are for the latest module version compatible with the development version of OpenChoreo. Refer to the compatibility table below to determine the appropriate module version for your OpenChoreo installation.

@@ -145,8 +145,10 @@ Secret. Optionally it renders an HTTPRoute so the Action Group can reach the
 webhook through the observability-plane gateway.
 
 ```bash
-helm install metrics-adapter-azure-monitor ./helm \
-  --namespace openchoreo-observability-plane \
+helm upgrade --install metrics-adapter-azure-monitor \
+  oci://ghcr.io/openchoreo/helm-charts/observability-metrics-azure-monitor \
+  --namespace openchoreo-observability-plane --create-namespace \
+  --version 0.1.0 \
   --set region=eastus2 \
   --set workspace.id=<workspace customerId GUID> \
   --set workspace.resourceId=<workspace ARM resource ID> \

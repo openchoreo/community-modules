@@ -69,7 +69,7 @@ In a single-cluster deployment all planes share one context, so no switching is 
 ```bash
 export AE_NS="wso2-ae"
 export HELM_CHART_REGISTRY="ghcr.io/wso2"
-export MODULE_RAW="https://raw.githubusercontent.com/openchoreo/community-modules/main/ai-wso2-agentic-engineer"
+export MODULE_RAW="https://raw.githubusercontent.com/openchoreo/community-modules/main/wso2-agentic-engineer"
 
 export AE_VERSION="v0.5.2"
 ```

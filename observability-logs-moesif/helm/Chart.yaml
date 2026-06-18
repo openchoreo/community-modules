@@ -5,8 +5,9 @@ apiVersion: v2
 name: observability-logs-moesif
 description: A Helm chart for OpenChoreo Moesif Logs module
 type: application
-version: 0.1.0
-appVersion: "0.1.0"
+# Version strategy: latest-dev for development, replaced by CI for releases
+version: 0.0.0-latest-dev
+appVersion: "latest-dev"
 keywords:
   - moesif
   - observability

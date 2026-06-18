@@ -2,8 +2,9 @@ apiVersion: v2
 name: observability-logs-aws-cloudwatch
 description: A Helm chart for OpenChoreo Logs Module for AWS CloudWatch Logs
 type: application
-version: 0.2.1
-appVersion: "0.2.1"
+# Version strategy: latest-dev for development, replaced by CI for releases
+version: 0.0.0-latest-dev
+appVersion: "latest-dev"
 keywords:
   - cloudwatch
   - aws

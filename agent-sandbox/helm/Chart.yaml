@@ -5,8 +5,9 @@ description: |
   enabling SandboxTemplate, SandboxClaim, and SandboxWarmPool support for
   OpenChoreo agent workloads with kernel-level isolation (runc/gvisor/kata).
 type: application
-version: 0.1.1
-appVersion: "0.1.1"
+# Version strategy: latest-dev for development, replaced by CI for releases
+version: 0.0.0-latest-dev
+appVersion: "latest-dev"
 keywords:
   - openchoreo
   - agent

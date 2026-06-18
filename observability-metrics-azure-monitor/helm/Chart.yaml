@@ -2,8 +2,9 @@ apiVersion: v2
 name: observability-metrics-azure-monitor
 description: A Helm chart for OpenChoreo Metrics Module for Azure Monitor
 type: application
-version: 0.1.0
-appVersion: "0.1.0"
+# Version strategy: latest-dev for development, replaced by CI for releases
+version: 0.0.0-latest-dev
+appVersion: "latest-dev"
 keywords:
   - azure
   - azure-monitor

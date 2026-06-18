@@ -5,8 +5,9 @@ apiVersion: v2
 name: observability-tracing-aws-xray
 description: A Helm chart for OpenChoreo Tracing Module for AWS X-Ray
 type: application
-version: 0.2.0
-appVersion: "0.2.0"
+# Version strategy: latest-dev for development, replaced by CI for releases
+version: 0.0.0-latest-dev
+appVersion: "latest-dev"
 keywords:
   - xray
   - aws

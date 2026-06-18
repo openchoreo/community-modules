@@ -163,42 +163,41 @@ jobs:
             MODULE_FILES=$(echo "$CHANGED_FILES" | grep "^${module}/" || true)
 
             MODULE_CHANGED=false #Any file under the module changed
-            VERSION_BUMPED=false #The Chart.yaml version field was changed
-            APP_VERSION_BUMPED=false #The Chart.yaml appVersion field was changed
+            VERSION_BUMPED=false #The module's VERSION file was changed
 
             if [ -n "$MODULE_FILES" ]; then
               MODULE_CHANGED=true
             fi
 
-            CHART_VERSION=$(yq '.version' "${chart_dir}/Chart.yaml")
-            APP_VERSION=$(yq '.appVersion' "${chart_dir}/Chart.yaml")
-            OLD_CHART_VERSION=$(git show "${BEFORE_SHA}:${chart_dir}/Chart.yaml" 2>/dev/null | yq '.version' 2>/dev/null || echo "")
-            OLD_APP_VERSION=$(git show "${BEFORE_SHA}:${chart_dir}/Chart.yaml" 2>/dev/null | yq '.appVersion' 2>/dev/null || echo "")
-
-            if [ -n "$OLD_CHART_VERSION" ] && [ "$OLD_CHART_VERSION" != "null" ] && [ "$OLD_CHART_VERSION" != "$CHART_VERSION" ]; then
-              VERSION_BUMPED=true
-            fi
-            if [ -n "$OLD_APP_VERSION" ] && [ "$OLD_APP_VERSION" != "null" ] && [ "$OLD_APP_VERSION" != "$APP_VERSION" ]; then
-              APP_VERSION_BUMPED=true
+            # Detect a VERSION-file bump for this module
+            VERSION_FILE="${module}/VERSION"
+            RELEASE_VERSION=""
+            if [ -f "$VERSION_FILE" ]; then
+              RELEASE_VERSION=$(tr -d '[:space:]' < "$VERSION_FILE")
+              OLD_VERSION=""
+              if [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ]; then
+                OLD_VERSION=$(git show "${BEFORE_SHA}:${VERSION_FILE}" 2>/dev/null | tr -d '[:space:]' || echo "")
+              fi
+              if [ -n "$RELEASE_VERSION" ] && [ -n "$OLD_VERSION" ] && [ "$RELEASE_VERSION" != "$OLD_VERSION" ]; then
+                VERSION_BUMPED=true
+              fi
             fi
 
             # workflow_dispatch: force dev publish only, never formal
             if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
               MODULE_CHANGED=true
               VERSION_BUMPED=false
-              APP_VERSION_BUMPED=false
             fi
 
-            if [ "$MODULE_CHANGED" = "false" ] \
-              && [ "$VERSION_BUMPED" = "false" ] && [ "$APP_VERSION_BUMPED" = "false" ]; then
+            if [ "$MODULE_CHANGED" = "false" ] && [ "$VERSION_BUMPED" = "false" ]; then
               echo "Skipping ${module}: no changes"
               continue
             fi
 
-            echo "::group::${module} (changed=${MODULE_CHANGED} ver=${VERSION_BUMPED} app=${APP_VERSION_BUMPED})"
+            echo "::group::${module} (changed=${MODULE_CHANGED} version_bumped=${VERSION_BUMPED} release_version=${RELEASE_VERSION:-none})"
 
             # ── Build container images ──
-            if [ "$MODULE_CHANGED" = "true" ] || [ "$APP_VERSION_BUMPED" = "true" ]; then
+            if [ "$MODULE_CHANGED" = "true" ] || [ "$VERSION_BUMPED" = "true" ]; then
               if [ -f "${module}/module.yaml" ]; then
                 image_count=$(yq '.images | length' "${module}/module.yaml")
                 if [ "$image_count" != "0" ] && [ "$image_count" != "null" ]; then
@@ -214,8 +213,8 @@ jobs:
                       TAG_ARGS+=(-t "${FULL_IMAGE}:latest-dev")
                       TAG_ARGS+=(-t "${FULL_IMAGE}:${GIT_SHA_SHORT}")
                     fi
-                    if [ "$APP_VERSION_BUMPED" = "true" ]; then
-                      TAG_ARGS+=(-t "${FULL_IMAGE}:${APP_VERSION}")
+                    if [ "$VERSION_BUMPED" = "true" ]; then
+                      TAG_ARGS+=(-t "${FULL_IMAGE}:${RELEASE_VERSION}")
                     fi
 
                     echo "Building and pushing ${FULL_IMAGE} with tags: ${TAG_ARGS[*]}"
@@ -265,7 +264,7 @@ jobs:
                 package_and_push "0.0.0-${GIT_SHA_SHORT}" "${GIT_SHA_SHORT}"
               fi
               if [ "$VERSION_BUMPED" = "true" ]; then
-                package_and_push "${CHART_VERSION}" "${APP_VERSION}"
+                package_and_push "${RELEASE_VERSION}" "${RELEASE_VERSION}"
               fi
             fi
 

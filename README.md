@@ -16,33 +16,22 @@ Some modules bundle upstream Helm charts, listed under a **Dependencies** sectio
 
 ## Releases
 
-Each module publishes its container image(s) to `ghcr.io/openchoreo/<image-name>` and its Helm chart to `oci://ghcr.io/openchoreo/helm-charts`. Releases are **author-driven**: PRs may merge without any version bump, and authors choose when to cut a formal release by editing the module's `helm/Chart.yaml`.
+Each module publishes its container image(s) to `ghcr.io/openchoreo/<image-name>` and its Helm chart to `oci://ghcr.io/openchoreo/helm-charts`. Releases are **author-driven**: PRs may merge without any version bump, and authors choose when to cut a release by bumping the module's `VERSION` file.
 
-### Tags published on every merge to `main`
+Each module with a Helm chart has a `VERSION` file at `<module>/VERSION`. Bumping it on `main` is what triggers the next release. The chart's `helm/Chart.yaml` always carries development placeholders (`version: 0.0.0-latest-dev`, `appVersion: "latest-dev"`) and should not be hand-edited — CI rewrites both at package time using the `VERSION` value.
 
-If any file under `<module>/` changes in a merge, the CI workflow republishes both the container image(s) and the Helm chart with development tags so consumers can always pull the tip of `main`:
+To cut a release, edit `<module>/VERSION` to the new semver value (e.g. `0.2.1`) and merge the PR to `main`. On merge, CI publishes that single value as both the image tag and the chart `version`/`appVersion`:
 
-- **Container image(s)** declared in the module's `module.yaml`:
-  - `ghcr.io/openchoreo/<image>:latest-dev` — moving tag, always points at the latest build from `main`.
-  - `ghcr.io/openchoreo/<image>:<short-sha>` — immutable tag (8-character commit SHA) for pinning.
-- **Helm chart**:
-  - `<chart>:0.0.0-latest-dev` — moving version, with `appVersion=latest-dev`.
-  - `<chart>:0.0.0-<short-sha>` — immutable version, with `appVersion=<short-sha>` matching the image tag.
+- `ghcr.io/openchoreo/<image>:<VERSION>` for every image declared in the module's `module.yaml`.
+- `<chart>:<VERSION>` with `appVersion=<VERSION>`.
 
-Use the `latest-dev` tags for tracking `main`, and the SHA-suffixed tags when you need a reproducible reference to a specific commit. The chart's `appVersion` always matches an image tag published in the same run.
+Alongside any release, every merge to `main` that touches a file under `<module>/` also republishes development tags so consumers can pull the tip of `main`:
 
-### Cutting a formal release
+- `ghcr.io/openchoreo/<image>:latest-dev` and `ghcr.io/openchoreo/<image>:<short-sha>` (8-character commit SHA) for each image.
+- `<chart>:0.0.0-latest-dev` with `appVersion=latest-dev`, and `<chart>:0.0.0-<short-sha>` with `appVersion=<short-sha>`.
 
-A formal release is triggered by editing `helm/Chart.yaml` in the module:
+Use the `latest-dev` tags for tracking `main`, the SHA-suffixed tags when you need a reproducible reference to a specific commit, and the `VERSION`-valued tags for released versions. The chart's `appVersion` always matches an image tag published in the same run.
 
-- Bump **`version`** to publish the Helm chart at that version (e.g. `<chart>:0.2.1`)
-- Bump **`appVersion`** to publish the container image at that tag (e.g. `<image>:0.2.1`). 
-
-Formal tags are published **in addition to** the development tags. Any release commit touches a file under `<module>/` (at minimum `Chart.yaml`), so the dev tags described above always fire alongside the formal tag(s).
-
-### Manual re-publish (`workflow_dispatch`)
-
-The `Build Images and Release Charts` workflow can be triggered manually from the Actions tab. A manual run re-publishes the **development tags only** (`latest-dev` and `<short-sha>` for every module with a chart) — it never publishes formal release tags, regardless of the current `Chart.yaml` values.
 
 ## Reporting Issues
 

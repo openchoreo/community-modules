@@ -675,37 +675,37 @@ func segmentToSpanDetail(seg *xraySegment, parentID string) *SpanDetail {
 		Status:       segmentStatus(seg),
 	}
 
-	attrs := make([]SpanAttribute, 0)
+	attrs := make(map[string]interface{})
 	for k, v := range seg.Annotations {
-		attrs = append(attrs, SpanAttribute{Key: "annotation." + k, Value: fmt.Sprintf("%v", v)})
+		attrs["annotation."+k] = v
 	}
 	for k, v := range flattenMap("http", seg.HTTP) {
-		attrs = append(attrs, SpanAttribute{Key: k, Value: fmt.Sprintf("%v", v)})
+		attrs[k] = v
 	}
 	for k, v := range flattenMap("sql", seg.SQL) {
-		attrs = append(attrs, SpanAttribute{Key: k, Value: fmt.Sprintf("%v", v)})
+		attrs[k] = v
 	}
 	if seg.Namespace != "" {
-		attrs = append(attrs, SpanAttribute{Key: "xray.namespace", Value: seg.Namespace})
+		attrs["xray.namespace"] = seg.Namespace
 	}
 	if seg.Origin != "" {
-		attrs = append(attrs, SpanAttribute{Key: "xray.origin", Value: seg.Origin})
+		attrs["xray.origin"] = seg.Origin
 	}
 	detail.Attributes = attrs
 
-	resAttrs := make([]SpanAttribute, 0)
+	resAttrs := make(map[string]interface{})
 	for k, v := range flattenMap("aws", seg.AWS) {
-		resAttrs = append(resAttrs, SpanAttribute{Key: k, Value: fmt.Sprintf("%v", v)})
+		resAttrs[k] = v
 	}
 	if seg.Origin != "" {
-		resAttrs = append(resAttrs, SpanAttribute{Key: "cloud.platform", Value: seg.Origin})
+		resAttrs["cloud.platform"] = seg.Origin
 	}
 
 	if seg.Metadata != nil {
 		for ns, v := range seg.Metadata {
 			if nsMap, ok := v.(map[string]interface{}); ok {
 				for k, mv := range nsMap {
-					resAttrs = append(resAttrs, SpanAttribute{Key: fmt.Sprintf("metadata.%s.%s", ns, k), Value: fmt.Sprintf("%v", mv)})
+					resAttrs[fmt.Sprintf("metadata.%s.%s", ns, k)] = mv
 				}
 			}
 		}

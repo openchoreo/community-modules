@@ -111,6 +111,16 @@ openSearch:
 openSearchCluster:
   enabled: false
 
+  # SNI hostnames for the TLS passthrough TLSRoute that exposes OpenSearch
+  # through the gateway. These must match the gateway tlsPassthrough listener
+  # hostname and the SNI that remote fluent-bit clients present
+  # (fluent-bit.openSearchVHost). They also need to be present in the OpenSearch
+  # server certificate's dnsNames. Required by Gateway API v1 (spec.hostnames is
+  # mandatory for TLSRoute).
+  tlsRoute:
+    hostnames:
+      - "opensearch.observability.openchoreo.localhost"
+
   bootstrap:
     resources:
       limits:

@@ -5,6 +5,10 @@ metadata:
   name: opensearch
   namespace: {{ .Release.Namespace }}
 spec:
+  hostnames:
+    {{- range .Values.openSearchCluster.tlsRoute.hostnames }}
+    - {{ . | quote }}
+    {{- end }}
   parentRefs:
     - name: gateway-default
       namespace: {{ .Release.Namespace }}

@@ -362,6 +362,49 @@ func TestToSpansListResponse_WithIncludeAttributes(t *testing.T) {
 	}
 }
 
+// Regression for #3886: span-details attribute values keep their native types
+// instead of being stringified.
+func TestToSpanDetailsResponse_PreservesNativeTypes(t *testing.T) {
+	span := &opensearch.Span{
+		SpanID: "span-1",
+		Name:   "http.request",
+		Attributes: map[string]interface{}{
+			"http.status_code": 200,
+			"sampling.ratio":   0.95,
+			"error":            true,
+			"http.method":      "GET",
+			"peer": map[string]interface{}{
+				"service": "checkout",
+			},
+		},
+		ResourceAttributes: map[string]interface{}{
+			"service.name": "my-service",
+		},
+	}
+
+	resp := toSpanDetailsResponse(span)
+
+	if resp.Attributes == nil {
+		t.Fatal("expected Attributes to be populated")
+	}
+	attrs := *resp.Attributes
+	if v, ok := attrs["http.status_code"].(int); !ok || v != 200 {
+		t.Errorf("http.status_code: expected int(200), got %T(%v)", attrs["http.status_code"], attrs["http.status_code"])
+	}
+	if v, ok := attrs["sampling.ratio"].(float64); !ok || v != 0.95 {
+		t.Errorf("sampling.ratio: expected float64(0.95), got %T(%v)", attrs["sampling.ratio"], attrs["sampling.ratio"])
+	}
+	if v, ok := attrs["error"].(bool); !ok || !v {
+		t.Errorf("error: expected bool(true), got %T(%v)", attrs["error"], attrs["error"])
+	}
+	if _, ok := attrs["peer"].(map[string]interface{}); !ok {
+		t.Errorf("peer: expected map, got %T(%v)", attrs["peer"], attrs["peer"])
+	}
+	if resp.ResourceAttributes == nil || (*resp.ResourceAttributes)["service.name"] != "my-service" {
+		t.Errorf("resourceAttributes not preserved: %v", resp.ResourceAttributes)
+	}
+}
+
 func TestToSpansListResponse_ExcludeAttributesWhenFalse(t *testing.T) {
 	startTime := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
 	endTime := time.Date(2025, 1, 1, 12, 0, 1, 0, time.UTC)
@@ -449,11 +492,11 @@ func TestToSpanDetailsResponse_EmptyAttributes(t *testing.T) {
 
 	resp := toSpanDetailsResponse(span)
 
-	if resp.Attributes == nil || len(*resp.Attributes) != 0 {
-		t.Errorf("expected 0 attributes, got %v", resp.Attributes)
+	if resp.Attributes != nil {
+		t.Errorf("expected nil attributes, got %v", resp.Attributes)
 	}
-	if resp.ResourceAttributes == nil || len(*resp.ResourceAttributes) != 0 {
-		t.Errorf("expected 0 resource attributes, got %v", resp.ResourceAttributes)
+	if resp.ResourceAttributes != nil {
+		t.Errorf("expected nil resource attributes, got %v", resp.ResourceAttributes)
 	}
 }
 
@@ -800,18 +843,9 @@ func TestToSpanDetailsResponse_MultipleAttributes(t *testing.T) {
 		t.Fatalf("expected 2 resource attributes, got %d", len(*resp.ResourceAttributes))
 	}
 
-	// Verify non-string attribute values are converted to string representation
-	found := false
-	for _, attr := range *resp.Attributes {
-		if attr.Key != nil && *attr.Key == "http.status_code" {
-			if attr.Value == nil || *attr.Value != "200" {
-				t.Errorf("expected http.status_code value '200', got %v", attr.Value)
-			}
-			found = true
-		}
-	}
-	if !found {
-		t.Error("expected to find http.status_code attribute")
+	if v, ok := (*resp.Attributes)["http.status_code"].(int); !ok || v != 200 {
+		t.Errorf("expected http.status_code int(200), got %T(%v)",
+			(*resp.Attributes)["http.status_code"], (*resp.Attributes)["http.status_code"])
 	}
 }
 

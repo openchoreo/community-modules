@@ -434,44 +434,23 @@ func toSpanDetailsResponse(span *opensearch.Span) gen.TraceSpanDetailsResponse {
 	startTime := span.StartTime
 	endTime := span.EndTime
 
-	attrs := make([]struct {
-		Key   *string `json:"key,omitempty"`
-		Value *string `json:"value,omitempty"`
-	}, 0, len(span.Attributes))
-	for k, v := range span.Attributes {
-		key := k
-		value := fmt.Sprintf("%v", v)
-		attrs = append(attrs, struct {
-			Key   *string `json:"key,omitempty"`
-			Value *string `json:"value,omitempty"`
-		}{Key: &key, Value: &value})
+	resp := gen.TraceSpanDetailsResponse{
+		SpanId:       &span.SpanID,
+		SpanName:     &span.Name,
+		SpanKind:     &span.SpanKind,
+		StartTime:    &startTime,
+		EndTime:      &endTime,
+		DurationNs:   &dur,
+		ParentSpanId: &span.ParentSpanID,
+		Status:       ptr(gen.TraceSpanDetailsResponseStatus(span.Status)),
 	}
-
-	resAttrs := make([]struct {
-		Key   *string `json:"key,omitempty"`
-		Value *string `json:"value,omitempty"`
-	}, 0, len(span.ResourceAttributes))
-	for k, v := range span.ResourceAttributes {
-		key := k
-		value := fmt.Sprintf("%v", v)
-		resAttrs = append(resAttrs, struct {
-			Key   *string `json:"key,omitempty"`
-			Value *string `json:"value,omitempty"`
-		}{Key: &key, Value: &value})
+	if span.Attributes != nil {
+		resp.Attributes = &span.Attributes
 	}
-
-	return gen.TraceSpanDetailsResponse{
-		SpanId:             &span.SpanID,
-		SpanName:           &span.Name,
-		SpanKind:           &span.SpanKind,
-		StartTime:          &startTime,
-		EndTime:            &endTime,
-		DurationNs:         &dur,
-		ParentSpanId:       &span.ParentSpanID,
-		Status:             ptr(gen.TraceSpanDetailsResponseStatus(span.Status)),
-		Attributes:         &attrs,
-		ResourceAttributes: &resAttrs,
+	if span.ResourceAttributes != nil {
+		resp.ResourceAttributes = &span.ResourceAttributes
 	}
+	return resp
 }
 
 func ptr[T any](v T) *T {

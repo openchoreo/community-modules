@@ -1,6 +1,7 @@
 # Copyright 2026 The OpenChoreo Authors
 # SPDX-License-Identifier: Apache-2.0
 
+{{- if (index .Values "opentelemetry-collector" "enabled") }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -17,27 +18,14 @@ data:
             endpoint: 0.0.0.0:4318
 
     exporters:
-      {{- if or (eq .Values.global.installationMode "singleCluster") (eq .Values.global.installationMode "multiClusterReceiver") }}
       azuremonitor:
         connection_string: ${env:APPINSIGHTS_CONNECTION_STRING}
-      {{- end }}
-      {{- if (eq .Values.global.installationMode "multiClusterExporter") }}
-      otlp:
-        endpoint: {{ .Values.opentelemetryCollectorCustomizations.http.observabilityPlaneUrl }}
-        tls:
-          insecure: true # TODO: Enable mTLS between collectors
-        {{- with .Values.opentelemetryCollectorCustomizations.http.observabilityPlaneVirtualHost }}
-        headers:
-          Host: {{ . | quote }}
-        {{- end }}
-      {{- end }}
 
     extensions:
       health_check:
         endpoint: ${env:MY_POD_IP}:13133
 
     processors:
-      {{- if or (eq .Values.global.installationMode "singleCluster") (eq .Values.global.installationMode "multiClusterExporter") }}
       # NOTE: "k8sattributes" was renamed "k8s_attributes" upstream; the old
       # name is a working alias on every contrib version this chart supports,
       # and the only one accepted by older images. Rename once the pinned
@@ -58,7 +46,6 @@ data:
             - k8s.deployment.name
             - k8s.namespace.name
             - k8s.node.name
-      {{- end }}
       {{- if .Values.opentelemetryCollectorCustomizations.tailSampling.enabled }}
       tail_sampling:
         decision_wait: {{ .Values.opentelemetryCollectorCustomizations.tailSampling.decisionWait }}
@@ -81,19 +68,10 @@ data:
       pipelines:
         traces:
           receivers: [otlp]
-          {{- $processors := list }}
-          {{- if or (eq .Values.global.installationMode "singleCluster") (eq .Values.global.installationMode "multiClusterExporter") }}
-          {{- $processors = append $processors "k8sattributes" }}
-          {{- end }}
+          {{- $processors := list "k8sattributes" }}
           {{- if .Values.opentelemetryCollectorCustomizations.tailSampling.enabled }}
           {{- $processors = append $processors "tail_sampling" }}
           {{- end }}
-          {{- if $processors }}
           processors: [{{ join ", " $processors }}]
-          {{- end }}
-          {{- if or (eq .Values.global.installationMode "singleCluster") (eq .Values.global.installationMode "multiClusterReceiver") }}
           exporters: [azuremonitor]
-          {{- end }}
-          {{- if (eq .Values.global.installationMode "multiClusterExporter") }}
-          exporters: [otlp]
-          {{- end }}
+{{- end }}

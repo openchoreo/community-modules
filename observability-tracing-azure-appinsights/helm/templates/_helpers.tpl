@@ -14,15 +14,4 @@ Fail fast on missing required values. Called once from templates/validate.yaml.
 {{- end -}}
 {{- end -}}
 
-{{- $mode := .Values.global.installationMode -}}
-{{- if not (has $mode (list "singleCluster" "multiClusterExporter" "multiClusterReceiver")) -}}
-{{- fail "global.installationMode must be one of singleCluster, multiClusterExporter, multiClusterReceiver" -}}
-{{- end -}}
-
-{{- if eq $mode "multiClusterExporter" -}}
-{{- if not .Values.opentelemetryCollectorCustomizations.http.observabilityPlaneUrl -}}
-{{- fail "opentelemetryCollectorCustomizations.http.observabilityPlaneUrl is required in multiClusterExporter mode" -}}
-{{- end -}}
-{{- end -}}
-
 {{- end -}}

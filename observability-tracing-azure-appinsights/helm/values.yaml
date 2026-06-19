@@ -1,25 +1,11 @@
 # Copyright 2026 The OpenChoreo Authors
 # SPDX-License-Identifier: Apache-2.0
 
-global:
-  installationMode: "singleCluster" # supports "singleCluster", "multiClusterExporter", "multiClusterReceiver"
-
 # Log Analytics workspace backing the (workspace-based) Application Insights
 # resource. The customerId (GUID) is used by the adapter's query API.
 # Required when adapter.enabled.
 logAnalytics:
   workspaceId: ""
-
-# Secret holding the Application Insights connection string consumed by the
-# collector's azuremonitor exporter. Create it before installing, e.g.:
-#   kubectl create secret generic appinsights-conn \
-#     --from-literal=connection-string="InstrumentationKey=...;IngestionEndpoint=..."
-# Referenced from the opentelemetry-collector.extraEnvs below; if you rename
-# the secret, update both places.
-appInsights:
-  connectionStringSecret:
-    name: "appinsights-conn"
-    key: "connection-string"
 
 # ---------------------------------------------------------------------------
 # Adapter — the Go service that answers Observer trace queries via KQL.
@@ -75,6 +61,11 @@ opentelemetry-collector:
     create: false
     existingName: "opentelemetry-collector"
 
+  # The collector's azuremonitor exporter reads the Application Insights
+  # connection string from this secret. Create it before installing, e.g.:
+  #   kubectl create secret generic appinsights-conn \
+  #     --from-literal=connection-string="InstrumentationKey=...;IngestionEndpoint=..."
+  # If you rename the secret or key, update both fields below.
   extraEnvs:
     - name: APPINSIGHTS_CONNECTION_STRING
       valueFrom:
@@ -116,8 +107,3 @@ opentelemetryCollectorCustomizations:
       sampledCacheSize: 10000
       nonSampledCacheSize: 1000
     spansPerSecond: 10
-
-  http:
-    observabilityPlaneUrl: ""
-    observabilityPlaneVirtualHost: ""
-    hostnames: []

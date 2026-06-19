@@ -4,18 +4,12 @@ This module collects distributed traces using [OpenTelemetry collector](https://
 
 Spans are exported to a workspace-based Application Insights resource. An adapter implements the OpenChoreo Observability Tracing Adapter API and answers Observer trace queries by running KQL against the backing Log Analytics workspace.
 
-```
-app (OTel SDK) --OTLP--> OTel Collector (contrib)
-                           k8sattributes + tail_sampling
-                           azuremonitor exporter (connection string)
-                              |
-                              v
-                  Application Insights (workspace-based)
-                    AppRequests      <- SERVER spans
-                    AppDependencies  <- CLIENT/INTERNAL spans
-                              ^
-                              | KQL via azlogs + DefaultAzureCredential
-                  tracing-adapter :9100  <--- Observer (TRACING_ADAPTER_URL)
+```mermaid
+flowchart TD
+  app["App (OTel SDK)"] -->|OTLP| col["OTel Collector (contrib)<br/>k8sattributes + tail_sampling<br/>azuremonitor exporter (connection string)"]
+  col --> ai["Application Insights (workspace-based)<br/>AppRequests &larr; SERVER spans<br/>AppDependencies &larr; CLIENT/INTERNAL spans"]
+  ai -->|KQL via azlogs + DefaultAzureCredential| adapter["tracing-adapter :9100"]
+  observer["Observer"] -->|TRACING_ADAPTER_URL| adapter
 ```
 
 ## Prerequisites
@@ -46,17 +40,21 @@ app (OTel SDK) --OTLP--> OTel Collector (contrib)
 
 ## Installation
 
-### Installation modes
+### Deployment topologies
 
-This chart supports three `global.installationMode` values:
+Every OpenTelemetry Collector in this module exports directly to Application Insights through the `azuremonitor` exporter. There is no inter-collector relay: a collector running in a data-plane cluster writes spans straight to the shared Application Insights resource, the same way the X-Ray module writes directly to AWS X-Ray. Pick the topology by toggling which workloads the chart deploys.
 
-- **`singleCluster`**: Deploy the OpenTelemetry Collector and adapter into a single cluster. The collector receives OTLP, enriches spans with pod labels, and exports to Application Insights (uses when the dataplane and observability plane are in the same cluster).
-- **`multiClusterReceiver`**: Deploy the OpenTelemetry Collector as a central receiver into the observability plane cluster. It accepts forwarded OTLP from remote clusters over a Gateway API HTTPRoute and exports to Application Insights.
-- **`multiClusterExporter`**: Deploy the OpenTelemetry Collector as an exporter into each dataplane cluster. It receives OTLP from in-cluster workloads, enriches locally, and forwards OTLP to the receiver in the observability plane cluster.
+| Topology | Install location | Deploys | Required Helm values |
+| --- | --- | --- | --- |
+| Single cluster | The cluster where the observability plane and workloads run together. | Collector and adapter. | Defaults. |
+| Observability plane cluster | The cluster where the observability plane is installed. | Adapter only. | `opentelemetry-collector.enabled=false` |
+| Data-plane cluster | Each cluster that runs OpenChoreo workloads. | Collector only. | `adapter.enabled=false` |
 
-#### Single-cluster topology
+Application Insights is the shared managed backend. Each collector needs the `appinsights-conn` secret (connection string) in its own cluster, since it writes to Application Insights directly. The observability-plane adapter reads back from the Log Analytics workspace. Remote workload clusters do not need network connectivity to the observability plane.
 
-Install the chart into the observability plane cluster/namespace:
+#### Single cluster
+
+Install the chart into the observability plane cluster/namespace. This deploys both the collector and the adapter:
 
 ```bash
 helm upgrade --install observability-tracing-azure-appinsights \
@@ -68,18 +66,17 @@ helm upgrade --install observability-tracing-azure-appinsights \
   --set adapter.serviceAccount.annotations."azure\.workload\.identity/client-id"="<uami-client-id>"
 ```
 
-`logAnalytics.workspaceId` is the workspace `customerId` (a GUID), not the ARM resource ID. The collector reads the connection string from the `appinsights-conn` secret created in the prerequisites.
+`logAnalytics.workspaceId` is the workspace `customerId` (a GUID), not the ARM resource ID.
 
-#### Multi-cluster topology
+The collector gets the connection string from the `appinsights-conn` secret created in the prerequisites. The chart wires it through `opentelemetry-collector.extraEnvs`: the secret's `connection-string` key is mapped via `valueFrom.secretKeyRef` into the `APPINSIGHTS_CONNECTION_STRING` environment variable, which the `azuremonitor` exporter reads. To use a different secret name or key, update both fields under `opentelemetry-collector.extraEnvs` in `values.yaml`.
 
-In multi-cluster mode you typically install:
+#### Multi-cluster
 
-- **Receiver (observability plane cluster)**: `global.installationMode=multiClusterReceiver`
-- **Exporter (each dataplane cluster)**: `global.installationMode=multiClusterExporter`
+Install the chart once per cluster, deploying only the workload that cluster needs.
 
-##### 1) Install the receiver (observability plane cluster)
+##### 1) Observability plane cluster (adapter only)
 
-Install the chart in the observability plane cluster/namespace (the cluster that exports to Application Insights and serves Observer queries):
+This cluster runs the adapter that serves Observer queries. The collector is disabled here:
 
 ```bash
 helm upgrade --install observability-tracing-azure-appinsights \
@@ -87,18 +84,14 @@ helm upgrade --install observability-tracing-azure-appinsights \
   --create-namespace \
   --namespace openchoreo-observability-plane \
   --version 0.1.0 \
-  --set global.installationMode="multiClusterReceiver" \
+  --set opentelemetry-collector.enabled=false \
   --set logAnalytics.workspaceId="<workspace customerId GUID>" \
   --set adapter.serviceAccount.annotations."azure\.workload\.identity/client-id"="<uami-client-id>"
 ```
 
-##### 2) Install an exporter (each dataplane cluster)
+##### 2) Data-plane cluster (collector only)
 
-Install the chart in each dataplane cluster. The exporter does **not** export to Application Insights or run the adapter; it only forwards OTLP to the receiver.
-
-Set `opentelemetryCollectorCustomizations.http.observabilityPlaneUrl` to the receiver endpoint (for example: `http://opentelemetry.<gateway-domain>:<port>`).
-If the observability plane gateway is exposed over a TLS/HTTPS listener, use the `https://` scheme instead (for example: `https://opentelemetry.<gateway-domain>:<port>`).
-Also set `opentelemetryCollectorCustomizations.http.observabilityPlaneVirtualHost` if `observabilityPlaneUrl` differs from the gateway hostname.
+Install the chart in each data-plane cluster. The collector receives OTLP from in-cluster workloads, enriches spans with pod labels, and exports directly to Application Insights. The adapter is disabled here. Create the `appinsights-conn` secret in this cluster first (see the prerequisites):
 
 ```bash
 helm upgrade --install observability-tracing-azure-appinsights \
@@ -106,11 +99,7 @@ helm upgrade --install observability-tracing-azure-appinsights \
   --create-namespace \
   --namespace openchoreo-observability-plane \
   --version 0.1.0 \
-  --set global.installationMode="multiClusterExporter" \
-  --set adapter.enabled=false \
-  --set-json opentelemetry-collector.extraEnvs="[]" \
-  --set opentelemetryCollectorCustomizations.http.observabilityPlaneUrl="http://opentelemetry.<gateway-domain>:<port>" \
-  --set opentelemetryCollectorCustomizations.http.observabilityPlaneVirtualHost="opentelemetry.<gateway-domain>"
+  --set adapter.enabled=false
 ```
 
 ## Adapter configuration

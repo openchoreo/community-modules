@@ -242,3 +242,4 @@ Log in with the Thunder admin credentials (`admin` / `admin` by default on a sta
 helm uninstall wso2-ae -n ${AE_NS}
 kubectl delete namespace ${AE_NS}
 ```
+

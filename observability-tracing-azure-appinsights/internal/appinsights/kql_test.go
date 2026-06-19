@@ -43,9 +43,9 @@ func TestBuildTracesListKQL_NamespaceOnly(t *testing.T) {
 
 func TestBuildTracesListKQL_AllScopeFilters(t *testing.T) {
 	p := baseParams()
-	p.ComponentUID = "comp-1"
-	p.ProjectUID = "proj-1"
-	p.EnvironmentUID = "env-1"
+	p.ComponentUID = "9b2e5f1a-3c4d-4e6f-8a1b-2c3d4e5f6a7b"
+	p.ProjectUID = "1f8c7d6e-5b4a-4938-2716-0a9b8c7d6e5f"
+	p.EnvironmentUID = "a4d3c2b1-0f9e-4d8c-7b6a-5f4e3d2c1b0a"
 	p.SortOrder = "asc"
 	p.Limit = 100
 
@@ -53,9 +53,9 @@ func TestBuildTracesListKQL_AllScopeFilters(t *testing.T) {
 
 	for _, want := range []string{
 		`| where tostring(Properties["openchoreo.dev/namespace"]) == "spike-ns"`,
-		`| where tostring(Properties["openchoreo.dev/component-uid"]) == "comp-1"`,
-		`| where tostring(Properties["openchoreo.dev/project-uid"]) == "proj-1"`,
-		`| where tostring(Properties["openchoreo.dev/environment-uid"]) == "env-1"`,
+		`| where tostring(Properties["openchoreo.dev/component-uid"]) == "9b2e5f1a-3c4d-4e6f-8a1b-2c3d4e5f6a7b"`,
+		`| where tostring(Properties["openchoreo.dev/project-uid"]) == "1f8c7d6e-5b4a-4938-2716-0a9b8c7d6e5f"`,
+		`| where tostring(Properties["openchoreo.dev/environment-uid"]) == "a4d3c2b1-0f9e-4d8c-7b6a-5f4e3d2c1b0a"`,
 		`| order by StartTime asc`,
 		`| take 100`,
 	} {

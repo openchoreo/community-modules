@@ -27,8 +27,7 @@ func TestBuildTracesListKQL_NamespaceOnly(t *testing.T) {
 		`| extend IsRoot = (ParentId == OperationId or isempty(ParentId))`,
 		`| where tostring(Properties["openchoreo.dev/namespace"]) == "spike-ns"`,
 		`by TraceId = OperationId`,
-		`| order by StartTime desc`,
-		`| take 20`,
+		`| top 20 by StartTime desc`,
 	} {
 		if !strings.Contains(kql, want) {
 			t.Errorf("missing %q in:\n%s", want, kql)
@@ -56,8 +55,7 @@ func TestBuildTracesListKQL_AllScopeFilters(t *testing.T) {
 		`| where tostring(Properties["openchoreo.dev/component-uid"]) == "9b2e5f1a-3c4d-4e6f-8a1b-2c3d4e5f6a7b"`,
 		`| where tostring(Properties["openchoreo.dev/project-uid"]) == "1f8c7d6e-5b4a-4938-2716-0a9b8c7d6e5f"`,
 		`| where tostring(Properties["openchoreo.dev/environment-uid"]) == "a4d3c2b1-0f9e-4d8c-7b6a-5f4e3d2c1b0a"`,
-		`| order by StartTime asc`,
-		`| take 100`,
+		`| top 100 by StartTime asc`,
 	} {
 		if !strings.Contains(kql, want) {
 			t.Errorf("missing %q in:\n%s", want, kql)
@@ -85,8 +83,7 @@ func TestBuildSpansKQL(t *testing.T) {
 		`| where OperationId == "4bf92f3577b34da6a3ce929d0e0e4736"`,
 		`| where tostring(Properties["openchoreo.dev/namespace"]) == "spike-ns"`,
 		`ParentSpanId = iff(IsRoot, "", ParentId)`,
-		`| order by TimeGenerated asc`,
-		`| take 1000`,
+		`| top 1000 by TimeGenerated asc`,
 	} {
 		if !strings.Contains(kql, want) {
 			t.Errorf("missing %q in:\n%s", want, kql)

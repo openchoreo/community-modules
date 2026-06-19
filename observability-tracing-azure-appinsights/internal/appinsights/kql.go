@@ -55,9 +55,10 @@ func BuildTracesListKQL(p TracesParams) string {
     RootSpanName = iff(isempty(RootSpanName), EarliestSpanName, RootSpanName),
     RootSpanKind = iff(isempty(RootSpanKind), EarliestSpanKind, RootSpanKind)
 | project TraceId, SpanCount, ErrorCount, RootSpanId, RootSpanName, RootSpanKind, StartTime, EndTime`)
-	sb.WriteString("\n| order by StartTime ")
-	sb.WriteString(sortOrderOrDefault(p.SortOrder))
-	fmt.Fprintf(&sb, "\n| take %d", p.Limit)
+	// `top N by` is the deterministic top-N-in-order operator. A separate
+	// `order by | take N` would rely on the planner fusing the two steps;
+	// `top` states the intent directly.
+	fmt.Fprintf(&sb, "\n| top %d by StartTime %s", p.Limit, sortOrderOrDefault(p.SortOrder))
 	return sb.String()
 }
 
@@ -69,8 +70,7 @@ func BuildSpansKQL(p TracesParams) string {
 	sb.WriteString(kqlString(p.TraceID))
 	writeScopeFilters(&sb, p)
 	sb.WriteString(spanProjection(p.IncludeAttributes))
-	sb.WriteString("\n| order by TimeGenerated asc")
-	fmt.Fprintf(&sb, "\n| take %d", p.Limit)
+	fmt.Fprintf(&sb, "\n| top %d by TimeGenerated asc", p.Limit)
 	return sb.String()
 }
 

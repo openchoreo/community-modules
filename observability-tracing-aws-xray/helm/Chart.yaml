@@ -19,6 +19,6 @@ maintainers:
 home: https://github.com/openchoreo/community-modules
 dependencies:
   - name: opentelemetry-collector
-    version: "0.153.0"
+    version: 0.158.2
     repository: https://open-telemetry.github.io/opentelemetry-helm-charts
     condition: opentelemetry-collector.enabled

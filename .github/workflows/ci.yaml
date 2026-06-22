@@ -181,7 +181,7 @@ jobs:
               if [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ]; then
                 OLD_VERSION=$(git show "${BEFORE_SHA}:${VERSION_FILE}" 2>/dev/null | tr -d '[:space:]' || echo "")
               fi
-              if [ -n "$RELEASE_VERSION" ] && [ -n "$OLD_VERSION" ] && [ "$RELEASE_VERSION" != "$OLD_VERSION" ]; then
+              if [ -n "$RELEASE_VERSION" ] && [ "$RELEASE_VERSION" != "$OLD_VERSION" ]; then
                 VERSION_BUMPED=true
               fi
             fi

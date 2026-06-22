@@ -463,3 +463,51 @@ func TestSanitizeWildcardValue(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildTracesAggregationQuery_TraceCountFiltersRootSpans(t *testing.T) {
+	params := TracesRequestParams{
+		StartTime: "2025-06-01T00:00:00Z",
+		EndTime:   "2025-06-02T00:00:00Z",
+		Limit:     20,
+		SortOrder: "desc",
+	}
+
+	query := BuildTracesAggregationQuery(params)
+	data, _ := json.Marshal(query)
+
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("failed to unmarshal query: %v", err)
+	}
+
+	aggs := parsed["aggs"].(map[string]interface{})
+	traceCount, ok := aggs["trace_count"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected trace_count aggregation")
+	}
+
+	// trace_count must filter on root spans (parentSpanId == "").
+	filter, ok := traceCount["filter"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected trace_count to be a filter aggregation")
+	}
+	term, ok := filter["term"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected term filter in trace_count")
+	}
+	if v, ok := term["parentSpanId"]; !ok || v != "" {
+		t.Errorf("expected trace_count filter on parentSpanId == \"\", got %v", term["parentSpanId"])
+	}
+
+	subAggs, ok := traceCount["aggs"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected nested aggs under trace_count")
+	}
+	distinct, ok := subAggs["distinct_traces"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected distinct_traces sub-aggregation")
+	}
+	if _, ok := distinct["cardinality"]; !ok {
+		t.Error("expected distinct_traces to be a cardinality aggregation")
+	}
+}

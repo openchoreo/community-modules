@@ -28,7 +28,9 @@ type SearchResponse struct {
 // TracesAggregationResult represents the parsed aggregation response for traces queries.
 type TracesAggregationResult struct {
 	TraceCount struct {
-		Value int `json:"value"`
+		DistinctTraces struct {
+			Value int `json:"value"`
+		} `json:"distinct_traces"`
 	} `json:"trace_count"`
 	Traces struct {
 		Buckets []TraceBucket `json:"buckets"`

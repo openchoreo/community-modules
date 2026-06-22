@@ -612,12 +612,15 @@ func TestBuildTraceFromBucket_NoRootSpan(t *testing.T) {
 
 	trace := buildTraceFromBucket(bucket)
 
-	// Should fall back to earliest span when no root span
-	if trace.RootSpanID != "span-earliest" {
-		t.Errorf("expected rootSpanID to fall back to earliest span, got %q", trace.RootSpanID)
+	// No root in window: must not fabricate a root from the earliest span.
+	if trace.RootSpanID != "" {
+		t.Errorf("expected empty rootSpanID with no root span, got %q", trace.RootSpanID)
 	}
-	if trace.TraceName != "earliest-op" {
-		t.Errorf("expected traceName to fall back to earliest span name, got %q", trace.TraceName)
+	if trace.RootSpanName != "" {
+		t.Errorf("expected empty rootSpanName with no root span, got %q", trace.RootSpanName)
+	}
+	if trace.TraceName != "" {
+		t.Errorf("expected empty traceName with no root span, got %q", trace.TraceName)
 	}
 	if trace.HasErrors {
 		t.Error("expected hasErrors false")
@@ -626,7 +629,7 @@ func TestBuildTraceFromBucket_NoRootSpan(t *testing.T) {
 
 func TestParseTracesAggregation(t *testing.T) {
 	raw := json.RawMessage(`{
-		"trace_count": {"value": 42},
+		"trace_count": {"doc_count": 50, "distinct_traces": {"value": 42}},
 		"traces": {
 			"buckets": [
 				{
@@ -645,8 +648,8 @@ func TestParseTracesAggregation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.TraceCount.Value != 42 {
-		t.Errorf("expected trace count 42, got %d", result.TraceCount.Value)
+	if result.TraceCount.DistinctTraces.Value != 42 {
+		t.Errorf("expected trace count 42, got %d", result.TraceCount.DistinctTraces.Value)
 	}
 	if len(result.Traces.Buckets) != 1 {
 		t.Errorf("expected 1 bucket, got %d", len(result.Traces.Buckets))
@@ -661,8 +664,8 @@ func TestParseTracesAggregation_Empty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.TraceCount.Value != 0 {
-		t.Errorf("expected trace count 0, got %d", result.TraceCount.Value)
+	if result.TraceCount.DistinctTraces.Value != 0 {
+		t.Errorf("expected trace count 0, got %d", result.TraceCount.DistinctTraces.Value)
 	}
 }
 
@@ -870,7 +873,7 @@ func TestToTracesRequestParams_ZeroLimit(t *testing.T) {
 
 func TestParseTracesAggregation_MultipleBuckets(t *testing.T) {
 	raw := json.RawMessage(`{
-		"trace_count": {"value": 3},
+		"trace_count": {"doc_count": 3, "distinct_traces": {"value": 3}},
 		"traces": {
 			"buckets": [
 				{
@@ -905,8 +908,8 @@ func TestParseTracesAggregation_MultipleBuckets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.TraceCount.Value != 3 {
-		t.Errorf("expected trace count 3, got %d", result.TraceCount.Value)
+	if result.TraceCount.DistinctTraces.Value != 3 {
+		t.Errorf("expected trace count 3, got %d", result.TraceCount.DistinctTraces.Value)
 	}
 	if len(result.Traces.Buckets) != 3 {
 		t.Fatalf("expected 3 buckets, got %d", len(result.Traces.Buckets))
@@ -927,5 +930,128 @@ func TestPtr(t *testing.T) {
 	s := ptr("hello")
 	if s == nil || *s != "hello" {
 		t.Errorf("expected pointer to 'hello', got %v", s)
+	}
+}
+
+func hits(source map[string]interface{}) struct {
+	Hits []opensearch.Hit `json:"hits"`
+} {
+	return struct {
+		Hits []opensearch.Hit `json:"hits"`
+	}{Hits: []opensearch.Hit{{Source: source}}}
+}
+
+// makeBucket builds a TraceBucket for gating tests. A non-empty rootSpanID puts a
+// root span in the window (RootSpan.DocCount = 1); empty means none.
+func makeBucket(key, rootSpanID, rootName string, docCount int) opensearch.TraceBucket {
+	bucket := opensearch.TraceBucket{
+		Key:      key,
+		DocCount: docCount,
+		EarliestSpan: opensearch.AggTopHitsValue{Hits: hits(map[string]interface{}{
+			"spanId":    "earliest-" + key,
+			"name":      "earliest-op",
+			"kind":      "CLIENT",
+			"startTime": "2025-06-01T12:00:00.000000000Z",
+		})},
+		LatestSpan: opensearch.AggTopHitsValue{Hits: hits(map[string]interface{}{
+			"endTime": "2025-06-01T12:00:05.000000000Z",
+		})},
+	}
+	if rootSpanID != "" {
+		bucket.RootSpan = opensearch.AggFilteredTopHits{
+			DocCount: 1,
+			Hit: opensearch.AggTopHitsValue{Hits: hits(map[string]interface{}{
+				"spanId": rootSpanID,
+				"name":   rootName,
+				"kind":   "SERVER",
+			})},
+		}
+	}
+	return bucket
+}
+
+func TestTraceHasRootSpan(t *testing.T) {
+	withRoot := opensearch.TraceBucket{RootSpan: opensearch.AggFilteredTopHits{DocCount: 1}}
+	if !traceHasRootSpan(withRoot) {
+		t.Error("expected traceHasRootSpan true when RootSpan.DocCount > 0")
+	}
+	noRoot := opensearch.TraceBucket{RootSpan: opensearch.AggFilteredTopHits{DocCount: 0}}
+	if traceHasRootSpan(noRoot) {
+		t.Error("expected traceHasRootSpan false when RootSpan.DocCount == 0")
+	}
+}
+
+func TestBucketsToTraces_DropsTracesWithoutRootInWindow(t *testing.T) {
+	buckets := []opensearch.TraceBucket{
+		makeBucket("trace-with-root", "span-root", "GET /api", 5),
+		makeBucket("trace-without-root", "", "", 3),
+	}
+
+	traces := bucketsToTraces(buckets)
+
+	if len(traces) != 1 {
+		t.Fatalf("expected 1 trace (root-less trace dropped), got %d", len(traces))
+	}
+	if traces[0].TraceID != "trace-with-root" {
+		t.Errorf("expected kept trace 'trace-with-root', got %q", traces[0].TraceID)
+	}
+	if traces[0].RootSpanID != "span-root" {
+		t.Errorf("expected rootSpanID 'span-root', got %q", traces[0].RootSpanID)
+	}
+	if traces[0].RootSpanName != "GET /api" {
+		t.Errorf("expected rootSpanName 'GET /api', got %q", traces[0].RootSpanName)
+	}
+}
+
+func TestBucketsToTraces_AllHaveRoot(t *testing.T) {
+	buckets := []opensearch.TraceBucket{
+		makeBucket("t1", "r1", "op1", 2),
+		makeBucket("t2", "r2", "op2", 4),
+	}
+
+	traces := bucketsToTraces(buckets)
+
+	if len(traces) != 2 {
+		t.Fatalf("expected 2 traces, got %d", len(traces))
+	}
+}
+
+func TestBucketsToTraces_NoneHaveRoot(t *testing.T) {
+	buckets := []opensearch.TraceBucket{
+		makeBucket("t1", "", "", 1),
+		makeBucket("t2", "", "", 7),
+	}
+
+	traces := bucketsToTraces(buckets)
+
+	if len(traces) != 0 {
+		t.Fatalf("expected 0 traces when no root spans in window, got %d", len(traces))
+	}
+}
+
+func TestBucketsToTraces_Empty(t *testing.T) {
+	traces := bucketsToTraces(nil)
+
+	if traces == nil {
+		t.Error("expected non-nil empty slice")
+	}
+	if len(traces) != 0 {
+		t.Fatalf("expected 0 traces for nil buckets, got %d", len(traces))
+	}
+}
+
+// TestBucketsToTraces_ClippedWindowDropsTrace: a clipped window with inner spans but
+// no root span (root_span.doc_count == 0) must drop the trace, not report an inner
+// span as root.
+func TestBucketsToTraces_ClippedWindowDropsTrace(t *testing.T) {
+	clipped := makeBucket("2027137a39b53e65e262efeb482b5fb7", "", "", 1)
+	clipped.EarliestSpan.Hits.Hits[0].Source["spanId"] = "dce652f60f5664d3"
+	clipped.EarliestSpan.Hits.Hits[0].Source["name"] = "execute_task ChatPromptTemplate"
+
+	traces := bucketsToTraces([]opensearch.TraceBucket{clipped})
+
+	if len(traces) != 0 {
+		t.Fatalf("expected clipped trace (no root in window) to be dropped, got %d trace(s) with root %q",
+			len(traces), traces[0].RootSpanName)
 	}
 }

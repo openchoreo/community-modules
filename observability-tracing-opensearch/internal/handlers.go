@@ -159,13 +159,9 @@ func (h *TracingHandler) queryTracesWithAggregation(ctx context.Context, params 
 		}, nil
 	}
 
-	traces := make([]traceEntry, 0, len(aggResult.Traces.Buckets))
-	for _, bucket := range aggResult.Traces.Buckets {
-		trace := buildTraceFromBucket(bucket)
-		traces = append(traces, trace)
-	}
+	traces := bucketsToTraces(aggResult.Traces.Buckets)
 
-	totalCount := aggResult.TraceCount.Value
+	totalCount := aggResult.TraceCount.DistinctTraces.Value
 	if totalCount > maxLimit {
 		totalCount = maxLimit
 	}
@@ -199,6 +195,24 @@ func parseTracesAggregation(raw json.RawMessage) (*opensearch.TracesAggregationR
 	return &result, nil
 }
 
+// bucketsToTraces converts buckets to trace entries, dropping any trace whose root
+// span is not within the queried window.
+func bucketsToTraces(buckets []opensearch.TraceBucket) []traceEntry {
+	traces := make([]traceEntry, 0, len(buckets))
+	for _, bucket := range buckets {
+		if !traceHasRootSpan(bucket) {
+			continue
+		}
+		traces = append(traces, buildTraceFromBucket(bucket))
+	}
+	return traces
+}
+
+// traceHasRootSpan reports whether the trace's root span fell within the queried window.
+func traceHasRootSpan(bucket opensearch.TraceBucket) bool {
+	return bucket.RootSpan.DocCount > 0
+}
+
 // buildTraceFromBucket converts an aggregation bucket into a traceEntry.
 func buildTraceFromBucket(bucket opensearch.TraceBucket) traceEntry {
 	trace := traceEntry{
@@ -218,24 +232,9 @@ func buildTraceFromBucket(bucket opensearch.TraceBucket) traceEntry {
 		}
 	}
 
-	// Extract root span info from the root_span filter aggregation (parentSpanId == "")
-	// Falls back to the earliest span if no root span is found
+	// Root span info from the root_span filter aggregation (parentSpanId == "").
 	if len(bucket.RootSpan.Hit.Hits.Hits) > 0 {
 		src := bucket.RootSpan.Hit.Hits.Hits[0].Source
-		if src != nil {
-			if spanID, ok := src["spanId"].(string); ok {
-				trace.RootSpanID = spanID
-			}
-			if name, ok := src["name"].(string); ok {
-				trace.RootSpanName = name
-				trace.TraceName = name
-			}
-			if spanKind, ok := src["kind"].(string); ok {
-				trace.RootSpanKind = spanKind
-			}
-		}
-	} else if len(bucket.EarliestSpan.Hits.Hits) > 0 {
-		src := bucket.EarliestSpan.Hits.Hits[0].Source
 		if src != nil {
 			if spanID, ok := src["spanId"].(string); ok {
 				trace.RootSpanID = spanID

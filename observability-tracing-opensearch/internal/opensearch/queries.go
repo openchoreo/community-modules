@@ -181,9 +181,19 @@ func BuildTracesAggregationQuery(params TracesRequestParams) map[string]interfac
 			},
 		},
 		"aggs": map[string]interface{}{
+			// Count only traces with an in-window root span, matching what's returned.
 			"trace_count": map[string]interface{}{
-				"cardinality": map[string]interface{}{
-					"field": "traceId",
+				"filter": map[string]interface{}{
+					"term": map[string]interface{}{
+						"parentSpanId": "",
+					},
+				},
+				"aggs": map[string]interface{}{
+					"distinct_traces": map[string]interface{}{
+						"cardinality": map[string]interface{}{
+							"field": "traceId",
+						},
+					},
 				},
 			},
 			"traces": map[string]interface{}{

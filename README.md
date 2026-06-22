@@ -24,6 +24,7 @@ To cut a release, edit `<module>/VERSION` to the new semver value (e.g. `0.2.1`)
 
 - `ghcr.io/openchoreo/<image>:<VERSION>` for every image declared in the module's `module.yaml`.
 - `<chart>:<VERSION>` with `appVersion=<VERSION>`.
+- A git tag `<module>-<VERSION>` on the release commit.
 
 Alongside any release, every merge to `main` that touches a file under `<module>/` also republishes development tags so consumers can pull the tip of `main`:
 

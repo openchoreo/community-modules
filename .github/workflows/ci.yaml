@@ -98,6 +98,9 @@ jobs:
   build-and-release:
     needs: unit-test
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -265,6 +268,18 @@ jobs:
               fi
               if [ "$VERSION_BUMPED" = "true" ]; then
                 package_and_push "${RELEASE_VERSION}" "${RELEASE_VERSION}"
+              fi
+            fi
+
+            # ── Create and push git tag for the release ──
+            if [ "$VERSION_BUMPED" = "true" ]; then
+              TAG="${module}-${RELEASE_VERSION}"
+              if git rev-parse "refs/tags/${TAG}" >/dev/null 2>&1; then
+                echo "Tag ${TAG} already exists; skipping"
+              else
+                echo "Creating and pushing tag ${TAG}"
+                git tag "${TAG}" HEAD
+                git push origin "refs/tags/${TAG}"
               fi
             fi
 

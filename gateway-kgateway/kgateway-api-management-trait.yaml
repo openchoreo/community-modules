@@ -145,7 +145,7 @@ spec:
     # >>> UPDATE: Replace hostname with your identity provider's JWKS host.
     - includeWhen: ${parameters.jwt.enabled}
       template:
-        apiVersion: gateway.networking.k8s.io/v1alpha3
+        apiVersion: gateway.networking.k8s.io/v1
         kind: BackendTLSPolicy
         metadata:
           name: ${metadata.name}-${trait.instanceName}-jwks-tls

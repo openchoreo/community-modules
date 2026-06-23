@@ -5,6 +5,7 @@ This module adds API management capabilities to OpenChoreo components using kgat
 ## Table of Contents
 
 - [Overview](#overview)
+- [Compatibility](#compatibility)
 - [Installation](#installation)
 - [Trait Parameters](#trait-parameters)
 - [Example Usage](#example-usage)
@@ -28,6 +29,21 @@ You only need this module if you want to add API management features (JWT auth, 
 - **JWT provider as infrastructure**: Identity provider configuration (issuer, JWKS URL) is set once in the trait YAML. Component authors only toggle `jwt.enabled: true/false`.
 - **Per-component isolation**: Each component gets its own Backend, GatewayExtension, BackendTLSPolicy, and TrafficPolicy resources. Deleting one component does not affect others.
 - **Per-route policies**: Each TrafficPolicy targets a specific HTTPRoute identified by the `endpointName` parameter.
+
+---
+
+## Compatibility
+
+kgateway is built on the [Kubernetes Gateway API](https://gateway-api.sigs.k8s.io/) and is installed as part of the OpenChoreo data plane. The table below lists the kgateway and Gateway API versions that each OpenChoreo release installs by default. Use these versions when installing the gateway manually or verifying an existing cluster.
+
+| OpenChoreo version | Kubernetes Gateway API | kgateway |
+| ------------------ | ---------------------- | -------- |
+| v0.x.x             | v1.4.1                 | v2.2.1   |
+| v1.0.x             | v1.4.1                 | v2.2.1   |
+| v1.1.x             | v1.4.1                 | v2.2.1   |
+| v1.2.x             | v1.5.1                 | v2.3.1   |
+
+> **Note:** kgateway requires the Gateway API CRDs to be installed in the cluster before it is deployed. OpenChoreo install scripts handle this automatically. The Gateway API version above is the minimum that ships with each OpenChoreo release; newer compatible versions generally work but are not officially verified.
 
 ---
 
@@ -79,14 +95,14 @@ If you plan to use JWT authentication, update the following fields in `kgateway-
 
 **Fields to update:**
 
-| Field (in trait template)                    | Description                              | Example                                           |
-| -------------------------------------------- | ---------------------------------------- | ------------------------------------------------- |
-| Backend `spec.static.hosts[0].host`          | JWKS endpoint hostname                   | `api.asgardeo.io`                                 |
-| Backend `spec.static.hosts[0].port`          | JWKS endpoint port                       | `443`                                             |
-| BackendTLSPolicy `validation.hostname`       | SNI hostname for TLS (must match Backend host) | `api.asgardeo.io`                            |
-| GatewayExtension `issuer`                    | OIDC issuer URL                          | `https://api.asgardeo.io/t/lahirude/oauth2/token`   |
-| GatewayExtension `jwks.remote.url`           | Full JWKS endpoint URL                   | `https://api.asgardeo.io/t/lahirude/oauth2/jwks`    |
-| GatewayExtension `cacheDuration`             | How long to cache JWKS keys              | `5m`                                              |
+| Field (in trait template)              | Description                                    | Example                                           |
+| -------------------------------------- | ---------------------------------------------- | ------------------------------------------------- |
+| Backend `spec.static.hosts[0].host`    | JWKS endpoint hostname                         | `api.asgardeo.io`                                 |
+| Backend `spec.static.hosts[0].port`    | JWKS endpoint port                             | `443`                                             |
+| BackendTLSPolicy `validation.hostname` | SNI hostname for TLS (must match Backend host) | `api.asgardeo.io`                                 |
+| GatewayExtension `issuer`              | OIDC issuer URL                                | `https://api.asgardeo.io/t/lahirude/oauth2/token` |
+| GatewayExtension `jwks.remote.url`     | Full JWKS endpoint URL                         | `https://api.asgardeo.io/t/lahirude/oauth2/jwks`  |
+| GatewayExtension `cacheDuration`       | How long to cache JWKS keys                    | `5m`                                              |
 
 > **Note:** You can configure multiple providers in the `providers` array if you need to support multiple identity providers. If you only need rate limiting or response headers (not JWT), you can skip this step.
 
@@ -124,16 +140,16 @@ All TrafficPolicies should show `ACCEPTED: True` and `ATTACHED: True`.
 
 ## Trait Parameters
 
-| Parameter                     | Type    | Default | Required | Description                                                                       |
-| ----------------------------- | ------- | ------- | -------- | --------------------------------------------------------------------------------- |
-| `endpointName`                | string  | —       | **Yes**  | Workload endpoint name to target (must match a key in the Workload's `endpoints`) |
-| `jwt.enabled`                 | boolean | `false` | No       | Enable JWT authentication                                                         |
-| `rateLimiting.enabled`        | boolean | `true`  | No       | Enable local rate limiting                                                        |
-| `rateLimiting.maxTokens`      | integer | `60`    | No       | Maximum number of tokens in the bucket                                            |
-| `rateLimiting.tokensPerFill`  | integer | `60`    | No       | Number of tokens added per refill                                                 |
-| `rateLimiting.fillInterval`   | string  | `"60s"` | No       | Interval between refills (e.g., `"60s"`, `"1m"`)                                  |
-| `addResponseHeaders.enabled`  | boolean | `false` | No       | Enable response header modification                                               |
-| `addResponseHeaders.headers`  | array   | `[]`    | No       | Headers to add to responses (each with `name` and `value`)                        |
+| Parameter                    | Type    | Default | Required | Description                                                                       |
+| ---------------------------- | ------- | ------- | -------- | --------------------------------------------------------------------------------- |
+| `endpointName`               | string  | —       | **Yes**  | Workload endpoint name to target (must match a key in the Workload's `endpoints`) |
+| `jwt.enabled`                | boolean | `false` | No       | Enable JWT authentication                                                         |
+| `rateLimiting.enabled`       | boolean | `true`  | No       | Enable local rate limiting                                                        |
+| `rateLimiting.maxTokens`     | integer | `60`    | No       | Maximum number of tokens in the bucket                                            |
+| `rateLimiting.tokensPerFill` | integer | `60`    | No       | Number of tokens added per refill                                                 |
+| `rateLimiting.fillInterval`  | string  | `"60s"` | No       | Interval between refills (e.g., `"60s"`, `"1m"`)                                  |
+| `addResponseHeaders.enabled` | boolean | `false` | No       | Enable response header modification                                               |
+| `addResponseHeaders.headers` | array   | `[]`    | No       | Headers to add to responses (each with `name` and `value`)                        |
 
 ---
 

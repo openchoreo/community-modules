@@ -5,6 +5,7 @@ This document provides comprehensive documentation for integrating Envoy Gateway
 ## Table of Contents
 
 - [Overview](#overview)
+- [Compatibility](#compatibility)
 - [High-Level Architecture](#high-level-architecture)
 - [Installation](#installation)
 - [Configuration](#configuration)
@@ -25,6 +26,21 @@ The Envoy Gateway module replaces the default kgateway with [Envoy Gateway](http
 - **Helm-driven configuration**: The `gatewayClassName` in the data plane Helm chart determines which gateway controller processes the `Gateway` CR and its routes.
 - **No control plane changes required**: Switching gateways only requires data plane reconfiguration. The rendering pipeline, endpoint resolution, and release controllers work unchanged.
 - **Policy attachment model**: Unlike Kong's annotation-driven plugin system, Envoy Gateway uses `BackendTrafficPolicy` and `SecurityPolicy` resources that reference HTTPRoutes via `targetRefs`. No annotations are required on HTTPRoutes.
+
+---
+
+## Compatibility
+
+Envoy Gateway is a pluggable replacement for the default kgateway in the OpenChoreo data plane. It is built on the [Kubernetes Gateway API](https://gateway-api.sigs.k8s.io/), and **each Envoy Gateway release compiles in support for a specific Gateway API version**. Because OpenChoreo installs its own Gateway API CRDs, install the Envoy Gateway version whose bundled Gateway API matches the version shipped by your OpenChoreo release.
+
+| OpenChoreo version | Kubernetes Gateway API | Envoy Gateway |
+| ------------------ | ---------------------- | ------------- |
+| v0.x.x             | v1.4.1                 | v1.7.x        |
+| v1.0.x             | v1.4.1                 | v1.7.x        |
+| v1.1.x             | v1.4.1                 | v1.7.x        |
+| v1.2.x             | v1.5.1                 | v1.8.x        |
+
+> **Note:** The Gateway API version is the one OpenChoreo installs with its data plane; the Envoy Gateway version is the one this module installs (see [Installation](#installation)). This mapping follows the official [Envoy Gateway compatibility matrix](https://gateway.envoyproxy.io/news/releases/matrix/) — e.g. Envoy Gateway v1.7 compiles in Gateway API v1.4.1, and v1.8 compiles in v1.5.1. Installing a mismatched Envoy Gateway version risks CRD schema conflicts with the Gateway API CRDs already present in the cluster. The trait's `BackendTLSPolicy` uses `gateway.networking.k8s.io/v1`, which is served on Gateway API v1.4.0+ (all supported OpenChoreo releases).
 
 ---
 
@@ -196,10 +212,12 @@ kubectl delete svc -l app.kubernetes.io/name=kgateway -n openchoreo-data-plane
 
 ### Step 2: Install Envoy Gateway
 
+> **Choose the version for your OpenChoreo release.** See the [Compatibility](#compatibility) matrix. The commands below use `v1.8.1`, which matches OpenChoreo v1.2.x (Gateway API v1.5.1). For OpenChoreo v0.x–v1.1.x (Gateway API v1.4.1), use the latest `v1.7.x` instead.
+
 ```bash
 # Install Envoy Gateway using Helm
 helm install envoy-gateway oci://docker.io/envoyproxy/gateway-helm \
-  --version v1.7.0 \
+  --version v1.8.1 \
   --namespace openchoreo-data-plane \
   --create-namespace \
   --set config.envoyGateway.extensionApis.enableBackend=true
@@ -282,6 +300,9 @@ rules:
   - apiGroups: ["gateway.envoyproxy.io"]
     resources: ["backendtrafficpolicies","securitypolicies","clienttrafficpolicies","envoyproxies","backends"]
     verbs: ["*"]
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["backendtlspolicies"]
+    verbs: ["*"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -298,7 +319,7 @@ subjects:
 EOF
 ```
 
-> **Note:** Without these permissions, the Release controller will fail to apply BackendTrafficPolicy and SecurityPolicy resources to the data plane with a "forbidden" error. To remove these permissions later, simply delete the ClusterRole and ClusterRoleBinding:
+> **Note:** Without these permissions, the Release controller will fail to apply BackendTrafficPolicy, SecurityPolicy, Backend, and BackendTLSPolicy resources to the data plane with a "forbidden" error. The `backendtlspolicies` rule (in the `gateway.networking.k8s.io` group) is required when JWT is enabled, since the trait creates a BackendTLSPolicy for the JWKS endpoint. To remove these permissions later, simply delete the ClusterRole and ClusterRoleBinding:
 >
 > ```bash
 > kubectl delete clusterrole envoy-gateway-module
@@ -724,7 +745,7 @@ kubectl get backend -A
 ```bash
 # Upgrade Envoy Gateway release
 helm upgrade envoy-gateway oci://docker.io/envoyproxy/gateway-helm \
-  --version v1.7.0 \
+  --version v1.8.1 \
   --namespace openchoreo-data-plane \
   --reuse-values
 

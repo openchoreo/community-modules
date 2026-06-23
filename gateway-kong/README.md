@@ -5,6 +5,7 @@ This document provides comprehensive documentation for integrating Kong Gateway 
 ## Table of Contents
 
 - [Overview](#overview)
+- [Compatibility](#compatibility)
 - [High-Level Architecture](#high-level-architecture)
 - [Installation](#installation)
 - [Configuration](#configuration)
@@ -26,6 +27,27 @@ The Kong Gateway module replaces the default kgateway (Envoy) with [Kong Gateway
 - **Standard Gateway API as the contract**: OpenChoreo components create `HTTPRoute` resources that reference a `Gateway` by name. The gateway implementation is transparent to the control plane.
 - **Helm-driven configuration**: The `gatewayClassName` in the data plane Helm chart determines which gateway controller processes the `Gateway` CR and its routes.
 - **No control plane changes required**: Switching gateways only requires data plane reconfiguration. The rendering pipeline, endpoint resolution, and release controllers work unchanged.
+
+---
+
+## Compatibility
+
+Kong is a pluggable replacement for the default kgateway in the OpenChoreo data plane. This module installs Kong independently of OpenChoreo via the `kong/ingress` Helm chart, so the Kong version is not tied to your OpenChoreo release — the Kong Kubernetes Ingress Controller (KIC) supports a range of [Kubernetes Gateway API](https://gateway-api.sigs.k8s.io/) versions.
+
+The table below lists the Kong versions this module is verified with against the Gateway API version each OpenChoreo release installs with its data plane:
+
+| OpenChoreo version | Kubernetes Gateway API | kong/ingress chart | KIC | Kong Gateway |
+| ------------------ | ---------------------- | ------------------ | --- | ------------ |
+| v0.x.x             | v1.4.1                 | 0.24.0             | 3.5 | 3.9          |
+| v1.0.x             | v1.4.1                 | 0.24.0             | 3.5 | 3.9          |
+| v1.1.x             | v1.4.1                 | 0.24.0             | 3.5 | 3.9          |
+| v1.2.x             | v1.5.1                 | 0.24.0             | 3.5 | 3.9          |
+
+> **⚠️ Gateway API support caveat:** Kong's official [version-compatibility matrix](https://developer.konghq.com/kubernetes-ingress-controller/version-compatibility/#gateway-api) lists tested support only **up to Gateway API v1.3** (KIC 3.5.x). The Gateway API versions OpenChoreo ships — **v1.4.1 and v1.5.1 — are not in Kong's supported matrix**, so this combination is *outside Kong's documented support*.
+>
+> In practice it works, because KIC consumes only the stable Gateway API surface this module relies on (`Gateway`, `HTTPRoute v1`, `parentRefs`/`backendRefs`, basic filters), which is unchanged across v1.0–v1.5. Kong's own [install guide](https://developer.konghq.com/kubernetes-ingress-controller/install/) even ships Gateway API v1.5.1 CRDs. This module was **verified end-to-end on OpenChoreo v1.2.x (Gateway API v1.5.1)** with the versions above — rate limiting, key-auth, and response headers all functioned. Gateway API features introduced in v1.4/v1.5 may not be supported by KIC 3.5.x.
+>
+> The `kong-api-management` trait itself uses only the stable `configuration.konghq.com/v1` KongPlugin API and is unaffected by Gateway API version differences.
 
 ---
 
@@ -184,11 +206,16 @@ kubectl delete svc -l app.kubernetes.io/name=kgateway -n openchoreo-data-plane
 helm repo add kong https://charts.konghq.com
 helm repo update
 
-# Install Kong with Gateway API support
+# Install Kong with Gateway API support.
+# The chart version is pinned for reproducibility (0.24.0 bundles KIC 3.5 + Kong Gateway 3.9).
+# The podLabels key contains a dot, so it is single-quoted and passed via --set-string;
+# otherwise the shell strips the backslash and Helm splits on every dot, producing a nested
+# object where a label string is expected (INSTALLATION FAILED: cannot unmarshal object ...).
 helm install kong kong/ingress \
+  --version 0.24.0 \
   --namespace openchoreo-data-plane \
   --set gateway.enabled=true \
-  --set gateway.podLabels.openchoreo\.dev/system-component=gateway \
+  --set-string 'gateway.podLabels.openchoreo\.dev/system-component=gateway' \
   --set ingressController.enabled=true \
   --set ingressController.installCRDs=true \
   --set ingressController.gatewayAPI.enabled=true \
@@ -318,7 +345,7 @@ Deploy the sample greeter service to verify end-to-end traffic flow through Kong
 kubectl apply -f kong-api-management-trait.yaml
 ```
 
-> **Note:** The greeter service Component uses `componentType: deployment/http-service-with-kong` and attaches the `kong-api-management` trait. See [Kong API Management Trait](#kong-api-management-trait) below for details on available plugins.
+> **Note:** The greeter service Component (in `component.yaml`) uses the built-in `deployment/service` ClusterComponentType and attaches the `kong-api-management` trait. Apply it with `kubectl apply -f component.yaml`. See [Kong API Management Trait](#kong-api-management-trait) below for details on available plugins.
 
 **Wait for the deployment to roll out:**
 
@@ -376,7 +403,7 @@ EOF
 **Invoke the greeter service through Kong:**
 
 ```bash
-curl http://development-default.openchoreoapis.localhost:19080/greeter-service/greeter/greet\?name\=OpenChoreo -H "apikey: my-test-api-key" -v
+curl http://development-default.openchoreoapis.localhost:19080/greeter-service-http/greeter/greet\?name\=OpenChoreo -H "apikey: my-test-api-key" -v
 
 * Host development-default.openchoreoapis.localhost:19080 was resolved.
 * IPv6: ::1
@@ -385,7 +412,7 @@ curl http://development-default.openchoreoapis.localhost:19080/greeter-service/g
 * connect to ::1 port 19080 from ::1 port 60030 failed: Connection refused
 *   Trying 127.0.0.1:19080...
 * Connected to development-default.openchoreoapis.localhost (127.0.0.1) port 19080
-> GET /greeter-service/greeter/greet?name=OpenChoreo HTTP/1.1
+> GET /greeter-service-http/greeter/greet?name=OpenChoreo HTTP/1.1
 > Host: development-default.openchoreoapis.localhost:19080
 > User-Agent: curl/8.7.1
 > Accept: */*
@@ -470,13 +497,13 @@ spec:
   owner:
     projectName: default
   autoDeploy: true
-  componentType: deployment/http-service-with-kong
-  parameters:
-    port: 8080
-    replicas: 1
+  componentType:
+    kind: ClusterComponentType
+    name: deployment/service
   traits:
     - instanceName: my-api
       name: kong-api-management
+      kind: ClusterTrait
       parameters:
         rateLimiting:
           enabled: true

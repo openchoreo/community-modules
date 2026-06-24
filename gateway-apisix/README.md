@@ -326,7 +326,8 @@ Install or upgrade the OpenChoreo data plane Helm chart with the APISIX `gateway
 helm upgrade openchoreo-data-plane oci://ghcr.io/openchoreo/helm-charts/openchoreo-data-plane \
   --version 0.0.0-latest-dev --namespace openchoreo-data-plane \
   --set gateway.gatewayClassName=apisix \
-  --set gateway.httpPort=19080 --reuse-values
+  --set gateway.httpPort=19080 \
+  --set gateway.httpsPort=19443 --reuse-values
 ```
 
 This creates the `gateway-default` Gateway CR referencing the `apisix` GatewayClass instead of `kgateway`.

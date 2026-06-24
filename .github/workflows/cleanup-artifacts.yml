@@ -27,7 +27,7 @@ jobs:
       charts: ${{ steps.collect.outputs.charts }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install yq
         uses: mikefarah/yq@v4

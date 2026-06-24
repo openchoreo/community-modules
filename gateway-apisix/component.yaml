@@ -1,0 +1,65 @@
+# =============================================================================
+# USAGE EXAMPLE
+# =============================================================================
+#
+# Demonstrates the apisix-api-configuration trait with the built-in
+# deployment/service ClusterComponentType. Before applying:
+#   1. Install Apache APISIX + APISIX Ingress Controller and swap the data plane
+#      gateway to the apisix GatewayClass (README Steps 1-7)
+#   2. Add apisix-api-configuration to the service ClusterComponentType allowedTraits (README Step 8)
+#   3. Create the APISIX Consumer holding the API key referenced by key-auth (README Step 9)
+
+# --- Component: all three APISIX API management features enabled ---
+---
+apiVersion: openchoreo.dev/v1alpha1
+kind: Component
+metadata:
+  name: greeter-service
+  namespace: default
+spec:
+  owner:
+    projectName: default
+  autoDeploy: true
+  componentType:
+    kind: ClusterComponentType
+    name: deployment/service
+  traits:
+    - name: apisix-api-configuration
+      instanceName: greeter-api
+      kind: ClusterTrait
+      parameters:
+        rateLimiting:
+          enabled: true
+          policy: local
+        security:
+          enabled: true
+          # Auth plugin to enforce on the route. The credential lives in an APISIX
+          # Consumer you create separately (see README Step 9).
+          authType: key-auth
+        addResponseHeaders:
+          enabled: true
+          headers:
+            - "X-Gateway:APISIX"
+            - "X-Managed-By:OpenChoreo"
+
+---
+# --- Workload ---
+apiVersion: openchoreo.dev/v1alpha1
+kind: Workload
+metadata:
+  name: greeter-service-workload
+  namespace: default
+spec:
+  owner:
+    projectName: default
+    componentName: greeter-service
+  endpoints:
+    http:
+      type: HTTP
+      port: 9090
+      visibility: [external]
+  container:
+    image: "ghcr.io/openchoreo/samples/greeter-service:latest"
+    args:
+      - --port
+      - "9090"

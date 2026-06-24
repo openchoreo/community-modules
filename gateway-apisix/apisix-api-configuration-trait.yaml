@@ -1,0 +1,178 @@
+# Apache APISIX API Configuration Trait for OpenChoreo
+#
+# This ClusterTrait enables Apache APISIX API management features on HTTPRoutes:
+#   - Rate Limiting: Configurable request rate limits via APISIX's limit-count plugin
+#   - Security: Authentication enforcement via APISIX auth plugins (key-auth, basic-auth, jwt-auth)
+#   - Response Headers: Add custom headers to responses via APISIX's response-rewrite plugin
+#
+# Each feature is independently toggleable. The trait creates a single APISIX `PluginConfig`
+# CRD holding the enabled plugins and attaches it to the HTTPRoute via a Gateway API
+# `ExtensionRef` filter.
+#
+# IMPORTANT: Plugins are attached via an `ExtensionRef` filter in the HTTPRoute spec, NOT via
+# an annotation. The APISIX Ingress Controller's Gateway API path (apisix.apache.org/v1alpha1)
+# binds APISIX plugins to an HTTPRoute rule through `ExtensionRef -> PluginConfig`. A single
+# PluginConfig bundles all enabled plugins, so the trait creates exactly one PluginConfig and
+# adds exactly one ExtensionRef filter. The plugin list is built dynamically: disabled features
+# contribute nothing to the list, so no "no-op" placeholder plugin is needed.
+#
+# Prerequisites:
+#   - Apache APISIX + APISIX Ingress Controller 2.x installed in the data plane (see README.md)
+#   - APISIX Gateway API CRDs available (PluginConfig, Consumer, GatewayProxy)
+#   - ComponentType must have HTTPRoute resources for the patch to target
+#   - "apisix-api-configuration" must be listed in the ComponentType's allowedTraits
+#
+# Authentication note:
+#   Enabling security only installs the auth plugin on the route. The credential itself lives in
+#   an APISIX `Consumer` (apisix.apache.org/v1alpha1) that you create separately. The Consumer must
+#   be created in the SAME namespace as the Gateway CR (openchoreo-data-plane), not the component's
+#   data plane namespace, because its `gatewayRef` resolves the Gateway in the Consumer's own
+#   namespace (see README.md Step 10). Until a matching Consumer exists, the gateway rejects all
+#   requests to the route with 401.
+#
+# Usage:
+#   1. Add "apisix-api-configuration" to the ComponentType's allowedTraits
+#   2. Reference it in the Component's traits with desired parameters (see component.yaml)
+#   3. Optionally override the rate limit per environment via ReleaseBinding traitEnvironmentConfigs
+
+---
+apiVersion: openchoreo.dev/v1alpha1
+kind: ClusterTrait
+metadata:
+  name: apisix-api-configuration
+spec:
+  parameters:
+    openAPIV3Schema:
+      type: object
+      $defs:
+        # --- rate-limiting configuration ---
+        # Controls APISIX's limit-count plugin (fixed-window count per time_window).
+        # The threshold (requests per minute) is set via environmentConfigs so it can be
+        # tuned per environment; the window is fixed at 60s by the trait.
+        RateLimitingConfig:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+              default: true
+            # Counting policy: "local" (per-pod count) or "redis"/"redis-cluster" (shared
+            # across data plane replicas). With multiple APISIX replicas, "local" counts
+            # per-pod; use "redis" for a global limit.
+            policy:
+              type: string
+              default: local
+
+        # --- security (authentication) configuration ---
+        # Controls an APISIX auth plugin on the route. The plugin only enforces presence of a
+        # valid credential; the credential itself must exist in an APISIX Consumer resource
+        # (see README.md). Supported authType values: key-auth, basic-auth, jwt-auth.
+        SecurityConfig:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+              default: false
+            authType:
+              type: string
+              default: key-auth
+
+        # --- response header injection configuration ---
+        # Controls APISIX's response-rewrite plugin to set headers on client responses.
+        # Headers use "Header-Name:value" format.
+        # Example: ["X-Gateway:APISIX", "X-Managed-By:OpenChoreo"]
+        AddResponseHeadersConfig:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+              default: false
+            headers:
+              type: array
+              items:
+                type: string
+              default: []
+
+      properties:
+        rateLimiting:
+          $ref: "#/$defs/RateLimitingConfig"
+          default: {}
+        security:
+          $ref: "#/$defs/SecurityConfig"
+          default: {}
+        addResponseHeaders:
+          $ref: "#/$defs/AddResponseHeadersConfig"
+          default: {}
+
+  environmentConfigs:
+    # Platform engineers can tune the rate limit per environment via ReleaseBinding
+    # traitEnvironmentConfigs.<instanceName>.rateLimiting.requestsPerMinute.
+    openAPIV3Schema:
+      type: object
+      properties:
+        rateLimiting:
+          type: object
+          default: {}
+          properties:
+            # Max requests allowed per minute (limit-count count over a 60s window).
+            requestsPerMinute:
+              type: integer
+              default: 60
+
+  creates:
+    # --- PluginConfig: bundles all enabled APISIX plugins (always created) ---
+    # The plugins list is assembled with CEL list-concatenation: each feature contributes a
+    # one-element list when enabled and an empty list when disabled. The HTTPRoute always
+    # ExtensionRefs this single PluginConfig (see patches below), which avoids the
+    # conditional-patch problem (a patch cannot be added conditionally, and a null filter entry
+    # fails HTTPRoute validation).
+    #
+    # NOTE: rateLimiting.enabled defaults to true, so the default configuration always has at
+    # least the limit-count plugin. If you disable every feature, this PluginConfig renders with
+    # an empty plugins list (a harmless no-op).
+    - template:
+        apiVersion: apisix.apache.org/v1alpha1
+        kind: PluginConfig
+        metadata:
+          name: ${metadata.name}-${trait.instanceName}-plugins
+          namespace: ${metadata.namespace}
+          labels: ${metadata.labels}
+        spec:
+          plugins: >-
+            ${
+              (parameters.rateLimiting.enabled ?
+                [{"name": "limit-count", "config": {
+                  "count": environmentConfigs.rateLimiting.requestsPerMinute,
+                  "time_window": 60,
+                  "key": "remote_addr",
+                  "key_type": "var",
+                  "policy": parameters.rateLimiting.policy,
+                  "rejected_code": 429,
+                  "rejected_msg": "Too many requests",
+                  "show_limit_quota_header": true}}] : []) +
+              (parameters.security.enabled ?
+                [{"name": parameters.security.authType, "config": {}}] : []) +
+              (parameters.addResponseHeaders.enabled ?
+                [{"name": "response-rewrite", "config": {
+                  "headers": {"set":
+                    parameters.addResponseHeaders.headers.transformMapEntry(i, h, {h.split(":")[0]: h.split(":")[1]})}}}] : [])
+            }
+
+  patches:
+    # Attach the PluginConfig to every HTTPRoute via an ExtensionRef filter.
+    # ExtensionRef is the mechanism the APISIX Ingress Controller's Gateway API path uses to
+    # bind APISIX plugins to a route; it is always added because the PluginConfig is always created.
+    - target:
+        group: gateway.networking.k8s.io
+        version: v1
+        kind: HTTPRoute
+      operations:
+        - op: add
+          path: /spec/rules/0/filters/-
+          value:
+            type: ExtensionRef
+            extensionRef:
+              group: apisix.apache.org
+              kind: PluginConfig
+              name: ${metadata.name}-${trait.instanceName}-plugins
+
+---

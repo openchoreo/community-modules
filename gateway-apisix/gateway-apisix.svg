@@ -1,0 +1,153 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 580" font-family="'Segoe UI', system-ui, -apple-system, sans-serif">
+  <defs>
+    <linearGradient id="controlPlane" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#e8eaf6"/>
+      <stop offset="100%" stop-color="#c5cae9"/>
+    </linearGradient>
+    <linearGradient id="dataPlane" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#e8f5e9"/>
+      <stop offset="100%" stop-color="#c8e6c9"/>
+    </linearGradient>
+    <linearGradient id="apisixGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#e8336d"/>
+      <stop offset="100%" stop-color="#c2185b"/>
+    </linearGradient>
+    <linearGradient id="controllerApisixGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#d81b60"/>
+      <stop offset="100%" stop-color="#ad1457"/>
+    </linearGradient>
+    <linearGradient id="componentGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#42a5f5"/>
+      <stop offset="100%" stop-color="#1e88e5"/>
+    </linearGradient>
+    <linearGradient id="controllerGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#5c6bc0"/>
+      <stop offset="100%" stop-color="#3949ab"/>
+    </linearGradient>
+    <filter id="shadow" x="-2%" y="-2%" width="104%" height="108%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.12"/>
+    </filter>
+    <filter id="shadowSm" x="-2%" y="-2%" width="104%" height="108%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-opacity="0.1"/>
+    </filter>
+    <marker id="arrowHead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#546e7a"/>
+    </marker>
+    <marker id="arrowHeadGreen" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#2e7d32"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="780" height="580" rx="12" fill="#fafafa"/>
+
+  <!-- Title -->
+  <text x="390" y="36" text-anchor="middle" font-size="18" font-weight="700" fill="#263238">Apache APISIX Gateway Module &#x2014; Architecture</text>
+  <text x="390" y="56" text-anchor="middle" font-size="11" fill="#78909c">Rate Limiting &#x00B7; Authentication &#x00B7; Response Rewrite via APISIX Plugins</text>
+
+  <!-- ==================== CONTROL PLANE ==================== -->
+  <rect x="40" y="76" width="700" height="74" rx="8" fill="url(#controlPlane)" filter="url(#shadow)" stroke="#9fa8da" stroke-width="1"/>
+  <text x="52" y="94" font-size="9" font-weight="600" fill="#3949ab" letter-spacing="1">CONTROL PLANE</text>
+
+  <!-- OpenChoreo Controllers -->
+  <rect x="52" y="102" width="290" height="36" rx="5" fill="url(#controllerGrad)" filter="url(#shadowSm)"/>
+  <text x="197" y="122" text-anchor="middle" font-size="11" font-weight="500" fill="#fff">OpenChoreo Controllers</text>
+  <text x="197" y="134" text-anchor="middle" font-size="8" fill="#c5cae9">Renders Trait templates into APISIX CRDs</text>
+
+  <!-- ClusterTrait badge -->
+  <rect x="370" y="102" width="356" height="36" rx="5" fill="#fff" filter="url(#shadowSm)" stroke="#9fa8da" stroke-width="1"/>
+  <text x="382" y="118" font-size="9" font-weight="600" fill="#3949ab">Trait</text>
+  <text x="415" y="118" font-size="9" fill="#546e7a">apisix-api-configuration</text>
+  <text x="382" y="132" font-size="8" fill="#78909c">Defines limit-count, auth, response-rewrite plugins</text>
+
+  <!-- Arrow: Control Plane → Data Plane -->
+  <line x1="197" y1="150" x2="197" y2="182" stroke="#546e7a" stroke-width="1.5" marker-end="url(#arrowHead)"/>
+  <text x="210" y="170" font-size="8" fill="#78909c">applies</text>
+
+  <!-- ==================== DATA PLANE ==================== -->
+  <rect x="40" y="186" width="700" height="360" rx="8" fill="url(#dataPlane)" filter="url(#shadow)" stroke="#a5d6a7" stroke-width="1"/>
+  <text x="52" y="204" font-size="9" font-weight="600" fill="#2e7d32" letter-spacing="1">DATA PLANE</text>
+
+  <!-- Gateway CR -->
+  <rect x="60" y="216" width="180" height="52" rx="6" fill="#fff" filter="url(#shadowSm)" stroke="#a5d6a7" stroke-width="1"/>
+  <text x="72" y="234" font-size="9" font-weight="600" fill="#2e7d32">Gateway CR</text>
+  <text x="72" y="248" font-size="9" fill="#546e7a">name: gateway-default</text>
+  <text x="72" y="260" font-size="9" fill="#c2185b" font-weight="500">class: apisix</text>
+
+  <!-- HTTPRoute -->
+  <rect x="270" y="216" width="180" height="52" rx="6" fill="#fff" filter="url(#shadowSm)" stroke="#a5d6a7" stroke-width="1"/>
+  <text x="282" y="234" font-size="9" font-weight="600" fill="#2e7d32">HTTPRoute</text>
+  <text x="282" y="248" font-size="9" fill="#546e7a">parentRef: gateway-default</text>
+  <text x="282" y="260" font-size="9" fill="#546e7a">+ ExtensionRef &#x2726;</text>
+
+  <!-- Arrow: HTTPRoute → Gateway CR -->
+  <line x1="270" y1="242" x2="243" y2="242" stroke="#546e7a" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrowHead)"/>
+
+  <!-- APISIX Ingress Controller -->
+  <rect x="270" y="290" width="180" height="50" rx="8" fill="url(#controllerApisixGrad)" filter="url(#shadow)"/>
+  <text x="360" y="310" text-anchor="middle" font-size="11" font-weight="600" fill="#fff">APISIX Ingress</text>
+  <text x="360" y="326" text-anchor="middle" font-size="11" font-weight="600" fill="#fff">Controller</text>
+
+  <!-- APISIX Gateway Proxy -->
+  <rect x="60" y="290" width="180" height="50" rx="8" fill="url(#apisixGrad)" filter="url(#shadow)"/>
+  <text x="150" y="310" text-anchor="middle" font-size="11" font-weight="600" fill="#fff">APISIX Gateway</text>
+  <text x="150" y="324" text-anchor="middle" font-size="9" fill="#fce4ec">Proxy &#x00B7; TLS &#x00B7; Plugins</text>
+
+  <!-- Arrow: Controller → APISIX Gateway (admin API push) -->
+  <line x1="270" y1="315" x2="243" y2="315" stroke="#f8bbd0" stroke-width="1.5" marker-end="url(#arrowHead)"/>
+
+  <!-- Arrow: Gateway CR → APISIX Gateway -->
+  <line x1="150" y1="268" x2="150" y2="287" stroke="#546e7a" stroke-width="1.5" marker-end="url(#arrowHead)"/>
+
+  <!-- Component Pod -->
+  <rect x="80" y="380" width="160" height="42" rx="6" fill="url(#componentGrad)" filter="url(#shadowSm)"/>
+  <text x="160" y="400" text-anchor="middle" font-size="10" font-weight="500" fill="#fff">Component Pod</text>
+  <text x="160" y="414" text-anchor="middle" font-size="9" fill="#e3f2fd">:9090</text>
+
+  <!-- Arrow: APISIX Gateway → Pod -->
+  <line x1="150" y1="340" x2="150" y2="377" stroke="#546e7a" stroke-width="1.5" marker-end="url(#arrowHead)"/>
+
+  <!-- ==================== TRAIT RESOURCES (right side) ==================== -->
+  <text x="500" y="210" font-size="9" font-weight="600" fill="#2e7d32" letter-spacing="0.5">TRAIT-GENERATED RESOURCE</text>
+
+  <!-- PluginConfig card holding the enabled plugins -->
+  <rect x="500" y="220" width="220" height="146" rx="6" fill="#fff" filter="url(#shadowSm)" stroke="#2e7d32" stroke-width="1"/>
+  <text x="514" y="238" font-size="9" font-weight="600" fill="#2e7d32">PluginConfig</text>
+  <text x="514" y="250" font-size="8" fill="#78909c">apisix.apache.org/v1alpha1</text>
+  <line x1="510" y1="256" x2="710" y2="256" stroke="#e0e0e0" stroke-width="1"/>
+
+  <!-- plugin: limit-count -->
+  <rect x="510" y="262" width="200" height="28" rx="4" fill="#fce4ec" stroke="#f48fb1" stroke-width="0.5"/>
+  <text x="520" y="274" font-size="8" font-weight="600" fill="#c2185b">limit-count</text>
+  <text x="520" y="285" font-size="7" fill="#880e4f">when rateLimiting.enabled</text>
+
+  <!-- plugin: key-auth -->
+  <rect x="510" y="294" width="200" height="28" rx="4" fill="#fce4ec" stroke="#f48fb1" stroke-width="0.5"/>
+  <text x="520" y="306" font-size="8" font-weight="600" fill="#c2185b">key-auth / basic-auth / jwt-auth</text>
+  <text x="520" y="317" font-size="7" fill="#880e4f">when security.enabled</text>
+
+  <!-- plugin: response-rewrite -->
+  <rect x="510" y="326" width="200" height="28" rx="4" fill="#fce4ec" stroke="#f48fb1" stroke-width="0.5"/>
+  <text x="520" y="338" font-size="8" font-weight="600" fill="#c2185b">response-rewrite</text>
+  <text x="520" y="349" font-size="7" fill="#880e4f">when addResponseHeaders.enabled</text>
+
+  <!-- Arrow: PluginConfig → HTTPRoute (ExtensionRef binding) -->
+  <path d="M500,290 L472,290 L472,250 L453,250" stroke="#2e7d32" stroke-width="1.2" fill="none" stroke-dasharray="4,3" marker-end="url(#arrowHeadGreen)"/>
+  <text x="462" y="278" font-size="7" fill="#2e7d32" transform="rotate(-90,462,278)">ExtensionRef &#x2726;</text>
+
+  <!-- LoadBalancer (ingress entry — fronts the APISIX Gateway, not the component pod) -->
+  <rect x="80" y="440" width="160" height="28" rx="5" fill="#fff" filter="url(#shadowSm)" stroke="#a5d6a7" stroke-width="1"/>
+  <text x="160" y="459" text-anchor="middle" font-size="9" fill="#546e7a">LoadBalancer :19080 &#x00B7; :19443</text>
+
+  <!-- Arrow: LoadBalancer → APISIX Gateway (ingress, routed around the left margin) -->
+  <path d="M80,454 L46,454 L46,315 L59,315" stroke="#546e7a" stroke-width="1.5" fill="none" marker-end="url(#arrowHead)"/>
+
+  <!-- Arrow: Client → LoadBalancer -->
+  <line x1="160" y1="490" x2="160" y2="470" stroke="#546e7a" stroke-width="1.5" marker-end="url(#arrowHead)"/>
+
+  <!-- Client Traffic label -->
+  <text x="160" y="504" text-anchor="middle" font-size="9" fill="#78909c">Client Traffic</text>
+
+  <!-- Footer -->
+  <text x="390" y="564" text-anchor="middle" font-size="10" fill="#90a4ae">Enabled plugins are bundled into one PluginConfig and bound to the HTTPRoute via a Gateway API ExtensionRef filter.</text>
+</svg>

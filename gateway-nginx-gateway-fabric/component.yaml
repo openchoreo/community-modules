@@ -1,0 +1,73 @@
+# =============================================================================
+# USAGE EXAMPLE
+# =============================================================================
+#
+# Demonstrates the nginx-gateway-fabric-api-configuration trait with the built-in
+# deployment/service ClusterComponentType. Before applying:
+#   1. Install NGINX Gateway Fabric and swap the data plane gateway to the
+#      nginx GatewayClass (README Steps 1-7)
+#   2. Add nginx-gateway-fabric-api-configuration to the service ClusterComponentType
+#      allowedTraits (README Step 8)
+#   3. Create the htpasswd Secret referenced by security.secretName, in the
+#      component's data plane namespace (README Step 9)
+
+# --- Component: all three NGF API management features enabled ---
+---
+apiVersion: openchoreo.dev/v1alpha1
+kind: Component
+metadata:
+  name: greeter-service
+  namespace: default
+spec:
+  owner:
+    projectName: default
+  autoDeploy: true
+  componentType:
+    kind: ClusterComponentType
+    name: deployment/service
+  traits:
+    - name: nginx-gateway-fabric-api-configuration
+      instanceName: greeter-api
+      kind: ClusterTrait
+      parameters:
+        # Workload endpoint this trait targets; used to resolve the HTTPRoute name
+        # for the RateLimitPolicy targetRef.
+        endpointName: http
+        rateLimiting:
+          enabled: true
+          # Permissive burst so the demo does not accidentally 429 under normal use.
+          # Lower it (e.g. 2) to observe 429s. The per-minute rate is set via
+          # the environment override (defaults to 60r/m).
+          burst: 200
+        security:
+          enabled: true
+          # Name of a pre-created Secret (type nginx.org/htpasswd, key `auth`) in the
+          # component's data plane namespace (see README Step 9).
+          secretName: greeter-api-basic-auth
+        addResponseHeaders:
+          enabled: true
+          headers:
+            - "X-Gateway:Nginx"
+            - "X-Managed-By:OpenChoreo"
+
+---
+# --- Workload ---
+apiVersion: openchoreo.dev/v1alpha1
+kind: Workload
+metadata:
+  name: greeter-service-workload
+  namespace: default
+spec:
+  owner:
+    projectName: default
+    componentName: greeter-service
+  endpoints:
+    http:
+      type: HTTP
+      port: 9090
+      visibility: [external]
+  container:
+    image: "ghcr.io/openchoreo/samples/greeter-service:latest"
+    args:
+      - --port
+      - "9090"

@@ -1,0 +1,221 @@
+# NGINX Gateway Fabric API Configuration Trait for OpenChoreo
+#
+# This ClusterTrait enables NGINX Gateway Fabric (NGF) API management features on HTTPRoutes:
+#   - Rate Limiting: Configurable request rate limits via NGF's RateLimitPolicy CRD
+#   - Security: HTTP Basic authentication via NGF's AuthenticationFilter CRD
+#   - Response Headers: Add custom headers to responses via the native Gateway API
+#     ResponseHeaderModifier filter (no NGF CRD needed)
+#
+# Each feature is independently toggleable.
+#
+# NGF policy-attachment model (mirrors Envoy Gateway, NOT Kong/APISIX annotations):
+#   - RateLimitPolicy attaches to the HTTPRoute via `spec.targetRefs` (policy attachment).
+#     It is NOT a route filter, so the HTTPRoute is not patched for rate limiting. Because
+#     targetRefs references the route by name, the trait needs `endpointName` to resolve the
+#     generated HTTPRoute name (via oc_generate_name).
+#   - AuthenticationFilter and ResponseHeaderModifier ARE route filters, attached by patching
+#     `/spec/rules/0/filters/-`. Both patches are conditional via oc_omit(): when the feature is
+#     disabled the entry is dropped entirely (a null filter entry would fail HTTPRoute validation).
+#
+# First-class CRDs over snippets:
+#   NGF 2.x ships native RateLimitPolicy and AuthenticationFilter CRDs, so this trait does NOT
+#   use SnippetsFilter (which would require installing NGF with `nginxGateway.snippets.enable=true`).
+#   RateLimitPolicy and Basic-auth AuthenticationFilter both work on NGINX OSS (no NGINX Plus).
+#
+# Prerequisites:
+#   - NGINX Gateway Fabric 2.4+ installed in the data plane (see README.md). RateLimitPolicy and
+#     Basic-auth AuthenticationFilter were introduced in NGF 2.4.0.
+#   - NGF CRDs available (ratelimitpolicies, authenticationfilters in group gateway.nginx.org)
+#   - ComponentType must have an HTTPRoute resource for the targetRef/patch to work
+#   - "nginx-gateway-fabric-api-configuration" must be listed in the ComponentType's allowedTraits
+#
+# Authentication note:
+#   Enabling security only attaches the AuthenticationFilter to the route. The credentials live in
+#   a Kubernetes Secret of type `nginx.org/htpasswd` (key `auth`, htpasswd-formatted) that you
+#   create separately. The Secret must exist in the SAME namespace as the component's HTTPRoute
+#   (the data plane namespace), because NGF resolves the AuthenticationFilter's secretRef in that
+#   namespace. Until a matching Secret exists, the gateway rejects requests with 401/503.
+#
+# Usage:
+#   1. Add "nginx-gateway-fabric-api-configuration" to the ComponentType's allowedTraits
+#   2. Reference it in the Component's traits with desired parameters (see component.yaml)
+#   3. Optionally override the rate limit per environment via ReleaseBinding traitEnvironmentConfigs
+
+---
+apiVersion: openchoreo.dev/v1alpha1
+kind: ClusterTrait
+metadata:
+  name: nginx-gateway-fabric-api-configuration
+spec:
+  parameters:
+    openAPIV3Schema:
+      type: object
+      $defs:
+        # --- rate-limiting configuration ---
+        # Controls NGF's RateLimitPolicy (NGINX limit_req under the hood). The threshold
+        # (requests per minute) is set via environmentConfigs so it can be tuned per environment;
+        # the burst (and key) are set here.
+        RateLimitingConfig:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+              default: true
+            # Burst size: max requests allowed to exceed the rate in a short window before
+            # NGINX rejects with the rejectCode (429). With noDelay, excess-but-within-burst
+            # requests pass immediately rather than being queued.
+            burst:
+              type: integer
+              default: 10
+
+        # --- security (Basic authentication) configuration ---
+        # Controls an NGF AuthenticationFilter of type Basic on the route. The filter only
+        # enforces credential presence/validity; the credentials live in a Secret of type
+        # nginx.org/htpasswd (key `auth`) that you create separately in the data plane namespace.
+        SecurityConfig:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+              default: false
+            # Name of an existing Secret (type nginx.org/htpasswd, key `auth`) in the component's
+            # data plane namespace holding htpasswd-formatted users.
+            secretName:
+              type: string
+              default: ""
+
+        # --- response header injection configuration ---
+        # Adds headers to client responses via the native Gateway API ResponseHeaderModifier
+        # filter (no NGF CRD). Headers use "Header-Name:value" format.
+        # Example: ["X-Gateway:Nginx", "X-Managed-By:OpenChoreo"]
+        AddResponseHeadersConfig:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+              default: false
+            headers:
+              type: array
+              items:
+                type: string
+              default: []
+
+      properties:
+        # Name of the workload endpoint this trait targets. Must match an endpoint key in the
+        # Workload spec. Used to resolve the generated HTTPRoute name for RateLimitPolicy.targetRefs.
+        endpointName:
+          type: string
+        rateLimiting:
+          $ref: "#/$defs/RateLimitingConfig"
+          default: {}
+        security:
+          $ref: "#/$defs/SecurityConfig"
+          default: {}
+        addResponseHeaders:
+          $ref: "#/$defs/AddResponseHeadersConfig"
+          default: {}
+      required:
+        - endpointName
+
+  environmentConfigs:
+    # Platform engineers can tune the rate limit per environment via ReleaseBinding
+    # traitEnvironmentConfigs.<instanceName>.rateLimiting.requestsPerMinute.
+    openAPIV3Schema:
+      type: object
+      properties:
+        rateLimiting:
+          type: object
+          default: {}
+          properties:
+            # Max requests permitted per minute (rendered as NGINX rate "<n>r/m").
+            requestsPerMinute:
+              type: integer
+              default: 60
+
+  creates:
+    # --- RateLimitPolicy: Rate Limiting (policy attachment) ---
+    # Created when rateLimiting.enabled is true. Attaches to the component's HTTPRoute via
+    # targetRefs (NOT a route filter). NGF translates this into limit_req_zone (http context)
+    # + limit_req (location). The rate uses "r/m" so it tracks the requestsPerMinute override.
+    # `key: $binary_remote_addr` limits per client IP; the leading $ is a literal NGINX variable
+    # (the template engine only evaluates ${...}, so $binary_remote_addr passes through unchanged).
+    - includeWhen: ${parameters.rateLimiting.enabled}
+      template:
+        apiVersion: gateway.nginx.org/v1alpha1
+        kind: RateLimitPolicy
+        metadata:
+          name: ${metadata.name}-${trait.instanceName}-rate-limit
+          namespace: ${metadata.namespace}
+          labels: ${metadata.labels}
+        spec:
+          targetRefs:
+            - group: gateway.networking.k8s.io
+              kind: HTTPRoute
+              name: ${oc_generate_name(metadata.componentName, parameters.endpointName)}
+          rateLimit:
+            local:
+              rules:
+                - zoneSize: 10m
+                  key: "$binary_remote_addr"
+                  rate: ${environmentConfigs.rateLimiting.requestsPerMinute}r/m
+                  burst: ${parameters.rateLimiting.burst}
+                  noDelay: true
+            rejectCode: 429
+
+    # --- AuthenticationFilter: Basic Auth (route filter target) ---
+    # Created when security.enabled is true. Referenced from the HTTPRoute via an ExtensionRef
+    # filter (added in the patches section). The credentials live in the Secret named by
+    # security.secretName (type nginx.org/htpasswd, key `auth`) in this namespace.
+    - includeWhen: ${parameters.security.enabled}
+      template:
+        apiVersion: gateway.nginx.org/v1alpha1
+        kind: AuthenticationFilter
+        metadata:
+          name: ${metadata.name}-${trait.instanceName}-auth
+          namespace: ${metadata.namespace}
+          labels: ${metadata.labels}
+        spec:
+          type: Basic
+          basic:
+            secretRef:
+              name: ${parameters.security.secretName}
+            realm: "Restricted - ${metadata.componentName}"
+
+  patches:
+    # --- Patch HTTPRoute: attach the AuthenticationFilter via ExtensionRef ---
+    # Added only when security.enabled is true; otherwise oc_omit() drops the entry so no null
+    # filter is produced. ExtensionRef (group gateway.nginx.org, kind AuthenticationFilter) is
+    # how route-level NGF filters bind to an HTTPRoute rule.
+    - target:
+        group: gateway.networking.k8s.io
+        version: v1
+        kind: HTTPRoute
+      operations:
+        - op: add
+          path: /spec/rules/0/filters/-
+          value: >-
+            ${parameters.security.enabled ?
+              {"type": "ExtensionRef", "extensionRef":
+                {"group": "gateway.nginx.org",
+                 "kind": "AuthenticationFilter",
+                 "name": metadata.name + "-" + trait.instanceName + "-auth"}} :
+              oc_omit()}
+
+    # --- Patch HTTPRoute: add Response Headers (native ResponseHeaderModifier) ---
+    # Added only when addResponseHeaders.enabled is true. The "Header-Name:value" strings are
+    # mapped to the Gateway API {name, value} object shape ResponseHeaderModifier expects.
+    - target:
+        group: gateway.networking.k8s.io
+        version: v1
+        kind: HTTPRoute
+      operations:
+        - op: add
+          path: /spec/rules/0/filters/-
+          value: >-
+            ${parameters.addResponseHeaders.enabled ?
+              {"type": "ResponseHeaderModifier", "responseHeaderModifier":
+                {"add": parameters.addResponseHeaders.headers.map(h,
+                  {"name": h.split(":")[0], "value": h.split(":")[1]})}} :
+              oc_omit()}
+
+---

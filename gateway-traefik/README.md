@@ -5,6 +5,7 @@ This document provides comprehensive documentation for integrating Traefik as th
 ## Table of Contents
 
 - [Overview](#overview)
+- [Compatibility](#compatibility)
 - [High-Level Architecture](#high-level-architecture)
 - [Installation](#installation)
 - [Configuration](#configuration)
@@ -24,7 +25,22 @@ The Traefik Gateway module replaces the default kgateway (Envoy) with [Traefik P
 - **Standard Gateway API as the contract**: OpenChoreo components create `HTTPRoute` resources that reference a `Gateway` by name. The gateway implementation is transparent to the control plane.
 - **Helm-driven configuration**: The `gatewayClassName` in the data plane Helm chart determines which gateway controller processes the `Gateway` CR and its routes.
 - **No control plane changes required**: Switching gateways only requires data plane reconfiguration. The rendering pipeline, endpoint resolution, and release controllers work unchanged.
-- **Middleware annotation model**: Unlike Envoy Gateway's policy `targetRefs`, Traefik attaches Middlewares to HTTPRoutes via a `traefik.io/router.middlewares` annotation. The annotation lists middleware names in `<namespace>-<name>@kubernetescrd` format.
+- **Middleware via ExtensionRef**: Traefik attaches Middlewares to HTTPRoutes via Gateway API `ExtensionRef` filters in the HTTPRoute spec. The `traefik.io/router.middlewares` annotation is **not** read by the `kubernetesgateway` provider and is not used by this module (see [Key Differences](#key-differences-from-other-gateway-modules)).
+
+---
+
+## Compatibility
+
+Traefik is a pluggable replacement for the default kgateway in the OpenChoreo data plane. This module installs Traefik independently via the `traefik/traefik` Helm chart. Traefik's Kubernetes Gateway API provider targets a **specific** Gateway API version per release, so the Traefik version must match the Gateway API version your OpenChoreo release ships with its data plane:
+
+| OpenChoreo version | Kubernetes Gateway API | Traefik | Helm chart |
+| ------------------ | ---------------------- | ------- | ------------------- |
+| v0.x.x             | v1.4.1                 | v3.6.x  | 39.0.x              |
+| v1.0.x             | v1.4.1                 | v3.6.x  | 39.0.x              |
+| v1.1.x             | v1.4.1                 | v3.6.x  | 39.0.x              |
+| v1.2.x             | v1.5.1                 | v3.7.x  | 41.0.0 (app v3.7.5) |
+
+> **Note:** Traefik's Gateway API provider pins one Gateway API version per release — **v3.6.x targets Gateway API v1.4.0** and **v3.7.0+ targets v1.5.1** ([Traefik v3 migration notes](https://doc.traefik.io/traefik/migrate/v3/)). Installing a Traefik version whose target Gateway API differs from the CRDs OpenChoreo installs can cause the Gateway provider to reject or ignore HTTPRoutes. This module was verified end-to-end on **OpenChoreo v1.2.x (Gateway API v1.5.1) with Traefik v3.7.5** (chart 41.0.0). The trait uses the stable `traefik.io/v1alpha1` Middleware API, which is unaffected by Gateway API version differences.
 
 ---
 
@@ -185,12 +201,20 @@ helm repo add traefik https://traefik.github.io/charts
 helm repo update
 
 # Install Traefik v3 with Gateway API support and custom ports.
+# --version pins the chart to one whose appVersion matches your OpenChoreo release's
+#   Gateway API version (see Compatibility). 41.0.0 → Traefik v3.7.5 → Gateway API v1.5.1
+#   (OpenChoreo v1.2.x). For OpenChoreo v0.x–v1.1.x (Gateway API v1.4.1), use a 39.0.x chart
+#   (Traefik v3.6.x).
+# --set-string deployment.podLabels... adds the gateway identity label REQUIRED by the
+#   OpenChoreo data plane NetworkPolicy. Without it, the policy blocks Traefik→workload
+#   traffic and every request returns 502 Bad Gateway. The key contains a dot, so it is
+#   single-quoted and passed via --set-string (an unquoted --set splits on the dot).
 # --set gateway.enabled=false disables Traefik's own Gateway CR creation;
-# OpenChoreo manages the Gateway CR via its data plane Helm chart instead.
-# This also avoids a type-comparison bug in traefik/templates/gateway.yaml
-# that appears when providers.kubernetesGateway.enabled=true and gateway.enabled=true.
+#   OpenChoreo manages the Gateway CR via its data plane Helm chart instead.
 helm install traefik traefik/traefik \
+    --version 41.0.0 \
     --namespace openchoreo-data-plane \
+    --set-string 'deployment.podLabels.openchoreo\.dev/system-component=gateway' \
     --set ports.web.port=19080 \
     --set ports.web.expose.default=true \
     --set ports.web.exposedPort=19080 \
@@ -279,43 +303,45 @@ kubectl patch clusterrole cluster-agent-dataplane-openchoreo-data-plane --type=j
 
 Deploy the sample greeter service to verify end-to-end traffic flow through Traefik, including the `traefik-api-configuration` trait for API management.
 
-**Create the BasicAuth secret (required before applying the trait):**
-
-The `traefik-api-configuration` trait's security feature references an existing Kubernetes Secret containing htpasswd credentials. Create it before deploying the component:
+**Apply the ClusterTrait and add it to the ComponentType:**
 
 ```bash
-# Install htpasswd if not already available (apache2-utils on Debian/Ubuntu, httpd-tools on RHEL/CentOS)
-# apt-get install apache2-utils  OR  yum install httpd-tools
+# Apply the traefik-api-configuration ClusterTrait
+kubectl apply -f traefik-api-configuration-trait.yaml
 
-# Create the secret with a single user
+# Allow the trait on the built-in service ClusterComponentType
+kubectl patch clustercomponenttype service --type=json \
+  -p '[{"op":"add","path":"/spec/allowedTraits/-","value":{"kind":"ClusterTrait","name":"traefik-api-configuration"}}]'
+```
+
+**Deploy the greeter Component and Workload:**
+
+```bash
+kubectl apply -f component.yaml
+```
+
+> **Note:** `component.yaml` references the built-in `deployment/service` ClusterComponentType and attaches the `traefik-api-configuration` trait with `security.secretName: greeter-api-basic-auth`.
+
+**Create the BasicAuth secret in the component's data plane namespace:**
+
+The trait's security feature renders a Traefik `BasicAuth` Middleware **into the component's data plane namespace** (e.g. `dp-default-default-development-<hash>`), and Traefik looks for the referenced Secret in that **same namespace — not in `default`**. Create it there after the component is deployed. Traefik reconciles once the Secret appears; until then, BasicAuth requests fail and Traefik drops the router (every request returns 404/401 with `secret ... not found` in the Traefik logs).
+
+```bash
+# htpasswd comes from apache2-utils (Debian/Ubuntu) or httpd-tools (RHEL/CentOS).
+# No htpasswd? Use: users="api-user:$(openssl passwd -apr1 openchoreo-secret)"
+
+# Find the component's data plane namespace
+DP_NS=$(kubectl get httproute -A -l openchoreo.dev/component=greeter-service \
+  -o jsonpath='{.items[0].metadata.namespace}')
+echo "Data plane namespace: $DP_NS"
+
+# Create the htpasswd Secret in that namespace
 kubectl create secret generic greeter-api-basic-auth \
   --from-literal=users="$(htpasswd -nbm api-user openchoreo-secret)" \
-  -n default
-
-# Verify the secret was created
-kubectl get secret greeter-api-basic-auth -n default
+  -n "$DP_NS"
 ```
 
-To add multiple users, create a file first:
-
-```bash
-# Generate hashes for each user and write to a file
-htpasswd -cbm auth-users api-user openchoreo-secret
-htpasswd -bm  auth-users consumer2 another-secret
-
-# Create the secret from the file
-kubectl create secret generic greeter-api-basic-auth \
-  --from-file=users=auth-users \
-  -n default
-```
-
-**Apply the ComponentType, Trait, Component, and Workload:**
-
-```bash
-kubectl apply -f traefik-api-configuration-trait.yaml
-```
-
-> **Note:** The greeter service Component uses `componentType: deployment/service` and attaches the `traefik-api-configuration` trait with `security.secretName: greeter-api-basic-auth`. The Secret must exist in the same namespace before the Middleware is reconciled.
+> **Multiple users:** append more `user:hash` lines to the `users` value (one per line).
 
 **Wait for the deployment to roll out:**
 
@@ -337,15 +363,15 @@ kubectl get middleware -A
 
 ```bash
 # Without auth (returns 401 if security.enabled=true)
-curl http://development-default.openchoreoapis.localhost:19080/greeter-service-http/greet?name=OpenChoreo -v
+curl http://development-default.openchoreoapis.localhost:19080/greeter-service-http/greeter/greet?name=OpenChoreo -v
 
 # With BasicAuth credentials
 curl -u api-user:openchoreo-secret \
-  http://development-default.openchoreoapis.localhost:19080/greeter-service-http/greet?name=OpenChoreo -v
+  http://development-default.openchoreoapis.localhost:19080/greeter-service-http/greeter/greet?name=OpenChoreo -v
 
 # Or with an explicit Authorization header
 curl -H "Authorization: Basic $(echo -n 'api-user:openchoreo-secret' | base64)" \
-  http://development-default.openchoreoapis.localhost:19080/greeter-service-http/greet?name=OpenChoreo -v
+  http://development-default.openchoreoapis.localhost:19080/greeter-service-http/greeter/greet?name=OpenChoreo -v
 ```
 
 Expected response:
@@ -365,7 +391,7 @@ kubectl delete workload greeter-service-workload -n default
 
 ### Traefik API Configuration Trait
 
-The `traefik-api-configuration` trait provides declarative API management for components routed through Traefik. It creates `Middleware` CRDs and patches the HTTPRoute with the `traefik.io/router.middlewares` annotation automatically.
+The `traefik-api-configuration` trait provides declarative API management for components routed through Traefik. It creates `Middleware` CRDs and attaches them to the HTTPRoute via Gateway API `ExtensionRef` filters automatically.
 
 #### Trait Schema
 
@@ -428,11 +454,12 @@ spec:
     projectName: default
   autoDeploy: true
   componentType:
-    kind: ComponentType
+    kind: ClusterComponentType
     name: deployment/service
   traits:
     - instanceName: my-api
       name: traefik-api-configuration
+      kind: ClusterTrait
       parameters:
         rateLimiting:
           enabled: true
@@ -449,13 +476,13 @@ spec:
             - "X-Powered-By:OpenChoreo"
 ```
 
-The rate limit can be overridden per environment via ReleaseBinding `traitOverrides`:
+The rate limit can be overridden per environment via ReleaseBinding `traitEnvironmentConfigs`:
 
 ```yaml
-traitOverrides:
+traitEnvironmentConfigs:
   my-api:
     rateLimiting:
-      average: 200  # Higher limit for development (requests per second)
+      average: 200  # requests per minute (the trait uses period 1m)
 ```
 
 ---
@@ -576,7 +603,7 @@ A mismatch at any layer will cause listener errors or broken endpoint URLs.
 
 ### Traefik-Specific Middleware Configuration
 
-Middlewares are applied to HTTPRoutes via annotations. Define Middlewares as CRDs and reference them via the `traefik.io/router.middlewares` annotation:
+Middlewares are attached to HTTPRoutes via Gateway API `ExtensionRef` filters. Define Middlewares as CRDs and reference them from the HTTPRoute's `rules[].filters`:
 
 ```yaml
 apiVersion: traefik.io/v1alpha1
@@ -795,7 +822,7 @@ Verify the RateLimit Middleware configuration:
 kubectl describe middleware <name>-rate-limiting -n <namespace>
 ```
 
-Check that `average` is set correctly. Traefik's `rateLimit.average` is requests per `period`. The trait sets `period: 1m`, so `average` means requests per minute. Override via `traitOverrides.<instanceName>.rateLimiting.average` in the ReleaseBinding.
+Check that `average` is set correctly. Traefik's `rateLimit.average` is requests per `period`. The trait sets `period: 1m`, so `average` means requests per minute. Override via `traitEnvironmentConfigs.<instanceName>.rateLimiting.average` in the ReleaseBinding.
 
 **Endpoint URLs not resolving**
 
@@ -813,7 +840,7 @@ Ensure `spec.gateway.ingress.external.name` and `namespace` match the Gateway CR
 
 ### Adding Traefik Middlewares to ComponentType Templates
 
-To apply Traefik Middlewares to all instances of a ComponentType, add annotations in the HTTPRoute template:
+To apply Traefik Middlewares to all instances of a ComponentType, add `ExtensionRef` filters in the HTTPRoute template (the Middleware must already exist in the route's namespace):
 
 ```yaml
 # In ComponentType spec.resources
@@ -824,8 +851,6 @@ To apply Traefik Middlewares to all instances of a ComponentType, add annotation
     metadata:
       name: ${metadata.name}
       namespace: ${metadata.namespace}
-      annotations:
-        traefik.io/router.middlewares: default-global-rate-limit@kubernetescrd
     spec:
       parentRefs:
         - name: gateway-default
@@ -833,12 +858,18 @@ To apply Traefik Middlewares to all instances of a ComponentType, add annotation
       hostnames:
         - ${environment.publicVirtualHost}
       rules:
-        - backendRefs:
+        - filters:
+            - type: ExtensionRef
+              extensionRef:
+                group: traefik.io
+                kind: Middleware
+                name: global-rate-limit
+          backendRefs:
             - name: ${metadata.name}
               port: 80
 ```
 
-> **Note:** Traefik Middleware annotations on HTTPRoutes create a dependency on Traefik as the gateway implementation. Standard Gateway API fields remain portable.
+> **Note:** `ExtensionRef` filters that reference Traefik Middlewares create a dependency on Traefik as the gateway implementation. Standard Gateway API fields remain portable. The `traefik.io/router.middlewares` annotation is **not** used — it is ignored by the `kubernetesgateway` provider.
 
 ### Custom Listener Ports
 

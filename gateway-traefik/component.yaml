@@ -1,0 +1,65 @@
+# =============================================================================
+# USAGE EXAMPLE
+# =============================================================================
+#
+# Demonstrates the traefik-api-configuration trait with the built-in
+# deployment/service ClusterComponentType. Before applying:
+#   1. Install Traefik and swap the data plane gateway (README Steps 1-6)
+#   2. Add traefik-api-configuration to the service ClusterComponentType allowedTraits (README Step 7)
+#   3. Create the BasicAuth Secret referenced by security.secretName (README Step 7)
+
+# --- Component: all three Traefik API management features enabled ---
+---
+apiVersion: openchoreo.dev/v1alpha1
+kind: Component
+metadata:
+  name: greeter-service
+  namespace: default
+spec:
+  owner:
+    projectName: default
+  autoDeploy: true
+  componentType:
+    kind: ClusterComponentType
+    name: deployment/service
+  traits:
+    - name: traefik-api-configuration
+      instanceName: greeter-api
+      kind: ClusterTrait
+      parameters:
+        rateLimiting:
+          enabled: true
+          burst: 200
+        security:
+          enabled: true
+          # Name of a pre-created Kubernetes Secret with htpasswd users (see README Step 7).
+          secretName: greeter-api-basic-auth
+        addHeaders:
+          enabled: true
+          requestHeaders:
+            - "X-Gateway:Traefik"
+            - "X-Managed-By:OpenChoreo"
+          responseHeaders:
+            - "X-Powered-By:OpenChoreo"
+
+---
+# --- Workload ---
+apiVersion: openchoreo.dev/v1alpha1
+kind: Workload
+metadata:
+  name: greeter-service-workload
+  namespace: default
+spec:
+  owner:
+    projectName: default
+    componentName: greeter-service
+  endpoints:
+    http:
+      type: HTTP
+      port: 9090
+      visibility: [external]
+  container:
+    image: "ghcr.io/openchoreo/samples/greeter-service:latest"
+    args:
+      - --port
+      - "9090"

@@ -18,25 +18,108 @@ flowchart TD
 
 ### Azure prerequisites
 
-1. A Log Analytics workspace.
-2. A workspace-based Application Insights resource pointed at that workspace:
+The commands below assume `az` is logged in (`az login`) and a few shared
+variables are exported:
 
-   ```bash
-   az monitor app-insights component create \
-     --app <name> --resource-group <rg> --location <region> \
-     --workspace <workspace ARM ID>
-   ```
+```bash
+RG="<your-resource-group>"
+LOCATION="eastus2"
+AKS_NAME="<your-aks-cluster>"
+WORKSPACE_NAME="<your-log-analytics-workspace>"
+APPINSIGHTS_NAME="<your-application-insights>"
+```
 
-3. A Kubernetes Secret with its connection string (used by the collector's `azuremonitor` exporter):
+#### Azure subscription and region
 
-   ```bash
-   kubectl create secret generic appinsights-conn \
-     --namespace openchoreo-observability-plane \
-     --from-literal=connection-string="$(az monitor app-insights component show \
-        --app <name> -g <rg> --query connectionString -o tsv)"
-   ```
+Confirm the active subscription and pick a region:
 
-4. An identity with the **Log Analytics Reader** role on the workspace, used by the adapter (query side). On AKS, use Workload Identity: a User-Assigned Managed Identity with a federated identity credential for the `tracing-adapter-azure-appinsights` ServiceAccount, and pass its client ID through `adapter.serviceAccount.annotations`.
+```bash
+az account show --query "{name:name, id:id}" -o table
+az account list-locations --query "[].name" -o tsv   # list valid regions
+```
+
+#### AKS cluster with OIDC issuer and Workload Identity
+
+Enable both on an existing cluster (or pass the same flags to
+`az aks create`):
+
+```bash
+az aks update -g "$RG" -n "$AKS_NAME" \
+  --enable-oidc-issuer \
+  --enable-workload-identity
+```
+
+Verify they are on:
+
+```bash
+az aks show -g "$RG" -n "$AKS_NAME" \
+  --query "{oidc:oidcIssuerProfile.enabled, wi:securityProfile.workloadIdentity.enabled}" -o table
+```
+
+#### Log Analytics workspace (Analytics table plan)
+
+Create a workspace (Analytics is the default plan) and capture its
+resource ID:
+
+```bash
+az monitor log-analytics workspace create \
+  -g "$RG" -n "$WORKSPACE_NAME" -l "$LOCATION"
+
+WORKSPACE_ARM_ID=$(az monitor log-analytics workspace show \
+  -g "$RG" -n "$WORKSPACE_NAME" --query id -o tsv)
+
+WORKSPACE_CUSTOMER_ID=$(az monitor log-analytics workspace show \
+  -g "$RG" -n "$WORKSPACE_NAME" --query customerId -o tsv)
+```
+
+`WORKSPACE_CUSTOMER_ID` is the workspace `customerId` (a GUID) the adapter
+queries by; `WORKSPACE_ARM_ID` is the full resource ID Application Insights
+binds to below.
+
+#### Workspace-based Application Insights resource
+
+Create an Application Insights resource pointed at that workspace, and
+capture its connection string (used by the collector's `azuremonitor`
+exporter):
+
+```bash
+az monitor app-insights component create \
+  --app "$APPINSIGHTS_NAME" -g "$RG" -l "$LOCATION" \
+  --workspace "$WORKSPACE_ARM_ID"
+
+APPINSIGHTS_CONNECTION_STRING=$(az monitor app-insights component show \
+  --app "$APPINSIGHTS_NAME" -g "$RG" --query connectionString -o tsv)
+```
+
+#### Application Insights connection-string Secret
+
+Create a Kubernetes Secret with the connection string in each cluster that
+runs a collector (see [Deployment topologies](#deployment-topologies)):
+
+```bash
+az aks get-credentials -g "$RG" -n "$AKS_NAME"   # for the kubectl step below
+
+kubectl create secret generic appinsights-conn \
+  --namespace openchoreo-observability-plane \
+  --from-literal=connection-string="$APPINSIGHTS_CONNECTION_STRING"
+```
+
+#### User-Assigned Managed Identity
+
+A **User-Assigned Managed Identity** with the **Log Analytics Reader** role
+on the workspace, used by the adapter (query side), and federated to the
+`tracing-adapter-azure-appinsights` ServiceAccount. Create it and capture
+its `clientId`:
+
+```bash
+az identity create -g "$RG" -n "<uami-name>" -l "$LOCATION"
+
+UAMI_CLIENT_ID=$(az identity show \
+  -g "$RG" -n "<uami-name>" --query clientId -o tsv)
+```
+
+Pass `UAMI_CLIENT_ID` through `adapter.serviceAccount.annotations` at install
+time (see [Installation](#installation)).
 
 ## Installation
 
@@ -115,14 +198,6 @@ The adapter is configured through these environment variables (set by the Helm c
 
 Credentials come from `azidentity.NewDefaultAzureCredential`: Workload Identity in-cluster, the `az` CLI locally.
 
-## Local development
-
-```bash
-az login
-export LOG_ANALYTICS_WORKSPACE_ID=<customerId>
-go run .
-curl -s localhost:9100/healthz
-```
 
 ## Behavior notes
 
@@ -138,4 +213,4 @@ curl -s localhost:9100/healthz
 
 | Module Version | OpenChoreo Version |
 |----------------|--------------------|
-| v0.1.x         | v1.1.x             |
+| v0.1.x         | v1.2.x             |

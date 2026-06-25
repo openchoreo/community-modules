@@ -88,40 +88,130 @@ Before installing this module, make sure the following are available.
 See the [OpenChoreo documentation](https://openchoreo.dev/docs) for the
 base installation steps.
 
-### Local tooling
-
-Install the following tools on your machine:
-
-- `helm`
-- `kubectl`
-- `az` CLI
-
 ### Azure prerequisites
 
-You need:
+The commands below assume `az` is logged in (`az login`) and a few
+shared variables are exported:
 
-- An Azure subscription and an Azure region (for example `eastus2`).
-- An AKS cluster with:
-  - **OIDC issuer** and **Workload Identity** enabled.
-  - The **Azure Monitor metrics + Container Insights** addon enabled,
-    configured to use the `ContainerLogV2` schema. Set
-    `containerlog_schema_version = "v2"` in the
-    `container-azm-ms-agentconfig` ConfigMap in `kube-system`, and
-    enable pod label collection so the adapter can filter by
-    `openchoreo.dev/*` labels (add the labels under
-    `[log_collection_settings.metadata_collection]` →
-    `include_fields`).
-- A **Log Analytics workspace** on the **Analytics** table plan (the
-  default). `ContainerLogV2` on the Basic plan is not supported — the
-  adapter uses the `azlogs` SDK which targets `/query`, and Basic
-  tables require `/search`.
-- A pre-existing **Action Group** in the same subscription with a
-  **Webhook** receiver pointed at the adapter's
-  `/api/v1alpha1/alerts/webhook` endpoint and `useCommonAlertSchema=true`
-  on that receiver. See [Log alerting](#log-alerting) for details.
-- A **User-Assigned Managed Identity** federated to the adapter's
-  ServiceAccount, with the role assignments described in
-  [Azure role assignments](#azure-role-assignments).
+```bash
+RG="<your-resource-group>"
+LOCATION="eastus2"
+AKS_NAME="<your-aks-cluster>"
+WORKSPACE_NAME="<your-log-analytics-workspace>"
+```
+
+#### Azure subscription and region
+
+Confirm the active subscription and pick a region:
+
+```bash
+az account show --query "{name:name, id:id}" -o table
+az account list-locations --query "[].name" -o tsv   # list valid regions
+```
+
+#### AKS cluster with OIDC issuer and Workload Identity
+
+Enable both on an existing cluster (or pass the same flags to
+`az aks create`):
+
+```bash
+az aks update -g "$RG" -n "$AKS_NAME" \
+  --enable-oidc-issuer \
+  --enable-workload-identity
+```
+
+Verify they are on:
+
+```bash
+az aks show -g "$RG" -n "$AKS_NAME" \
+  --query "{oidc:oidcIssuerProfile.enabled, wi:securityProfile.workloadIdentity.enabled}" -o table
+```
+
+#### Log Analytics workspace (Analytics table plan)
+
+`ContainerLogV2` on the Basic plan is not supported — the adapter uses
+the `azlogs` SDK which targets `/query`, and Basic tables require
+`/search`. Create a workspace (Analytics is the default plan) and
+capture its resource ID:
+
+```bash
+az monitor log-analytics workspace create \
+  -g "$RG" -n "$WORKSPACE_NAME" -l "$LOCATION"
+
+WORKSPACE_ARM_ID=$(az monitor log-analytics workspace show \
+  -g "$RG" -n "$WORKSPACE_NAME" --query id -o tsv)
+```
+
+#### Azure Monitor metrics + Container Insights addon
+
+Enable the addon against the workspace above. This installs the Azure
+Monitor Agent that ships container logs into the workspace:
+
+```bash
+az aks enable-addons -g "$RG" -n "$AKS_NAME" \
+  --addons monitoring \
+  --workspace-resource-id "$WORKSPACE_ARM_ID"
+
+az aks get-credentials -g "$RG" -n "$AKS_NAME"   # for the kubectl steps below
+```
+
+Configure the agent to use the `ContainerLogV2` schema and collect the
+OpenChoreo pod labels so the adapter can filter by them. Apply the
+`container-azm-ms-agentconfig` ConfigMap to `kube-system`:
+
+```bash
+kubectl apply -f - <<'EOF'
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: container-azm-ms-agentconfig
+  namespace: kube-system
+data:
+  schema-version: v1
+  config-version: openchoreo
+  log-data-collection-settings: |-
+    [log_collection_settings.schema]
+      containerlog_schema_version = "v2"
+    [log_collection_settings.metadata_collection]
+      enabled = true
+      include_fields = ["openchoreo.dev/namespace", "openchoreo.dev/component-uid", "openchoreo.dev/project-uid", "openchoreo.dev/environment-uid"]
+EOF
+```
+
+The Azure Monitor Agent pods in `kube-system` pick up the change within
+a few minutes and restart; confirm with:
+
+```bash
+kubectl -n kube-system get pods -l dsName=ama-logs-agent
+```
+
+#### Action Group
+
+A pre-existing **Action Group** in the same subscription with a
+**Webhook** receiver pointed at the adapter's
+`/api/v1alpha1/alerts/webhook` endpoint and `useCommonAlertSchema=true`
+on that receiver. Capture its ARM ID:
+
+```bash
+ACTION_GROUP_ARM_ID=$(az monitor action-group show \
+  -g "$RG" -n "<action-group-name>" --query id -o tsv)
+```
+
+See [Log alerting](#log-alerting) for how to configure the receiver.
+
+#### User-Assigned Managed Identity
+
+A **User-Assigned Managed Identity** federated to the adapter's
+ServiceAccount, with the role assignments described in
+[Azure role assignments](#azure-role-assignments). Create it and capture
+its `clientId`:
+
+```bash
+az identity create -g "$RG" -n "<uami-name>" -l "$LOCATION"
+
+UAMI_CLIENT_ID=$(az identity show \
+  -g "$RG" -n "<uami-name>" --query clientId -o tsv)
+```
 
 ## Azure role assignments
 
@@ -154,6 +244,34 @@ projects the federated token (see
 
 ## Installation on AKS
 
+The install command below reads its values from shell variables. Export
+them first — each is resolved from Azure as follows (replace the
+`<...>` placeholders with your own resource names):
+
+```bash
+# Subscription, resource group, and region of the AKS cluster.
+AZURE_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+AZURE_RESOURCE_GROUP="<your-resource-group>"
+AZURE_REGION=$(az group show -n "$AZURE_RESOURCE_GROUP" --query location -o tsv)
+
+# Log Analytics workspace: customer (GUID) ID and full ARM resource ID.
+WORKSPACE_CUSTOMER_ID=$(az monitor log-analytics workspace show \
+  -g "$AZURE_RESOURCE_GROUP" -n "<workspace-name>" --query customerId -o tsv)
+WORKSPACE_ARM_ID=$(az monitor log-analytics workspace show \
+  -g "$AZURE_RESOURCE_GROUP" -n "<workspace-name>" --query id -o tsv)
+
+# Action Group ARM ID (must already exist, see "Configure the Action Group").
+ACTION_GROUP_ARM_ID=$(az monitor action-group show \
+  -g "$AZURE_RESOURCE_GROUP" -n "<action-group-name>" --query id -o tsv)
+
+# User-Assigned Managed Identity clientId the adapter runs as.
+UAMI_CLIENT_ID=$(az identity show \
+  -g "$UAMI_RG" -n "$UAMI_NAME" --query clientId -o tsv)
+
+# Shared secret guarding the adapter's webhook endpoint (any strong value).
+WEBHOOK_TOKEN="<your-webhook-shared-secret>"
+```
+
 ```bash
 helm upgrade --install observability-logs-azure-loganalytics \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-azure-loganalytics \
@@ -173,8 +291,7 @@ helm upgrade --install observability-logs-azure-loganalytics \
 The chart's `templates/validate.yaml` fails the install up front with a
 readable message when any of these values are missing. Once the install
 succeeds, the adapter boots, pings the workspace, and verifies the
-Action Group is reachable. Either failure exits non-zero so the pod
-crash-loops loudly instead of silently serving misconfigured queries.
+Action Group is reachable.
 
 To expose the public webhook path through a Gateway API HTTPRoute (for
 example when the Action Group's webhook URL must traverse a public
@@ -192,30 +309,7 @@ The chart guards against exposing the webhook without auth: enabling
 ## Log alerting
 
 The adapter implements log alerting on top of Azure Monitor scheduled
-query rules. The flow is:
-
-1. The OpenChoreo alert controller POSTs an alert rule definition to the
-   adapter (`/api/v1alpha1/alerts/rules`).
-2. The adapter wraps the search phrase into a KQL `count` query against
-   `ContainerLogV2`, then `CreateOrUpdate`s an Azure scheduled query
-   rule scoped to the configured workspace, wired to the configured
-   Action Group, and tagged with `openchoreo-rule-name` and
-   `openchoreo-namespace` so the adapter can find the rule again on
-   subsequent GET/DELETE calls.
-3. When the rule fires, the Action Group POSTs a Common Alert Schema
-   payload to the adapter's `/api/v1alpha1/alerts/webhook` endpoint.
-4. The adapter validates the shared secret, parses the V2 payload
-   (`alertContext.condition.allOf[].metricValue` and `searchQuery`,
-   emitted by `scheduledQueryRules` API `2021-08-01` and later), and
-   forwards a normalised alert to the Observer's webhook endpoint. The
-   legacy V1 envelope from the `2018-04-16` API is not supported — the
-   adapter only ever creates V2 rules.
-
-The OpenChoreo identity round-trips via Azure's
-`actions.customProperties` (`openchoreo-namespace`,
-`openchoreo-rule-name`), which Common Alert Schema surfaces back as
-`data.customProperties` in the firing payload. If those are missing,
-the adapter falls back to parsing `essentials.alertRuleId`.
+query rules.
 
 ### Configure the Action Group webhook receiver
 
@@ -225,26 +319,16 @@ and contain a `webhookReceivers` entry that:
 - Has `useCommonAlertSchema: true`.
 - Points its `serviceUri` at the adapter's webhook endpoint.
 
-Azure's plain Webhook receiver schema has no `headers` field, so the
-shared secret cannot ride in `X-OpenChoreo-Webhook-Token` directly from
-the Action Group. Two options:
+The Action Group's plain Webhook receiver cannot set custom headers, so
+the shared secret has to reach the adapter another way. Two options:
 
 - **Direct webhook**: append the secret as a URL query parameter
-  (`?token=...`). The adapter accepts the secret from either the header
-  or the query parameter, which makes this work, but URLs get logged by
-  intermediaries.
+  (`?token=...`). Simple, but the secret ends up in URLs that
+  intermediaries may log.
 - **Logic App forwarder (recommended)**: front the adapter with a Logic
-  App that pulls the secret from Key Vault and injects the
-  `X-OpenChoreo-Webhook-Token` header. The Action Group's `serviceUri`
-  points at the Logic App; the Logic App points at the adapter.
-
-A **Secure Webhook** receiver (`useAadAuth: true`) avoids shared secrets
-entirely by validating an Entra ID-issued OAuth token at the adapter.
-That path requires registering an Entra ID app for the adapter and
-running the
-[`AzNS AAD Webhook`](https://learn.microsoft.com/en-us/azure/azure-monitor/alerts/action-groups#configure-authentication-for-secure-webhook)
-service principal grant script. The adapter does not validate AAD
-tokens today; this would require additional work.
+  App that holds the secret and forwards requests with it set as a
+  header. The Action Group points at the Logic App; the Logic App points
+  at the adapter.
 
 ## Shared webhook secret
 

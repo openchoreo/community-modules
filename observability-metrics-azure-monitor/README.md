@@ -84,29 +84,128 @@ Before installing this module, make sure the following are available.
 - OpenChoreo is installed.
 - The `openchoreo-observability-plane` Helm chart is installed.
 
-### Local tooling
+The commands below assume `az` is logged in (`az login`) and a few shared
+variables are exported:
 
-- `go` (1.26+)
-- `az` CLI
-- `kubectl`, `helm`
+```bash
+RG="<your-resource-group>"
+LOCATION="eastus2"
+AKS_NAME="<your-aks-cluster>"
+WORKSPACE_NAME="<your-log-analytics-workspace>"
+```
 
-### Azure prerequisites
+#### Azure subscription and region
 
-- An Azure subscription and region (for example `eastus2`).
-- An AKS cluster with:
-  - **OIDC issuer** and **Workload Identity** enabled.
-  - The **Container Insights** addon enabled (`--enable-addons monitoring
-    --enable-msi-auth-for-monitoring`). This ships the Azure Monitor Agent
-    that writes `Perf` and `KubePodInventory`.
-  - **Performance data collection left enabled** in the Container Insights
-    DCR. A cost-optimization DCR that disables performance counters empties
-    the `Perf` table and every query returns nothing.
-  - **Pod label collection enabled** so `KubePodInventory.PodLabel` carries
-    the `openchoreo.dev/*` labels.
-- A **Log Analytics workspace** on the **Analytics** table plan (the default).
-- A **User-Assigned Managed Identity** federated to the adapter's
-  ServiceAccount, with the role assignments described below.
-- A pre-existing **Action Group** the alert rules notify.
+Confirm the active subscription and pick a region:
+
+```bash
+az account show --query "{name:name, id:id}" -o table
+az account list-locations --query "[].name" -o tsv   # list valid regions
+```
+
+#### AKS cluster with OIDC issuer and Workload Identity
+
+Enable both on an existing cluster (or pass the same flags to
+`az aks create`):
+
+```bash
+az aks update -g "$RG" -n "$AKS_NAME" \
+  --enable-oidc-issuer \
+  --enable-workload-identity
+```
+
+Verify they are on:
+
+```bash
+az aks show -g "$RG" -n "$AKS_NAME" \
+  --query "{oidc:oidcIssuerProfile.enabled, wi:securityProfile.workloadIdentity.enabled}" -o table
+```
+
+#### Log Analytics workspace (Analytics table plan)
+
+Create a workspace (Analytics is the default plan) and capture its
+resource ID:
+
+```bash
+az monitor log-analytics workspace create \
+  -g "$RG" -n "$WORKSPACE_NAME" -l "$LOCATION"
+
+WORKSPACE_ARM_ID=$(az monitor log-analytics workspace show \
+  -g "$RG" -n "$WORKSPACE_NAME" --query id -o tsv)
+```
+
+#### Container Insights addon
+
+Enable the addon against the workspace above. This ships the Azure
+Monitor Agent that writes the `Perf` and `KubePodInventory` tables:
+
+```bash
+az aks enable-addons -g "$RG" -n "$AKS_NAME" \
+  --addons monitoring \
+  --enable-msi-auth-for-monitoring \
+  --workspace-resource-id "$WORKSPACE_ARM_ID"
+
+az aks get-credentials -g "$RG" -n "$AKS_NAME"   # for the kubectl steps below
+```
+
+Two collection settings must stay enabled, or queries return nothing:
+
+- **Performance data collection.** A cost-optimization DCR that disables
+  performance counters empties the `Perf` table.
+- **Pod label collection** so `KubePodInventory.PodLabel` carries the
+  `openchoreo.dev/*` labels the adapter filters by.
+
+Apply the `container-azm-ms-agentconfig` ConfigMap to `kube-system` to
+keep both on and collect the OpenChoreo pod labels:
+
+```bash
+kubectl apply -f - <<'EOF'
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: container-azm-ms-agentconfig
+  namespace: kube-system
+data:
+  schema-version: v1
+  config-version: openchoreo
+  log-data-collection-settings: |-
+    [log_collection_settings.env_var]
+      enabled = true
+    [log_collection_settings.metadata_collection]
+      enabled = true
+      include_fields = ["openchoreo.dev/namespace", "openchoreo.dev/component-uid", "openchoreo.dev/project-uid", "openchoreo.dev/environment-uid"]
+EOF
+```
+
+The Azure Monitor Agent pods in `kube-system` pick up the change within
+a few minutes and restart; confirm with:
+
+```bash
+kubectl -n kube-system get pods -l dsName=ama-logs-agent
+```
+
+#### User-Assigned Managed Identity
+
+A **User-Assigned Managed Identity** federated to the adapter's
+ServiceAccount, with the role assignments described below. Create it and
+capture its `clientId`:
+
+```bash
+az identity create -g "$RG" -n "<uami-name>" -l "$LOCATION"
+
+UAMI_CLIENT_ID=$(az identity show \
+  -g "$RG" -n "<uami-name>" --query clientId -o tsv)
+```
+
+#### Action Group
+
+A pre-existing **Action Group** the alert rules notify. Capture its
+ARM ID:
+
+```bash
+ACTION_GROUP_ARM_ID=$(az monitor action-group show \
+  -g "$RG" -n "<action-group-name>" --query id -o tsv)
+```
 
 ## Azure role assignments
 
@@ -175,9 +274,8 @@ adapter verifies the Action Group is reachable at boot.
 
 The module implements metric alerts using native Azure Monitor resources:
 
-1. A `scheduledQueryRule` whose KQL evaluates `(usage / limit) * 100` over the
-   scoped pods and thresholds it (`TimeAggregation = Average`,
-   `MetricMeasureColumn = AggregatedValue`).
+1. A `scheduledQueryRule` that thresholds the scoped pods' resource usage
+   against the configured percentage.
 2. The configured **Action Group**, which POSTs a Common Alert Schema payload
    to the adapter's `/api/v1alpha1/alerts/webhook` when the rule fires.
 
@@ -190,13 +288,6 @@ Important constraints:
   `2m` becomes `5m` instead of being rejected.
 - **Minimum 5-minute evaluation frequency.** Azure clamps sub-5-minute
   `interval` values.
-
-### Alert identity mapping
-
-The adapter stores the logical OpenChoreo rule identity in the
-`scheduledQueryRule` tags (`openchoreo-rule-name`, `openchoreo-namespace`) and
-derives a deterministic Azure resource name (`oc-<sha256(...)>`) for fast
-lookup on `GET`/`PUT`/`DELETE`, which the API addresses by `ruleName` only.
 
 ### Webhook exposure
 

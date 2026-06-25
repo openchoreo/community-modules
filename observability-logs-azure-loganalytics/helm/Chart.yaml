@@ -2,8 +2,8 @@ apiVersion: v2
 name: observability-logs-azure-loganalytics
 description: A Helm chart for OpenChoreo Logs Module for Azure Log Analytics
 type: application
-version: 0.1.2
-appVersion: "0.1.2"
+version: 0.1.3
+appVersion: "0.1.3"
 keywords:
   - azure
   - loganalytics

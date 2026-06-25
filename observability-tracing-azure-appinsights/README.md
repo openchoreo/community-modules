@@ -31,11 +31,16 @@ APPINSIGHTS_NAME="<your-application-insights>"
 
 #### Azure subscription and region
 
-Confirm the active subscription and pick a region:
+List your subscriptions, select the target one, and pick a region:
 
 ```bash
-az account show --query "{name:name, id:id}" -o table
-az account list-locations --query "[].name" -o tsv   # list valid regions
+az account list --query "[].{name:name, id:id}" -o table
+
+SUBSCRIPTION_ID="<your-subscription-id>"
+az account set --subscription "$SUBSCRIPTION_ID"
+
+az account show --query "{name:name, id:id}" -o table   # confirm the active subscription
+az account list-locations --query "[].name" -o tsv      # list valid regions
 ```
 
 #### AKS cluster with OIDC issuer and Workload Identity

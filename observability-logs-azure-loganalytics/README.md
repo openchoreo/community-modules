@@ -182,7 +182,7 @@ The Azure Monitor Agent pods in `kube-system` pick up the change within
 a few minutes and restart; confirm with:
 
 ```bash
-kubectl -n kube-system get pods -l dsName=ama-logs-agent
+kubectl -n kube-system get pods -l component=ama-logs-agent
 ```
 
 #### Action Group
@@ -266,7 +266,7 @@ ACTION_GROUP_ARM_ID=$(az monitor action-group show \
 
 # User-Assigned Managed Identity clientId the adapter runs as.
 UAMI_CLIENT_ID=$(az identity show \
-  -g "$UAMI_RG" -n "$UAMI_NAME" --query clientId -o tsv)
+  -g "$AZURE_RESOURCE_GROUP" -n "<uami-name>" --query clientId -o tsv)
 
 # Shared secret guarding the adapter's webhook endpoint (any strong value).
 WEBHOOK_TOKEN="<your-webhook-shared-secret>"

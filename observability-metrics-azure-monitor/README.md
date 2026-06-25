@@ -148,6 +148,11 @@ az aks enable-addons -g "$RG" -n "$AKS_NAME" \
 az aks get-credentials -g "$RG" -n "$AKS_NAME"   # for the kubectl steps below
 ```
 
+`--enable-msi-auth-for-monitoring` requires the cluster to use a managed
+identity (system-assigned or user-assigned). Configure the cluster with
+one before running the `az aks enable-addons` command above; it fails on a
+service-principal-based cluster.
+
 Two collection settings must stay enabled, or queries return nothing:
 
 - **Performance data collection.** A cost-optimization DCR that disables
@@ -181,7 +186,7 @@ The Azure Monitor Agent pods in `kube-system` pick up the change within
 a few minutes and restart; confirm with:
 
 ```bash
-kubectl -n kube-system get pods -l dsName=ama-logs-agent
+kubectl -n kube-system get pods -l component=ama-logs-agent
 ```
 
 #### User-Assigned Managed Identity

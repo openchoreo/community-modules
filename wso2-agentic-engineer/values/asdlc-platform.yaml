@@ -85,7 +85,9 @@ postgres:
 
 # ── OpenBao ───────────────────────────────────────────────────────────────────
 # Address of the OpenBao instance in your cluster.
-# Auth is handled via Kubernetes ServiceAccount (no static token needed).
+# The chart (ESO ClusterSecretStore) authenticates via Kubernetes ServiceAccount —
+# no static token is required in this values file. However, manually pre-seeding
+# OpenBao before install (production pattern) does require a token with write access.
 # Override openbao.authRole / serviceAccountName / serviceAccountNamespace only
 # if your OpenBao uses a non-default role or service account.
 openbao:

@@ -7,6 +7,7 @@
 - [Architecture](#architecture)
 - [Prerequisites](#prerequisites)
 - [Identity Provider Configuration](#identity-provider-configuration)
+- [Secret Management](#secret-management)
 - [Quick Start (Local k3d)](#quick-start-local-k3d)
 - [Installation](#installation)
   - [Step 1: Set Up GitHub Integration](#step-1-set-up-github-integration)
@@ -47,8 +48,8 @@ The BFF and console are exposed through the OC control-plane gateway. The coding
 - OpenChoreo installed with control, data, workflow, and observability planes
 - Thunder identity provider already configured with OpenChoreo
 - cert-manager installed in the cluster
-- External Secrets Operator installed with a `ClusterSecretStore` named `default`
-- OpenBao installed (used by the coding-agent runner to retrieve the Anthropic API key at runtime)
+- External Secrets Operator (ESO) installed — the chart creates the `ClusterSecretStore` automatically
+- OpenBao installed (used as the secret store backend; must be reachable at `openbao.openbao.svc.cluster.local:8200` by default)
 - `helm` v3.12+, `kubectl` v1.32+
 - A GitHub App (or Personal Access Token) for repository provisioning
 
@@ -99,6 +100,66 @@ The chart's default values for Thunder already match a standard OpenChoreo insta
 
 ---
 
+## Secret Management
+
+Secrets are stored in OpenBao and synced into the cluster via ESO — they never appear as plain values in the pod spec or Helm release manifest.
+
+### How it works
+
+```
+values.yaml (wso2-ae-platform.secrets.*)
+       │
+       ▼
+K8s Secret "asdlc-api-seed"        (staging area, created by chart)
+       │
+       ▼
+PushSecret → OpenBao               (ESO pushes values into OpenBao)
+       │
+       ▼
+ExternalSecret → "asdlc-api-secrets"  (ESO reads back from OpenBao every 15s)
+       │
+       ▼
+asdlc-api Pod (env vars via secretKeyRef)
+```
+
+The chart creates the `ClusterSecretStore "default"` automatically if one does not already exist in the cluster.
+
+### Per-secret `forceDefaultOverride` policy
+
+Each entry in `wso2-ae-platform.secrets` has a `forceDefaultOverride` field that controls how the chart interacts with OpenBao:
+
+| Value | Behaviour |
+|-------|-----------|
+| `""` (default) | Push to OpenBao only if the key is absent (`IfNotExists`). Seeds on first install, never overwrites on upgrade. |
+| `"true"` | Always overwrite OpenBao with the value from `values.yaml` on every `helm install/upgrade`. |
+| `"false"` | Do not push at all. Relies on a value already set in OpenBao manually. Use this for production secrets pre-seeded out of band. |
+
+### Dev vs production pattern
+
+**Dev (default):** Leave `forceDefaultOverride: ""`. Values in `wso2-ae-platform.secrets` are seeded into OpenBao on first install and never overwritten on upgrade.
+
+**Production:** Pre-seed each secret path in OpenBao before running `helm install`, then set `forceDefaultOverride: "false"` so the chart never touches them:
+
+```bash
+kubectl exec -n openbao openbao-0 -- sh -c \
+  'BAO_ADDR=http://127.0.0.1:8200 BAO_TOKEN=<token> \
+   bao kv put secret/asdlc/platform/github/webhook-secret value="<real-value>"'
+```
+
+Repeat for all secret paths. Then set `forceDefaultOverride: "false"` for each in your values file.
+
+### Rotating a secret
+
+Update the value directly in OpenBao — no `helm upgrade` needed. ESO re-reads every 15 seconds:
+
+```bash
+kubectl exec -n openbao openbao-0 -- sh -c \
+  'BAO_ADDR=http://127.0.0.1:8200 BAO_TOKEN=<token> \
+   bao kv put secret/asdlc/platform/github/webhook-secret value="<new-value>"'
+```
+
+---
+
 ## Quick Start (Local k3d)
 
 If you are running the standard OpenChoreo k3d setup, all chart defaults match your cluster out of the box. No values file is needed — install with a single command and configure everything via the console UI afterward:
@@ -133,7 +194,7 @@ Agentic Engineer uses GitHub to provision repositories, manage branches, and dis
 
 #### Option B: Personal Access Token
 
-Set `github.appId`, `github.clientId`, and `github.clientSecret` to empty strings and configure a PAT with `repo` and `workflow` scopes via the Agentic Engineer settings UI after install.
+Set `github.appId` and `github.clientId` to empty strings and leave `wso2-ae-platform.secrets.githubClientSecret.value` empty. Configure a PAT with `repo` and `workflow` scopes via the Agentic Engineer settings UI after install.
 
 #### Webhook relay for local clusters
 
@@ -158,7 +219,6 @@ Open `asdlc-platform.yaml` and fill in every `<PLACEHOLDER>`:
 | Field | Description |
 |-------|-------------|
 | `thunder.publicURL` | Browser-facing Thunder URL (`THUNDER_PUBLIC_URL`) |
-| `thunder.systemClientSecret` | Secret for the ASDLC system client registered in Thunder — change for production |
 | `bff.publicURL` | Public URL for the BFF, reachable from GitHub and coding-agent pods |
 | `console.publicURL` | Public URL for the console |
 | `wso2-ae-platform.asdlcApi.hostname` | Hostname for the BFF HTTPRoute (typically the host part of `bff.publicURL`) |
@@ -166,15 +226,17 @@ Open `asdlc-platform.yaml` and fill in every `<PLACEHOLDER>`:
 | `wso2-ae-platform.console.thunderPublicURL` | Set to `THUNDER_PUBLIC_URL` |
 | `github.appId` | GitHub App ID |
 | `github.clientId` | GitHub App OAuth client ID |
-| `github.clientSecret` | GitHub App OAuth client secret |
 | `github.appSlug` | GitHub App slug (URL-safe name) |
-| `github.webhookSecret` | Random secret registered in your GitHub App webhook settings |
-| `github.oauthStateKey` | Exactly 32-character random string for OAuth state HMAC |
-| `anthropic.apiKey` | Anthropic API key (platform-level fallback for the coding agent) |
-| `postgres.auth.password` | PostgreSQL password — change from the default |
-| `openbao.token` | OpenBao root/service token |
 | `wso2-ae-platform.idp.issuer` | Set to `THUNDER_PUBLIC_URL` |
 | `wso2-ae-platform.idp.jwksURL` | Set to `${THUNDER_PUBLIC_URL}/oauth2/jwks` |
+| `wso2-ae-platform.secrets.thunderSystemClientSecret.value` | Secret for the ASDLC system client registered in Thunder |
+| `wso2-ae-platform.secrets.githubClientSecret.value` | GitHub App OAuth client secret |
+| `wso2-ae-platform.secrets.githubWebhookSecret.value` | Random secret registered in your GitHub App webhook settings |
+| `wso2-ae-platform.secrets.oauthStateKey.value` | Exactly 32-character random string for OAuth state HMAC |
+| `wso2-ae-platform.secrets.serviceAuthClientSecret.value` | BFF service identity client secret |
+| `wso2-ae-platform.secrets.serviceAuthGitClientSecret.value` | BFF → git-service JWT secret |
+| `wso2-ae-platform.secrets.serviceAuthAgentsClientSecret.value` | BFF → agents-service JWT secret |
+| `postgres.auth.password` | PostgreSQL password — change from the default |
 
 #### Install
 
@@ -189,7 +251,7 @@ helm install wso2-ae \
   --set-file wso2-ae-platform.github.appPrivateKeyPem=./github-app.pem  # omit if using PAT
 ```
 
-> **Note:** The BFF task signing key (RSA-2048 for JWT signing) is auto-generated by a Helm hook Job on first install and stored in a Kubernetes ConfigMap. The key is reused on subsequent Helm upgrades, ensuring that in-flight task JWTs remain valid. For production deployments with a custom signing key, pass `--set-file wso2-ae-platform.taskSigning.privateKeyPem=./your-key.pem`.
+> **Note:** The BFF task signing key (RSA-2048 for JWT signing) is auto-generated by a Helm hook Job on first install and stored in a Kubernetes Secret. The key is reused on subsequent Helm upgrades, ensuring that in-flight task JWTs remain valid. For production deployments with a custom signing key, pass `--set-file wso2-ae-platform.taskSigning.privateKeyPem=./your-key.pem`.
 
 The install runs two post-install jobs:
 - **Thunder bootstrap** — patches Thunder's `cors.allowedOrigins` to include the console URL (required for the browser PKCE token exchange), triggers a rolling restart of Thunder, waits for it to be ready, then registers the ASDLC OAuth clients. If the CORS patch fails, check the job logs: `kubectl logs -n ${AE_NS} -l app.kubernetes.io/component=thunder-bootstrap`. The job assumes Thunder is deployed to the `thunder` namespace as `thunder-deployment` with ConfigMap `thunder-config-map` — the defaults for a standard OpenChoreo installation. If your setup differs, override `thunder.namespace`, `thunder.deploymentName`, and `thunder.configMapName` in your values file.
@@ -219,6 +281,10 @@ kubectl get httproute -n openchoreo-control-plane | grep asdlc
 
 # Post-install jobs completed
 kubectl get jobs -n ${AE_NS}
+
+# Secrets synced from OpenBao
+kubectl get externalsecret asdlc-api-secrets -n ${AE_NS}
+kubectl get pushsecret -n ${AE_NS}
 ```
 
 ---
@@ -242,4 +308,3 @@ Log in with the Thunder admin credentials (`admin` / `admin` by default on a sta
 helm uninstall wso2-ae -n ${AE_NS}
 kubectl delete namespace ${AE_NS}
 ```
-

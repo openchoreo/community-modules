@@ -102,7 +102,7 @@ The chart's default values for Thunder already match a standard OpenChoreo insta
 
 ## Secret Management
 
-Secrets are stored in OpenBao and synced into the cluster via ESO — they never appear as plain values in the pod spec or Helm release manifest.
+Secrets are stored in OpenBao and synced into the cluster via ESO — they never appear as plain values in the pod spec or Helm release manifest. For **local and dev setups**, values can be provided in `asdlc-platform.yaml` for convenience; the chart seeds them into OpenBao automatically. For **production**, secrets must be pre-seeded in OpenBao directly and must not be set in the values file at all.
 
 ### How it works
 
@@ -216,6 +216,8 @@ curl -sOL ${MODULE_RAW}/values/asdlc-platform.yaml
 
 Open `asdlc-platform.yaml` and fill in every `<PLACEHOLDER>`:
 
+**Non-sensitive configuration** — safe to set in values.yaml:
+
 | Field | Description |
 |-------|-------------|
 | `thunder.publicURL` | Browser-facing Thunder URL (`THUNDER_PUBLIC_URL`) |
@@ -229,14 +231,23 @@ Open `asdlc-platform.yaml` and fill in every `<PLACEHOLDER>`:
 | `github.appSlug` | GitHub App slug (URL-safe name) |
 | `wso2-ae-platform.idp.issuer` | Set to `THUNDER_PUBLIC_URL` |
 | `wso2-ae-platform.idp.jwksURL` | Set to `${THUNDER_PUBLIC_URL}/oauth2/jwks` |
-| `wso2-ae-platform.secrets.thunderSystemClientSecret.value` | Secret for the ASDLC system client registered in Thunder |
-| `wso2-ae-platform.secrets.githubClientSecret.value` | GitHub App OAuth client secret |
-| `wso2-ae-platform.secrets.githubWebhookSecret.value` | Random secret registered in your GitHub App webhook settings |
-| `wso2-ae-platform.secrets.oauthStateKey.value` | Exactly 32-character random string for OAuth state HMAC |
-| `wso2-ae-platform.secrets.serviceAuthClientSecret.value` | BFF service identity client secret |
-| `wso2-ae-platform.secrets.serviceAuthGitClientSecret.value` | BFF → git-service JWT secret |
-| `wso2-ae-platform.secrets.serviceAuthAgentsClientSecret.value` | BFF → agents-service JWT secret |
-| `postgres.auth.password` | PostgreSQL password — change from the default |
+
+**Secrets** — how you set these depends on your environment:
+
+- **Local / dev:** Set `wso2-ae-platform.secrets.<name>.value` in `asdlc-platform.yaml`. The chart pushes them into OpenBao on first install (`IfNotExists` — never overwritten on upgrade). Values will appear in Helm release history, which is acceptable for non-production use.
+- **Production:** Pre-seed each path in OpenBao before `helm install` (see the [Secret Management](#secret-management) section), leave `value: ""` in the values file, and set `forceDefaultOverride: "false"` so the chart never writes to your store.
+
+| Secret field | Description |
+|---|---|
+| `wso2-ae-platform.secrets.thunderSystemClientSecret` | Secret for the ASDLC system client registered in Thunder |
+| `wso2-ae-platform.secrets.githubClientSecret` | GitHub App OAuth client secret |
+| `wso2-ae-platform.secrets.githubWebhookSecret` | Random secret registered in your GitHub App webhook settings |
+| `wso2-ae-platform.secrets.oauthStateKey` | Exactly 32-character random string for OAuth state HMAC |
+| `wso2-ae-platform.secrets.serviceAuthClientSecret` | BFF service identity client secret |
+| `wso2-ae-platform.secrets.serviceAuthGitClientSecret` | BFF → git-service JWT secret |
+| `wso2-ae-platform.secrets.serviceAuthAgentsClientSecret` | BFF → agents-service JWT secret |
+
+> **`postgres.auth.password`** — only applies to the bundled dev StatefulSet. For production use an external database via `postgres.url` and leave `postgres.auth.password` unset.
 
 #### Install
 

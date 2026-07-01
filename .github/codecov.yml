@@ -36,6 +36,10 @@ component_management:
       name: observability-logs-aws-cloudwatch
       paths:
         - observability-logs-aws-cloudwatch/**
+    - component_id: observability_logs_gcp_cloudlogging
+      name: observability-logs-gcp-cloudlogging
+      paths:
+        - observability-logs-gcp-cloudlogging/**
     - component_id: observability_metrics_aws_cloudwatch
       name: observability-metrics-aws-cloudwatch
       paths:

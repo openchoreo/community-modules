@@ -1,0 +1,101 @@
+# GCP project that owns the container logs and, for alerting, the log-based
+# metrics and Cloud Monitoring alert policies the adapter creates. Required.
+gcp:
+  projectId: ""
+
+# Pre-existing Cloud Monitoring notification channel that all alert policies
+# invoke when they fire. It must be a `webhook_basicauth` channel whose URL
+# points back at this adapter's /api/v1alpha1/alerts/webhook endpoint, with the
+# password set to the same value as adapter.webhookAuth.sharedSecret. Optional:
+# when empty the adapter serves log queries but alert-rule creation has no
+# delivery target. See the README "Log alerting" section.
+notificationChannel:
+  id: ""
+
+# ---------------------------------------------------------------------------
+# Adapter — the Go service that answers Observer logs queries and Cloud
+# Monitoring alert webhooks.
+# ---------------------------------------------------------------------------
+adapter:
+  enabled: true
+  replicas: 1
+  image:
+    repository: "ghcr.io/openchoreo/observability-logs-gcp-cloudlogging-adapter"
+    tag: ""
+    pullPolicy: IfNotPresent
+  service:
+    # The Observer resolves the logs adapter at the URL configured by
+    # `observer.logsAdapter.url` on the observability-plane chart, which
+    # defaults to `http://logs-adapter:9098`. This Service is named after the
+    # adapter; point the Observer at it, e.g.
+    #   --set observer.logsAdapter.url=http://logs-adapter-gcp-cloudlogging:9098
+    port: 9098
+  # Annotations applied to the adapter ServiceAccount. Attach the GKE Workload
+  # Identity binding here, e.g.:
+  #   iam.gke.io/gcp-service-account: <gsa>@<project>.iam.gserviceaccount.com
+  serviceAccount:
+    annotations: {}
+
+  # Upper bound for how long a single Cloud Logging query may run (Go duration).
+  queryTimeout: "30s"
+  logLevel: INFO
+
+  # GKE's managed logging agent surfaces OpenChoreo pod-label keys under the
+  # `k8s-pod/` prefix with dots in the key replaced by underscores (e.g.
+  # openchoreo.dev/component-uid -> k8s-pod/openchoreo_dev/component-uid). The
+  # adapter applies that substitution when building filters. Set to false only
+  # for clusters whose agent preserves dots in the surfaced label key.
+  sanitizePodLabelDots: true
+
+  # URL of the OpenChoreo Observer. Fired alerts are forwarded to
+  # `${observerUrl}/api/v1alpha1/alerts/webhook`, which is registered on the
+  # Observer's INTERNAL server (port 8081), NOT the public 8080 one.
+  observerUrl: "http://observer-internal.openchoreo-observability-plane.svc.cluster.local:8081"
+
+  # Shared-secret auth on the public webhook endpoint. The adapter accepts the
+  # secret as an HTTP Basic-auth password (sent by a GCP webhook_basicauth
+  # notification channel), the X-OpenChoreo-Webhook-Token header, or the
+  # ?token= query parameter. Provide the secret inline via `sharedSecret`
+  # (chart creates a Secret), or reference an existing one via
+  # `sharedSecretRef.name`. This must equal the password configured on the
+  # Cloud Monitoring notification channel.
+  webhookAuth:
+    enabled: true
+    sharedSecret: ""
+    sharedSecretRef:
+      name: ""
+      key: token
+
+  # Optional Gateway API HTTPRoute that exposes only the public webhook path
+  # via an existing Gateway. A GCP notification channel POSTs firing alerts to
+  # it from outside the cluster. GCP silently drops webhooks to self-signed
+  # TLS endpoints, so route via a plain-HTTP listener or a listener with a
+  # publicly-trusted certificate. Auth is enforced by the adapter, so exposing
+  # only this path is safe.
+  webhookRoute:
+    enabled: false
+    parentRef:
+      name: gateway-default
+      namespace: ""
+      sectionName: ""
+    hostnames: []
+
+  networkPolicy:
+    enabled: false
+    observerNamespaceLabels:
+      kubernetes.io/metadata.name: openchoreo-observability-plane
+    observerPodLabels: {}
+    # Namespace labels for the Gateway data-plane pods that proxy the webhook
+    # to the adapter. Default empty: when the route is enabled, set this to
+    # match your Gateway controller's data-plane namespace
+    # (e.g. `kubernetes.io/metadata.name: openchoreo-data-plane`).
+    gatewayNamespaceLabels: {}
+    allowProbeIPBlock: ""
+
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 128Mi

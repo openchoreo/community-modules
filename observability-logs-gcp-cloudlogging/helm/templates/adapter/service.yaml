@@ -1,0 +1,18 @@
+{{- if .Values.adapter.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: logs-adapter-gcp-cloudlogging
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: logs-adapter-gcp-cloudlogging
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.adapter.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app: logs-adapter-gcp-cloudlogging
+{{- end }}

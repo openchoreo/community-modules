@@ -1,0 +1,19 @@
+{{- if .Values.adapter.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: logs-adapter-gcp-cloudlogging
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: logs-adapter-gcp-cloudlogging
+data:
+  SERVER_PORT: {{ .Values.adapter.service.port | quote }}
+  LOG_LEVEL: {{ .Values.adapter.logLevel | quote }}
+  QUERY_TIMEOUT: {{ .Values.adapter.queryTimeout | quote }}
+
+  GCP_PROJECT_ID: {{ .Values.gcp.projectId | quote }}
+  SANITIZE_POD_LABEL_DOTS: {{ .Values.adapter.sanitizePodLabelDots | quote }}
+
+  NOTIFICATION_CHANNEL_ID: {{ .Values.notificationChannel.id | quote }}
+  OBSERVER_URL: {{ .Values.adapter.observerUrl | quote }}
+{{- end }}

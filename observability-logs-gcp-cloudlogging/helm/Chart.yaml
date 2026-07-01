@@ -1,0 +1,16 @@
+apiVersion: v2
+name: observability-logs-gcp-cloudlogging
+description: A Helm chart for OpenChoreo Logs Module for GCP Cloud Logging
+type: application
+# Version strategy: latest-dev for development, replaced by CI for releases
+version: 0.0.0-latest-dev
+appVersion: "latest-dev"
+keywords:
+  - gcp
+  - cloudlogging
+  - gke
+  - openchoreo
+  - logs
+maintainers:
+  - name: OpenChoreo Team
+home: https://github.com/openchoreo/community-modules

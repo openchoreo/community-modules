@@ -5,19 +5,19 @@
 #   1. The data plane advertises the KEDA backend:
 #        kubectl annotate clusterdataplane default \
 #          openchoreo.dev/keda-based-scaling-backend=keda --overwrite
-#   2. The `service` type allows the trait (componenttypes/service.yaml applied — see README).
+#   2. The `web-application` type allows the trait (componenttypes/webapp.yaml applied — see README).
 ---
 apiVersion: openchoreo.dev/v1alpha1
 kind: Component
 metadata:
-  name: greeter
+  name: keda-webapp
   namespace: default
 spec:
   owner:
     projectName: default
   componentType:
     kind: ClusterComponentType
-    name: deployment/service
+    name: deployment/web-application
   autoDeploy: true
   traits:
     - kind: ClusterTrait
@@ -32,32 +32,29 @@ spec:
 apiVersion: openchoreo.dev/v1alpha1
 kind: Workload
 metadata:
-  name: greeter-workload
+  name: keda-webapp-workload
   namespace: default
 spec:
   owner:
     projectName: default
-    componentName: greeter
+    componentName: keda-webapp
   endpoints:
     http:
       type: HTTP
-      port: 9090
+      port: 80
       visibility: [external]
   container:
-    image: "hashicorp/http-echo:1.0.0"
-    args:
-      - "-listen=0.0.0.0:9090"
-      - "-text=Hello from OpenChoreo Autoscaling with KEDA!"
+    image: "nginx:1.27-alpine"
 ---
 apiVersion: openchoreo.dev/v1alpha1
 kind: ReleaseBinding
 metadata:
-  name: greeter-development
+  name: keda-webapp-development
   namespace: default
 spec:
   owner:
     projectName: default
-    componentName: greeter
+    componentName: keda-webapp
   environment: development
   componentTypeEnvironmentConfigs:
     resources:

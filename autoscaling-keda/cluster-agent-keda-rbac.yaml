@@ -1,11 +1,6 @@
 # Copyright 2026 The OpenChoreo Authors
 # SPDX-License-Identifier: Apache-2.0
 #
-# The OpenChoreo data-plane cluster-agent applies the rendered KEDA objects, but
-# its base ClusterRole does not include the KEDA API groups. This grants the agent
-# ServiceAccount permission to manage the KEDA resources the keda-based-scaling trait
-# renders.
-#
 # The subject below is the standard data-plane agent ServiceAccount
 # (`cluster-agent-dataplane` in `openchoreo-data-plane`). If your data plane uses a
 # different ServiceAccount name or namespace, edit the ClusterRoleBinding subject.

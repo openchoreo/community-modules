@@ -1,20 +1,5 @@
 # Copyright 2026 The OpenChoreo Authors
 # SPDX-License-Identifier: Apache-2.0
-#
-# Autoscaling with KEDA ClusterTrait. Renders KEDA objects so a component scales
-# with demand — down to zero when idle, back up when demand returns. Inert unless
-# the data plane advertises a backend via the
-# `openchoreo.dev/keda-based-scaling-backend: keda` annotation (surfaced to
-# templates as `dataplane.annotations`).
-#
-# Two modes, chosen by `trigger.type`:
-#   ""        -> HTTP mode: InterceptorRoute + companion ScaledObject (KEDA HTTP
-#                Add-on 0.14 split model). The component's Service is aliased to
-#                the interceptor so gateway and in-cluster callers both wake it.
-#   non-empty -> trigger mode: a ScaledObject with that KEDA trigger (cron, kafka, ...).
-#
-# Both modes drop the Deployment's static replicas so KEDA owns the count.
-# See CONFIGURATION.md for the full parameter reference and design rationale.
 apiVersion: openchoreo.dev/v1alpha1
 kind: ClusterTrait
 metadata:
@@ -38,12 +23,10 @@ spec:
           type: integer
           default: 10
           minimum: 1
-        # Seconds all metrics must stay at zero before scaling down to minReplicas.
         cooldownPeriod:
           type: integer
           default: 300
           minimum: 0
-        # Any KEDA scaler trigger. Leave type "" for HTTP traffic-driven services.
         trigger:
           type: object
           default:
@@ -57,8 +40,6 @@ spec:
               additionalProperties:
                 type: string
               default: {}
-        # Location of the keda-add-ons-http interceptor. Defaults match a
-        # `keda-add-ons-http` install in the `keda` namespace.
         interceptorNamespace:
           type: string
           default: keda
@@ -71,26 +52,17 @@ spec:
         interceptorMultiportService:
           type: string
           default: keda-add-ons-http-interceptor-multiport
-        # Ports the multiport interceptor Service exposes. An HTTP-mode endpoint must
-        # listen on one of these: its Service becomes an ExternalName alias (a DNS
-        # CNAME, which can't remap ports), so the caller-facing port must be one the
-        # interceptor already answers on. Keep in sync with keda-interceptor-multiport.yaml.
         wakeablePorts:
           type: array
           items:
             type: integer
           default: [80, 3000, 5000, 8000, 8080, 8081, 8090, 9000, 9090]
-        # The add-on's external scaler that the companion ScaledObject pulls the
-        # request metric from.
         interceptorScalerService:
           type: string
           default: keda-add-ons-http-external-scaler
         interceptorScalerPort:
           type: integer
           default: 9090
-        # HTTP mode scales on request RATE over a sliding window, not instantaneous
-        # concurrency, so sparse traffic keeps the service awake. targetValue is
-        # requests/second per replica.
         requestRateTargetValue:
           type: integer
           default: 1
@@ -101,7 +73,6 @@ spec:
         requestRateGranularity:
           type: string
           default: "1s"
-        # How long the interceptor holds the first request while a pod cold-starts.
         readinessTimeout:
           type: string
           default: "120s"
@@ -121,12 +92,6 @@ spec:
           minimum: 0
 
   validations:
-    # HTTP-mode shape check. The component's Service is aliased to the interceptor
-    # via an ExternalName, which forces two intrinsic constraints (reject loudly
-    # rather than mis-scale):
-    #   - exactly one endpoint: the interceptor routes by Host only (port stripped),
-    #     and all endpoints of a component share one Service name, hence one Host;
-    #   - the endpoint port must be in wakeablePorts: a DNS CNAME can't remap ports.
     - rule: >-
         ${(parameters.enabled && (has(dataplane.annotations) && "openchoreo.dev/keda-based-scaling-backend" in dataplane.annotations && dataplane.annotations["openchoreo.dev/keda-based-scaling-backend"] == "keda") && parameters.trigger.type == "" && size(workload.endpoints) > 0)
           ? (size(workload.endpoints) == 1
@@ -137,14 +102,11 @@ spec:
           : true}
       message: "A KEDA-scaled HTTP service must expose exactly one external HTTP/GraphQL/Websocket endpoint, on a wakeable port (default 80, 3000, 5000, 8000, 8080, 8081, 8090, 9000, 9090): the KEDA interceptor routes by Host only, and the ExternalName alias (a DNS CNAME) can't remap ports. Split extra endpoints into their own component, add the port to keda-interceptor-multiport.yaml and wakeablePorts, or keep minReplicas >= 1."
 
-    # Worker-mode guard: a component with no endpoints has no HTTP traffic to wake
-    # on, so it needs an explicit trigger.
     - rule: >-
         ${!(parameters.enabled && (has(dataplane.annotations) && "openchoreo.dev/keda-based-scaling-backend" in dataplane.annotations && dataplane.annotations["openchoreo.dev/keda-based-scaling-backend"] == "keda") && parameters.trigger.type == "" && size(workload.endpoints) == 0)}
       message: "keda-based-scaling on a component with no endpoints (a worker) requires a trigger (e.g. cron, kafka, rabbitmq). Set trigger.type, or attach this trait only to components that expose an HTTP endpoint."
 
   creates:
-    # (1) Trigger mode: a ScaledObject with the given KEDA trigger.
     - includeWhen: '${parameters.enabled && (has(dataplane.annotations) && "openchoreo.dev/keda-based-scaling-backend" in dataplane.annotations && dataplane.annotations["openchoreo.dev/keda-based-scaling-backend"] == "keda") && parameters.trigger.type != ""}'
       template:
         apiVersion: keda.sh/v1alpha1
@@ -166,10 +128,6 @@ spec:
             - type: ${parameters.trigger.type}
               metadata: ${parameters.trigger.metadata}
 
-    # (2) HTTP mode: InterceptorRoute (routing rule + scaling metric). The 0.14
-    #     controller does NOT create the ScaledObject for it, so (2b) renders the
-    #     companion. The interceptor holds the first request until a pod is ready,
-    #     so wake-from-zero is lossless.
     - includeWhen: '${parameters.enabled && (has(dataplane.annotations) && "openchoreo.dev/keda-based-scaling-backend" in dataplane.annotations && dataplane.annotations["openchoreo.dev/keda-based-scaling-backend"] == "keda") && parameters.trigger.type == "" && size(workload.endpoints.transformList(name, ep, ("external" in ep.visibility && ep.type in ["HTTP", "GraphQL", "Websocket"]) ? [name] : []).flatten()) == 1}'
       forEach: '${workload.endpoints.transformMap(name, ep, "external" in ep.visibility && ep.type in ["HTTP", "GraphQL", "Websocket"], ep)}'
       var: endpoint
@@ -181,15 +139,9 @@ spec:
           namespace: ${metadata.namespace}
           labels: ${metadata.labels}
         spec:
-          # The component's own Service name is taken over by the ExternalName alias
-          # (see patches), so forward to the dedicated pod-backing Service instead.
           target:
             service: ${oc_dns_label(metadata.componentName, "keda-upstream")}
             port: ${endpoint.value.port}
-          # Register ONLY the component's unique in-cluster FQDN as the Host rule —
-          # every KEDA-scaled service in an environment shares the gateway hostname
-          # and would otherwise collide. The external HTTPRoute rewrites Host to this
-          # FQDN (see patches) so gateway and in-cluster callers match the same rule.
           rules:
             - hosts:
                 - ${metadata.componentName + "." + metadata.namespace + ".svc.cluster.local"}
@@ -201,9 +153,6 @@ spec:
           timeouts:
             readiness: ${parameters.readinessTimeout}
 
-    # (2b) Companion ScaledObject: scale target + bounds (minReplicaCount 0 is the
-    #      scale-to-zero gate). Rendered after the InterceptorRoute so the external
-    #      scaler has a metric spec to report instead of falling back to CPU.
     - includeWhen: '${parameters.enabled && (has(dataplane.annotations) && "openchoreo.dev/keda-based-scaling-backend" in dataplane.annotations && dataplane.annotations["openchoreo.dev/keda-based-scaling-backend"] == "keda") && parameters.trigger.type == "" && size(workload.endpoints.transformList(name, ep, ("external" in ep.visibility && ep.type in ["HTTP", "GraphQL", "Websocket"]) ? [name] : []).flatten()) == 1}'
       forEach: '${workload.endpoints.transformMap(name, ep, "external" in ep.visibility && ep.type in ["HTTP", "GraphQL", "Websocket"], ep)}'
       var: endpoint
@@ -231,9 +180,6 @@ spec:
                 scalerAddress: ${parameters.interceptorScalerService + "." + parameters.interceptorNamespace + ":" + string(parameters.interceptorScalerPort)}
                 interceptorRoute: ${oc_generate_name(metadata.componentName, endpoint.key)}
 
-    # (3) HTTP mode: a kgateway Backend in the component's namespace targeting the
-    #     interceptor by DNS name — a local Backend needs no cross-namespace
-    #     ReferenceGrant.
     - includeWhen: '${parameters.enabled && (has(dataplane.annotations) && "openchoreo.dev/keda-based-scaling-backend" in dataplane.annotations && dataplane.annotations["openchoreo.dev/keda-based-scaling-backend"] == "keda") && parameters.trigger.type == "" && size(workload.endpoints.transformList(name, ep, ("external" in ep.visibility && ep.type in ["HTTP", "GraphQL", "Websocket"]) ? [name] : []).flatten()) == 1}'
       template:
         apiVersion: gateway.kgateway.dev/v1alpha1
@@ -249,10 +195,6 @@ spec:
               - host: ${parameters.interceptorService + "." + parameters.interceptorNamespace + ".svc.cluster.local"}
                 port: ${parameters.interceptorPort}
 
-    # (4) Pod-backing Service the interceptor forwards to (the component's own
-    #     Service no longer selects pods once aliased). Its name sorts after
-    #     ${metadata.componentName} so OpenChoreo's in-cluster URL resolver keeps
-    #     injecting the ExternalName.
     - includeWhen: '${parameters.enabled && (has(dataplane.annotations) && "openchoreo.dev/keda-based-scaling-backend" in dataplane.annotations && dataplane.annotations["openchoreo.dev/keda-based-scaling-backend"] == "keda") && parameters.trigger.type == "" && size(workload.endpoints.transformList(name, ep, ("external" in ep.visibility && ep.type in ["HTTP", "GraphQL", "Websocket"]) ? [name] : []).flatten()) == 1}'
       template:
         apiVersion: v1
@@ -267,8 +209,6 @@ spec:
           ports: ${workload.toServicePorts()}
 
   patches:
-    # Drop the static replica count so server-side apply stops resetting it and
-    # fighting the autoscaler — KEDA owns replicas now.
     - target:
         group: apps
         version: v1
@@ -278,8 +218,6 @@ spec:
         - op: remove
           path: /spec/replicas
 
-    # HTTP mode: repoint the external HTTPRoute at the interceptor via the local
-    # kgateway Backend.
     - target:
         group: gateway.networking.k8s.io
         version: v1
@@ -287,31 +225,39 @@ spec:
         where: '${parameters.enabled && (has(dataplane.annotations) && "openchoreo.dev/keda-based-scaling-backend" in dataplane.annotations && dataplane.annotations["openchoreo.dev/keda-based-scaling-backend"] == "keda") && parameters.trigger.type == "" && has(resource.metadata.labels) && resource.metadata.labels["openchoreo.dev/endpoint-visibility"] == "external"}'
       operations:
         - op: replace
-          path: /spec/rules/0/backendRefs/0
+          path: /spec/rules/[*]/backendRefs/[?(@.name=='${metadata.componentName}')]
           value:
             group: gateway.kgateway.dev
             kind: Backend
             name: ${oc_generate_name(metadata.componentName, "keda-interceptor")}
             weight: 1
-        # A cold start can outlast the gateway's default route timeout (~15s),
-        # which would drop the first request even though the interceptor holds it.
         - op: add
-          path: /spec/rules/0/timeouts
+          path: /spec/rules/[*]/timeouts
           value:
-            request: "120s"
-        # Rewrite Host to the component's in-cluster FQDN — the only host on the
-        # InterceptorRoute rule — so gateway traffic matches the same rule as
-        # in-cluster traffic. (filters[0] is the URLRewrite the component type
-        # already sets for the basePath.)
+            request: ${parameters.readinessTimeout}
+    - target:
+        group: gateway.networking.k8s.io
+        version: v1
+        kind: HTTPRoute
+        where: '${parameters.enabled && (has(dataplane.annotations) && "openchoreo.dev/keda-based-scaling-backend" in dataplane.annotations && dataplane.annotations["openchoreo.dev/keda-based-scaling-backend"] == "keda") && parameters.trigger.type == "" && has(resource.metadata.labels) && resource.metadata.labels["openchoreo.dev/endpoint-visibility"] == "external" && has(resource.spec.rules[0].filters) && resource.spec.rules[0].filters.exists(f, f.type == "URLRewrite")}'
+      operations:
         - op: add
-          path: /spec/rules/0/filters/0/urlRewrite/hostname
+          path: /spec/rules/[*]/filters/[?(@.type=='URLRewrite')]/urlRewrite/hostname
           value: ${metadata.componentName + "." + metadata.namespace + ".svc.cluster.local"}
 
-    # HTTP mode: turn the component's own Service into an ExternalName alias of the
-    # interceptor (via the multiport Service). Connections inject this Service's
-    # in-cluster URL, so an in-cluster call to a sleeping component resolves to the
-    # interceptor, is held, and wakes it — the same path gateway traffic takes.
-    # The `where` excludes the pod-backing Service (different name).
+    - target:
+        group: gateway.networking.k8s.io
+        version: v1
+        kind: HTTPRoute
+        where: '${parameters.enabled && (has(dataplane.annotations) && "openchoreo.dev/keda-based-scaling-backend" in dataplane.annotations && dataplane.annotations["openchoreo.dev/keda-based-scaling-backend"] == "keda") && parameters.trigger.type == "" && has(resource.metadata.labels) && resource.metadata.labels["openchoreo.dev/endpoint-visibility"] == "external" && !(has(resource.spec.rules[0].filters) && resource.spec.rules[0].filters.exists(f, f.type == "URLRewrite"))}'
+      operations:
+        - op: add
+          path: /spec/rules/[*]/filters/-
+          value:
+            type: URLRewrite
+            urlRewrite:
+              hostname: ${metadata.componentName + "." + metadata.namespace + ".svc.cluster.local"}
+
     - target:
         group: ""
         version: v1
@@ -324,7 +270,5 @@ spec:
         - op: add
           path: /spec/externalName
           value: ${parameters.interceptorMultiportService + "." + parameters.interceptorNamespace + ".svc.cluster.local"}
-        # ExternalName Services don't select pods; drop the selector so no stray
-        # EndpointSlices form.
         - op: remove
           path: /spec/selector

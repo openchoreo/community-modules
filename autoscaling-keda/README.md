@@ -1,58 +1,38 @@
 # Autoscaling with KEDA
 
-Scale OpenChoreo components on demand with [KEDA](https://keda.sh). HTTP services scale to zero
-when idle and wake on the first request — the KEDA HTTP Add-on interceptor holds it, nothing is
-dropped; in-cluster service-to-service calls wake them too. Workers scale on cron or queue triggers.
-You attach the `keda-based-scaling` trait to a plain service or worker component and set a few
-parameters.
+This module scales OpenChoreo components on demand with [KEDA](https://keda.sh). An HTTP service can drop to zero replicas while it's idle and wake up on the first request. The KEDA HTTP Add-on interceptor holds that request while a pod starts, so nothing gets dropped, and in-cluster service-to-service calls wake the service the same way. Workers scale on cron or queue triggers instead. You get all of this by attaching the `keda-based-scaling` trait to a plain service or worker component and setting a few parameters.
 
-**What's in the module:**
+The module has four pieces:
 
-- `keda-based-scaling-trait.yaml` — the `ClusterTrait` that renders the right KEDA objects per
-  data plane
-- `cluster-agent-keda-rbac.yaml` — RBAC so the data-plane cluster-agent can manage KEDA objects
-- `keda-interceptor-multiport.yaml` — a multi-port Service fronting the interceptor for in-cluster
-  wake
-- `componenttypes/service.yaml` + `componenttypes/worker.yaml` — reference examples showing the
-  `keda-based-scaling` entry added to `allowedTraits`; patch your own types rather than applying these
+- `keda-based-scaling-trait.yaml` holds the `ClusterTrait` that renders the right KEDA objects for each data plane.
+- `cluster-agent-keda-rbac.yaml` gives the data-plane cluster-agent permission to manage KEDA objects.
+- `keda-interceptor-multiport.yaml` is a multi-port Service that fronts the interceptor so in-cluster calls can wake a service.
+- `componenttypes/service.yaml`, `componenttypes/webapp.yaml`, and `componenttypes/worker.yaml` are reference examples showing the `keda-based-scaling` entry added to `allowedTraits`. Patch your own types rather than applying these directly.
 
-KEDA core and the KEDA HTTP Add-on install from their upstream Helm charts (see Install below) —
-this module provides only the OpenChoreo glue.
-
----
+KEDA core and the KEDA HTTP Add-on come from their own upstream Helm charts (see Install below). This module is only the OpenChoreo glue.
 
 ## How it works
 
-A data plane opts in by carrying the annotation
-`openchoreo.dev/keda-based-scaling-backend: keda`. The trait reads that annotation at render time;
-on planes without it the trait is inert, so a component definition is portable across environments.
+A data plane opts in by carrying the annotation `openchoreo.dev/keda-based-scaling-backend: keda`. The trait reads that annotation when it renders. On a plane without it the trait does nothing, so the same component definition stays portable across environments.
 
 | Mode | When | What KEDA creates |
 |------|------|-------------------|
-| **HTTP** | service with one external HTTP endpoint, no `trigger.type` | `InterceptorRoute` + companion `ScaledObject`; gateway and in-cluster traffic both wake the service |
+| **HTTP** | service or web-application with one external HTTP endpoint, no `trigger.type` | `InterceptorRoute` + companion `ScaledObject`; gateway and in-cluster traffic both wake the component |
 | **Trigger** | any component with `trigger.type` set | `ScaledObject` with that trigger (cron, kafka, rabbitmq, …) |
 
-Requires OpenChoreo 1.2+. Full architecture, tuning, and extension details: [CONFIGURATION.md](./CONFIGURATION.md).
-
----
+You need OpenChoreo 1.2 or later. For the architecture, tuning, and extension details, see [CONFIGURATION.md](./CONFIGURATION.md).
 
 ## Prerequisites
 
-- An OpenChoreo 1.2+ control plane and data plane. For a fresh local cluster, follow the
-  [single-cluster k3d guide](https://github.com/openchoreo/openchoreo/blob/main/install/k3d/single-cluster/README.md)
-  through step 5.
-- `kubectl`, `helm`, `jq`, `yq`, and cluster access.
-- The data-plane gateway must be **kgateway** (the OpenChoreo default). For other Gateway API
-  implementations, see [CONFIGURATION.md](./CONFIGURATION.md).
-
----
+- An OpenChoreo 1.2+ control plane and data plane. For a fresh local cluster, follow the [single-cluster k3d guide](https://github.com/openchoreo/openchoreo/blob/main/install/k3d/single-cluster/README.md) through step 5.
+- `kubectl`, `helm`, `jq`, `yq`, and access to the cluster.
+- The data-plane gateway needs to be kgateway, which is the OpenChoreo default. For other Gateway API implementations, see [CONFIGURATION.md](./CONFIGURATION.md).
 
 ## Install
 
 ### 1. Install KEDA core, then the HTTP Add-on
 
-KEDA's CRDs must be established before the HTTP Add-on's resources are applied, so install them as
-two separate releases.
+KEDA's CRDs have to be established before the HTTP Add-on's resources are applied, so install them as two separate releases.
 
 ```bash
 helm repo add kedacore https://kedacore.github.io/charts && helm repo update kedacore
@@ -71,11 +51,7 @@ helm upgrade --install keda-add-ons-http kedacore/keda-add-ons-http --version 0.
 kubectl wait --for=condition=Established crd/interceptorroutes.http.keda.sh --timeout=120s
 ```
 
-> The `additionalLabels` flag is required. OpenChoreo renders a NetworkPolicy per component that
-> only admits traffic from the same namespace or from pods carrying the
-> `openchoreo.dev/system-component` label. Without it, on any cluster whose CNI enforces
-> NetworkPolicy (k3s/k3d included), the interceptor's forwards are silently dropped and every
-> request times out with a 504 — even though the wake-up itself succeeds.
+> The `additionalLabels` flag matters. OpenChoreo renders a NetworkPolicy for each component that only admits traffic from the same namespace or from pods carrying the `openchoreo.dev/system-component` label. Leave the flag out and, on any cluster whose CNI enforces NetworkPolicy (k3s and k3d included), the interceptor's forwarded requests get dropped silently. Every request then times out with a 504, even though the wake-up itself worked.
 
 ### 2. Apply the trait and data-plane resources
 
@@ -89,18 +65,14 @@ kubectl apply \
 
 ### 3. Enable the trait on your component types
 
-Patch `keda-based-scaling` into `allowedTraits` on the component types you use. No components
-need to be deleted or recreated — the change takes effect immediately:
+Add `keda-based-scaling` to `allowedTraits` on the component types you use. You don't need to delete or recreate any components, the change takes effect right away:
 
 ```bash
 kubectl patch clustercomponenttype <your-type> --type=json \
   -p '[{"op":"add","path":"/spec/allowedTraits/-","value":{"kind":"ClusterTrait","name":"keda-based-scaling"}}]'
 ```
 
-`componenttypes/service.yaml` and `componenttypes/worker.yaml` in this module are reference
-examples showing the full type definition with the trait included — use them as a guide, not as
-a replacement for your own types. See [CONFIGURATION.md](./CONFIGURATION.md) for the shape
-requirements a component type must satisfy to be compatible with the HTTP scaling path.
+`componenttypes/service.yaml`, `componenttypes/webapp.yaml`, and `componenttypes/worker.yaml` in this module show the full type definition with the trait already included. Treat them as a guide, not a drop-in replacement for your own types. [CONFIGURATION.md](./CONFIGURATION.md) covers the shape a component type has to have for the HTTP scaling path to work.
 
 ### 4. Annotate the data plane
 
@@ -116,15 +88,13 @@ kubectl rollout status deploy/keda-add-ons-http-interceptor -n keda --timeout=18
 kubectl rollout status deploy/keda-add-ons-http-external-scaler -n keda --timeout=180s
 
 kubectl get clustertrait keda-based-scaling
-kubectl get clustercomponenttype service worker \
+kubectl get clustercomponenttype service web-application worker \
   -o jsonpath='{range .items[*]}{.metadata.name}{": "}{.spec.allowedTraits[*].name}{"\n"}{end}'
 kubectl get clusterrolebinding openchoreo-cluster-agent-keda
 
 # Non-empty Endpoints means the interceptor multiport Service is working:
 kubectl get endpoints keda-add-ons-http-interceptor-multiport -n keda
 ```
-
----
 
 ## Quick start
 
@@ -134,21 +104,20 @@ kubectl get endpoints keda-add-ons-http-interceptor-multiport -n keda
 kubectl apply -f https://raw.githubusercontent.com/openchoreo/community-modules/main/autoscaling-keda/samples/http-service.yaml
 ```
 
-Find the workload namespace OpenChoreo created (re-run if empty — it appears once the
-ReleaseBinding has rendered):
+Find the workload namespace OpenChoreo created. Re-run it if the output is empty, it shows up once the ReleaseBinding has rendered:
 
 ```bash
 WL_NS=$(kubectl get ns -o name | sed 's|namespace/||' | grep '^dp-default-default-development')
 echo "$WL_NS"
 ```
 
-Watch it scale to zero (after ~30s of no traffic):
+Watch it scale to zero after about 30 seconds of no traffic:
 
 ```bash
 kubectl get deploy -n "$WL_NS" -w        # replicas -> 0, then Ctrl-C
 ```
 
-Hit it — the interceptor holds the request and wakes a pod:
+Hit it, and the interceptor holds the request while it wakes a pod:
 
 ```bash
 curl http://development-default.openchoreoapis.localhost:19080/greeter-http/
@@ -159,9 +128,23 @@ curl http://development-default.openchoreoapis.localhost:19080/greeter-http/
 kubectl get deploy -n "$WL_NS"           # replicas back to 1 right after the request
 ```
 
-The very first cold start after deploying can be slow or return a 504 while KEDA registers the new
-scaler — retry once. Subsequent cold starts take ~2-4s; the trait sets a 120s route timeout so the
-gateway holds the request through them.
+The very first cold start after you deploy can be slow, or return a 504 while KEDA registers the new scaler. Just retry once. After that, cold starts take about 2 to 4 seconds, and the trait sets a 120s route timeout so the gateway holds the request while the pod comes up.
+
+### HTTP web application that scales to zero
+
+```bash
+kubectl apply -f https://raw.githubusercontent.com/openchoreo/community-modules/main/autoscaling-keda/samples/http-webapp.yaml
+```
+
+Find its generated hostname and call the root path:
+
+```bash
+WL_NS=$(kubectl get ns -o name | sed 's|namespace/||' | grep '^dp-default-default-development')
+WEBAPP_HOST=$(kubectl get httproute -n "$WL_NS" \
+  -l openchoreo.dev/component=keda-webapp,openchoreo.dev/endpoint-visibility=external \
+  -o jsonpath='{.items[0].spec.hostnames[0]}')
+curl "http://$WEBAPP_HOST:19080/"
+```
 
 ### Cron worker that scales to zero
 
@@ -169,8 +152,7 @@ gateway holds the request through them.
 kubectl apply -f https://raw.githubusercontent.com/openchoreo/community-modules/main/autoscaling-keda/samples/cron-worker.yaml
 ```
 
-The worker runs at 1 replica inside its cron window (`03:00–04:00 UTC` in the sample) and sits at
-zero the other 23 hours — so right after applying it you see the scaled-to-zero state:
+The worker runs at 1 replica inside its cron window (`03:00–04:00 UTC` in the sample) and sits at zero the other 23 hours. So right after you apply it, you see the scaled-to-zero state:
 
 ```bash
 WL_NS=$(kubectl get ns -o name | sed 's|namespace/||' | grep '^dp-default-default-development')
@@ -178,11 +160,7 @@ kubectl get scaledobject -n "$WL_NS"
 kubectl get deploy -n "$WL_NS"
 ```
 
-To prove scaling quickly, edit the component's `trigger.metadata.start`/`end` to a window starting
-a couple of minutes from now and watch the Deployment go `0 -> 1 -> 0`. Swap `type`/`metadata` for
-any [KEDA scaler](https://keda.sh/docs/latest/scalers/) (`rabbitmq`, `kafka`, `prometheus`, …).
-
----
+To prove scaling quickly, edit the component's `trigger.metadata.start`/`end` to a window that starts a couple of minutes from now and watch the Deployment go `0 -> 1 -> 0`. Swap `type`/`metadata` for any [KEDA scaler](https://keda.sh/docs/latest/scalers/) you like (`rabbitmq`, `kafka`, `prometheus`, and so on).
 
 ## Usage
 
@@ -221,21 +199,13 @@ spec:
       maxReplicas: 10
 ```
 
-Full parameter reference, tuning (request rate vs. concurrency), extension points, architecture,
-and troubleshooting are in [CONFIGURATION.md](./CONFIGURATION.md).
-
----
+The full parameter reference, tuning notes (request rate vs. concurrency), extension points, architecture, and troubleshooting all live in [CONFIGURATION.md](./CONFIGURATION.md).
 
 ## Limitations
 
-- **One external HTTP endpoint per service** — the interceptor routes by `Host` only (port
-  stripped), and an ExternalName alias can't remap ports; see CONFIGURATION.md.
-- **HTTP path is kgateway-specific** — uses `gateway.kgateway.dev/Backend`; adapt for other
-  Gateway API implementations per CONFIGURATION.md.
-- **Mutually exclusive with HPA traits** — both claim the Deployment's replica count; don't attach
-  both to the same component.
-
----
+- One external HTTP endpoint per service. The interceptor routes by `Host` only (it strips the port first), and an ExternalName alias can't remap ports. See CONFIGURATION.md for the reasoning.
+- The HTTP path is kgateway-specific. It uses `gateway.kgateway.dev/Backend`, so you'll need to adapt it for other Gateway API implementations per CONFIGURATION.md.
+- It doesn't mix with HPA traits. Both want to own the Deployment's replica count, so don't attach both to the same component.
 
 ## Uninstall
 
@@ -248,7 +218,7 @@ kubectl delete \
   -f https://raw.githubusercontent.com/openchoreo/community-modules/main/autoscaling-keda/cluster-agent-keda-rbac.yaml \
   -f https://raw.githubusercontent.com/openchoreo/community-modules/main/autoscaling-keda/keda-based-scaling-trait.yaml
 # To revert the component types, remove keda-based-scaling from allowedTraits:
-#   kubectl patch clustercomponenttype service worker --type=json \
+#   kubectl patch clustercomponenttype service web-application worker --type=json \
 #     -p '[{"op":"remove","path":"/spec/allowedTraits/<index>"}]'
 #   (find the index with: kubectl get clustercomponenttype service -o jsonpath='{.spec.allowedTraits}')
 # optionally:

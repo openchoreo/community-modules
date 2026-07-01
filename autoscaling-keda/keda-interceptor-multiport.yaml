@@ -3,10 +3,6 @@
 #
 # Multi-port front for the keda-add-ons-http interceptor, in the `keda` namespace.
 #
-# A KEDA-scaled HTTP service has its own in-cluster Service aliased to the interceptor through an
-# ExternalName. An ExternalName is a DNS CNAME and cannot remap ports; this Service republishes
-# the interceptor pods on common HTTP ports, all forwarded to the interceptor's 8080.
-#
 # To support a port not listed here, add it below AND to the keda-based-scaling trait's
 # `wakeablePorts` default (keda-based-scaling-trait.yaml); keep the two in sync.
 #

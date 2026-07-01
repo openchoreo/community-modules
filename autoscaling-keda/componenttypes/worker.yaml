@@ -1,10 +1,6 @@
 # Copyright 2026 The OpenChoreo Authors
 # SPDX-License-Identifier: Apache-2.0
 #
-# The stock OpenChoreo `worker` ClusterComponentType with `keda-based-scaling` added to
-# allowedTraits. That single addition lets a developer ATTACH the keda-based-scaling trait to a
-# plain worker component (spec.traits) and configure it.
-#
 # Regenerate from YOUR platform's live default type (so it never drifts from your OpenChoreo
 # version) with:
 #   kubectl get clustercomponenttype worker -o json \

@@ -1,21 +1,21 @@
 # Copyright 2026 The OpenChoreo Authors
 # SPDX-License-Identifier: Apache-2.0
 #
-# Regenerate from YOUR platform's live default type (so it never drifts from your OpenChoreo
-# version) with:
-#   kubectl get clustercomponenttype service -o json \
+# Regenerate from YOUR platform's live default type (so it never drifts from your
+# OpenChoreo version) with:
+#   kubectl get clustercomponenttype web-application -o json \
 #     | jq 'del(.metadata.managedFields,.metadata.resourceVersion,.metadata.uid,.metadata.creationTimestamp,.metadata.generation,.status,.metadata.annotations["kubectl.kubernetes.io/last-applied-configuration"])
 #           | if ([.spec.allowedTraits[]?.name] | index("keda-based-scaling")) then . else .spec.allowedTraits += [{"kind":"ClusterTrait","name":"keda-based-scaling"}] end' \
 #     | yq -p json -o yaml
 #
 # Apply by DELETE + RECREATE, never `kubectl apply`: first delete any components using this
-# type, then `kubectl delete clustercomponenttype service` and `kubectl create -f` this file.
+# type, then `kubectl delete clustercomponenttype web-application` and `kubectl create -f` this file.
 apiVersion: openchoreo.dev/v1alpha1
 kind: ClusterComponentType
 metadata:
   annotations:
-    openchoreo.dev/description: A long-running request-serving component with one or more endpoints
-  name: service
+    openchoreo.dev/description: A long-running component that serves web requests and exposes at least one HTTP endpoint
+  name: web-application
 spec:
   allowedTraits:
     - kind: ClusterTrait
@@ -29,8 +29,6 @@ spec:
       name: gcp-buildpacks-builder
     - kind: ClusterWorkflow
       name: dockerfile-builder
-    - kind: ClusterWorkflow
-      name: ballerina-buildpack-builder
   environmentConfigs:
     openAPIV3Schema:
       $defs:
@@ -132,7 +130,7 @@ spec:
           hostnames: |
             ${[gateway.ingress.external.?http, gateway.ingress.external.?https]
               .filter(g, g.hasValue()).map(g, g.value().host).distinct()
-              .map(h, metadata.environmentName + "-" + metadata.componentNamespace + "." + h)}
+              .map(h, oc_dns_label(endpoint.key, metadata.componentName, metadata.environmentName, metadata.componentNamespace) + "." + h)}
           parentRefs:
             - name: ${gateway.ingress.external.name}
               namespace: ${gateway.ingress.external.namespace}
@@ -140,17 +138,6 @@ spec:
             - backendRefs:
                 - name: ${metadata.componentName}
                   port: ${endpoint.value.port}
-              filters:
-                - type: URLRewrite
-                  urlRewrite:
-                    path:
-                      replacePrefixMatch: ${endpoint.value.?basePath.orValue("/")}
-                      type: ReplacePrefixMatch
-              matches:
-                - path:
-                    type: PathPrefix
-                    value: /${metadata.componentName}-${endpoint.key}
-      var: endpoint
     - forEach: ${workload.endpoints.transformMap(name, ep, "internal" in ep.visibility && ep.type in ["HTTP", "GraphQL", "Websocket"], ep)}
       id: httproute-internal
       targetPlane: dataplane
@@ -165,7 +152,7 @@ spec:
           hostnames: |
             ${[gateway.ingress.internal.?http, gateway.ingress.internal.?https]
               .filter(g, g.hasValue()).map(g, g.value().host).distinct()
-              .map(h, metadata.environmentName + "-" + metadata.componentNamespace + "." + h)}
+              .map(h, oc_dns_label(endpoint.key, metadata.componentName, metadata.environmentName, metadata.componentNamespace) + "." + h)}
           parentRefs:
             - name: ${gateway.ingress.internal.name}
               namespace: ${gateway.ingress.internal.namespace}
@@ -173,20 +160,10 @@ spec:
             - backendRefs:
                 - name: ${metadata.componentName}
                   port: ${endpoint.value.port}
-              filters:
-                - type: URLRewrite
-                  urlRewrite:
-                    path:
-                      replacePrefixMatch: ${endpoint.value.?basePath.orValue("/")}
-                      type: ReplacePrefixMatch
-              matches:
-                - path:
-                    type: PathPrefix
-                    value: /${metadata.componentName}-${endpoint.key}
-      var: endpoint
     - forEach: ${configurations.toConfigEnvsByContainer()}
       id: env-config
       targetPlane: dataplane
+      var: envConfig
       template:
         apiVersion: v1
         data: |
@@ -195,10 +172,10 @@ spec:
         metadata:
           name: ${envConfig.resourceName}
           namespace: ${metadata.namespace}
-      var: envConfig
     - forEach: ${configurations.toConfigFileList()}
       id: file-config
       targetPlane: dataplane
+      var: config
       template:
         apiVersion: v1
         data:
@@ -208,10 +185,10 @@ spec:
         metadata:
           name: ${config.resourceName}
           namespace: ${metadata.namespace}
-      var: config
     - forEach: ${configurations.toSecretEnvsByContainer()}
       id: secret-env-external
       targetPlane: dataplane
+      var: secretEnv
       template:
         apiVersion: external-secrets.io/v1
         kind: ExternalSecret
@@ -234,10 +211,10 @@ spec:
           target:
             creationPolicy: Owner
             name: ${secretEnv.resourceName}
-      var: secretEnv
     - forEach: ${configurations.toSecretFileList()}
       id: secret-file-external
       targetPlane: dataplane
+      var: file
       template:
         apiVersion: external-secrets.io/v1
         kind: ExternalSecret
@@ -258,18 +235,7 @@ spec:
           target:
             creationPolicy: Owner
             name: ${file.resourceName}
-      var: file
   validations:
-    - message: Service components must have at least one endpoint. Use 'deployment/worker' for components without endpoints.
-      rule: ${size(workload.endpoints) > 0}
-    - message: Endpoints with 'external' visibility require gateway.ingress.external to be configured on the Environment or DataPlane.
-      rule: |-
-        ${workload.endpoints.exists(name, ep, "external" in ep.visibility)
-          ? has(gateway.ingress) && has(gateway.ingress.external)
-          : true}
-    - message: Endpoints with 'internal' visibility require gateway.ingress.internal to be configured on the Environment or DataPlane.
-      rule: |-
-        ${workload.endpoints.exists(name, ep, "internal" in ep.visibility)
-          ? has(gateway.ingress) && has(gateway.ingress.internal)
-          : true}
+    - message: Web-application components must have at least one HTTP.
+      rule: ${workload.endpoints.exists(name, endpoint, endpoint.type == 'HTTP')}
   workloadType: deployment

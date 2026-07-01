@@ -1,0 +1,81 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+# Values for the upstream OpenCost dependency chart.
+opencost:
+  enabled: true
+
+  prometheus:
+    internal:
+      namespaceName: openchoreo-observability-plane
+      serviceName: openchoreo-observability-prometheus
+      port: 9091
+
+  exporter:
+    defaultClusterId: openchoreo
+    replicas: 1
+    resources:
+      requests:
+        cpu: "10m"
+        memory: "60Mi"
+      limits:
+        cpu: "50m"
+        memory: "80Mi"
+    persistence:
+      enabled: false
+
+  customPricing:
+    enabled: true
+    costModel:
+      description: Modified prices based on your internal pricing
+      CPU: 0.03
+      RAM: 0.004
+      storage: 0.00005
+
+  metrics:
+    kubeStateMetrics:
+      emitKsmV1Metrics: true
+      emitKsmV1MetricsOnly: false
+    serviceMonitor:
+      enabled: true
+      additionalLabels:
+        release: prometheus
+
+  ui:
+    enabled: false
+
+# Values for the adapter.
+adapter:
+  enabled: true
+
+  port: 9101
+
+  observerUrl: "http://observer:8080"
+  openCostUrl: "http://opencost:9003"
+
+  # Metrics query step passed to the Observer metrics API.
+  metricsStep: "5m"
+
+  # Right-sizing algorithm configurables.
+  recommendationCpuPercentile: 95
+  recommendationMemoryPercentile: 95
+  recommendationCpuHeadroom: 0.2
+  recommendationMemoryHeadroom: 0.2
+  # Floor values so recommendations never become 0.
+  recommendationCpuMinRequestMillicores: 1
+  recommendationMemoryMinRequestMi: 5
+
+  logLevel: "INFO"
+
+  image:
+    repository: "ghcr.io/openchoreo/finops-opencost-adapter"
+    tag: ""
+    pullPolicy: IfNotPresent
+
+  resources:
+    limits:
+      cpu: 50m
+      memory: 70Mi
+    requests:
+      cpu: 20m
+      memory: 50Mi

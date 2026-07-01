@@ -1,0 +1,69 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+{{- if .Values.adapter.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: finops-opencost-adapter
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: finops-opencost-adapter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: finops-opencost-adapter
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/adapter/configmap.yaml") . | sha256sum }}
+      labels:
+        app: finops-opencost-adapter
+    spec:
+      # Must exceed the adapter's graceful-shutdown grace period (ShutdownTimeout
+      # in server.go: writeTimeout 150s + 15s buffer) so in-flight long-running
+      # requests can drain before the kubelet sends SIGKILL.
+      terminationGracePeriodSeconds: 180
+      automountServiceAccountToken: false
+      securityContext:
+        runAsUser: 10500
+        runAsGroup: 10500
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: finops-opencost-adapter
+        image: "{{ .Values.adapter.image.repository }}:{{ .Values.adapter.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.adapter.image.pullPolicy | default "IfNotPresent" }}
+        ports:
+        - containerPort: {{ .Values.adapter.port }}
+        livenessProbe:
+          httpGet:
+            path: /liveness
+            port: {{ .Values.adapter.port }}
+          initialDelaySeconds: 5
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /readiness
+            port: {{ .Values.adapter.port }}
+          initialDelaySeconds: 3
+          periodSeconds: 10
+        envFrom:
+        - configMapRef:
+            name: finops-opencost-adapter
+        resources:
+          limits:
+            cpu: {{ .Values.adapter.resources.limits.cpu }}
+            memory: {{ .Values.adapter.resources.limits.memory }}
+          requests:
+            cpu: {{ .Values.adapter.resources.requests.cpu }}
+            memory: {{ .Values.adapter.resources.requests.memory }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+{{- end }}

@@ -1,0 +1,24 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+{{- if .Values.adapter.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: finops-opencost-adapter
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: finops-opencost-adapter
+data:
+  SERVER_PORT: {{ .Values.adapter.port | quote }}
+  OPENCOST_URL: {{ .Values.adapter.openCostUrl | quote }}
+  OBSERVER_URL: {{ .Values.adapter.observerUrl | quote }}
+  METRICS_STEP: {{ .Values.adapter.metricsStep | quote }}
+  RECOMMENDATION_CPU_PERCENTILE: {{ .Values.adapter.recommendationCpuPercentile | quote }}
+  RECOMMENDATION_MEMORY_PERCENTILE: {{ .Values.adapter.recommendationMemoryPercentile | quote }}
+  RECOMMENDATION_CPU_HEADROOM: {{ .Values.adapter.recommendationCpuHeadroom | quote }}
+  RECOMMENDATION_MEMORY_HEADROOM: {{ .Values.adapter.recommendationMemoryHeadroom | quote }}
+  RECOMMENDATION_CPU_MIN_REQUEST_MILLICORES: {{ .Values.adapter.recommendationCpuMinRequestMillicores | quote }}
+  RECOMMENDATION_MEMORY_MIN_REQUEST_MI: {{ .Values.adapter.recommendationMemoryMinRequestMi | quote }}
+  LOG_LEVEL: {{ .Values.adapter.logLevel | quote }}
+{{- end }}

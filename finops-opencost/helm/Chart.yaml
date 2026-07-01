@@ -1,0 +1,21 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v2
+name: finops-opencost
+description: A Helm chart for the OpenCost based OpenChoreo FinOps module
+type: application
+version: 0.0.0-latest-dev
+appVersion: "latest-dev"
+keywords:
+  - opencost
+  - finops
+  - cost
+home: https://github.com/openchoreo/community-modules
+maintainers:
+  - name: OpenChoreo Team
+dependencies:
+  - name: opencost
+    repository: https://opencost.github.io/opencost-helm-chart
+    version: 2.5.25
+    condition: opencost.enabled

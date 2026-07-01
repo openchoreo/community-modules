@@ -236,6 +236,6 @@ spec:
             creationPolicy: Owner
             name: ${file.resourceName}
   validations:
-    - message: Web-application components must have at least one HTTP.
+    - message: Web-application components must have at least one HTTP endpoint.
       rule: ${workload.endpoints.exists(name, endpoint, endpoint.type == 'HTTP')}
   workloadType: deployment

@@ -5,7 +5,7 @@
 #   1. The data plane advertises the KEDA backend:
 #        kubectl annotate clusterdataplane default \
 #          openchoreo.dev/keda-based-scaling-backend=keda --overwrite
-#   2. The `service` type allows the trait (componenttypes/service.yaml applied — see README).
+#   2. The `service` type allows the trait (componenttypes/service.yaml applied, see README).
 ---
 apiVersion: openchoreo.dev/v1alpha1
 kind: Component

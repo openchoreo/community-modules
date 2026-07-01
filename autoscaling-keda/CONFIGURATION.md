@@ -148,7 +148,7 @@ The HTTP path needs a specific shape from the component type:
 - Exactly one external `HTTPRoute` carrying the `openchoreo.dev/endpoint-visibility: external` label
 - For service-style path routing, a `URLRewrite` filter is expected. For web-application-style host routing, the trait adds a hostname-only `URLRewrite` filter.
 
-Any `ClusterComponentType` that produces this shape can allow the trait by adding `keda-based-scaling` to its `allowedTraits` list (delete and recreate, as described in the README's Install step 3).
+Any `ClusterComponentType` that produces this shape can allow the trait by adding `keda-based-scaling` to its `allowedTraits` list. See the README's Install step 3 for the patch command. The change takes effect right away, with no delete or recreate needed.
 
 The trigger/worker path is simpler. It only needs the Deployment, so any deployment-based component type works.
 

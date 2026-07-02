@@ -54,6 +54,9 @@ Called once from templates/validate.yaml.
 {{- if empty .Values.adapter.networkPolicy.observerPodLabels -}}
 {{- fail "adapter.networkPolicy.observerPodLabels must be a non-empty map when adapter.networkPolicy is enabled; an empty podSelector would match all pods in the selected namespace(s)" -}}
 {{- end -}}
+{{- if and .Values.adapter.webhookRoute.enabled (empty .Values.adapter.networkPolicy.gatewayNamespaceLabels) -}}
+{{- fail "adapter.networkPolicy.gatewayNamespaceLabels must be a non-empty map when networkPolicy and webhookRoute are both enabled; otherwise the NetworkPolicy silently drops gateway->adapter webhook traffic and alerts never forward" -}}
+{{- end -}}
 {{- end -}}
 
 {{- end -}}{{/* end adapter.enabled */}}

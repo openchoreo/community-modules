@@ -110,9 +110,15 @@ func (c *Client) CreateRule(ctx context.Context, in RuleInput) (*RuleResult, err
 		Filter:      BuildAlertFilter(in),
 	}
 	if err := c.metrics.CreateMetric(ctx, metric); err != nil {
-		// CreateMetric fails if it already exists; fall back to update.
+		// Only an already-exists collision warrants an update; any other error
+		// (permission denied, invalid argument, quota) is a real failure and
+		// must be surfaced — otherwise a following UpdateMetric would fail with
+		// NotFound and mask the true cause.
+		if grpcCode(err) != codes.AlreadyExists {
+			return nil, fmt.Errorf("cloudmonitoring: create log metric: %w", err)
+		}
 		if err2 := c.metrics.UpdateMetric(ctx, metric); err2 != nil {
-			return nil, fmt.Errorf("cloudmonitoring: upsert log metric: create=%v update=%w", err, err2)
+			return nil, fmt.Errorf("cloudmonitoring: update existing log metric: %w", err2)
 		}
 	}
 
@@ -133,11 +139,14 @@ func (c *Client) CreateRule(ctx context.Context, in RuleInput) (*RuleResult, err
 	// A freshly-created log-based metric's descriptor is not immediately
 	// queryable by Cloud Monitoring — CreateAlertPolicy returns NotFound
 	// ("Cannot find metric(s)...") until it propagates. Retry with a short
-	// backoff within the request's deadline. If it still isn't ready, return
-	// the error so the OpenChoreo alert controller retries on its next
-	// reconcile (propagation can take minutes; we don't block that long).
+	// backoff, but cap the wait: propagation can take minutes and we must not
+	// pin the request goroutine indefinitely if the caller's context never
+	// cancels. On timeout we return the NotFound so the OpenChoreo alert
+	// controller retries on its next reconcile.
+	retryCtx, cancelRetry := context.WithTimeout(ctx, metricReadyMaxWait)
+	defer cancelRetry()
 	var created *monitoringpb.AlertPolicy
-	err = retryOnMetricNotReady(ctx, func() error {
+	err = retryOnMetricNotReady(retryCtx, func() error {
 		var e error
 		created, e = c.policies.CreateAlertPolicy(ctx, &monitoringpb.CreateAlertPolicyRequest{
 			Name:        c.parent,
@@ -155,6 +164,11 @@ func (c *Client) CreateRule(ctx context.Context, in RuleInput) (*RuleResult, err
 		LastSynced: NowRFC3339(),
 	}, nil
 }
+
+// metricReadyMaxWait bounds how long CreateRule retries the alert-policy create
+// while a new log-based metric propagates. Kept short so a stalled request
+// never pins a goroutine; the OpenChoreo controller re-reconciles beyond this.
+const metricReadyMaxWait = 30 * time.Second
 
 // retryOnMetricNotReady retries fn while it fails with a NotFound caused by a
 // just-created log-based metric descriptor not having propagated yet. Other
@@ -230,17 +244,22 @@ func (c *Client) DeleteRuleByBackendName(ctx context.Context, backendName string
 	return nil
 }
 
-// findPolicy locates a policy by (namespace, ruleName) user_labels.
+// findPolicy locates a policy by (namespace, ruleName). Both are known here, so
+// it matches on the collision-free rule-id anchor (a SHA of the pair), which is
+// also injection-free by construction. Constrained to adapter-owned policies.
 func (c *Client) findPolicy(ctx context.Context, namespace, ruleName string) (*monitoringpb.AlertPolicy, error) {
 	filter := fmt.Sprintf(`user_labels.%s="%s" AND user_labels.%s="%s"`,
-		UserLabelNamespace, sanitizeLabelValue(namespace),
-		UserLabelRuleName, sanitizeLabelValue(ruleName))
+		UserLabelManagedBy, escapeFilterValue(ManagedByValue),
+		UserLabelRuleID, escapeFilterValue(deriveResourceName(namespace, ruleName)))
 	return c.firstPolicyMatching(ctx, filter)
 }
 
-// findPolicyByRuleName locates a policy by ruleName alone.
+// findPolicyByRuleName locates a policy by ruleName alone (namespace not known
+// at the call site). Same escaping and managed-by constraint as findPolicy.
 func (c *Client) findPolicyByRuleName(ctx context.Context, ruleName string) (*monitoringpb.AlertPolicy, error) {
-	filter := fmt.Sprintf(`user_labels.%s="%s"`, UserLabelRuleName, sanitizeLabelValue(ruleName))
+	filter := fmt.Sprintf(`user_labels.%s="%s" AND user_labels.%s="%s"`,
+		UserLabelManagedBy, escapeFilterValue(ManagedByValue),
+		UserLabelRuleName, escapeFilterValue(sanitizeLabelValue(ruleName)))
 	return c.firstPolicyMatching(ctx, filter)
 }
 

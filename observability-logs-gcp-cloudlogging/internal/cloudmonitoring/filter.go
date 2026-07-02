@@ -60,10 +60,39 @@ func BuildAlertFilter(in RuleInput) string {
 
 // isRawFilter reports whether the query is already a Cloud Logging filter
 // rather than a free-text search phrase.
+//
+// A bare-prefix match is not enough: a phrase like "severity degraded" starts
+// with "severity" but is plain text, and treating it as raw would emit an
+// unscoped, invalid filter. A genuine field selector is a known field
+// immediately followed by a comparison/restriction operator (=, !=, <, >, <=,
+// >=, :) — optionally after a trailing dot for the nested fields. We require
+// that shape so free-text phrases stay scoped and real raw queries still pass.
 func isRawFilter(q string) bool {
 	t := strings.TrimSpace(q)
-	for _, prefix := range []string{"resource.", "labels.", "severity", "logName", "jsonPayload.", "textPayload", "protoPayload."} {
+	// Nested fields are always followed by a subfield, e.g. resource.type=...,
+	// labels."k8s-pod/...", jsonPayload.message:...
+	for _, prefix := range []string{"resource.", "labels.", "jsonPayload.", "protoPayload.", "httpRequest."} {
 		if strings.HasPrefix(t, prefix) {
+			return true
+		}
+	}
+	// Scalar fields must be followed by a comparison/restriction operator to
+	// count as a filter (not just be a word that happens to start the phrase).
+	for _, field := range []string{"severity", "logName", "textPayload", "timestamp", "trace", "spanId", "insertId"} {
+		if rest, ok := strings.CutPrefix(t, field); ok && startsWithFilterOperator(rest) {
+			return true
+		}
+	}
+	return false
+}
+
+// startsWithFilterOperator reports whether s (the text following a field name)
+// begins with a Cloud Logging comparison or restriction operator, allowing
+// leading spaces (e.g. `severity >= ERROR`).
+func startsWithFilterOperator(s string) bool {
+	s = strings.TrimLeft(s, " ")
+	for _, op := range []string{"=", "!=", "<", ">", ":"} {
+		if strings.HasPrefix(s, op) {
 			return true
 		}
 	}

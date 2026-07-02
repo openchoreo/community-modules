@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	monitoringpb "cloud.google.com/go/monitoring/apiv3/v2/monitoringpb"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -99,6 +100,7 @@ func buildAlertPolicy(in RuleInput, cfg Config, metricID string) (*monitoringpb.
 			UserLabelManagedBy: ManagedByValue,
 			UserLabelNamespace: sanitizeLabelValue(in.Namespace),
 			UserLabelRuleName:  sanitizeLabelValue(in.RuleName),
+			UserLabelRuleID:    deriveResourceName(in.Namespace, in.RuleName),
 		},
 	}
 	if cfg.NotificationChannelID != "" {
@@ -231,11 +233,30 @@ func readUnit(s *string, unit byte) (int64, bool) {
 }
 
 // sanitizeLabelValue makes a value safe for a GCP user_label. Values must be
-// <=63 chars; keys/values are otherwise unconstrained beyond UTF-8, but we
-// trim to be safe.
+// <=63 bytes; we truncate on a rune boundary so a multi-byte character is
+// never split (GCP rejects labels containing invalid UTF-8).
 func sanitizeLabelValue(v string) string {
-	if len(v) > 63 {
-		return v[:63]
+	if len(v) <= 63 {
+		return v
 	}
+	// Truncate to the largest rune boundary at or below 63 bytes.
+	cut := 63
+	for cut > 0 && !utf8.RuneStart(v[cut]) {
+		cut--
+	}
+	return v[:cut]
+}
+
+// escapeFilterValue escapes a value for safe interpolation inside a
+// double-quoted GCP list filter string (used for ListAlertPolicies filters).
+// Without this, a value containing a quote or a boolean operator like
+// `x" OR user_labels.managed-by="openchoreo` would break out of the quoted
+// literal and broaden the match. Backslashes and quotes are escaped; newlines
+// are flattened.
+func escapeFilterValue(v string) string {
+	v = strings.ReplaceAll(v, `\`, `\\`)
+	v = strings.ReplaceAll(v, `"`, `\"`)
+	v = strings.ReplaceAll(v, "\n", " ")
+	v = strings.ReplaceAll(v, "\r", " ")
 	return v
 }

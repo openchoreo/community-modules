@@ -1,7 +1,7 @@
 // Copyright 2026 The OpenChoreo Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package observer forwards fired alerts received from Azure Monitor to the
+// Package observer forwards fired alerts received from Cloud Monitoring to the
 // OpenChoreo Observer's incident endpoint.
 package observer
 

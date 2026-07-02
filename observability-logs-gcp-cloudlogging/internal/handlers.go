@@ -308,6 +308,9 @@ func ruleInputFromRequest(req gen.AlertRuleRequest) (cloudmonitoring.RuleInput, 
 	if strings.TrimSpace(in.Operator) == "" {
 		return in, errors.New("condition.operator is required")
 	}
+	if strings.TrimSpace(in.Query) == "" {
+		return in, errors.New("source.query is required")
+	}
 	return in, nil
 }
 

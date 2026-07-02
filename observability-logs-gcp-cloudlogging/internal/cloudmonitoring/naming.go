@@ -26,6 +26,13 @@ const (
 	// UserLabelManagedBy marks policies and metrics this adapter owns.
 	UserLabelManagedBy = "managed-by"
 	ManagedByValue     = "openchoreo"
+
+	// UserLabelRuleID is the collision-free identity: the deriveResourceName
+	// anchor (oc-<sha>) of the (namespace, ruleName) pair. openchoreo-rule-name
+	// is truncated to GCP's 63-char limit and can collide for long names that
+	// share a prefix, so create/delete look up by this anchor instead. Its value
+	// is always [a-z0-9-], so it also carries no filter-injection surface.
+	UserLabelRuleID = "openchoreo-rule-id"
 )
 
 // deriveResourceName produces a deterministic, GCP-safe resource identifier

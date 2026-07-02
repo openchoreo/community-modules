@@ -21,7 +21,8 @@ the adapter's Kubernetes ServiceAccount.
 7. [Shared webhook secret](#shared-webhook-secret)
 8. [Troubleshooting](#troubleshooting)
 9. [Configuration reference](#configuration-reference)
-10. [Compatibility](#compatibility)
+10. [Building and testing](#building-and-testing)
+11. [Compatibility](#compatibility)
 
 ## Architecture
 

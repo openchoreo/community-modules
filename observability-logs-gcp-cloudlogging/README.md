@@ -480,7 +480,7 @@ example a rule created out-of-band rather than through the CR).
 ## Building and testing
 
 ```bash
-# Regenerate the API stubs from the pinned spec.
+# Regenerate the API stubs from the shared OpenChoreo spec.
 make openapi-codegen
 
 # Run unit tests with coverage.

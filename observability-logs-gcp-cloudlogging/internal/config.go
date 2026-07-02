@@ -28,11 +28,10 @@ type Config struct {
 	// QueryTimeout caps a single Cloud Logging query. Default 30s.
 	QueryTimeout time.Duration
 
-	// SanitizePodLabelDots controls whether OpenChoreo pod-label keys have
-	// their dots replaced with underscores when building Cloud Logging
-	// filters, matching the modern GKE managed logging agent. Default true.
-	// Set SANITIZE_POD_LABEL_DOTS=false for clusters whose agent preserves
-	// dots in the surfaced k8s-pod/<key> label.
+	// SanitizePodLabelDots replaces dots with underscores in pod-label keys to
+	// match the modern GKE managed agent (see cloudlogging.podLabelPrefix).
+	// Default true; set SANITIZE_POD_LABEL_DOTS=false for agents that preserve
+	// dots.
 	SanitizePodLabelDots bool
 
 	// ObserverURL is where fired alerts are forwarded after the adapter
@@ -41,8 +40,8 @@ type Config struct {
 
 	// NotificationChannelID is the resource name of a pre-existing Cloud
 	// Monitoring notification channel whose webhook points back at this
-	// adapter. Only required for alerting (Milestone 2); when empty the
-	// alert endpoints return 501.
+	// adapter. Optional; when empty, alert rules are created without a
+	// delivery target.
 	NotificationChannelID string
 
 	// WebhookAuthEnabled toggles the X-OpenChoreo-Webhook-Token check.

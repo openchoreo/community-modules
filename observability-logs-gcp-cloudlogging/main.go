@@ -45,9 +45,6 @@ func main() {
 	bootstrapCtx, bootstrapCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer bootstrapCancel()
 
-	// logadmin resolves credentials through Application Default Credentials:
-	// GKE Workload Identity in production, GOOGLE_APPLICATION_CREDENTIALS for
-	// the static-key fallback on non-GKE clusters.
 	logClient, err := cloudlogging.NewClient(bootstrapCtx, cloudlogging.Config{
 		ProjectID:    cfg.ProjectID,
 		QueryTimeout: cfg.QueryTimeout,

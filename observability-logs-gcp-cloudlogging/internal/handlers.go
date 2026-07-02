@@ -53,9 +53,8 @@ func NewLogsHandler(
 // Compile-time check that LogsHandler satisfies the generated interface.
 var _ gen.StrictServerInterface = (*LogsHandler)(nil)
 
-// Health returns a static healthy response. The boot sequence pings Cloud
-// Logging once at startup; if that fails the process exits, so reaching this
-// handler means the adapter is up.
+// Health returns a static healthy response; reachability alone means the
+// adapter is up (Cloud Logging is verified once at boot, not per-request).
 func (h *LogsHandler) Health(_ context.Context, _ gen.HealthRequestObject) (gen.HealthResponseObject, error) {
 	status := "healthy"
 	return gen.Health200JSONResponse{Status: &status}, nil

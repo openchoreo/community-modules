@@ -40,16 +40,13 @@ type RuleResult struct {
 // NowRFC3339 is a thin wrapper kept here so tests can stub time.
 var NowRFC3339 = func() string { return time.Now().UTC().Format(time.RFC3339) }
 
-// metricType returns the Cloud Monitoring metric type for a log-based metric
-// ID (user-defined metrics live under the logging.googleapis.com/user prefix).
+// metricType returns the Cloud Monitoring metric type for a log-based metric ID.
 func metricType(metricID string) string {
 	return "logging.googleapis.com/user/" + metricID
 }
 
-// buildAlertPolicy assembles the AlertPolicy proto for a rule. The condition
-// is a metric-threshold over the log-based counter metric derived from the
-// rule, aligned as a rate/count over the window, wired to the notification
-// channel, and tagged with the OpenChoreo user_labels for later lookup.
+// buildAlertPolicy assembles the AlertPolicy proto for a rule: a metric-
+// threshold over the rule's log-based counter, tagged with lookup user_labels.
 func buildAlertPolicy(in RuleInput, cfg Config, metricID string) (*monitoringpb.AlertPolicy, error) {
 	cmp, err := mapOperator(in.Operator)
 	if err != nil {
@@ -109,8 +106,8 @@ func buildAlertPolicy(in RuleInput, cfg Config, metricID string) (*monitoringpb.
 	return policy, nil
 }
 
-// mapOperator converts an OpenChoreo operator string to the Cloud Monitoring
-// comparison enum. Per the OpenAPI contract operators are gt|gte|lt|lte|eq|neq.
+// mapOperator converts an OpenChoreo operator (gt|gte|lt|lte|eq|neq) to the
+// Cloud Monitoring comparison enum.
 func mapOperator(op string) (monitoringpb.ComparisonType, error) {
 	switch strings.ToLower(strings.TrimSpace(op)) {
 	case "gt", "greaterthan", ">":

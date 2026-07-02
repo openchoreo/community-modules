@@ -17,23 +17,15 @@ const (
 	LabelProjectName     = "openchoreo.dev/project"
 	LabelEnvironmentName = "openchoreo.dev/environment"
 
-	// podLabelPrefix is how GKE's logging agent surfaces Kubernetes pod
-	// labels on a LogEntry: it maps each pod label under "k8s-pod/<key>".
+	// podLabelPrefix is how GKE's logging agent surfaces Kubernetes pod labels
+	// on a LogEntry, under "k8s-pod/<key>".
 	//
-	// IMPORTANT: the modern GKE managed (Fluent Bit) logging agent sanitizes
-	// the label key by replacing DOTS with underscores; slashes and hyphens
-	// are preserved. Verified against live cluster entries, e.g. the pod label
-	//   openchoreo.dev/component-uid
-	// is surfaced on the LogEntry as
-	//   labels."k8s-pod/openchoreo_dev/component-uid"
-	// and topology.kubernetes.io/region as
-	//   labels."k8s-pod/topology_kubernetes_io/region"
-	// Building the filter with the raw dotted key matches nothing.
-	//
-	// This transform is NOT documented by Google (the managed agent config is
-	// closed-source) and differs from the legacy fluentd agent, which did no
-	// substitution. It is therefore treated as observed-default behaviour and
-	// can be turned off per-cluster via SanitizePodLabelDots — see config.
+	// IMPORTANT: the modern GKE managed (Fluent Bit) agent replaces DOTS in the
+	// key with underscores (slashes/hyphens preserved), e.g. the pod label
+	// openchoreo.dev/component-uid surfaces as
+	// labels."k8s-pod/openchoreo_dev/component-uid" — a filter using the raw
+	// dotted key matches nothing. This is undocumented and differs from the
+	// legacy fluentd agent, so it is toggleable via SanitizePodLabelDots.
 	podLabelPrefix = "k8s-pod/"
 
 	// k8sContainerResource is the GKE monitored-resource type for
@@ -44,18 +36,12 @@ const (
 	WorkflowNamespacePrefix = "workflows-"
 )
 
-// SanitizePodLabelDots controls whether podLabelKey replaces dots with
-// underscores in the label key, matching the modern GKE managed logging
-// agent. It defaults to true (the observed behaviour on current GKE) and is
-// set from config at startup so a cluster running a different agent — one
-// that preserves dots — can disable it without a rebuild.
+// SanitizePodLabelDots toggles the dot->underscore substitution in podLabelKey
+// (see podLabelPrefix); set from config at startup, defaults true.
 var SanitizePodLabelDots = true
 
 // podLabelKey returns the LogEntry label-map key for a raw Kubernetes pod
-// label key. With sanitization on (the default), dots are replaced with
-// underscores, e.g. "openchoreo.dev/component-uid" ->
-// "k8s-pod/openchoreo_dev/component-uid". With it off, the key is used
-// verbatim, e.g. "k8s-pod/openchoreo.dev/component-uid".
+// label key, applying the dot->underscore substitution when enabled.
 func podLabelKey(rawKey string) string {
 	if SanitizePodLabelDots {
 		rawKey = strings.ReplaceAll(rawKey, ".", "_")

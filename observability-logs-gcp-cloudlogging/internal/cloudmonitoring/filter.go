@@ -27,11 +27,9 @@ const (
 // startup so both packages agree.
 var SanitizePodLabelDots = true
 
-// BuildAlertFilter renders the log-based-metric filter for an alert rule.
-// If the caller supplied a raw Cloud Logging filter (Query starts with a
-// resource./labels./severity token), it is used verbatim; otherwise the
-// filter is composed from the rule's scope plus a free-text phrase, matching
-// the shape the log-query path produces.
+// BuildAlertFilter renders the log-based-metric filter for an alert rule. A
+// raw Cloud Logging filter (see isRawFilter) is used verbatim; otherwise the
+// filter is composed from the rule's scope plus a free-text phrase.
 func BuildAlertFilter(in RuleInput) string {
 	if isRawFilter(in.Query) {
 		return in.Query

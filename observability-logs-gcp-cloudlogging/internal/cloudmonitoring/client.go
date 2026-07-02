@@ -44,9 +44,7 @@ type Client struct {
 	logger   *slog.Logger
 }
 
-// NewClient builds a Client. Credentials resolve via ADC (Workload Identity in
-// production). It creates the two Monitoring clients; the caller supplies the
-// already-constructed logadmin client (shared with the query path).
+// NewClient builds a Client; the caller supplies the shared logadmin client.
 func NewClient(ctx context.Context, metricsClient *logadmin.Client, cfg Config, logger *slog.Logger, opts ...option.ClientOption) (*Client, error) {
 	if cfg.ProjectID == "" {
 		return nil, errors.New("cloudmonitoring: ProjectID is required")
@@ -81,9 +79,8 @@ func (c *Client) Close() error {
 	return errors.Join(errs...)
 }
 
-// VerifyNotificationChannel confirms the configured channel exists and is
-// reachable at boot. A no-op when no channel is configured (alerts can still
-// be created; they just won't notify anywhere).
+// VerifyNotificationChannel confirms the configured channel is reachable at
+// boot. A no-op when no channel is configured.
 func (c *Client) VerifyNotificationChannel(ctx context.Context) error {
 	if c.cfg.NotificationChannelID == "" {
 		return nil
@@ -98,12 +95,10 @@ func (c *Client) VerifyNotificationChannel(ctx context.Context) error {
 }
 
 // CreateRule provisions (or replaces) the log-based metric and alert policy
-// for a rule. CreateOrUpdate semantics: an existing policy for the same
-// logical identity is deleted first so the policy is recreated cleanly.
+// for a rule. An existing policy for the same identity is deleted first.
 func (c *Client) CreateRule(ctx context.Context, in RuleInput) (*RuleResult, error) {
 	metricID := deriveResourceName(in.Namespace, in.RuleName)
 
-	// Upsert the log-based counter metric.
 	metric := &logadmin.Metric{
 		ID:          metricID,
 		Description: fmt.Sprintf("OpenChoreo log alert %q (namespace %q)", in.RuleName, in.Namespace),
@@ -137,12 +132,10 @@ func (c *Client) CreateRule(ctx context.Context, in RuleInput) (*RuleResult, err
 	}
 
 	// A freshly-created log-based metric's descriptor is not immediately
-	// queryable by Cloud Monitoring — CreateAlertPolicy returns NotFound
-	// ("Cannot find metric(s)...") until it propagates. Retry with a short
-	// backoff, but cap the wait: propagation can take minutes and we must not
-	// pin the request goroutine indefinitely if the caller's context never
-	// cancels. On timeout we return the NotFound so the OpenChoreo alert
-	// controller retries on its next reconcile.
+	// queryable — CreateAlertPolicy returns NotFound ("Cannot find metric(s)...")
+	// until it propagates. Retry with a short backoff, capped so a stalled
+	// request cannot pin the goroutine when the caller's context never cancels;
+	// on timeout the NotFound surfaces and the alert controller retries.
 	retryCtx, cancelRetry := context.WithTimeout(ctx, metricReadyMaxWait)
 	defer cancelRetry()
 	var created *monitoringpb.AlertPolicy
@@ -200,8 +193,8 @@ func (c *Client) UpdateRule(ctx context.Context, in RuleInput) (*RuleResult, err
 	return c.CreateRule(ctx, in)
 }
 
-// GetRule finds the policy for a logical (namespace, ruleName) and returns its
-// result view. namespace may be empty — then only ruleName is matched.
+// FindRuleByName finds the policy by ruleName alone and returns its result
+// view plus the namespace recovered from the policy's labels.
 func (c *Client) FindRuleByName(ctx context.Context, ruleName string) (*RuleResult, string, error) {
 	policy, err := c.findPolicyByRuleName(ctx, ruleName)
 	if err != nil {

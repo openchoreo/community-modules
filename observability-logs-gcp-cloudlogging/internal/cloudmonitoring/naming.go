@@ -35,12 +35,6 @@ const (
 	UserLabelRuleID = "openchoreo-rule-id"
 )
 
-// deriveResourceName produces a deterministic, GCP-safe resource identifier
-// from the OpenChoreo (namespace, ruleName) pair — used for both the
-// log-based metric ID and the alert-policy display name anchor. It is a
-// truncated SHA-256 of "namespace/ruleName" with an "oc-" prefix, e.g.
-// "oc-3f9a...". Stable across create/update/delete so the adapter can
-// reconstruct the target from the logical identity alone.
 func deriveResourceName(namespace, ruleName string) string {
 	h := sha256.Sum256([]byte(namespace + "/" + ruleName))
 	return resourceNamePrefix + hex.EncodeToString(h[:16])

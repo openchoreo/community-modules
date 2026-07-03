@@ -12,15 +12,8 @@ import (
 // BuildComponentLogsFilter renders a ComponentLogsParams as a Cloud Logging
 // filter string against k8s_container logs. Only the namespace is required;
 // the UID filters are added when non-empty. Time bounds are included in the
-// filter (Cloud Logging has no separate timespan parameter like Azure's
-// Timespan option).
+// filter
 func BuildComponentLogsFilter(p ComponentLogsParams) string {
-	// Scope by the OpenChoreo *logical* namespace (the openchoreo.dev/namespace
-	// pod label), NOT the synthesized Kubernetes namespace. The Observer passes
-	// the logical namespace (e.g. "default"); the workload actually runs in a
-	// dp-<...> Kubernetes namespace, so filtering resource.labels.namespace_name
-	// would never match. This mirrors the Azure and AWS adapters, which both
-	// filter component-scope queries on the openchoreo.dev/namespace label.
 	clauses := []string{
 		fmt.Sprintf(`resource.type=%s`, quote(k8sContainerResource)),
 		labelEquals(LabelNamespace, p.Namespace),
@@ -79,14 +72,10 @@ func BuildWorkflowLogsFilter(p WorkflowLogsParams) string {
 	return strings.Join(clauses, "\n")
 }
 
-// labelEquals renders an equality clause against a GKE pod label, using the
-// verified field path labels."k8s-pod/<rawKey>".
 func labelEquals(rawKey, value string) string {
 	return fmt.Sprintf(`labels.%s=%s`, quote(podLabelKey(rawKey)), quote(value))
 }
 
-// timeRangeClauses renders the timestamp bounds. Bounds are only emitted when
-// non-zero so callers can omit either side.
 func timeRangeClauses(start, end time.Time) []string {
 	var out []string
 	if !start.IsZero() {
@@ -98,9 +87,6 @@ func timeRangeClauses(start, end time.Time) []string {
 	return out
 }
 
-// severityClause maps the OpenChoreo log levels onto a Cloud Logging severity
-// filter. OpenChoreo uses WARN; Cloud Logging uses WARNING — the mapping in
-// toGCPSeverity handles that. Multiple levels are OR-ed.
 func severityClause(levels []string) string {
 	if len(levels) == 0 {
 		return ""
@@ -122,9 +108,6 @@ func severityClause(levels []string) string {
 	return "(" + strings.Join(terms, " OR ") + ")"
 }
 
-// searchPhraseClause renders a substring filter over the log payload. The :
-// (has/contains) operator matches the phrase anywhere in the textPayload or
-// jsonPayload.message field.
 func searchPhraseClause(phrase string) string {
 	if phrase == "" {
 		return ""
@@ -133,9 +116,6 @@ func searchPhraseClause(phrase string) string {
 	return fmt.Sprintf(`(textPayload:%s OR jsonPayload.message:%s)`, q, q)
 }
 
-// toGCPSeverity maps an OpenChoreo log level (DEBUG|INFO|WARN|ERROR) to the
-// Cloud Logging LogSeverity enum name. Returns "" for unrecognized levels so
-// the caller can drop them rather than build an invalid filter.
 func toGCPSeverity(level string) string {
 	switch strings.ToUpper(strings.TrimSpace(level)) {
 	case "DEBUG":
@@ -151,9 +131,6 @@ func toGCPSeverity(level string) string {
 	}
 }
 
-// quote wraps a value in double quotes for a Cloud Logging filter string,
-// escaping backslashes and embedded double quotes. Newlines are flattened so
-// a value can never break out of the quoted literal.
 func quote(s string) string {
 	s = strings.ReplaceAll(s, `\`, `\\`)
 	s = strings.ReplaceAll(s, `"`, `\"`)

@@ -1,8 +1,6 @@
 // Copyright 2026 The OpenChoreo Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package cloudlogging queries Google Cloud Logging for OpenChoreo workload
-// container logs and projects the results onto the Observer API log models.
 package cloudlogging
 
 import (
@@ -19,14 +17,11 @@ import (
 	"google.golang.org/api/option"
 )
 
-// entryLister is the subset of *logadmin.Client the adapter depends on,
-// extracted as an interface so tests can substitute a fake.
 type entryLister interface {
 	Entries(ctx context.Context, opts ...logadmin.EntriesOption) *logadmin.EntryIterator
 	Close() error
 }
 
-// Client wraps the Cloud Logging admin client for querying log entries.
 type Client struct {
 	api          entryLister
 	projectID    string
@@ -34,15 +29,13 @@ type Client struct {
 	logger       *slog.Logger
 }
 
-// Config holds the construction parameters for a Client.
 type Config struct {
 	ProjectID    string
 	QueryTimeout time.Duration
 }
 
 // NewClient builds a Client backed by a real logadmin client. Credentials are
-// resolved through Application Default Credentials (GKE Workload Identity in
-// production, GOOGLE_APPLICATION_CREDENTIALS for the static-key fallback).
+// resolved through Application Default Credentials
 func NewClient(ctx context.Context, cfg Config, logger *slog.Logger, opts ...option.ClientOption) (*Client, error) {
 	if cfg.ProjectID == "" {
 		return nil, errors.New("cloudlogging: ProjectID is required")
@@ -71,8 +64,7 @@ func (c *Client) Close() error {
 }
 
 // Ping issues a near-zero-cost query to validate that credentials work and the
-// project's log store is reachable. Called once at boot; the pod crashes if it
-// fails. It reads a single recent k8s_container entry over a short window.
+// project's log store is reachable.
 func (c *Client) Ping(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, c.queryTimeout)
 	defer cancel()
@@ -137,9 +129,6 @@ func (c *Client) GetWorkflowLogs(ctx context.Context, p WorkflowLogsParams) (*Wo
 	}, nil
 }
 
-// collect runs the iterator, mapping each entry through fn and stopping once
-// limit entries have been gathered or the stream is exhausted. The sort order
-// is applied via the NewestFirst option (default desc); asc is the SDK default.
 func collect[T any](ctx context.Context, c *Client, filter string, order SortOrder, limit int, fn func(*logging.Entry) (T, bool)) ([]T, error) {
 	opts := []logadmin.EntriesOption{logadmin.Filter(filter)}
 	if order != SortAsc {
@@ -163,7 +152,6 @@ func collect[T any](ctx context.Context, c *Client, filter string, order SortOrd
 	return out, nil
 }
 
-// joinTimeRange renders the timestamp bounds as newline-joined filter clauses.
 func joinTimeRange(start, end time.Time) string {
 	return strings.Join(timeRangeClauses(start, end), "\n")
 }

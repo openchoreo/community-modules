@@ -13,12 +13,7 @@ import (
 )
 
 // IncidentPayload mirrors the fields the adapter needs from a Cloud Monitoring
-// webhook notification (schema version 1.2). Only stable structured fields are
-// read; the free-text summary/url fields are intentionally ignored because GCP
-// documents that their format can change without notice.
-//
-// observed_value and threshold_value arrive as STRINGS in the payload, not
-// numbers — hence the string typing and explicit parse.
+// webhook notification (schema version 1.2).
 type IncidentPayload struct {
 	Incident struct {
 		IncidentID    string `json:"incident_id"`
@@ -69,7 +64,6 @@ func ParseWebhook(raw []byte) (*AlertDetails, error) {
 	}, nil
 }
 
-// parseFloat parses the string-typed observed_value; returns 0 on any failure.
 func parseFloat(s string) float64 {
 	if s == "" {
 		return 0
@@ -81,7 +75,6 @@ func parseFloat(s string) float64 {
 	return f
 }
 
-// parseEpoch converts Unix epoch seconds to a UTC time; falls back to now.
 func parseEpoch(sec int64) time.Time {
 	if sec <= 0 {
 		return time.Now().UTC()

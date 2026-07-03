@@ -40,13 +40,10 @@ type RuleResult struct {
 // NowRFC3339 is a thin wrapper kept here so tests can stub time.
 var NowRFC3339 = func() string { return time.Now().UTC().Format(time.RFC3339) }
 
-// metricType returns the Cloud Monitoring metric type for a log-based metric ID.
 func metricType(metricID string) string {
 	return "logging.googleapis.com/user/" + metricID
 }
 
-// buildAlertPolicy assembles the AlertPolicy proto for a rule: a metric-
-// threshold over the rule's log-based counter, tagged with lookup user_labels.
 func buildAlertPolicy(in RuleInput, cfg Config, metricID string) (*monitoringpb.AlertPolicy, error) {
 	cmp, err := mapOperator(in.Operator)
 	if err != nil {
@@ -106,8 +103,6 @@ func buildAlertPolicy(in RuleInput, cfg Config, metricID string) (*monitoringpb.
 	return policy, nil
 }
 
-// mapOperator converts an OpenChoreo operator (gt|gte|lt|lte|eq|neq) to the
-// Cloud Monitoring comparison enum.
 func mapOperator(op string) (monitoringpb.ComparisonType, error) {
 	switch strings.ToLower(strings.TrimSpace(op)) {
 	case "gt", "greaterthan", ">":
@@ -128,10 +123,6 @@ func mapOperator(op string) (monitoringpb.ComparisonType, error) {
 	}
 }
 
-// toDuration normalizes a duration string to a protobuf Duration. Accepts
-// ISO 8601 (PT5M, PT1H30M, P1D) and Go-style (5m, 1h30m, 90s). The Logs
-// Adapter API marks the window as required, so an empty value is a request
-// error rather than something to paper over with a default.
 func toDuration(s string) (*durationpb.Duration, error) {
 	if strings.TrimSpace(s) == "" {
 		return nil, fmt.Errorf("required, must be an ISO 8601 or Go duration")
@@ -143,8 +134,6 @@ func toDuration(s string) (*durationpb.Duration, error) {
 	return durationpb.New(d), nil
 }
 
-// parseFlexibleDuration parses either an ISO 8601 time duration (PnDTnHnMnS,
-// no year/month components) or a Go duration string.
 func parseFlexibleDuration(s string) (time.Duration, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -160,10 +149,6 @@ func parseFlexibleDuration(s string) (time.Duration, error) {
 	return d, nil
 }
 
-// parseISO8601Duration parses the time-oriented subset of ISO 8601 durations
-// the OpenChoreo alert CR uses: an optional day component plus hours/minutes/
-// seconds (e.g. PT5M, PT1H30M, P1DT2H, PT30S). Year/month are not supported
-// (they are not expressible as a fixed time.Duration).
 func parseISO8601Duration(s string) (time.Duration, error) {
 	orig := s
 	s = strings.ToUpper(s)
@@ -210,8 +195,6 @@ func parseISO8601Duration(s string) (time.Duration, error) {
 	return total, nil
 }
 
-// readUnit consumes leading digits followed by unit from *s. If the next
-// component matches unit, it advances *s past it and returns (value, true).
 func readUnit(s *string, unit byte) (int64, bool) {
 	str := *s
 	i := 0
@@ -229,9 +212,6 @@ func readUnit(s *string, unit byte) (int64, bool) {
 	return v, true
 }
 
-// sanitizeLabelValue makes a value safe for a GCP user_label. Values must be
-// <=63 bytes; we truncate on a rune boundary so a multi-byte character is
-// never split (GCP rejects labels containing invalid UTF-8).
 func sanitizeLabelValue(v string) string {
 	if len(v) <= 63 {
 		return v
@@ -244,12 +224,6 @@ func sanitizeLabelValue(v string) string {
 	return v[:cut]
 }
 
-// escapeFilterValue escapes a value for safe interpolation inside a
-// double-quoted GCP list filter string (used for ListAlertPolicies filters).
-// Without this, a value containing a quote or a boolean operator like
-// `x" OR user_labels.managed-by="openchoreo` would break out of the quoted
-// literal and broaden the match. Backslashes and quotes are escaped; newlines
-// are flattened.
 func escapeFilterValue(v string) string {
 	v = strings.ReplaceAll(v, `\`, `\\`)
 	v = strings.ReplaceAll(v, `"`, `\"`)

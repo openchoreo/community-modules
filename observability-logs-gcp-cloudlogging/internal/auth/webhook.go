@@ -68,7 +68,6 @@ func WebhookAuthMiddleware(secret string, enabled bool, logger *slog.Logger) fun
 	}
 }
 
-// constantTimeStringEqual compares two strings without leaking length info.
 func constantTimeStringEqual(a, b string) bool {
 	maxLen := len(a)
 	if len(b) > maxLen {

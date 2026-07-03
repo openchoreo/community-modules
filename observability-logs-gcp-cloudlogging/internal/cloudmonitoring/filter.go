@@ -56,15 +56,6 @@ func BuildAlertFilter(in RuleInput) string {
 	return strings.Join(clauses, "\n")
 }
 
-// isRawFilter reports whether the query is already a Cloud Logging filter
-// rather than a free-text search phrase.
-//
-// A bare-prefix match is not enough: a phrase like "severity degraded" starts
-// with "severity" but is plain text, and treating it as raw would emit an
-// unscoped, invalid filter. A genuine field selector is a known field
-// immediately followed by a comparison/restriction operator (=, !=, <, >, <=,
-// >=, :) — optionally after a trailing dot for the nested fields. We require
-// that shape so free-text phrases stay scoped and real raw queries still pass.
 func isRawFilter(q string) bool {
 	t := strings.TrimSpace(q)
 	// Nested fields are always followed by a subfield, e.g. resource.type=...,
@@ -84,9 +75,6 @@ func isRawFilter(q string) bool {
 	return false
 }
 
-// startsWithFilterOperator reports whether s (the text following a field name)
-// begins with a Cloud Logging comparison or restriction operator, allowing
-// leading spaces (e.g. `severity >= ERROR`).
 func startsWithFilterOperator(s string) bool {
 	s = strings.TrimLeft(s, " ")
 	for _, op := range []string{"=", "!=", "<", ">", ":"} {
@@ -97,8 +85,6 @@ func startsWithFilterOperator(s string) bool {
 	return false
 }
 
-// labelEquals renders an equality clause against a GKE pod label, applying the
-// dots-to-underscores sanitization when enabled.
 func labelEquals(rawKey, value string) string {
 	return fmt.Sprintf(`labels.%s=%s`, quote(podLabelKey(rawKey)), quote(value))
 }
@@ -110,7 +96,6 @@ func podLabelKey(rawKey string) string {
 	return podLabelPrefix + rawKey
 }
 
-// normalizeUID strips the zero UUID the OpenAPI client sends for unset fields.
 func normalizeUID(u string) string {
 	if u == "" || u == "00000000-0000-0000-0000-000000000000" {
 		return ""
@@ -118,8 +103,6 @@ func normalizeUID(u string) string {
 	return u
 }
 
-// quote wraps a value in double quotes for a Cloud Logging filter, escaping
-// backslashes and embedded quotes and flattening newlines.
 func quote(s string) string {
 	s = strings.ReplaceAll(s, `\`, `\\`)
 	s = strings.ReplaceAll(s, `"`, `\"`)

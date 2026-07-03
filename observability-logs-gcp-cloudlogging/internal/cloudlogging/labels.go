@@ -37,11 +37,8 @@ const (
 )
 
 // SanitizePodLabelDots toggles the dot->underscore substitution in podLabelKey
-// (see podLabelPrefix); set from config at startup, defaults true.
 var SanitizePodLabelDots = true
 
-// podLabelKey returns the LogEntry label-map key for a raw Kubernetes pod
-// label key, applying the dot->underscore substitution when enabled.
 func podLabelKey(rawKey string) string {
 	if SanitizePodLabelDots {
 		rawKey = strings.ReplaceAll(rawKey, ".", "_")

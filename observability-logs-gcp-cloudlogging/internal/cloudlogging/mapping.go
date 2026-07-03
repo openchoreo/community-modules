@@ -11,9 +11,6 @@ import (
 	"cloud.google.com/go/logging"
 )
 
-// mapComponentEntry projects a Cloud Logging entry onto a ComponentLogEntry.
-// Pod labels live on entry.Labels under the k8s-pod/ prefix; resource labels
-// (namespace_name, pod_name, container_name) live on entry.Resource.Labels.
 func mapComponentEntry(e *logging.Entry) ComponentLogEntry {
 	msg := payloadString(e.Payload)
 	res := resourceLabels(e)
@@ -31,7 +28,6 @@ func mapComponentEntry(e *logging.Entry) ComponentLogEntry {
 	}
 }
 
-// mapWorkflowEntry projects a Cloud Logging entry onto a WorkflowLogEntry.
 func mapWorkflowEntry(e *logging.Entry) WorkflowLogEntry {
 	return WorkflowLogEntry{
 		Timestamp:  e.Timestamp.UTC(),
@@ -39,8 +35,6 @@ func mapWorkflowEntry(e *logging.Entry) WorkflowLogEntry {
 	}
 }
 
-// resourceLabels returns the monitored-resource labels map, or an empty map
-// when the entry carries no resource.
 func resourceLabels(e *logging.Entry) map[string]string {
 	if e.Resource == nil {
 		return map[string]string{}
@@ -48,10 +42,6 @@ func resourceLabels(e *logging.Entry) map[string]string {
 	return e.Resource.Labels
 }
 
-// payloadString renders an entry payload as a string. Cloud Logging payloads
-// are one of: a plain string (textPayload), a structured map (jsonPayload),
-// or a proto. Structured payloads are returned as compact JSON so the full
-// record is preserved for the caller.
 func payloadString(payload interface{}) string {
 	switch v := payload.(type) {
 	case nil:
@@ -79,12 +69,6 @@ func payloadString(payload interface{}) string {
 	}
 }
 
-// resolveLogLevel derives an OpenChoreo level (DEBUG|INFO|WARN|ERROR) for an
-// entry, mirroring the sibling adapters' approach:
-//  1. Use the entry's structured Cloud Logging severity when it carries one.
-//  2. Otherwise, if the message is a JSON envelope, check common level fields.
-//  3. Otherwise, scan the message text for a level keyword.
-//  4. Default to INFO.
 func resolveLogLevel(sev logging.Severity, msg string) string {
 	if l := fromGCPSeverity(sev); l != "" {
 		return l
@@ -108,10 +92,6 @@ func resolveLogLevel(sev logging.Severity, msg string) string {
 	return extractLogLevel(msg)
 }
 
-// fromGCPSeverity maps a Cloud Logging severity onto the OpenChoreo level set.
-// GCP's NOTICE collapses to INFO; CRITICAL/ALERT/EMERGENCY collapse to ERROR
-// (they are all >= ERROR). Returns "" for the default/unset severity so the
-// caller falls back to message inspection.
 func fromGCPSeverity(sev logging.Severity) string {
 	switch sev {
 	case logging.Debug:
@@ -127,8 +107,6 @@ func fromGCPSeverity(sev logging.Severity) string {
 	}
 }
 
-// extractLogLevel scans the log message text for a level keyword and returns a
-// normalized level string. Defaults to INFO when no keyword is found.
 func extractLogLevel(msg string) string {
 	upper := strings.ToUpper(msg)
 	for _, level := range []string{"ERROR", "FATAL", "SEVERE", "WARN", "WARNING", "INFO", "DEBUG"} {
@@ -145,8 +123,6 @@ func extractLogLevel(msg string) string {
 	return "INFO"
 }
 
-// normalizeLevel uppercases the level and maps known aliases onto the
-// OpenChoreo level set.
 func normalizeLevel(s string) string {
 	switch strings.ToUpper(strings.TrimSpace(s)) {
 	case "WARNING":

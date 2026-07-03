@@ -31,9 +31,9 @@ func TestQueryEvents_NotImplemented(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	got, ok := resp.(gen.QueryEvents500JSONResponse)
+	got, ok := resp.(gen.QueryEvents501JSONResponse)
 	if !ok {
-		t.Fatalf("response type = %T, want QueryEvents500JSONResponse", resp)
+		t.Fatalf("response type = %T, want QueryEvents501JSONResponse", resp)
 	}
 	if got.ErrorCode == nil || *got.ErrorCode != errCodeNotImplemented {
 		t.Errorf("errorCode = %v, want %q", got.ErrorCode, errCodeNotImplemented)

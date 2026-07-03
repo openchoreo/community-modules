@@ -161,11 +161,9 @@ func (h *LogsHandler) QueryLogs(ctx context.Context, request gen.QueryLogsReques
 }
 
 // QueryEvents is not implemented: this adapter is a Cloud Logging *logs*
-// backend and does not serve Kubernetes events. The generated contract offers
-// no 501 response for this endpoint, so it returns a 500 carrying the
-// not-implemented error code.
+// backend and does not serve Kubernetes events, so it returns 501.
 func (h *LogsHandler) QueryEvents(_ context.Context, _ gen.QueryEventsRequestObject) (gen.QueryEventsResponseObject, error) {
-	return gen.QueryEvents500JSONResponse(makeError(gen.InternalServerError, errCodeNotImplemented,
+	return gen.QueryEvents501JSONResponse(makeError(gen.NotImplemented, errCodeNotImplemented,
 		"events query is not implemented by the GCP Cloud Logging adapter")), nil
 }
 

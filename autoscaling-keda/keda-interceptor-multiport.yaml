@@ -3,8 +3,8 @@
 #
 # Multi-port front for the keda-add-ons-http interceptor, in the `keda` namespace.
 #
-# To support a port not listed here, add it below AND to the keda-based-scaling trait's
-# `wakeablePorts` default (keda-based-scaling-trait.yaml); keep the two in sync.
+# To support a port not listed here, add it below AND to the keda-scaling trait's
+# `wakeablePorts` default (keda-scaling-trait.yaml); keep the two in sync.
 #
 # The selector must match the interceptor pods. Copy from the add-on's own Service if labels differ:
 #   kubectl get svc keda-add-ons-http-interceptor-proxy -n keda -o jsonpath='{.spec.selector}'

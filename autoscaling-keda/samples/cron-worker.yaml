@@ -2,10 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Prerequisites:
-#   1. The data plane advertises the KEDA backend:
-#        kubectl annotate clusterdataplane default \
-#          openchoreo.dev/keda-based-scaling-backend=keda --overwrite
-#   2. The `worker` type allows the trait (componenttypes/worker.yaml applied, see README).
+#   1. The `worker` type allows the trait (patched to allow keda-scaling, see README step 3).
 ---
 apiVersion: openchoreo.dev/v1alpha1
 kind: Component
@@ -21,10 +18,9 @@ spec:
   autoDeploy: true
   traits:
     - kind: ClusterTrait
-      name: keda-based-scaling
-      instanceName: keda-based-scaling
+      name: keda-scaling
+      instanceName: keda-scaling
       parameters:
-        enabled: true
         minReplicas: 0
         maxReplicas: 3
         cooldownPeriod: 30

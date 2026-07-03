@@ -1,19 +1,20 @@
 # Autoscaling with KEDA
 
-This module scales OpenChoreo components on demand with [KEDA](https://keda.sh). An HTTP service can drop to zero replicas while it's idle and wake up on the first request. The KEDA HTTP Add-on interceptor holds that request while a pod starts, so nothing gets dropped, and in-cluster service-to-service calls wake the service the same way. Workers scale on cron or queue triggers instead. You get all of this by attaching the `keda-based-scaling` trait to a plain service or worker component and setting a few parameters.
+This module scales OpenChoreo components on demand with [KEDA](https://keda.sh). An HTTP service can drop to zero replicas while it's idle and wake up on the first request. The KEDA HTTP Add-on interceptor holds that request while a pod starts, so nothing gets dropped, and in-cluster service-to-service calls wake the service the same way. Workers scale on cron or queue triggers instead. You get all of this by attaching the `keda-scaling` trait to a plain service or worker component and setting a few parameters.
 
-The module has four pieces:
+The module has three pieces:
 
-- `keda-based-scaling-trait.yaml` holds the `ClusterTrait` that renders the right KEDA objects for each data plane.
+- `keda-scaling-trait.yaml` holds the `ClusterTrait` that renders the right KEDA objects for each data plane.
 - `cluster-agent-keda-rbac.yaml` gives the data-plane cluster-agent permission to manage KEDA objects.
 - `keda-interceptor-multiport.yaml` is a multi-port Service that fronts the interceptor so in-cluster calls can wake a service.
-- `componenttypes/service.yaml`, `componenttypes/webapp.yaml`, and `componenttypes/worker.yaml` are reference examples showing the `keda-based-scaling` entry added to `allowedTraits`. Patch your own types rather than applying these directly.
+
+To use it, add `keda-scaling` to the `allowedTraits` of your existing component types (a one-line patch, see Install step 3) and attach the trait to a component. The module ships no component types of its own; it works with whatever `service`/`web-application`/`worker` types your platform already runs.
 
 KEDA core and the KEDA HTTP Add-on come from their own upstream Helm charts (see Install below). This module is only the OpenChoreo glue.
 
 ## How it works
 
-A data plane opts in by carrying the annotation `openchoreo.dev/keda-based-scaling-backend: keda`. The trait reads that annotation when it renders. On a plane without it the trait does nothing, so the same component definition stays portable across environments.
+Attach the `keda-scaling` trait to a component and it renders the right KEDA objects; detach it and they're gone. Attaching is the on/off switch, there's no separate flag to set. The trait assumes every data plane it targets runs KEDA. Mixed fleets, where only some data planes run KEDA, are a separate design still being worked out; for now keep the data planes a component promotes across identical.
 
 | Mode | When | What KEDA creates |
 |------|------|-------------------|
@@ -56,7 +57,7 @@ kubectl wait --for=condition=Established crd/interceptorroutes.http.keda.sh --ti
 ### 2. Apply the trait and data-plane resources
 
 ```bash
-kubectl apply --server-side -f https://raw.githubusercontent.com/openchoreo/community-modules/main/autoscaling-keda/keda-based-scaling-trait.yaml
+kubectl apply --server-side -f https://raw.githubusercontent.com/openchoreo/community-modules/main/autoscaling-keda/keda-scaling-trait.yaml
 
 kubectl apply \
   -f https://raw.githubusercontent.com/openchoreo/community-modules/main/autoscaling-keda/cluster-agent-keda-rbac.yaml \
@@ -65,29 +66,22 @@ kubectl apply \
 
 ### 3. Enable the trait on your component types
 
-Add `keda-based-scaling` to `allowedTraits` on the component types you use. You don't need to delete or recreate any components, the change takes effect right away:
+Add `keda-scaling` to `allowedTraits` on the component types you use. You don't need to delete or recreate any components, the change takes effect right away:
 
 ```bash
 kubectl patch clustercomponenttype <your-type> --type=json \
-  -p '[{"op":"add","path":"/spec/allowedTraits/-","value":{"kind":"ClusterTrait","name":"keda-based-scaling"}}]'
+  -p '[{"op":"add","path":"/spec/allowedTraits/-","value":{"kind":"ClusterTrait","name":"keda-scaling"}}]'
 ```
 
-`componenttypes/service.yaml`, `componenttypes/webapp.yaml`, and `componenttypes/worker.yaml` in this module show the full type definition with the trait already included. Treat them as a guide, not a drop-in replacement for your own types. [CONFIGURATION.md](./CONFIGURATION.md) covers the shape a component type has to have for the HTTP scaling path to work.
+The patch adds the trait to whatever your live type already is, so it never drifts from your platform's defaults. [CONFIGURATION.md](./CONFIGURATION.md) covers the shape a component type has to have for the HTTP scaling path to work.
 
-### 4. Annotate the data plane
-
-```bash
-kubectl annotate clusterdataplane default \
-  openchoreo.dev/keda-based-scaling-backend=keda --overwrite
-```
-
-### 5. Verify
+### 4. Verify
 
 ```bash
 kubectl rollout status deploy/keda-add-ons-http-interceptor -n keda --timeout=180s
 kubectl rollout status deploy/keda-add-ons-http-external-scaler -n keda --timeout=180s
 
-kubectl get clustertrait keda-based-scaling
+kubectl get clustertrait keda-scaling
 kubectl get clustercomponenttype service web-application worker \
   -o jsonpath='{range .items[*]}{.metadata.name}{": "}{.spec.allowedTraits[*].name}{"\n"}{end}'
 kubectl get clusterrolebinding openchoreo-cluster-agent-keda
@@ -173,10 +167,9 @@ spec:
     name: deployment/service          # or deployment/worker
   traits:
     - kind: ClusterTrait
-      name: keda-based-scaling
-      instanceName: keda-based-scaling
+      name: keda-scaling
+      instanceName: keda-scaling
       parameters:
-        enabled: true
         minReplicas: 0
         maxReplicas: 5
         cooldownPeriod: 300           # seconds idle before scaling down
@@ -194,7 +187,7 @@ Platform engineers can floor the bounds per environment from the `ReleaseBinding
 ```yaml
 spec:
   traitEnvironmentConfigs:
-    keda-based-scaling:
+    keda-scaling:
       minReplicas: 1        # never scale to zero in production
       maxReplicas: 10
 ```
@@ -210,14 +203,13 @@ The full parameter reference, tuning notes (request rate vs. concurrency), exten
 ## Uninstall
 
 ```bash
-# Detach the trait from your components first (remove the keda-based-scaling entry from
+# Detach the trait from your components first (remove the keda-scaling entry from
 # spec.traits), then:
-kubectl annotate clusterdataplane default openchoreo.dev/keda-based-scaling-backend-
 kubectl delete \
   -f https://raw.githubusercontent.com/openchoreo/community-modules/main/autoscaling-keda/keda-interceptor-multiport.yaml \
   -f https://raw.githubusercontent.com/openchoreo/community-modules/main/autoscaling-keda/cluster-agent-keda-rbac.yaml \
-  -f https://raw.githubusercontent.com/openchoreo/community-modules/main/autoscaling-keda/keda-based-scaling-trait.yaml
-# To revert the component types, remove keda-based-scaling from allowedTraits:
+  -f https://raw.githubusercontent.com/openchoreo/community-modules/main/autoscaling-keda/keda-scaling-trait.yaml
+# To revert the component types, remove keda-scaling from allowedTraits:
 #   kubectl patch clustercomponenttype service web-application worker --type=json \
 #     -p '[{"op":"remove","path":"/spec/allowedTraits/<index>"}]'
 #   (find the index with: kubectl get clustercomponenttype service -o jsonpath='{.spec.allowedTraits}')

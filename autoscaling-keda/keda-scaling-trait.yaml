@@ -3,7 +3,7 @@
 apiVersion: openchoreo.dev/v1alpha1
 kind: ClusterTrait
 metadata:
-  name: keda-based-scaling
+  name: keda-scaling
   labels:
     app.kubernetes.io/name: autoscaling-keda
     app.kubernetes.io/part-of: openchoreo
@@ -12,9 +12,6 @@ spec:
     openAPIV3Schema:
       type: object
       properties:
-        enabled:
-          type: boolean
-          default: false
         minReplicas:
           type: integer
           default: 0
@@ -24,6 +21,8 @@ spec:
           default: 10
           minimum: 1
         cooldownPeriod:
+          title: Cooldown period (seconds)
+          description: Seconds all metrics must stay at zero before KEDA scales down to minReplicas.
           type: integer
           default: 300
           minimum: 0
@@ -68,12 +67,18 @@ spec:
           default: 1
           minimum: 1
         requestRateWindow:
+          title: Request rate window (Go duration, e.g. 1m)
+          description: Rolling window KEDA averages the request rate over before deciding to scale.
           type: string
           default: "1m"
         requestRateGranularity:
+          title: Request rate granularity (Go duration, e.g. 1s)
+          description: Bucket size KEDA samples the request rate at within the window.
           type: string
           default: "1s"
         readinessTimeout:
+          title: Readiness timeout (Go duration, e.g. 120s)
+          description: How long the interceptor holds the first request while a scaled-to-zero pod starts.
           type: string
           default: "120s"
 
@@ -88,12 +93,14 @@ spec:
           type: integer
           minimum: 1
         cooldownPeriod:
+          title: Cooldown period (seconds)
+          description: Per-environment override for the seconds of idle time before scaling down to minReplicas.
           type: integer
           minimum: 0
 
   validations:
     - rule: >-
-        ${(parameters.enabled && (has(dataplane.annotations) && "openchoreo.dev/keda-based-scaling-backend" in dataplane.annotations && dataplane.annotations["openchoreo.dev/keda-based-scaling-backend"] == "keda") && parameters.trigger.type == "" && size(workload.endpoints) > 0)
+        ${(parameters.trigger.type == "" && size(workload.endpoints) > 0)
           ? (size(workload.endpoints) == 1
              && workload.endpoints.all(name, ep,
                   "external" in ep.visibility
@@ -103,11 +110,11 @@ spec:
       message: "A KEDA-scaled HTTP service must expose exactly one external HTTP/GraphQL/Websocket endpoint, on a wakeable port (default 80, 3000, 5000, 8000, 8080, 8081, 8090, 9000, 9090): the KEDA interceptor routes by Host only, and the ExternalName alias (a DNS CNAME) can't remap ports. Split extra endpoints into their own component, add the port to keda-interceptor-multiport.yaml and wakeablePorts, or keep minReplicas >= 1."
 
     - rule: >-
-        ${!(parameters.enabled && (has(dataplane.annotations) && "openchoreo.dev/keda-based-scaling-backend" in dataplane.annotations && dataplane.annotations["openchoreo.dev/keda-based-scaling-backend"] == "keda") && parameters.trigger.type == "" && size(workload.endpoints) == 0)}
-      message: "keda-based-scaling on a component with no endpoints (a worker) requires a trigger (e.g. cron, kafka, rabbitmq). Set trigger.type, or attach this trait only to components that expose an HTTP endpoint."
+        ${!(parameters.trigger.type == "" && size(workload.endpoints) == 0)}
+      message: "keda-scaling on a component with no endpoints (a worker) requires a trigger (e.g. cron, kafka, rabbitmq). Set trigger.type, or attach this trait only to components that expose an HTTP endpoint."
 
   creates:
-    - includeWhen: '${parameters.enabled && (has(dataplane.annotations) && "openchoreo.dev/keda-based-scaling-backend" in dataplane.annotations && dataplane.annotations["openchoreo.dev/keda-based-scaling-backend"] == "keda") && parameters.trigger.type != ""}'
+    - includeWhen: '${parameters.trigger.type != ""}'
       template:
         apiVersion: keda.sh/v1alpha1
         kind: ScaledObject
@@ -128,7 +135,7 @@ spec:
             - type: ${parameters.trigger.type}
               metadata: ${parameters.trigger.metadata}
 
-    - includeWhen: '${parameters.enabled && (has(dataplane.annotations) && "openchoreo.dev/keda-based-scaling-backend" in dataplane.annotations && dataplane.annotations["openchoreo.dev/keda-based-scaling-backend"] == "keda") && parameters.trigger.type == "" && size(workload.endpoints.transformList(name, ep, ("external" in ep.visibility && ep.type in ["HTTP", "GraphQL", "Websocket"]) ? [name] : []).flatten()) == 1}'
+    - includeWhen: '${parameters.trigger.type == "" && size(workload.endpoints.transformList(name, ep, ("external" in ep.visibility && ep.type in ["HTTP", "GraphQL", "Websocket"]) ? [name] : []).flatten()) == 1}'
       forEach: '${workload.endpoints.transformMap(name, ep, "external" in ep.visibility && ep.type in ["HTTP", "GraphQL", "Websocket"], ep)}'
       var: endpoint
       template:
@@ -153,7 +160,7 @@ spec:
           timeouts:
             readiness: ${parameters.readinessTimeout}
 
-    - includeWhen: '${parameters.enabled && (has(dataplane.annotations) && "openchoreo.dev/keda-based-scaling-backend" in dataplane.annotations && dataplane.annotations["openchoreo.dev/keda-based-scaling-backend"] == "keda") && parameters.trigger.type == "" && size(workload.endpoints.transformList(name, ep, ("external" in ep.visibility && ep.type in ["HTTP", "GraphQL", "Websocket"]) ? [name] : []).flatten()) == 1}'
+    - includeWhen: '${parameters.trigger.type == "" && size(workload.endpoints.transformList(name, ep, ("external" in ep.visibility && ep.type in ["HTTP", "GraphQL", "Websocket"]) ? [name] : []).flatten()) == 1}'
       forEach: '${workload.endpoints.transformMap(name, ep, "external" in ep.visibility && ep.type in ["HTTP", "GraphQL", "Websocket"], ep)}'
       var: endpoint
       template:
@@ -180,7 +187,7 @@ spec:
                 scalerAddress: ${parameters.interceptorScalerService + "." + parameters.interceptorNamespace + ":" + string(parameters.interceptorScalerPort)}
                 interceptorRoute: ${oc_generate_name(metadata.componentName, endpoint.key)}
 
-    - includeWhen: '${parameters.enabled && (has(dataplane.annotations) && "openchoreo.dev/keda-based-scaling-backend" in dataplane.annotations && dataplane.annotations["openchoreo.dev/keda-based-scaling-backend"] == "keda") && parameters.trigger.type == "" && size(workload.endpoints.transformList(name, ep, ("external" in ep.visibility && ep.type in ["HTTP", "GraphQL", "Websocket"]) ? [name] : []).flatten()) == 1}'
+    - includeWhen: '${parameters.trigger.type == "" && size(workload.endpoints.transformList(name, ep, ("external" in ep.visibility && ep.type in ["HTTP", "GraphQL", "Websocket"]) ? [name] : []).flatten()) == 1}'
       template:
         apiVersion: gateway.kgateway.dev/v1alpha1
         kind: Backend
@@ -195,7 +202,7 @@ spec:
               - host: ${parameters.interceptorService + "." + parameters.interceptorNamespace + ".svc.cluster.local"}
                 port: ${parameters.interceptorPort}
 
-    - includeWhen: '${parameters.enabled && (has(dataplane.annotations) && "openchoreo.dev/keda-based-scaling-backend" in dataplane.annotations && dataplane.annotations["openchoreo.dev/keda-based-scaling-backend"] == "keda") && parameters.trigger.type == "" && size(workload.endpoints.transformList(name, ep, ("external" in ep.visibility && ep.type in ["HTTP", "GraphQL", "Websocket"]) ? [name] : []).flatten()) == 1}'
+    - includeWhen: '${parameters.trigger.type == "" && size(workload.endpoints.transformList(name, ep, ("external" in ep.visibility && ep.type in ["HTTP", "GraphQL", "Websocket"]) ? [name] : []).flatten()) == 1}'
       template:
         apiVersion: v1
         kind: Service
@@ -213,7 +220,6 @@ spec:
         group: apps
         version: v1
         kind: Deployment
-        where: '${parameters.enabled && (has(dataplane.annotations) && "openchoreo.dev/keda-based-scaling-backend" in dataplane.annotations && dataplane.annotations["openchoreo.dev/keda-based-scaling-backend"] == "keda")}'
       operations:
         - op: remove
           path: /spec/replicas
@@ -222,7 +228,7 @@ spec:
         group: gateway.networking.k8s.io
         version: v1
         kind: HTTPRoute
-        where: '${parameters.enabled && (has(dataplane.annotations) && "openchoreo.dev/keda-based-scaling-backend" in dataplane.annotations && dataplane.annotations["openchoreo.dev/keda-based-scaling-backend"] == "keda") && parameters.trigger.type == "" && has(resource.metadata.labels) && resource.metadata.labels["openchoreo.dev/endpoint-visibility"] == "external"}'
+        where: '${parameters.trigger.type == "" && has(resource.metadata.labels) && resource.metadata.labels["openchoreo.dev/endpoint-visibility"] == "external"}'
       operations:
         - op: replace
           path: /spec/rules/[*]/backendRefs/[?(@.name=='${metadata.componentName}')]
@@ -239,7 +245,7 @@ spec:
         group: gateway.networking.k8s.io
         version: v1
         kind: HTTPRoute
-        where: '${parameters.enabled && (has(dataplane.annotations) && "openchoreo.dev/keda-based-scaling-backend" in dataplane.annotations && dataplane.annotations["openchoreo.dev/keda-based-scaling-backend"] == "keda") && parameters.trigger.type == "" && has(resource.metadata.labels) && resource.metadata.labels["openchoreo.dev/endpoint-visibility"] == "external" && has(resource.spec.rules[0].filters) && resource.spec.rules[0].filters.exists(f, f.type == "URLRewrite")}'
+        where: '${parameters.trigger.type == "" && has(resource.metadata.labels) && resource.metadata.labels["openchoreo.dev/endpoint-visibility"] == "external" && has(resource.spec.rules[0].filters) && resource.spec.rules[0].filters.exists(f, f.type == "URLRewrite")}'
       operations:
         - op: add
           path: /spec/rules/[*]/filters/[?(@.type=='URLRewrite')]/urlRewrite/hostname
@@ -249,7 +255,7 @@ spec:
         group: gateway.networking.k8s.io
         version: v1
         kind: HTTPRoute
-        where: '${parameters.enabled && (has(dataplane.annotations) && "openchoreo.dev/keda-based-scaling-backend" in dataplane.annotations && dataplane.annotations["openchoreo.dev/keda-based-scaling-backend"] == "keda") && parameters.trigger.type == "" && has(resource.metadata.labels) && resource.metadata.labels["openchoreo.dev/endpoint-visibility"] == "external" && !(has(resource.spec.rules[0].filters) && resource.spec.rules[0].filters.exists(f, f.type == "URLRewrite"))}'
+        where: '${parameters.trigger.type == "" && has(resource.metadata.labels) && resource.metadata.labels["openchoreo.dev/endpoint-visibility"] == "external" && !(has(resource.spec.rules[0].filters) && resource.spec.rules[0].filters.exists(f, f.type == "URLRewrite"))}'
       operations:
         - op: add
           path: /spec/rules/[*]/filters/-
@@ -262,7 +268,7 @@ spec:
         group: ""
         version: v1
         kind: Service
-        where: '${parameters.enabled && (has(dataplane.annotations) && "openchoreo.dev/keda-based-scaling-backend" in dataplane.annotations && dataplane.annotations["openchoreo.dev/keda-based-scaling-backend"] == "keda") && parameters.trigger.type == "" && resource.metadata.name == metadata.componentName}'
+        where: '${parameters.trigger.type == "" && resource.metadata.name == metadata.componentName}'
       operations:
         - op: replace
           path: /spec/type

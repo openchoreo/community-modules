@@ -1,14 +1,15 @@
 # Configuration and architecture
 
-The README covers installation and the quick start. This document goes deeper. It's the full parameter reference, the guide to tuning and extending the trait, the reasoning behind the architecture, and the troubleshooting notes for the `autoscaling-keda` module and its `keda-based-scaling` trait.
+The README covers installation and the quick start. This document goes deeper. It's the full parameter reference, the guide to tuning and extending the trait, the reasoning behind the architecture, and the troubleshooting notes for the `autoscaling-keda` module and its `keda-scaling` trait.
 
 ## Parameter reference
 
-All parameters live under `spec.traits[].parameters` on the component. The trait is named `keda-based-scaling`, and the samples reuse that same value for `instanceName`. Per-environment overrides in the `ReleaseBinding` are keyed by whatever `instanceName` you pick.
+All parameters live under `spec.traits[].parameters` on the component. The trait is named `keda-scaling`, and the samples reuse that same value for `instanceName`. Per-environment overrides in the `ReleaseBinding` are keyed by whatever `instanceName` you pick.
+
+Attaching the trait to a component activates it; detaching removes everything it rendered. There's no `enabled` flag.
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
-| `enabled` | boolean | `false` | Activates the trait. Nothing is rendered unless this is `true` and the data plane backend is `keda`. |
 | `minReplicas` | integer | `0` | Minimum replica count. `0` enables scale-to-zero. |
 | `maxReplicas` | integer | `10` | Maximum replica count KEDA will scale up to. |
 | `cooldownPeriod` | integer | `300` | Seconds all metrics must stay at zero before KEDA scales down to `minReplicas`. |
@@ -47,12 +48,12 @@ environmentConfigs:
         minimum: 0
 ```
 
-In the `ReleaseBinding`, set `traitEnvironmentConfigs` keyed by the trait `instanceName` (`keda-based-scaling`):
+In the `ReleaseBinding`, set `traitEnvironmentConfigs` keyed by the trait `instanceName` (`keda-scaling`):
 
 ```yaml
 spec:
   traitEnvironmentConfigs:
-    keda-based-scaling:
+    keda-scaling:
       minReplicas: 1      # never scale to zero in production
       maxReplicas: 10
       cooldownPeriod: 600
@@ -82,7 +83,7 @@ Lower values cut idle cost but mean more frequent cold starts. For a service wit
 
 ### Concurrency-based scaling
 
-HTTP mode scales on `requestRate` (requests per second over a window) by default. The KEDA HTTP Add-on's `InterceptorRoute` also supports `concurrency` as a `scalingMetric`, which targets concurrent in-flight requests per replica. To switch, edit the `InterceptorRoute` template in `keda-based-scaling-trait.yaml` and replace the `requestRate` block under `scalingMetric` with a `concurrency` block. See the add-on's `InterceptorRoute` reference: https://github.com/kedacore/http-add-on/blob/main/docs/ref/v0.14.0/interceptor_route.md
+HTTP mode scales on `requestRate` (requests per second over a window) by default. The KEDA HTTP Add-on's `InterceptorRoute` also supports `concurrency` as a `scalingMetric`, which targets concurrent in-flight requests per replica. To switch, edit the `InterceptorRoute` template in `keda-scaling-trait.yaml` and replace the `requestRate` block under `scalingMetric` with a `concurrency` block. See the add-on's `InterceptorRoute` reference: https://github.com/kedacore/http-add-on/blob/main/docs/ref/v0.14.0/interceptor_route.md
 
 Concurrency helps when requests are long-lived, like streaming or WebSocket connections, where rate under-counts the actual load.
 
@@ -94,7 +95,6 @@ Here's a RabbitMQ worker:
 
 ```yaml
 parameters:
-  enabled: true
   minReplicas: 0
   maxReplicas: 5
   trigger:
@@ -108,7 +108,7 @@ For brokered scalers, use `hostFromEnv` pointing at an env var your workload con
 
 ### Authenticated triggers
 
-KEDA scalers reference credentials through `triggers[].authenticationRef`, which points at a `TriggerAuthentication` or `ClusterTriggerAuthentication` object. The trait doesn't expose `authenticationRef` as a parameter yet. To use it, extend the trigger-mode `ScaledObject` template in `keda-based-scaling-trait.yaml`. The module's RBAC already lets the cluster-agent manage `triggerauthentications` and `clustertriggerauthentications`, so you don't need extra permissions. See the KEDA authentication docs: https://keda.sh/docs/latest/concepts/authentication/
+KEDA scalers reference credentials through `triggers[].authenticationRef`, which points at a `TriggerAuthentication` or `ClusterTriggerAuthentication` object. The trait doesn't expose `authenticationRef` as a parameter yet. To use it, extend the trigger-mode `ScaledObject` template in `keda-scaling-trait.yaml`. The module's RBAC already lets the cluster-agent manage `triggerauthentications` and `clustertriggerauthentications`, so you don't need extra permissions. See the KEDA authentication docs: https://keda.sh/docs/latest/concepts/authentication/
 
 Where you can, prefer the `hostFromEnv`-style metadata above over authenticated triggers, since it needs no extra objects.
 
@@ -119,7 +119,7 @@ The default wakeable ports are `[80, 3000, 5000, 8000, 8080, 8081, 8090, 9000, 9
 To add a port:
 
 1. Add it to `keda-interceptor-multiport.yaml` (the `ports` list on the Service) and re-apply.
-2. Add it to the `wakeablePorts` default in `keda-based-scaling-trait.yaml` and re-apply the trait.
+2. Add it to the `wakeablePorts` default in `keda-scaling-trait.yaml` and re-apply the trait.
 
 Keep the two in sync. The trait's validation rule checks `ep.port in parameters.wakeablePorts` and rejects a component at render time if the endpoint port isn't in the list.
 
@@ -148,15 +148,15 @@ The HTTP path needs a specific shape from the component type:
 - Exactly one external `HTTPRoute` carrying the `openchoreo.dev/endpoint-visibility: external` label
 - For service-style path routing, a `URLRewrite` filter is expected. For web-application-style host routing, the trait adds a hostname-only `URLRewrite` filter.
 
-Any `ClusterComponentType` that produces this shape can allow the trait by adding `keda-based-scaling` to its `allowedTraits` list. See the README's Install step 3 for the patch command. The change takes effect right away, with no delete or recreate needed.
+Any `ClusterComponentType` that produces this shape can allow the trait by adding `keda-scaling` to its `allowedTraits` list. See the README's Install step 3 for the patch command. The change takes effect right away, with no delete or recreate needed.
 
 The trigger/worker path is simpler. It only needs the Deployment, so any deployment-based component type works.
 
 ### Other gateways
 
-The HTTP path is kgateway-specific. The trait routes to the interceptor through a `gateway.kgateway.dev/Backend` in the component's namespace. This Backend needs no cross-namespace `ReferenceGrant` because it's local to the workload namespace.
+The HTTP path is kgateway-specific. The trait routes to the interceptor through a `gateway.kgateway.dev/Backend` in the component's namespace, local to the workload namespace.
 
-On another Gateway API implementation, adapt the `creates` entry for the Backend resource and the HTTPRoute patch. The equivalent is a cross-namespace Service `backendRef` pointing at the interceptor, plus a `ReferenceGrant` in the interceptor namespace that permits it.
+On another Gateway API implementation, adapt the `creates` entry for the Backend resource and the HTTPRoute patch to whatever that implementation uses to reach the interceptor Service.
 
 ### Advanced ScaledObject tuning
 
@@ -164,23 +164,18 @@ The trait doesn't expose every `ScaledObject` field as a parameter. Fields like 
 
 ## Architecture
 
-### Backend annotation contract
+### Activation and the identical-data-plane assumption
 
-The trait reads `dataplane.annotations["openchoreo.dev/keda-based-scaling-backend"]` from the render context (available from OpenChoreo 1.2 onward). When the value is `keda`, the trait renders KEDA objects. When the annotation is absent or set to anything else, the trait is completely inert and the component runs at its configured static replica count. There's no per-environment forking to manage. The same component definition runs normally on a plane without KEDA and scales to zero on a plane that advertises `keda`.
+Attaching the trait to a component is what activates it; there's no data-plane flag. The trait assumes every data plane the component promotes across runs KEDA, so it renders KEDA objects unconditionally when attached.
 
-Annotate the data plane to activate it:
-
-```bash
-kubectl annotate clusterdataplane default \
-  openchoreo.dev/keda-based-scaling-backend=keda --overwrite
-```
+This is deliberately simpler than a per-data-plane backend switch. Heterogeneous fleets, where only some data planes run KEDA (or run a different scaling backend entirely), need a consistent cross-plane mechanism that OpenChoreo doesn't have yet; until then, keep the data planes in a component's promotion path identical. If a plane in that path doesn't run KEDA, don't attach the trait to components that promote onto it.
 
 ### Rendering modes
 
 | Mode | Condition | Renders |
 |---|---|---|
-| **HTTP** | `enabled: true`, backend `keda`, `trigger.type == ""`, one external HTTP/GraphQL/WebSocket endpoint | `InterceptorRoute` + companion `ScaledObject`, kgateway `Backend`, pod-backing Service, patches to ExternalName the component's Service for in-cluster wake, and repoint the `HTTPRoute` at the Backend for gateway traffic |
-| **Trigger** | `enabled: true`, backend `keda`, `trigger.type != ""` | `ScaledObject` with the given trigger |
+| **HTTP** | `trigger.type == ""`, one external HTTP/GraphQL/WebSocket endpoint | `InterceptorRoute` + companion `ScaledObject`, kgateway `Backend`, pod-backing Service, patches to ExternalName the component's Service for in-cluster wake, and repoint the `HTTPRoute` at the Backend for gateway traffic |
+| **Trigger** | `trigger.type != ""` | `ScaledObject` with the given trigger |
 
 Both modes patch the Deployment to remove `spec.replicas`, handing replica ownership to KEDA. If `spec.replicas` stuck around, server-side apply would reset it on every render and fight the autoscaler.
 
@@ -213,20 +208,12 @@ A service that doesn't fit (multiple endpoints, or a port outside `wakeablePorts
 ## Limitations
 
 - Exactly one external HTTP endpoint per service in HTTP mode. The interceptor routes by `Host` only (port stripped), and the ExternalName alias is a DNS CNAME that can't remap ports. See the Architecture section for the full reasoning and the escape hatches.
-- The HTTP path is kgateway-specific. The trait routes to the interceptor through a `gateway.kgateway.dev/Backend`. On a different Gateway API implementation, adapt the Backend resource and the HTTPRoute patch (a cross-namespace Service backendRef plus a `ReferenceGrant` works).
-- The committed component types are a snapshot. `componenttypes/service.yaml`, `componenttypes/webapp.yaml`, and `componenttypes/worker.yaml` mirror the stock OpenChoreo defaults. If your platform customizes those types, regenerate from your live types instead of applying the committed copies.
-- It's mutually exclusive with HPA-style traits. Both claim ownership of the Deployment's replica count, so don't attach an HPA-style trait and `keda-based-scaling` to the same component.
-- The Cilium-signal backend (`backend: cilium`) is a future path and isn't implemented.
+- The HTTP path is kgateway-specific. The trait routes to the interceptor through a `gateway.kgateway.dev/Backend`. On a different Gateway API implementation, adapt the Backend resource and the HTTPRoute patch to whatever reaches the interceptor Service there.
+- It's mutually exclusive with HPA-style traits. Both claim ownership of the Deployment's replica count, so don't attach an HPA-style trait and `keda-scaling` to the same component.
 
 ## Troubleshooting
 
-Nothing scales, or no KEDA objects get rendered. Confirm the data plane annotation:
-
-```bash
-kubectl get clusterdataplane default -o jsonpath='{.metadata.annotations}'
-```
-
-Without `openchoreo.dev/keda-based-scaling-backend=keda` the trait is inert on purpose. Also confirm the trait is attached under `spec.traits` and that the component type allows it:
+Nothing scales, or no KEDA objects get rendered. Confirm the trait is attached under the component's `spec.traits` and that the component type allows it:
 
 ```bash
 kubectl get clustercomponenttype service -o jsonpath='{.spec.allowedTraits[*].name}'

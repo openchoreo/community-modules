@@ -4,6 +4,7 @@
 package app
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -22,6 +23,21 @@ func validAlertRequest() gen.AlertRuleRequest {
 	req.Condition.Window = "PT5M"
 	req.Condition.Enabled = true
 	return req
+}
+
+func TestQueryEvents_NotImplemented(t *testing.T) {
+	h := &LogsHandler{}
+	resp, err := h.QueryEvents(context.Background(), gen.QueryEventsRequestObject{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	got, ok := resp.(gen.QueryEvents500JSONResponse)
+	if !ok {
+		t.Fatalf("response type = %T, want QueryEvents500JSONResponse", resp)
+	}
+	if got.ErrorCode == nil || *got.ErrorCode != errCodeNotImplemented {
+		t.Errorf("errorCode = %v, want %q", got.ErrorCode, errCodeNotImplemented)
+	}
 }
 
 func TestRuleInputFromRequest_RequiresFields(t *testing.T) {

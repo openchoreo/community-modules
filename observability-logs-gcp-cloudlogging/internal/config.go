@@ -57,12 +57,12 @@ type Config struct {
 // error if a required variable is missing or malformed.
 func LoadConfig() (*Config, error) {
 	cfg := &Config{
-		ServerPort:                 getEnvDefault("SERVER_PORT", "8080"),
-		LogLevel:                   parseLogLevel(getEnvDefault("LOG_LEVEL", "info")),
-		ProjectID:                  strings.TrimSpace(os.Getenv("GCP_PROJECT_ID")),
-		QueryTimeout:               30 * time.Second,
-		ObserverURL:                strings.TrimSpace(os.Getenv("OBSERVER_URL")),
-		NotificationChannelID:      strings.TrimSpace(os.Getenv("NOTIFICATION_CHANNEL_ID")),
+		ServerPort:            getEnvDefault("SERVER_PORT", "8080"),
+		LogLevel:              parseLogLevel(getEnvDefault("LOG_LEVEL", "info")),
+		ProjectID:             strings.TrimSpace(os.Getenv("GCP_PROJECT_ID")),
+		QueryTimeout:          30 * time.Second,
+		ObserverURL:           strings.TrimSpace(os.Getenv("OBSERVER_URL")),
+		NotificationChannelID: strings.TrimSpace(os.Getenv("NOTIFICATION_CHANNEL_ID")),
 	}
 
 	missing := []string{}

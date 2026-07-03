@@ -19,10 +19,12 @@ import (
 )
 
 const (
-	errCodePrefix     = "OBS-V1-L-GCP"
-	errCodeBadRequest = errCodePrefix + "-400"
-	errCodeNotFound   = errCodePrefix + "-404"
-	errCodeInternal   = errCodePrefix + "-500"
+	errCodePrefix         = "OBS-V1-L-GCP"
+	errCodeBadRequest     = errCodePrefix + "-400"
+	errCodeNotFound       = errCodePrefix + "-404"
+	errCodeConflict       = errCodePrefix + "-409"
+	errCodeInternal       = errCodePrefix + "-500"
+	errCodeNotImplemented = errCodePrefix + "-501"
 )
 
 // LogsHandler implements the generated StrictServerInterface, backed by the
@@ -158,7 +160,16 @@ func (h *LogsHandler) QueryLogs(ctx context.Context, request gen.QueryLogsReques
 	return gen.QueryLogs200JSONResponse(buildComponentResponse(result)), nil
 }
 
-// --- Alert endpoints (stubbed until Milestone 2) ---
+// QueryEvents is not implemented: this adapter is a Cloud Logging *logs*
+// backend and does not serve Kubernetes events. The generated contract offers
+// no 501 response for this endpoint, so it returns a 500 carrying the
+// not-implemented error code.
+func (h *LogsHandler) QueryEvents(_ context.Context, _ gen.QueryEventsRequestObject) (gen.QueryEventsResponseObject, error) {
+	return gen.QueryEvents500JSONResponse(makeError(gen.InternalServerError, errCodeNotImplemented,
+		"events query is not implemented by the GCP Cloud Logging adapter")), nil
+}
+
+// --- Alert endpoints ---
 
 // CreateAlertRule provisions a log-based metric + Cloud Monitoring alert policy.
 func (h *LogsHandler) CreateAlertRule(ctx context.Context, request gen.CreateAlertRuleRequestObject) (gen.CreateAlertRuleResponseObject, error) {
@@ -171,6 +182,9 @@ func (h *LogsHandler) CreateAlertRule(ctx context.Context, request gen.CreateAle
 	}
 	res, err := h.alertClient.CreateRule(ctx, in)
 	if err != nil {
+		if errors.Is(err, cloudmonitoring.ErrAlreadyExists) {
+			return gen.CreateAlertRule409JSONResponse(makeError(gen.Conflict, errCodeConflict, "alert rule already exists")), nil
+		}
 		h.logger.Error("create alert rule failed",
 			slog.String("ruleName", in.RuleName),
 			slog.String("namespace", in.Namespace),
@@ -220,6 +234,9 @@ func (h *LogsHandler) UpdateAlertRule(ctx context.Context, request gen.UpdateAle
 	}
 	res, err := h.alertClient.UpdateRule(ctx, in)
 	if err != nil {
+		if errors.Is(err, cloudmonitoring.ErrNotFound) {
+			return gen.UpdateAlertRule404JSONResponse(makeError(gen.NotFound, errCodeNotFound, "alert rule not found")), nil
+		}
 		h.logger.Error("update alert rule failed",
 			slog.String("ruleName", in.RuleName),
 			slog.String("namespace", in.Namespace),
@@ -283,8 +300,6 @@ func (h *LogsHandler) HandleAlertWebhook(ctx context.Context, request gen.Handle
 	return gen.HandleAlertWebhook200JSONResponse(gen.AlertWebhookResponse{Status: &status, Message: &msg}), nil
 }
 
-// ruleInputFromRequest converts the generated AlertRuleRequest into the
-// adapter-internal RuleInput shape.
 func ruleInputFromRequest(req gen.AlertRuleRequest) (cloudmonitoring.RuleInput, error) {
 	in := cloudmonitoring.RuleInput{
 		Namespace:      req.Metadata.Namespace,
@@ -313,7 +328,6 @@ func ruleInputFromRequest(req gen.AlertRuleRequest) (cloudmonitoring.RuleInput, 
 	return in, nil
 }
 
-// syncResponse builds the standard sync response shape used by 201/200 paths.
 func syncResponse(r *cloudmonitoring.RuleResult, action gen.AlertingRuleSyncResponseAction, status gen.AlertingRuleSyncResponseStatus) gen.AlertingRuleSyncResponse {
 	backendID := r.BackendID
 	logicalID := r.LogicalID
@@ -327,7 +341,6 @@ func syncResponse(r *cloudmonitoring.RuleResult, action gen.AlertingRuleSyncResp
 	}
 }
 
-// makeError builds an ErrorResponse matching the generated shape.
 func makeError(title gen.ErrorResponseTitle, code, message string) gen.ErrorResponse {
 	return gen.ErrorResponse{
 		Title:     &title,
@@ -468,7 +481,6 @@ func ptrStringNonEmpty(s string) *string {
 	return &s
 }
 
-// capTotal caps a total at 1000 per the OpenAPI spec ("capped at 1000").
 func capTotal(n int) int {
 	if n > 1000 {
 		return 1000

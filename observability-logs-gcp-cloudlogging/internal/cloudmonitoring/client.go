@@ -1,10 +1,6 @@
 // Copyright 2026 The OpenChoreo Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package cloudmonitoring implements OpenChoreo log alerting on top of Google
-// Cloud: each rule is a log-based counter metric (Logging API) plus a
-// metric-threshold alert policy (Monitoring API) wired to a pre-existing
-// notification channel and tagged with OpenChoreo user_labels for lookup.
 package cloudmonitoring
 
 import (
@@ -22,19 +18,17 @@ import (
 	"google.golang.org/api/option"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )
 
-// ErrNotFound signals that the alert policy for a logical rule was not found.
 var ErrNotFound = errors.New("alert rule not found")
+var ErrAlreadyExists = errors.New("alert rule already exists")
 
-// Config holds the alerting construction parameters.
 type Config struct {
 	ProjectID             string
 	NotificationChannelID string
 }
 
-// Client wraps the Monitoring alert-policy + notification-channel clients and
-// the Logging metric client for log-alert CRUD.
 type Client struct {
 	policies *monitoring.AlertPolicyClient
 	channels *monitoring.NotificationChannelClient
@@ -44,7 +38,6 @@ type Client struct {
 	logger   *slog.Logger
 }
 
-// NewClient builds a Client; the caller supplies the shared logadmin client.
 func NewClient(ctx context.Context, metricsClient *logadmin.Client, cfg Config, logger *slog.Logger, opts ...option.ClientOption) (*Client, error) {
 	if cfg.ProjectID == "" {
 		return nil, errors.New("cloudmonitoring: ProjectID is required")
@@ -67,7 +60,6 @@ func NewClient(ctx context.Context, metricsClient *logadmin.Client, cfg Config, 
 	}, nil
 }
 
-// Close releases the Monitoring clients.
 func (c *Client) Close() error {
 	var errs []error
 	if c.policies != nil {
@@ -79,8 +71,6 @@ func (c *Client) Close() error {
 	return errors.Join(errs...)
 }
 
-// VerifyNotificationChannel confirms the configured channel is reachable at
-// boot. A no-op when no channel is configured.
 func (c *Client) VerifyNotificationChannel(ctx context.Context) error {
 	if c.cfg.NotificationChannelID == "" {
 		return nil
@@ -94,36 +84,17 @@ func (c *Client) VerifyNotificationChannel(ctx context.Context) error {
 	return nil
 }
 
-// CreateRule provisions (or replaces) the log-based metric and alert policy
-// for a rule. An existing policy for the same identity is deleted first.
 func (c *Client) CreateRule(ctx context.Context, in RuleInput) (*RuleResult, error) {
-	metricID := deriveResourceName(in.Namespace, in.RuleName)
-
-	metric := &logadmin.Metric{
-		ID:          metricID,
-		Description: fmt.Sprintf("OpenChoreo log alert %q (namespace %q)", in.RuleName, in.Namespace),
-		Filter:      BuildAlertFilter(in),
-	}
-	if err := c.metrics.CreateMetric(ctx, metric); err != nil {
-		// Only an already-exists collision warrants an update; any other error
-		// (permission denied, invalid argument, quota) is a real failure and
-		// must be surfaced — otherwise a following UpdateMetric would fail with
-		// NotFound and mask the true cause.
-		if grpcCode(err) != codes.AlreadyExists {
-			return nil, fmt.Errorf("cloudmonitoring: create log metric: %w", err)
-		}
-		if err2 := c.metrics.UpdateMetric(ctx, metric); err2 != nil {
-			return nil, fmt.Errorf("cloudmonitoring: update existing log metric: %w", err2)
-		}
-	}
-
-	// Replace any existing policy for this identity (create-or-update).
-	if existing, err := c.findPolicy(ctx, in.Namespace, in.RuleName); err == nil {
-		if delErr := c.policies.DeleteAlertPolicy(ctx, &monitoringpb.DeleteAlertPolicyRequest{Name: existing.GetName()}); delErr != nil {
-			return nil, fmt.Errorf("cloudmonitoring: replace policy: %w", delErr)
-		}
+	// Reject a conflict before writing anything.
+	if _, err := c.findPolicy(ctx, in.Namespace, in.RuleName); err == nil {
+		return nil, ErrAlreadyExists
 	} else if !errors.Is(err, ErrNotFound) {
 		return nil, err
+	}
+
+	metricID := deriveResourceName(in.Namespace, in.RuleName)
+	if err := c.metrics.CreateMetric(ctx, c.metricFor(in, metricID)); err != nil {
+		return nil, fmt.Errorf("cloudmonitoring: create log metric: %w", err)
 	}
 
 	policy, err := buildAlertPolicy(in, c.cfg, metricID)
@@ -158,14 +129,17 @@ func (c *Client) CreateRule(ctx context.Context, in RuleInput) (*RuleResult, err
 	}, nil
 }
 
-// metricReadyMaxWait bounds how long CreateRule retries the alert-policy create
-// while a new log-based metric propagates. Kept short so a stalled request
-// never pins a goroutine; the OpenChoreo controller re-reconciles beyond this.
+// metricFor builds the log-based counter metric for a rule.
+func (c *Client) metricFor(in RuleInput, metricID string) *logadmin.Metric {
+	return &logadmin.Metric{
+		ID:          metricID,
+		Description: fmt.Sprintf("OpenChoreo log alert %q (namespace %q)", in.RuleName, in.Namespace),
+		Filter:      BuildAlertFilter(in),
+	}
+}
+
 const metricReadyMaxWait = 30 * time.Second
 
-// retryOnMetricNotReady retries fn while it fails with a NotFound caused by a
-// just-created log-based metric descriptor not having propagated yet. Other
-// errors (and success) return immediately. Bounded by the context deadline.
 func retryOnMetricNotReady(ctx context.Context, fn func() error) error {
 	const backoff = 3 * time.Second
 	for {
@@ -181,16 +155,48 @@ func retryOnMetricNotReady(ctx context.Context, fn func() error) error {
 	}
 }
 
-// isMetricNotReady reports whether err is the transient NotFound Cloud
-// Monitoring returns while a new log-based metric's descriptor propagates.
 func isMetricNotReady(err error) bool {
 	return grpcCode(err) == codes.NotFound &&
 		strings.Contains(err.Error(), "Cannot find metric")
 }
 
-// UpdateRule is CreateOrUpdate — identical to CreateRule.
+// UpdateRule updates the rule's metric and policy in place. Returns ErrNotFound
+// if no rule with this identity exists (strict PUT semantics). Because the
+// metric and policy already exist, the update needs no metric-propagation
+// retry and preserves the policy's resource name.
 func (c *Client) UpdateRule(ctx context.Context, in RuleInput) (*RuleResult, error) {
-	return c.CreateRule(ctx, in)
+	existing, err := c.findPolicy(ctx, in.Namespace, in.RuleName)
+	if err != nil {
+		return nil, err // ErrNotFound propagates as a 404 at the handler
+	}
+
+	metricID := deriveResourceName(in.Namespace, in.RuleName)
+	if err := c.metrics.UpdateMetric(ctx, c.metricFor(in, metricID)); err != nil {
+		return nil, fmt.Errorf("cloudmonitoring: update log metric: %w", err)
+	}
+
+	policy, err := buildAlertPolicy(in, c.cfg, metricID)
+	if err != nil {
+		return nil, err
+	}
+	// Target the existing policy by name and replace the fields the adapter
+	// manages; an empty update mask would clear server-managed fields.
+	policy.Name = existing.GetName()
+	updated, err := c.policies.UpdateAlertPolicy(ctx, &monitoringpb.UpdateAlertPolicyRequest{
+		AlertPolicy: policy,
+		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{
+			"display_name", "conditions", "enabled", "user_labels", "notification_channels",
+		}},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("cloudmonitoring: update alert policy: %w", err)
+	}
+
+	return &RuleResult{
+		BackendID:  updated.GetName(),
+		LogicalID:  metricID,
+		LastSynced: NowRFC3339(),
+	}, nil
 }
 
 // FindRuleByName finds the policy by ruleName alone and returns its result

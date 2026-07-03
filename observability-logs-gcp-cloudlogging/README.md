@@ -65,9 +65,10 @@ adapter scopes on — not the synthesised Kubernetes namespace
 | Endpoint | Purpose |
 | --- | --- |
 | `POST /api/v1/logs/query` | Runs a Cloud Logging filter against `k8s_container` logs, scoped by OpenChoreo namespace label plus optional component/project/environment UIDs. |
-| `POST /api/v1alpha1/alerts/rules` | Creates a log-based metric and a Cloud Monitoring alert policy wired to the configured notification channel. |
+| `POST /api/v1/events/query` | Not implemented — this adapter is a logs backend and does not serve Kubernetes events; returns `500` with error code `OBS-V1-L-GCP-501`. |
+| `POST /api/v1alpha1/alerts/rules` | Creates a log-based metric and a Cloud Monitoring alert policy wired to the configured notification channel. Returns `409` if a rule with the same identity already exists (use `PUT` to replace). |
 | `GET /api/v1alpha1/alerts/rules/{ruleName}` | Looks the policy up by its `openchoreo-rule-name` user label. |
-| `PUT /api/v1alpha1/alerts/rules/{ruleName}` | Updates the rule (create-or-update semantics). |
+| `PUT /api/v1alpha1/alerts/rules/{ruleName}` | Updates the rule's metric and policy in place. Returns `404` if the rule does not exist. |
 | `DELETE /api/v1alpha1/alerts/rules/{ruleName}` | Deletes the alert policy and its log-based metric. |
 | `POST /api/v1alpha1/alerts/webhook` | Receives a fired-alert payload from the notification channel and forwards a normalised alert to the Observer. |
 | `GET /health` | Readiness/liveness check. |

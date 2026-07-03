@@ -4,6 +4,7 @@
 package cloudmonitoring
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -129,5 +130,41 @@ func TestDeriveResourceName_Deterministic(t *testing.T) {
 	}
 	if len(a) < 4 || a[:3] != "oc-" {
 		t.Errorf("expected oc- prefix, got %q", a)
+	}
+}
+
+func TestValidateWindow(t *testing.T) {
+	ok := []string{"PT1M", "1m", "5m", "PT1H", "90s"}
+	for _, w := range ok {
+		if err := ValidateWindow(w); err != nil {
+			t.Errorf("ValidateWindow(%q) = %v, want nil", w, err)
+		}
+	}
+	bad := []string{"", "30s", "PT30S", "59s", "garbage"}
+	for _, w := range bad {
+		if err := ValidateWindow(w); err == nil {
+			t.Errorf("ValidateWindow(%q) = nil, want error", w)
+		}
+	}
+}
+
+func TestLabelRuleName(t *testing.T) {
+	// Two names sharing an identical 63-byte prefix but differing afterwards
+	// must map to DIFFERENT label values (the truncation-collision #4 fixes).
+	prefix := (strings.Repeat("a", 63))[:63]
+	a := labelRuleName(prefix + "-primary")
+	b := labelRuleName(prefix + "-secondary")
+	if a == b {
+		t.Errorf("colliding-prefix names produced identical label: %q", a)
+	}
+
+	// Deterministic and GCP-safe: <=63 bytes, stable across calls.
+	if labelRuleName("some-rule") != labelRuleName("some-rule") {
+		t.Error("labelRuleName must be deterministic")
+	}
+	for _, n := range []string{"short", prefix + "-primary", strings.Repeat("z", 300)} {
+		if got := labelRuleName(n); len(got) > 63 {
+			t.Errorf("labelRuleName(%q) = %q (len %d > 63)", n, got, len(got))
+		}
 	}
 }

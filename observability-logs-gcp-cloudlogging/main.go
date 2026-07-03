@@ -42,20 +42,29 @@ func main() {
 	cloudlogging.SanitizePodLabelDots = cfg.SanitizePodLabelDots
 	cloudmonitoring.SanitizePodLabelDots = cfg.SanitizePodLabelDots
 
-	bootstrapCtx, bootstrapCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer bootstrapCancel()
+	// Each bootstrap step gets its own timeout rather than sharing one
+	// cumulative deadline, so a slow early call (Workload Identity token
+	// exchange, a cold GCP API) can't starve later steps.
+	bootstrap := func() (context.Context, context.CancelFunc) {
+		return context.WithTimeout(context.Background(), 30*time.Second)
+	}
 
-	logClient, err := cloudlogging.NewClient(bootstrapCtx, cloudlogging.Config{
+	stepCtx, cancel := bootstrap()
+	logClient, err := cloudlogging.NewClient(stepCtx, cloudlogging.Config{
 		ProjectID:    cfg.ProjectID,
 		QueryTimeout: cfg.QueryTimeout,
 	}, logger.With("component", "cloudlogging"))
+	cancel()
 	if err != nil {
 		logger.Error("failed to construct Cloud Logging client", slog.Any("error", err))
 		os.Exit(1)
 	}
 	defer func() { _ = logClient.Close() }()
 
-	if err := logClient.Ping(bootstrapCtx); err != nil {
+	stepCtx, cancel = bootstrap()
+	err = logClient.Ping(stepCtx)
+	cancel()
+	if err != nil {
 		logger.Error("Cloud Logging ping failed at boot",
 			slog.String("projectId", cfg.ProjectID),
 			slog.Any("error", err),
@@ -67,24 +76,31 @@ func main() {
 	// A dedicated logadmin client backs the log-based metric CRUD used by
 	// alerting (kept separate from the query client's internals). It shares
 	// ADC, so no extra credential wiring is needed.
-	metricAdmin, err := logadmin.NewClient(bootstrapCtx, cfg.ProjectID)
+	stepCtx, cancel = bootstrap()
+	metricAdmin, err := logadmin.NewClient(stepCtx, cfg.ProjectID)
+	cancel()
 	if err != nil {
 		logger.Error("failed to construct log metric admin client", slog.Any("error", err))
 		os.Exit(1)
 	}
 	defer func() { _ = metricAdmin.Close() }()
 
-	alertClient, err := cloudmonitoring.NewClient(bootstrapCtx, metricAdmin, cloudmonitoring.Config{
+	stepCtx, cancel = bootstrap()
+	alertClient, err := cloudmonitoring.NewClient(stepCtx, metricAdmin, cloudmonitoring.Config{
 		ProjectID:             cfg.ProjectID,
 		NotificationChannelID: cfg.NotificationChannelID,
 	}, logger.With("component", "cloudmonitoring"))
+	cancel()
 	if err != nil {
 		logger.Error("failed to construct Cloud Monitoring client", slog.Any("error", err))
 		os.Exit(1)
 	}
 	defer func() { _ = alertClient.Close() }()
 
-	if err := alertClient.VerifyNotificationChannel(bootstrapCtx); err != nil {
+	stepCtx, cancel = bootstrap()
+	err = alertClient.VerifyNotificationChannel(stepCtx)
+	cancel()
+	if err != nil {
 		logger.Error("notification channel verification failed at boot",
 			slog.String("notificationChannelId", cfg.NotificationChannelID),
 			slog.Any("error", err),

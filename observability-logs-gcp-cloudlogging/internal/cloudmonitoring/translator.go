@@ -92,9 +92,10 @@ func buildAlertPolicy(in RuleInput, cfg Config, metricID string) (*monitoringpb.
 		Conditions:  []*monitoringpb.AlertPolicy_Condition{condition},
 		UserLabels: map[string]string{
 			UserLabelManagedBy: ManagedByValue,
-			UserLabelNamespace: sanitizeLabelValue(in.Namespace),
-			UserLabelRuleName:  sanitizeLabelValue(in.RuleName),
-			UserLabelRuleID:    deriveResourceName(in.Namespace, in.RuleName),
+			UserLabelNamespace:   sanitizeLabelValue(in.Namespace),
+			UserLabelRuleName:    sanitizeLabelValue(in.RuleName),
+			UserLabelRuleNameKey: labelRuleName(in.RuleName),
+			UserLabelRuleID:      deriveResourceName(in.Namespace, in.RuleName),
 		},
 	}
 	if cfg.NotificationChannelID != "" {
@@ -132,6 +133,25 @@ func toDuration(s string) (*durationpb.Duration, error) {
 		return nil, err
 	}
 	return durationpb.New(d), nil
+}
+
+// minWindow is GCP's minimum alert-policy alignment period. Cloud Monitoring
+// rejects an alignmentPeriod below 60s (required here because the condition
+// uses a cross-series reducer), so a shorter window is invalid input.
+const minWindow = time.Minute
+
+// ValidateWindow parses an alert-rule window and rejects one shorter than the
+// GCP minimum alignment period, so the adapter returns a clear 400 instead of
+// letting Cloud Monitoring fail the create with an opaque InvalidArgument.
+func ValidateWindow(window string) error {
+	d, err := parseFlexibleDuration(window)
+	if err != nil {
+		return fmt.Errorf("condition.window: %w", err)
+	}
+	if d < minWindow {
+		return fmt.Errorf("condition.window must be at least 1m (GCP alignment-period minimum), got %q", window)
+	}
+	return nil
 }
 
 func parseFlexibleDuration(s string) (time.Duration, error) {
@@ -213,11 +233,16 @@ func readUnit(s *string, unit byte) (int64, bool) {
 }
 
 func sanitizeLabelValue(v string) string {
-	if len(v) <= 63 {
+	return sanitizeLabelValueMax(v, 63)
+}
+
+// sanitizeLabelValueMax truncates v to at most max bytes on a rune boundary so
+// a multi-byte character is never split (GCP rejects labels with invalid UTF-8).
+func sanitizeLabelValueMax(v string, max int) string {
+	if len(v) <= max {
 		return v
 	}
-	// Truncate to the largest rune boundary at or below 63 bytes.
-	cut := 63
+	cut := max
 	for cut > 0 && !utf8.RuneStart(v[cut]) {
 		cut--
 	}

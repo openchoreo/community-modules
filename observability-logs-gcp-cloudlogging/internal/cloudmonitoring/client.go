@@ -112,7 +112,7 @@ func (c *Client) CreateRule(ctx context.Context, in RuleInput) (*RuleResult, err
 	var created *monitoringpb.AlertPolicy
 	err = retryOnMetricNotReady(retryCtx, func() error {
 		var e error
-		created, e = c.policies.CreateAlertPolicy(ctx, &monitoringpb.CreateAlertPolicyRequest{
+		created, e = c.policies.CreateAlertPolicy(retryCtx, &monitoringpb.CreateAlertPolicyRequest{
 			Name:        c.parent,
 			AlertPolicy: policy,
 		})
@@ -254,11 +254,14 @@ func (c *Client) findPolicy(ctx context.Context, namespace, ruleName string) (*m
 }
 
 // findPolicyByRuleName locates a policy by ruleName alone (namespace not known
-// at the call site). Same escaping and managed-by constraint as findPolicy.
+// at the call site). Matches on the collision-resistant rule-name-key label (a
+// truncated name plus a hash of the full name) so long names sharing a 63-byte
+// prefix don't map to the same value (see labelRuleName). The plain
+// openchoreo-rule-name label is kept for the webhook identity path, not lookup.
 func (c *Client) findPolicyByRuleName(ctx context.Context, ruleName string) (*monitoringpb.AlertPolicy, error) {
 	filter := fmt.Sprintf(`user_labels.%s="%s" AND user_labels.%s="%s"`,
 		UserLabelManagedBy, escapeFilterValue(ManagedByValue),
-		UserLabelRuleName, escapeFilterValue(sanitizeLabelValue(ruleName)))
+		UserLabelRuleNameKey, escapeFilterValue(labelRuleName(ruleName)))
 	return c.firstPolicyMatching(ctx, filter)
 }
 

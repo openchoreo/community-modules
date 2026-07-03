@@ -323,6 +323,9 @@ func ruleInputFromRequest(req gen.AlertRuleRequest) (cloudmonitoring.RuleInput, 
 	if strings.TrimSpace(in.Query) == "" {
 		return in, errors.New("source.query is required")
 	}
+	if err := cloudmonitoring.ValidateWindow(in.Window); err != nil {
+		return in, err
+	}
 	return in, nil
 }
 

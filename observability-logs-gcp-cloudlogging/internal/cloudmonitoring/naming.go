@@ -23,6 +23,14 @@ const (
 	UserLabelNamespace = "openchoreo-namespace"
 	UserLabelRuleName  = "openchoreo-rule-name"
 
+	// UserLabelRuleNameKey is the collision-resistant name-only lookup key: the
+	// truncated rule name plus a hash of the full name (see labelRuleName). It
+	// exists separately from UserLabelRuleName because that plain label is the
+	// human-readable identity forwarded on the webhook path and must stay the
+	// real name, whereas name-only lookup needs a value that can't collide when
+	// two long names share a 63-byte prefix.
+	UserLabelRuleNameKey = "openchoreo-rule-name-key"
+
 	// UserLabelManagedBy marks policies and metrics this adapter owns.
 	UserLabelManagedBy = "managed-by"
 	ManagedByValue     = "openchoreo"
@@ -38,4 +46,22 @@ const (
 func deriveResourceName(namespace, ruleName string) string {
 	h := sha256.Sum256([]byte(namespace + "/" + ruleName))
 	return resourceNamePrefix + hex.EncodeToString(h[:16])
+}
+
+// ruleNameHashLen is the number of hex chars of the full-name hash appended to
+// the openchoreo-rule-name label. 10 hex = 40 bits — collision-negligible here.
+const ruleNameHashLen = 10
+
+// labelRuleName builds the collision-resistant openchoreo-rule-name-key label
+// value for a rule. GCP label values are capped at 63 bytes, so a long ruleName
+// must be truncated — but plain truncation makes two names that share a 63-byte
+// prefix (e.g. "<60 chars>-primary" / "<60 chars>-secondary") map to the same
+// value, so a name-only lookup could match the wrong policy. Appending a short
+// hash of the FULL name keeps the value <=63 bytes and human-readable while
+// making it collision-resistant. Write and lookup must use this identically.
+func labelRuleName(ruleName string) string {
+	h := sha256.Sum256([]byte(ruleName))
+	suffix := "-" + hex.EncodeToString(h[:])[:ruleNameHashLen]
+	prefix := sanitizeLabelValueMax(ruleName, 63-len(suffix))
+	return prefix + suffix
 }

@@ -52,6 +52,8 @@ func TestRuleInputFromRequest_RequiresFields(t *testing.T) {
 		{"missing operator", func(r *gen.AlertRuleRequest) { r.Condition.Operator = "" }, "condition.operator"},
 		{"missing query", func(r *gen.AlertRuleRequest) { r.Source.Query = "" }, "source.query"},
 		{"blank query", func(r *gen.AlertRuleRequest) { r.Source.Query = "   " }, "source.query"},
+		{"sub-minute window", func(r *gen.AlertRuleRequest) { r.Condition.Window = "30s" }, "condition.window"},
+		{"empty window", func(r *gen.AlertRuleRequest) { r.Condition.Window = "" }, "condition.window"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

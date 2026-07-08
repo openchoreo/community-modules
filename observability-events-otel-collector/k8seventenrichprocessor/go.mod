@@ -8,9 +8,9 @@ require (
 	go.opentelemetry.io/collector/pdata v1.59.0
 	go.opentelemetry.io/collector/processor v1.59.0
 	go.uber.org/zap v1.28.0
-	k8s.io/api v0.36.1
-	k8s.io/apimachinery v0.36.1
-	k8s.io/client-go v0.36.1
+	k8s.io/api v0.36.2
+	k8s.io/apimachinery v0.36.2
+	k8s.io/client-go v0.36.2
 )
 
 require (

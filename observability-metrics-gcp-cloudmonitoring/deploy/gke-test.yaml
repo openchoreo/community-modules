@@ -1,0 +1,152 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# Minimal manifests for deploying the GCP Cloud Monitoring metrics adapter
+# (Milestone 1: metrics query only) to a GKE test cluster using Workload
+# Identity. The proper Helm chart lands in a later milestone; this is for the
+# test deploy.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: metrics-adapter-gcp-cloudmonitoring
+  namespace: openchoreo-observability-plane
+  annotations:
+    # Binds this KSA to the GCP service account via Workload Identity.
+    iam.gke.io/gcp-service-account: metrics-adapter-gcp@observability-modules-janakas.iam.gserviceaccount.com
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: metrics-adapter-gcp-cloudmonitoring
+  namespace: openchoreo-observability-plane
+  labels:
+    app: metrics-adapter-gcp-cloudmonitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: metrics-adapter-gcp-cloudmonitoring
+  template:
+    metadata:
+      labels:
+        app: metrics-adapter-gcp-cloudmonitoring
+    spec:
+      serviceAccountName: metrics-adapter-gcp-cloudmonitoring
+      # Workload Identity requires scheduling onto a GKE_METADATA node pool.
+      nodeSelector:
+        iam.gke.io/gke-metadata-server-enabled: "true"
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10500
+        runAsGroup: 10500
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: adapter
+          image: janakasandaruwan/observability-metrics-gcp-cloudmonitoring-adapter:0.2.4
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 9099
+          env:
+            - name: GCP_PROJECT_ID
+              value: observability-modules-janakas
+            - name: LOG_LEVEL
+              value: info
+            # --- Milestone 2: alert rule management ---
+            # Fired alerts are forwarded to the Observer's INTERNAL endpoint
+            # (port 8081) where POST /api/v1alpha1/alerts/webhook is registered.
+            - name: OBSERVER_URL
+              value: http://observer-internal.openchoreo-observability-plane.svc.cluster.local:8081
+            # Pre-created Cloud Monitoring webhook_basicauth notification channel
+            # whose URL points back at this adapter's public /alerts/webhook
+            # route. Alert policies the adapter creates are wired to it.
+            - name: NOTIFICATION_CHANNEL_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: metrics-adapter-gcp-alerting
+                  key: notificationChannelId
+            # Shared secret the notification channel presents on the inbound
+            # webhook (as the Basic-auth password); the adapter rejects
+            # unauthenticated calls to the publicly exposed webhook path.
+            - name: WEBHOOK_AUTH_ENABLED
+              value: "true"
+            - name: WEBHOOK_SHARED_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: metrics-adapter-gcp-webhook
+                  key: token
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  # The Observer resolves the metrics adapter at the fixed name and port
+  # `http://metrics-adapter:9099`, matching the platform convention shared by
+  # all metrics adapters.
+  name: metrics-adapter
+  namespace: openchoreo-observability-plane
+  labels:
+    app: metrics-adapter-gcp-cloudmonitoring
+spec:
+  type: ClusterIP
+  selector:
+    app: metrics-adapter-gcp-cloudmonitoring
+  ports:
+    - name: http
+      port: 9099
+      targetPort: http
+      protocol: TCP
+---
+# Exposes ONLY the webhook path publicly over HTTP so the GCP Cloud Monitoring
+# notification channel can POST firing alerts to the adapter. Auth is enforced
+# by the adapter (shared-secret token), so the path is safe to expose.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: metrics-adapter-gcp-webhook
+  namespace: openchoreo-observability-plane
+spec:
+  hostnames:
+    - metrics-adapter.openchoreo.observability.136-116-22-136.nip.io
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: gateway-default
+      namespace: openchoreo-observability-plane
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api/v1alpha1/alerts/webhook
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: metrics-adapter
+          port: 9099
+          weight: 1

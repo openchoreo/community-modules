@@ -12,3 +12,6 @@
 
 # macOS
 .DS_Store
+
+# Go build output (each module builds to bin/ via its Makefile)
+**/bin/

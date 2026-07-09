@@ -1,0 +1,75 @@
+{{- if .Values.adapter.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: metrics-adapter-gcp-cloudmonitoring
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: metrics-adapter-gcp-cloudmonitoring
+spec:
+  replicas: {{ .Values.adapter.replicas }}
+  selector:
+    matchLabels:
+      app: metrics-adapter-gcp-cloudmonitoring
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/adapter/configmap.yaml") . | sha256sum }}
+        {{- if and .Values.adapter.webhookAuth.enabled (not .Values.adapter.webhookAuth.sharedSecretRef.name) .Values.adapter.webhookAuth.sharedSecret }}
+        checksum/webhook-secret: {{ include (print $.Template.BasePath "/adapter/webhook-secret.yaml") . | sha256sum }}
+        {{- end }}
+      labels:
+        app: metrics-adapter-gcp-cloudmonitoring
+    spec:
+      serviceAccountName: metrics-adapter-gcp-cloudmonitoring
+      securityContext:
+        runAsUser: 10500
+        runAsGroup: 10500
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: adapter
+          image: "{{ .Values.adapter.image.repository }}:{{ .Values.adapter.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.adapter.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.adapter.service.port }}
+          envFrom:
+            - configMapRef:
+                name: metrics-adapter-gcp-cloudmonitoring
+          env:
+            - name: WEBHOOK_AUTH_ENABLED
+              value: {{ .Values.adapter.webhookAuth.enabled | quote }}
+            {{- if and .Values.adapter.webhookAuth.enabled (or .Values.adapter.webhookAuth.sharedSecret .Values.adapter.webhookAuth.sharedSecretRef.name) }}
+            - name: WEBHOOK_SHARED_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "metrics-gcp-cloudmonitoring.webhookSecretName" . }}
+                  key: {{ .Values.adapter.webhookAuth.sharedSecretRef.key | default "token" | quote }}
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            {{- toYaml .Values.adapter.resources | nindent 12 }}
+{{- end }}

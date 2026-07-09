@@ -1,0 +1,18 @@
+{{- if .Values.adapter.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: metrics-adapter-gcp-cloudmonitoring
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: metrics-adapter-gcp-cloudmonitoring
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.adapter.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app: metrics-adapter-gcp-cloudmonitoring
+{{- end }}

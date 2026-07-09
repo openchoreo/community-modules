@@ -1,0 +1,16 @@
+apiVersion: v2
+name: observability-metrics-gcp-cloudmonitoring
+description: A Helm chart for OpenChoreo Metrics Module for GCP Cloud Monitoring
+type: application
+# Version strategy: latest-dev for development, replaced by CI for releases
+version: 0.0.0-latest-dev
+appVersion: "latest-dev"
+keywords:
+  - gcp
+  - cloudmonitoring
+  - gke
+  - openchoreo
+  - metrics
+maintainers:
+  - name: OpenChoreo Team
+home: https://github.com/openchoreo/community-modules

@@ -1,0 +1,21 @@
+{{- if .Values.adapter.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: metrics-adapter-gcp-cloudmonitoring
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: metrics-adapter-gcp-cloudmonitoring
+data:
+  SERVER_PORT: {{ .Values.adapter.service.port | quote }}
+  LOG_LEVEL: {{ .Values.adapter.logLevel | quote }}
+  QUERY_TIMEOUT: {{ .Values.adapter.queryTimeout | quote }}
+
+  GCP_PROJECT_ID: {{ .Values.gcp.projectId | quote }}
+
+  ALERT_EVALUATION_INTERVAL: {{ .Values.adapter.alertEvaluationInterval | quote }}
+  ALERT_WINDOW: {{ .Values.adapter.alertWindow | quote }}
+
+  NOTIFICATION_CHANNEL_ID: {{ .Values.notificationChannel.id | quote }}
+  OBSERVER_URL: {{ .Values.adapter.observerUrl | quote }}
+{{- end }}

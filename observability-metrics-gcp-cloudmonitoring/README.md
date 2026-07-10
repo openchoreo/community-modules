@@ -503,14 +503,6 @@ make unit-test
 make build
 ```
 
-For a quick test deploy without Helm, `deploy/gke-test.yaml` contains minimal
-manifests (ServiceAccount + Deployment + Service, plus optional webhook Secret
-and HTTPRoute) for a Workload Identity-enabled GKE cluster:
-
-```bash
-kubectl apply -f deploy/gke-test.yaml
-```
-
 ## Design decisions
 
 - **GKE system metrics over Managed Service for Prometheus**: the system

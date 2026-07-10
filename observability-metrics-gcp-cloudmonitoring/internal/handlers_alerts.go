@@ -28,6 +28,8 @@ func notImplementedErr() gen.ErrorResponse {
 	return makeError(gen.InternalServerError, errCodeNotImplemented, alertsNotImplementedDetail)
 }
 
+// --- Alert endpoints ---
+
 // CreateAlertRule handles POST /api/v1alpha1/alerts/rules.
 func (h *MetricsHandler) CreateAlertRule(ctx context.Context, request gen.CreateAlertRuleRequestObject) (gen.CreateAlertRuleResponseObject, error) {
 	if !h.alertingEnabled() {

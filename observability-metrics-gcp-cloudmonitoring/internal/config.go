@@ -28,12 +28,10 @@ type Config struct {
 	// it). Default 30s.
 	QueryTimeout time.Duration
 
-	// --- Milestone 2: alert rule management ---
-	//
-	// Alerting is enabled only when both ObserverURL and NotificationChannelID
-	// are set. When either is empty the adapter leaves the alert client nil and
-	// the alert-rule endpoints keep answering "not implemented" (nil-means-
-	// disabled, matching the Azure/AWS siblings).
+	// Alert rule management. Alerting is enabled only when both ObserverURL and
+	// NotificationChannelID are set. When either is empty the adapter leaves the
+	// alert client nil and the alert-rule endpoints keep answering "not
+	// implemented" (nil-means-disabled, matching the Azure/AWS siblings).
 
 	// ObserverURL is the base URL of the OpenChoreo Observer that fired alerts
 	// are forwarded to (its /api/v1alpha1/alerts/webhook endpoint). Optional.

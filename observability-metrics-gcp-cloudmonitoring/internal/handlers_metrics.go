@@ -31,7 +31,7 @@ type metricsClient interface {
 	GetResourceMetrics(context.Context, cloudmonitoring.MetricsQueryParams) (*cloudmonitoring.ResourceMetricsResult, error)
 }
 
-// alertClient is the alert-rule management surface (milestone 2). When nil, the
+// alertClient is the alert-rule management surface. When nil, the
 // alert-rule endpoints answer "not implemented" (nil-means-disabled).
 type alertClient interface {
 	CreateRule(context.Context, cloudmonitoring.RuleInput) (*cloudmonitoring.RuleResult, error)
@@ -55,15 +55,15 @@ type MetricsHandler struct {
 	logger         *slog.Logger
 }
 
-// NewMetricsHandler constructs a metrics-only handler (milestone 1). The
-// alert-rule endpoints report not-implemented.
+// NewMetricsHandler constructs a metrics-only handler. The alert-rule
+// endpoints report not-implemented.
 func NewMetricsHandler(client metricsClient, logger *slog.Logger) *MetricsHandler {
 	return &MetricsHandler{client: client, logger: logger}
 }
 
 // NewMetricsHandlerWithAlerting constructs a handler with alert-rule management
-// wired (milestone 2). A nil alertClient or observerClient leaves the
-// corresponding endpoints reporting not-implemented.
+// wired. A nil alertClient or observerClient leaves the corresponding
+// endpoints reporting not-implemented.
 func NewMetricsHandlerWithAlerting(client metricsClient, alerts alertClient, observer observerForwarder, logger *slog.Logger) *MetricsHandler {
 	return &MetricsHandler{client: client, alertClient: alerts, observerClient: observer, logger: logger}
 }
@@ -182,7 +182,7 @@ func (h *MetricsHandler) QueryRuntimeTopology(_ context.Context, _ gen.QueryRunt
 // The alert-rule endpoints (CreateAlertRule/GetAlertRule/UpdateAlertRule/
 // DeleteAlertRule/HandleAlertWebhook) live in handlers_alerts.go.
 
-// --- mapping helpers -------------------------------------------------------
+// --- mapping helpers ---
 
 func toItems(points []cloudmonitoring.TimeValuePoint) *[]gen.MetricsTimeSeriesItem {
 	if len(points) == 0 {

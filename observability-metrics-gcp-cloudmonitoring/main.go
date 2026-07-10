@@ -64,7 +64,7 @@ func main() {
 	}
 	logger.Info("Cloud Monitoring reachable", slog.String("projectId", cfg.ProjectID))
 
-	// Milestone 2: alert rule management. Wired only when both an Observer URL
+	// Alert rule management. Wired only when both an Observer URL
 	// and a pre-configured notification channel are set; otherwise the
 	// alert-rule endpoints report not-implemented.
 	var handler *app.MetricsHandler

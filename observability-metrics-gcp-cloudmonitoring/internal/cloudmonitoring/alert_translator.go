@@ -76,7 +76,7 @@ func ruleHash(namespace, ruleName string) string {
 // ToAlertPolicy renders a RuleInput as a Cloud Monitoring AlertPolicy scoped to
 // the OpenChoreo identity labels. The condition is a MetricThreshold over the
 // same GKE system metric the resource-metrics query uses, reusing the
-// milestone-1 filter builder so scoping stays consistent.
+// resource-metrics filter builder so scoping stays consistent.
 func ToAlertPolicy(in RuleInput, cfg TranslatorConfig) (*monitoringpb.AlertPolicy, error) {
 	if err := validateRule(in, cfg); err != nil {
 		return nil, err
@@ -217,7 +217,7 @@ func mapComparison(op string) (monitoringpb.ComparisonType, error) {
 }
 
 // alertMetricSpecs resolves the source metric to the (usage, limit) metricSpec
-// pair, reusing the milestone-1 specs so the alert numerator/denominator
+// pair, reusing the resource-metrics specs so the alert numerator/denominator
 // filters and aligners match the query path exactly. The threshold is compared
 // against usage÷limit.
 func alertMetricSpecs(metric string) (usage, limit metricSpec, err error) {

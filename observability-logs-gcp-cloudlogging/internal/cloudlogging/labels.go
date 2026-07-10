@@ -24,8 +24,7 @@ const (
 	// key with underscores (slashes/hyphens preserved), e.g. the pod label
 	// openchoreo.dev/component-uid surfaces as
 	// labels."k8s-pod/openchoreo_dev/component-uid" — a filter using the raw
-	// dotted key matches nothing. This is undocumented and differs from the
-	// legacy fluentd agent, so it is toggleable via SanitizePodLabelDots.
+	// dotted key matches nothing. podLabelKey always applies this substitution.
 	podLabelPrefix = "k8s-pod/"
 
 	// k8sContainerResource is the GKE monitored-resource type for
@@ -36,12 +35,6 @@ const (
 	WorkflowNamespacePrefix = "workflows-"
 )
 
-// SanitizePodLabelDots toggles the dot->underscore substitution in podLabelKey
-var SanitizePodLabelDots = true
-
 func podLabelKey(rawKey string) string {
-	if SanitizePodLabelDots {
-		rawKey = strings.ReplaceAll(rawKey, ".", "_")
-	}
-	return podLabelPrefix + rawKey
+	return podLabelPrefix + strings.ReplaceAll(rawKey, ".", "_")
 }

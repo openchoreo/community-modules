@@ -11,9 +11,6 @@ import (
 )
 
 func TestBuildAlertFilter_ScopeAndPhrase(t *testing.T) {
-	defer func(prev bool) { SanitizePodLabelDots = prev }(SanitizePodLabelDots)
-	SanitizePodLabelDots = true
-
 	f := BuildAlertFilter(RuleInput{
 		Namespace:    "default",
 		ComponentUID: "c-uid",

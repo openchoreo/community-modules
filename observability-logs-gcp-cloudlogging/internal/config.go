@@ -28,12 +28,6 @@ type Config struct {
 	// QueryTimeout caps a single Cloud Logging query. Default 30s.
 	QueryTimeout time.Duration
 
-	// SanitizePodLabelDots replaces dots with underscores in pod-label keys to
-	// match the modern GKE managed agent (see cloudlogging.podLabelPrefix).
-	// Default true; set SANITIZE_POD_LABEL_DOTS=false for agents that preserve
-	// dots.
-	SanitizePodLabelDots bool
-
 	// ObserverURL is where fired alerts are forwarded after the adapter
 	// receives them on its webhook. REQUIRED.
 	ObserverURL string
@@ -83,8 +77,6 @@ func LoadConfig() (*Config, error) {
 		}
 		cfg.QueryTimeout = d
 	}
-
-	cfg.SanitizePodLabelDots = strings.EqualFold(getEnvDefault("SANITIZE_POD_LABEL_DOTS", "true"), "true")
 
 	cfg.WebhookAuthEnabled = strings.EqualFold(getEnvDefault("WEBHOOK_AUTH_ENABLED", "true"), "true")
 	cfg.WebhookSharedSecret = os.Getenv("WEBHOOK_SHARED_SECRET")

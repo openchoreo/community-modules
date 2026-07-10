@@ -21,12 +21,6 @@ const (
 	k8sContainerResource = "k8s_container"
 )
 
-// SanitizePodLabelDots mirrors cloudlogging.SanitizePodLabelDots: the modern
-// GKE managed logging agent replaces dots in pod-label keys with underscores
-// when surfacing them under k8s-pod/<key>. Defaults true; set from config at
-// startup so both packages agree.
-var SanitizePodLabelDots = true
-
 // BuildAlertFilter renders the log-based-metric filter for an alert rule. A
 // raw Cloud Logging filter (see isRawFilter) is used verbatim; otherwise the
 // filter is composed from the rule's scope plus a free-text phrase.
@@ -90,10 +84,7 @@ func labelEquals(rawKey, value string) string {
 }
 
 func podLabelKey(rawKey string) string {
-	if SanitizePodLabelDots {
-		rawKey = strings.ReplaceAll(rawKey, ".", "_")
-	}
-	return podLabelPrefix + rawKey
+	return podLabelPrefix + strings.ReplaceAll(rawKey, ".", "_")
 }
 
 func normalizeUID(u string) string {

@@ -74,9 +74,6 @@ func TestToDuration(t *testing.T) {
 }
 
 func TestBuildAlertPolicy(t *testing.T) {
-	defer func(prev bool) { SanitizePodLabelDots = prev }(SanitizePodLabelDots)
-	SanitizePodLabelDots = true
-
 	in := RuleInput{
 		Namespace:    "default",
 		RuleName:     "too-many-errors",

@@ -12,7 +12,6 @@ data:
   QUERY_TIMEOUT: {{ .Values.adapter.queryTimeout | quote }}
 
   GCP_PROJECT_ID: {{ .Values.gcp.projectId | quote }}
-  SANITIZE_POD_LABEL_DOTS: {{ .Values.adapter.sanitizePodLabelDots | quote }}
 
   NOTIFICATION_CHANNEL_ID: {{ .Values.notificationChannel.id | quote }}
   OBSERVER_URL: {{ .Values.adapter.observerUrl | quote }}

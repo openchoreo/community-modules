@@ -34,13 +34,7 @@ func main() {
 		slog.String("serverPort", cfg.ServerPort),
 		slog.String("projectId", cfg.ProjectID),
 		slog.Duration("queryTimeout", cfg.QueryTimeout),
-		slog.Bool("sanitizePodLabelDots", cfg.SanitizePodLabelDots),
 	)
-
-	// Apply the pod-label dot-sanitization policy to both the query and alert
-	// filter builders before any request is served.
-	cloudlogging.SanitizePodLabelDots = cfg.SanitizePodLabelDots
-	cloudmonitoring.SanitizePodLabelDots = cfg.SanitizePodLabelDots
 
 	// Each bootstrap step gets its own timeout rather than sharing one
 	// cumulative deadline, so a slow early call (Workload Identity token

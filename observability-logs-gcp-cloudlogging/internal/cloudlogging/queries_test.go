@@ -15,9 +15,6 @@ func TestBuildComponentLogsFilter_LabelPathDotsSanitized(t *testing.T) {
 	// key replaced by underscores. Verified against live cluster entries —
 	// e.g. openchoreo.dev/component-uid -> k8s-pod/openchoreo_dev/component-uid.
 	// If this regresses to the dotted form, the filter silently matches nothing.
-	defer restoreSanitize(SanitizePodLabelDots)
-	SanitizePodLabelDots = true
-
 	f := BuildComponentLogsFilter(ComponentLogsParams{
 		Namespace:    "dp-default-development-4b8b4fdc",
 		ComponentUID: "11111111-1111-1111-1111-111111111111",
@@ -31,25 +28,6 @@ func TestBuildComponentLogsFilter_LabelPathDotsSanitized(t *testing.T) {
 		t.Fatalf("filter must not contain the dotted label form; got:\n%s", f)
 	}
 }
-
-func TestBuildComponentLogsFilter_LabelPathDotsPreservedWhenDisabled(t *testing.T) {
-	// With sanitization disabled (for clusters whose agent preserves dots),
-	// the raw dotted key is used verbatim.
-	defer restoreSanitize(SanitizePodLabelDots)
-	SanitizePodLabelDots = false
-
-	f := BuildComponentLogsFilter(ComponentLogsParams{
-		Namespace:    "ns1",
-		ComponentUID: "c-uid",
-	})
-	want := `labels."k8s-pod/openchoreo.dev/component-uid"="c-uid"`
-	if !strings.Contains(f, want) {
-		t.Fatalf("expected dotted form when disabled; got:\n%s", f)
-	}
-}
-
-// restoreSanitize resets the package toggle after a test mutates it.
-func restoreSanitize(prev bool) { SanitizePodLabelDots = prev }
 
 func TestBuildComponentLogsFilter_RequiredAndOptionalClauses(t *testing.T) {
 	start := time.Date(2026, 6, 25, 0, 0, 0, 0, time.UTC)

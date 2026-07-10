@@ -18,10 +18,10 @@ func TestMapComponentEntry(t *testing.T) {
 		Severity:  logging.Error,
 		Payload:   "something failed",
 		Labels: map[string]string{
-			podLabelKey(LabelComponentUID):   "c-uid",
-			podLabelKey(LabelProjectUID):     "p-uid",
-			podLabelKey(LabelEnvironmentUID): "e-uid",
-			podLabelKey(LabelNamespace):      "oc-ns",
+			podLabelKey(LabelComponentUID):   "846bb581-d6ba-446d-a160-8cec468d2219",
+			podLabelKey(LabelProjectUID):     "2f1c9a4e-7b3d-4e5a-9c8f-1a2b3c4d5e6f",
+			podLabelKey(LabelEnvironmentUID): "b7e6d3c2-5f4a-4d1e-8c9b-0a1b2c3d4e5f",
+			podLabelKey(LabelNamespace):      "dp-846bb581-development",
 		},
 		Resource: &mrpb.MonitoredResource{
 			Type: "k8s_container",
@@ -43,7 +43,10 @@ func TestMapComponentEntry(t *testing.T) {
 	if got.PodName != "pod-1" || got.ContainerName != "main" || got.PodNamespace != "dp-ns" {
 		t.Errorf("resource labels not mapped: %+v", got)
 	}
-	if got.ComponentUID != "c-uid" || got.ProjectUID != "p-uid" || got.EnvironmentUID != "e-uid" || got.OpenChoreoNamespace != "oc-ns" {
+	if got.ComponentUID != "846bb581-d6ba-446d-a160-8cec468d2219" ||
+		got.ProjectUID != "2f1c9a4e-7b3d-4e5a-9c8f-1a2b3c4d5e6f" ||
+		got.EnvironmentUID != "b7e6d3c2-5f4a-4d1e-8c9b-0a1b2c3d4e5f" ||
+		got.OpenChoreoNamespace != "dp-846bb581-development" {
 		t.Errorf("openchoreo labels not mapped: %+v", got)
 	}
 	if !got.Timestamp.Equal(ts) {

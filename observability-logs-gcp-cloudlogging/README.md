@@ -41,8 +41,7 @@ The chart deploys:
 1. A Go **Cloud Logging Adapter** Deployment that implements the OpenChoreo
    Logs Adapter API.
 2. A Service, ServiceAccount (with a Workload Identity annotation), ConfigMap,
-   and — optionally — a webhook Secret, a Gateway API HTTPRoute, and a
-   NetworkPolicy.
+   and — optionally — a webhook Secret and a Gateway API HTTPRoute.
 
 Logs are read from `k8s_container` entries. Each log record carries Kubernetes
 metadata:
@@ -52,9 +51,8 @@ metadata:
   `k8s-pod/` prefix. **The agent replaces dots in the label key with
   underscores**, so `openchoreo.dev/component-uid` appears as
   `labels."k8s-pod/openchoreo_dev/component-uid"` (slashes and hyphens are
-  preserved). The adapter applies this substitution when building filters; it
-  is configurable via `adapter.sanitizePodLabelDots` for clusters running an
-  agent that preserves dots.
+  preserved). The adapter always applies this substitution when building
+  filters.
 
 Component-, project-, and environment-scoped queries filter on these pod
 labels. The **logical** OpenChoreo namespace lives in the
@@ -432,10 +430,9 @@ example a rule created out-of-band rather than through the CR).
 
 ### Alert rule matches nothing / never fires
 
-- The query filter scopes on the OpenChoreo pod labels. If the GKE agent on
-  your cluster does not replace dots with underscores in label keys, set
-  `adapter.sanitizePodLabelDots=false`. Inspect a raw entry to see the surfaced
-  key:
+- The query filter scopes on the OpenChoreo pod labels, which the adapter
+  keys as `k8s-pod/openchoreo_dev/...` (dots replaced with underscores).
+  Inspect a raw entry to confirm the surfaced key matches:
   ```bash
   gcloud logging read 'resource.type="k8s_container"' --limit=1 --format=json \
     | grep -i openchoreo
@@ -459,7 +456,6 @@ example a rule created out-of-band rather than through the CR).
 | `adapter.service.port` | `9098` | HTTP listener + Service port. Must match the Observer's `logs.adapter.url`. |
 | `adapter.queryTimeout` | `30s` | Upper bound for a single Cloud Logging query (Go duration). |
 | `adapter.logLevel` | `INFO` | `DEBUG` \| `INFO` \| `WARN` \| `ERROR`. |
-| `adapter.sanitizePodLabelDots` | `true` | Replace dots with underscores in OpenChoreo pod-label keys when building filters (matches the GKE managed logging agent). |
 | `adapter.observerUrl` | `http://observer-internal.openchoreo-observability-plane.svc.cluster.local:8081` | Observer base URL. Fired alerts are forwarded to `${observerUrl}/api/v1alpha1/alerts/webhook` — must target the Observer's internal server (`:8081`). |
 | `adapter.serviceAccount.annotations` | `{}` | Annotations applied to the adapter ServiceAccount. Use `iam.gke.io/gcp-service-account: <gsa-email>` to bind a Google service account via Workload Identity. |
 | `adapter.webhookAuth.enabled` | `true` | Reject webhook calls without the shared secret. |
@@ -471,11 +467,6 @@ example a rule created out-of-band rather than through the CR).
 | `adapter.webhookRoute.parentRef.namespace` | `""` | Gateway namespace; defaults to the release namespace. |
 | `adapter.webhookRoute.parentRef.sectionName` | `""` | Optional Gateway listener name. |
 | `adapter.webhookRoute.hostnames` | `[]` | Optional hostnames matched at the route level. |
-| `adapter.networkPolicy.enabled` | `false` | Render a NetworkPolicy restricting ingress to the adapter Pod. |
-| `adapter.networkPolicy.observerNamespaceLabels` | `{kubernetes.io/metadata.name: openchoreo-observability-plane}` | Namespace labels selecting the Observer's namespace. |
-| `adapter.networkPolicy.observerPodLabels` | `{}` | Pod labels selecting the Observer Pod. Required when the policy is enabled. |
-| `adapter.networkPolicy.gatewayNamespaceLabels` | `{}` | Namespace labels selecting the Gateway data-plane that proxies the webhook. |
-| `adapter.networkPolicy.allowProbeIPBlock` | `""` | Optional CIDR allowed through ingress for liveness/readiness probes. |
 | `adapter.resources` | `200m/256Mi limits, 50m/128Mi requests` | Standard resource requests/limits. |
 
 ## Building and testing

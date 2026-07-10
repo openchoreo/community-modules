@@ -40,13 +40,6 @@ adapter:
   queryTimeout: "30s"
   logLevel: INFO
 
-  # GKE's managed logging agent surfaces OpenChoreo pod-label keys under the
-  # `k8s-pod/` prefix with dots in the key replaced by underscores (e.g.
-  # openchoreo.dev/component-uid -> k8s-pod/openchoreo_dev/component-uid). The
-  # adapter applies that substitution when building filters. Set to false only
-  # for clusters whose agent preserves dots in the surfaced label key.
-  sanitizePodLabelDots: true
-
   # URL of the OpenChoreo Observer. Fired alerts are forwarded to
   # `${observerUrl}/api/v1alpha1/alerts/webhook`, which is registered on the
   # Observer's INTERNAL server (port 8081), NOT the public 8080 one.
@@ -73,24 +66,12 @@ adapter:
   # publicly-trusted certificate. Auth is enforced by the adapter, so exposing
   # only this path is safe.
   webhookRoute:
-    enabled: false
+    enabled: true
     parentRef:
       name: gateway-default
       namespace: ""
       sectionName: ""
     hostnames: []
-
-  networkPolicy:
-    enabled: false
-    observerNamespaceLabels:
-      kubernetes.io/metadata.name: openchoreo-observability-plane
-    observerPodLabels: {}
-    # Namespace labels for the Gateway data-plane pods that proxy the webhook
-    # to the adapter. Default empty: when the route is enabled, set this to
-    # match your Gateway controller's data-plane namespace
-    # (e.g. `kubernetes.io/metadata.name: openchoreo-data-plane`).
-    gatewayNamespaceLabels: {}
-    allowProbeIPBlock: ""
 
   resources:
     limits:

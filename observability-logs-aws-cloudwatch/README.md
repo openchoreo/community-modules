@@ -12,17 +12,18 @@ This module supports both:
 ## Table of contents
 
 1. [Architecture](#architecture)
-2. [Choose a deployment topology](#choose-a-deployment-topology)
-3. [Prerequisites](#prerequisites)
-4. [IAM permissions](#iam-permissions)
-5. [Installation on EKS with Pod Identity](#installation-on-eks-with-pod-identity)
-6. [Installation on non-EKS clusters with static credentials](#installation-on-non-eks-clusters-with-static-credentials)
-7. [Log alerting](#log-alerting)
-8. [Expose the alert webhook through EventBridge](#expose-the-alert-webhook-through-eventbridge)
-9. [Shared webhook secret](#shared-webhook-secret)
-10. [Troubleshooting](#troubleshooting)
-11. [Configuration reference](#configuration-reference)
-12. [Compatibility](#compatibility)
+2. [Kubernetes events](#kubernetes-events)
+3. [Choose a deployment topology](#choose-a-deployment-topology)
+4. [Prerequisites](#prerequisites)
+5. [IAM permissions](#iam-permissions)
+6. [Installation on EKS with Pod Identity](#installation-on-eks-with-pod-identity)
+7. [Installation on non-EKS clusters with static credentials](#installation-on-non-eks-clusters-with-static-credentials)
+8. [Log alerting](#log-alerting)
+9. [Expose the alert webhook through EventBridge](#expose-the-alert-webhook-through-eventbridge)
+10. [Shared webhook secret](#shared-webhook-secret)
+11. [Troubleshooting](#troubleshooting)
+12. [Configuration reference](#configuration-reference)
+13. [Compatibility](#compatibility)
 
 ## Architecture
 
@@ -51,9 +52,18 @@ Each log record includes Kubernetes metadata such as:
 
 All participating clusters write to the same configured application log group.
 
+Kubernetes **events** are an optional capability written to a separate log group:
+
+```text
+/aws/containerinsights/events
+```
+
+See [Kubernetes events](#kubernetes-events) for how to publish and query them.
+
 | Endpoint | Purpose |
 | --- | --- |
 | `POST /api/v1/logs/query` | Runs a CloudWatch Logs Insights query and filters logs by OpenChoreo scope labels. |
+| `POST /api/v1/events/query` | Runs a CloudWatch Logs Insights query over the events log group, scoped by component or workflow. Returns an empty result when the events log group is absent or no events have been published. |
 | `POST /api/v1alpha1/alerts/rules` | Creates a CloudWatch Logs metric filter and CloudWatch metric alarm. |
 | `GET /api/v1alpha1/alerts/rules/{ruleName}` | Gets the alert rule identified by `{ruleName}`. |
 | `PUT /api/v1alpha1/alerts/rules/{ruleName}` | Updates the alert rule identified by `{ruleName}`. |
@@ -61,6 +71,86 @@ All participating clusters write to the same configured application log group.
 | `POST /api/v1alpha1/alerts/webhook` | Receives forwarded CloudWatch alarm events from EventBridge and forwards them to the Observer. |
 | `GET /healthz` | Readiness check. Returns `200` once the adapter is ready. |
 | `GET /livez` | Liveness check. Does not call AWS, so transient AWS or DNS issues do not crash-loop the pod. |
+
+## Kubernetes events
+
+Alongside container logs, the adapter can answer `POST /api/v1/events/query` with
+Kubernetes events (Pod scheduling failures, image pull errors, `BackOff`, workflow
+job lifecycle, and so on), scoped by component or workflow the same way logs are.
+
+Kubernetes event ingestion has two parts:
+
+1. **Ingestion** — the separate [`observability-events-otel-collector`](../observability-events-otel-collector)
+   chart collects events cluster-wide, enriches each one with the involved object's
+   OpenChoreo labels (via its `k8seventenrich` processor), and ships them to a
+   dedicated events log group using its bundled `awscloudwatchlogs` exporter. Like
+   Fluent Bit, it must run on every workflow plane and data plane clusters, and all clusters
+   write to the same shared events log group.
+2. **Query** — this adapter reads that log group. The query endpoint is always
+   served. When the log group does not exist or the collector has not published
+   events, `POST /api/v1/events/query` returns `{ "events": [], "total": 0 }`
+   rather than an error, so events degrade gracefully.
+
+### Provision the events log group
+
+The setup Job provisions the events log group with its own retention by default
+(30 days). Set `events.provisionLogGroup=false` only for log-only installs that
+intentionally do not grant IAM permissions for the events log group:
+
+```yaml
+events:
+  provisionLogGroup: true
+  retentionDays: 30   # one of CloudWatch's allowed retention values
+```
+
+The log group name is derived from the shared prefix as
+`<global.logGroupPrefix>/events` (default `/aws/containerinsights/events`), mirroring
+the application log group. The adapter picks it up automatically via the
+`EVENTS_LOG_GROUP_NAME` config value. If you need an existing or non-standard
+CloudWatch log group, set `events.logGroupName` and point the events collector's
+`awscloudwatchlogs.log_group_name` at the same value.
+
+### Deploy the events collector
+
+Install `observability-events-otel-collector` on each workload cluster with its
+CloudWatch exporter pointed at the same log group and region:
+
+```yaml
+exporters:
+  awscloudwatchlogs:
+    region: "<region>"
+    log_group_name: "/aws/containerinsights/events"
+    log_stream_name: "events"
+pipelineExporters:
+  - awscloudwatchlogs
+```
+
+The collector's identity needs `logs:CreateLogStream` and `logs:PutLogEvents` on the
+events log group (this chart's setup Job owns group creation and retention, so the
+collector does not need `logs:CreateLogGroup`). See the
+[events collector README](../observability-events-otel-collector/README.md#aws-cloudwatch-logs)
+for the full backend configuration.
+
+### Query behavior
+
+Component-scoped event queries filter by the OpenChoreo labels copied from the
+involved Kubernetes object:
+
+- `openchoreo.dev/namespace`
+- `openchoreo.dev/project-uid`
+- `openchoreo.dev/environment-uid`
+- `openchoreo.dev/component-uid`
+
+Workflow-scoped event queries do not require project or component labels. Workflow
+events are matched by Kubernetes namespace and workflow object name:
+
+- `attributes.k8s.namespace.name = workflows-<namespace>`
+- `resource.k8s.object.name = <workflowRunName>` or `<workflowRunName>-...`
+
+When a workflow task is provided, the adapter also matches Argo's step and pod
+naming patterns. For example, `taskName=checkout-source` matches both workflow-node
+events whose `body` contains `checkout-source` and pod events named like
+`<workflowRunName>-checkout-<hash>`.
 
 ## Choose a deployment topology
 
@@ -116,15 +206,16 @@ The CloudWatch adapter needs permissions for three paths:
 1. Startup identity check.
 2. Log query and metric-filter management.
 3. CloudWatch alarm management.
+4. Kubernetes event queries over the events log group.
 
 Use these policies based on the credential model:
 
 - **EKS Pod Identity or IRSA:** keep the adapter and ingestion policies separate and attach them to separate roles. This keeps each ServiceAccount least-privileged.
-- **Static credentials:** use one IAM user and attach both the adapter policy and `CloudWatchAgentServerPolicy`, because the same Kubernetes Secret is shared by all components.
+- **Static credentials:** use one IAM user and attach the adapter policy, setup Job policy, and `CloudWatchAgentServerPolicy`, because the same Kubernetes Secret is shared by all components.
 
 ### Fluent Bit IAM policy
 
-The CloudWatch Agent and Fluent Bit  need permission to write logs to CloudWatch. Attach the AWS-managed policy below:
+The CloudWatch Agent and Fluent Bit need permission to write logs to CloudWatch. Attach the AWS-managed policy below:
 
 ```text
 CloudWatchAgentServerPolicy
@@ -150,7 +241,7 @@ Replace:
       "Resource": "*"
     },
     {
-      "Sid": "LogsScoped",
+      "Sid": "ApplicationLogsScoped",
       "Effect": "Allow",
       "Action": [
         "logs:StartQuery",
@@ -159,6 +250,14 @@ Replace:
         "logs:DeleteMetricFilter"
       ],
       "Resource": "arn:aws:logs:<region>:<account-id>:log-group:/aws/containerinsights/application:*"
+    },
+    {
+      "Sid": "EventLogsScoped",
+      "Effect": "Allow",
+      "Action": [
+        "logs:StartQuery"
+      ],
+      "Resource": "arn:aws:logs:<region>:<account-id>:log-group:/aws/containerinsights/events:*"
     },
     {
       "Sid": "LogsUnscoped",
@@ -192,6 +291,7 @@ Notes:
 - `cloudwatch:UntagResource` is not required because the adapter does not remove tags.
 - CloudWatch alarm actions use `"Resource": "*"` because alarm ARNs are only known after the first `PutMetricAlarm` call.
 - Leave `adapter.alerting.alarmActionArns` empty when using EventBridge to forward alarm state-change events.
+- If you override `global.applicationLogGroupName` or `events.logGroupName`, replace the default log group ARNs in the policy with the exact custom log group names.
 
 ### Setup Job IAM policy
 
@@ -213,11 +313,17 @@ Replace:
         "logs:CreateLogGroup",
         "logs:PutRetentionPolicy"
       ],
-      "Resource": "arn:aws:logs:<region>:<account-id>:log-group:/aws/containerinsights/application:*"
+      "Resource": [
+        "arn:aws:logs:<region>:<account-id>:log-group:/aws/containerinsights/application:*",
+        "arn:aws:logs:<region>:<account-id>:log-group:/aws/containerinsights/events:*"
+      ]
     }
   ]
 }
 ```
+
+If you override `global.applicationLogGroupName` or `events.logGroupName`, replace
+the default log group ARNs in the policy with the exact custom log group names.
 
 ## Installation on EKS with Pod Identity
 
@@ -360,7 +466,7 @@ aws iam create-policy \
       "Resource": "*"
     },
     {
-      "Sid": "LogsScoped",
+      "Sid": "ApplicationLogsScoped",
       "Effect": "Allow",
       "Action": [
         "logs:StartQuery",
@@ -369,6 +475,14 @@ aws iam create-policy \
         "logs:DeleteMetricFilter"
       ],
       "Resource": "arn:aws:logs:${AWS_REGION}:${AWS_ACCOUNT_ID}:log-group:/aws/containerinsights/application:*"
+    },
+    {
+      "Sid": "EventLogsScoped",
+      "Effect": "Allow",
+      "Action": [
+        "logs:StartQuery"
+      ],
+      "Resource": "arn:aws:logs:${AWS_REGION}:${AWS_ACCOUNT_ID}:log-group:/aws/containerinsights/events:*"
     },
     {
       "Sid": "LogsUnscoped",
@@ -419,7 +533,10 @@ aws iam create-policy \
         "logs:CreateLogGroup",
         "logs:PutRetentionPolicy"
       ],
-      "Resource": "arn:aws:logs:${AWS_REGION}:${AWS_ACCOUNT_ID}:log-group:/aws/containerinsights/application:*"
+      "Resource": [
+        "arn:aws:logs:${AWS_REGION}:${AWS_ACCOUNT_ID}:log-group:/aws/containerinsights/application:*",
+        "arn:aws:logs:${AWS_REGION}:${AWS_ACCOUNT_ID}:log-group:/aws/containerinsights/events:*"
+      ]
     }
   ]
 }
@@ -448,7 +565,7 @@ helm upgrade --install observability-logs-aws-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-aws-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.2.1 \
+  --version 0.3.0 \
   --set amazon-cloudwatch-observability.region="$AWS_REGION" \
   --set adapter.alerting.webhookAuth.enabled=true \
   --set adapter.alerting.webhookAuth.sharedSecret="$WEBHOOK_SHARED_SECRET"
@@ -463,7 +580,7 @@ helm upgrade --install observability-logs-aws-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-aws-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.2.1 \
+  --version 0.3.0 \
   --set cloudWatchAgent.enabled=false \
   --set setup.enabled=false \
   --set amazon-cloudwatch-observability.region="$AWS_REGION" \
@@ -480,7 +597,7 @@ helm upgrade --install observability-logs-aws-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-aws-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.2.1 \
+  --version 0.3.0 \
   --set amazon-cloudwatch-observability.region="$AWS_REGION" \
   --set adapter.enabled=false
 ```
@@ -491,13 +608,14 @@ EKS Pod Identity links a Kubernetes ServiceAccount to an IAM role. Each associat
 
 #### Single-cluster topology
 
-Create three Pod Identity associations on the EKS cluster, all in the `$NS` namespace:
+Create Pod Identity associations on the EKS cluster, all in the `$NS` namespace:
 
 | ServiceAccount | Used by | IAM role to associate |
 | --- | --- | --- |
 | `logs-adapter-aws-cloudwatch` | Adapter queries, alerting CRUD, and webhook handling. | The role with the [Adapter IAM policy](#adapter-iam-policy) attached. |
 | `cloudwatch-setup` | Setup Job that creates log groups and applies retention. | The role with the [Setup Job IAM policy](#setup-job-iam-policy) and `CloudWatchAgentServerPolicy` attached. |
 | `cloudwatch-agent` | CloudWatch Agent and Fluent Bit DaemonSets. | The role with `CloudWatchAgentServerPolicy` attached. |
+| `events-collector` | Optional Kubernetes event ingestion through `observability-events-otel-collector`. | The role with `CloudWatchAgentServerPolicy` attached. |
 
 #### Multi-cluster topology
 
@@ -517,6 +635,7 @@ The `cloudwatch-setup` and `cloudwatch-agent` ServiceAccounts do not exist in th
 | --- | --- |
 | `cloudwatch-setup` | The role with the [Setup Job IAM policy](#setup-job-iam-policy) and `CloudWatchAgentServerPolicy` attached. |
 | `cloudwatch-agent` | The role with `CloudWatchAgentServerPolicy` attached. |
+| `events-collector` | The role with `CloudWatchAgentServerPolicy` attached when `observability-events-otel-collector` is installed. |
 
 The `logs-adapter-aws-cloudwatch` ServiceAccount does not exist in these clusters because `adapter.enabled=false`.
 
@@ -541,7 +660,7 @@ export ADAPTER_ROLE_ARN="arn:aws:iam::${AWS_ACCOUNT_ID}:role/OpenChoreoCloudWatc
 export INGESTION_ROLE_ARN="arn:aws:iam::${AWS_ACCOUNT_ID}:role/OpenChoreoCloudWatchLogsRoleForIngestion"
 ```
 
-**Single-cluster topology** — create all three associations:
+**Single-cluster topology** — create associations for the adapter, setup Job, CloudWatch Agent, and optional events collector:
 
 ```bash
 export EKS_CLUSTER_NAME=<your-eks-cluster-name>
@@ -562,6 +681,13 @@ aws eks create-pod-identity-association \
   --cluster-name "$EKS_CLUSTER_NAME" \
   --namespace "$NS" \
   --service-account cloudwatch-agent \
+  --role-arn "$INGESTION_ROLE_ARN"
+
+# Only needed when observability-events-otel-collector is installed in this cluster.
+aws eks create-pod-identity-association \
+  --cluster-name "$EKS_CLUSTER_NAME" \
+  --namespace "$NS" \
+  --service-account events-collector \
   --role-arn "$INGESTION_ROLE_ARN"
 ```
 
@@ -593,6 +719,13 @@ aws eks create-pod-identity-association \
   --namespace "$NS" \
   --service-account cloudwatch-agent \
   --role-arn "$INGESTION_ROLE_ARN"
+
+# Only needed when observability-events-otel-collector is installed in this cluster.
+aws eks create-pod-identity-association \
+  --cluster-name "$EKS_CLUSTER_NAME" \
+  --namespace "$NS" \
+  --service-account events-collector \
+  --role-arn "$INGESTION_ROLE_ARN"
 ```
 
 ### Step 5 — Restart workloads on Each Cluster
@@ -613,11 +746,15 @@ kubectl -n "$NS" rollout restart daemonset/cloudwatch-agent
 kubectl -n "$NS" rollout restart daemonset/fluent-bit
 kubectl -n "$NS" rollout restart deployment/logs-adapter-aws-cloudwatch
 
+# If observability-events-otel-collector is installed or will be installed in this cluster:
+kubectl -n "$NS" get deployment/events-collector >/dev/null 2>&1 && \
+  kubectl -n "$NS" rollout restart deployment/events-collector
+
 # Re-trigger the setup Helm hook (it ran once at install time)
 kubectl -n "$NS" delete job cloudwatch-setup-logs --ignore-not-found
 helm upgrade observability-logs-aws-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-aws-cloudwatch \
-  --namespace "$NS" --version 0.2.1 --reuse-values
+  --namespace "$NS" --version 0.3.0 --reuse-values
 ```
 
 **Observability plane cluster** — restart only the adapter:
@@ -632,10 +769,14 @@ kubectl -n "$NS" rollout restart deployment/logs-adapter-aws-cloudwatch
 kubectl -n "$NS" rollout restart daemonset/cloudwatch-agent
 kubectl -n "$NS" rollout restart daemonset/fluent-bit
 
+# If observability-events-otel-collector is installed or will be installed in this cluster:
+kubectl -n "$NS" get deployment/events-collector >/dev/null 2>&1 && \
+  kubectl -n "$NS" rollout restart deployment/events-collector
+
 kubectl -n "$NS" delete job cloudwatch-setup-logs --ignore-not-found
 helm upgrade observability-logs-aws-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-aws-cloudwatch \
-  --namespace "$NS" --version 0.2.1 --reuse-values
+  --namespace "$NS" --version 0.3.0 --reuse-values
 ```
 
 #### Verify Pod Identity injection
@@ -676,6 +817,7 @@ export AWS_SECRET_ACCESS_KEY=<your-secret-access-key>
 Create an IAM user and attach both:
 
 - The custom [Adapter IAM policy](#adapter-iam-policy).
+- The custom [Setup Job IAM policy](#setup-job-iam-policy).
 - The AWS-managed `CloudWatchAgentServerPolicy`.
 
 Create access keys for this IAM user and export them as shown above.
@@ -702,7 +844,7 @@ aws iam create-policy \
       "Resource": "*"
     },
     {
-      "Sid": "LogsScoped",
+      "Sid": "ApplicationLogsScoped",
       "Effect": "Allow",
       "Action": [
         "logs:StartQuery",
@@ -711,6 +853,14 @@ aws iam create-policy \
         "logs:DeleteMetricFilter"
       ],
       "Resource": "arn:aws:logs:${AWS_REGION}:${AWS_ACCOUNT_ID}:log-group:/aws/containerinsights/application:*"
+    },
+    {
+      "Sid": "EventLogsScoped",
+      "Effect": "Allow",
+      "Action": [
+        "logs:StartQuery"
+      ],
+      "Resource": "arn:aws:logs:${AWS_REGION}:${AWS_ACCOUNT_ID}:log-group:/aws/containerinsights/events:*"
     },
     {
       "Sid": "LogsUnscoped",
@@ -742,6 +892,34 @@ aws iam attach-user-policy \
   --user-name OpenChoreoCloudWatchLogsUser \
   --policy-arn "arn:aws:iam::${AWS_ACCOUNT_ID}:policy/OpenChoreoCloudWatchLogsAdapterPolicy"
 
+# Create and attach the setup job policy
+aws iam create-policy \
+  --policy-name OpenChoreoCloudWatchLogsSetupPolicy \
+  --policy-document "$(cat <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "CreateLogGroups",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:PutRetentionPolicy"
+      ],
+      "Resource": [
+        "arn:aws:logs:${AWS_REGION}:${AWS_ACCOUNT_ID}:log-group:/aws/containerinsights/application:*",
+        "arn:aws:logs:${AWS_REGION}:${AWS_ACCOUNT_ID}:log-group:/aws/containerinsights/events:*"
+      ]
+    }
+  ]
+}
+EOF
+)"
+
+aws iam attach-user-policy \
+  --user-name OpenChoreoCloudWatchLogsUser \
+  --policy-arn "arn:aws:iam::${AWS_ACCOUNT_ID}:policy/OpenChoreoCloudWatchLogsSetupPolicy"
+
 # Attach the AWS-managed CloudWatchAgentServerPolicy
 aws iam attach-user-policy \
   --user-name OpenChoreoCloudWatchLogsUser \
@@ -766,7 +944,7 @@ helm upgrade --install observability-logs-aws-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-aws-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.2.1 \
+  --version 0.3.0 \
   --set amazon-cloudwatch-observability.region="$AWS_REGION" \
   --set awsCredentials.create=true \
   --set awsCredentials.name=cloudwatch-aws-credentials \
@@ -794,7 +972,7 @@ helm upgrade --install observability-logs-aws-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-aws-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.2.1 \
+  --version 0.3.0 \
   --set cloudWatchAgent.enabled=false \
   --set setup.enabled=false \
   --set amazon-cloudwatch-observability.region="$AWS_REGION" \
@@ -815,7 +993,7 @@ helm upgrade --install observability-logs-aws-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-aws-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.2.1 \
+  --version 0.3.0 \
   --set amazon-cloudwatch-observability.region="$AWS_REGION" \
   --set awsCredentials.create=true \
   --set awsCredentials.name=cloudwatch-aws-credentials \
@@ -1133,7 +1311,7 @@ kubectl -n "$NS" delete job cloudwatch-setup-logs --ignore-not-found
 # 2. Re-fire the post-upgrade hook.
 helm upgrade observability-logs-aws-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-aws-cloudwatch \
-  --namespace "$NS" --version 0.2.1 --reuse-values
+  --namespace "$NS" --version 0.3.0 --reuse-values
 
 # 3. Watch the new Job complete.
 kubectl -n "$NS" get job cloudwatch-setup-logs -w
@@ -1150,13 +1328,17 @@ kubectl -n "$NS" logs -l job-name=cloudwatch-setup-logs --tail=100
 | Value | Default | Description |
 | --- | --- | --- |
 | `global.logGroupPrefix` | `/aws/containerinsights` | Prefix used by Fluent Bit, the adapter, and the setup Job for the shared application log group. |
+| `global.applicationLogGroupName` | `""` | Optional exact application log group name. When empty, the chart uses `<global.logGroupPrefix>/application`. |
 | `amazon-cloudwatch-observability.clusterName` | `openchoreo` | Upstream Container Insights chart value required to render the dependency. This module does not use it for log group naming. |
 | `amazon-cloudwatch-observability.region` | Required | AWS region for CloudWatch log groups and API calls. |
 | `awsCredentials.create` | `false` | Creates a static AWS credentials Secret. Keep `false` for Pod Identity, IRSA, or instance-profile based auth. Set to `true` for k3d, kind, or non-EKS clusters. |
 | `awsCredentials.name` | `""` | Name of the AWS credentials Secret. Required when `awsCredentials.create=true`. |
 | `awsCredentials.accessKeyId` | Required if `create=true` | AWS access key ID. |
 | `awsCredentials.secretAccessKey` | Required if `create=true` | AWS secret access key. |
-| `containerLogs.retentionDays` | `7` | Retention period applied to log groups created by the setup Job. Must be one of the retention values supported by CloudWatch Logs. |
+| `containerLogs.retentionDays` | `7` | Retention period applied to the application log group created by the setup Job. Must be one of the retention values supported by CloudWatch Logs. |
+| `events.provisionLogGroup` | `true` | Provisions the `<logGroupPrefix>/events` log group (and retention) for Kubernetes events ingested by `observability-events-otel-collector`. Set to `false` only when the install intentionally does not grant events log group IAM permissions. The adapter serves `/api/v1/events/query` regardless and returns an empty result when the group is absent. |
+| `events.logGroupName` | `""` | Optional exact events log group name. When empty, the chart uses `<global.logGroupPrefix>/events`. Set the events collector `awscloudwatchlogs.log_group_name` to the same value. |
+| `events.retentionDays` | `30` | Retention period applied to the events log group. Must be one of the retention values supported by CloudWatch Logs. |
 | `cloudWatchAgent.enabled` | `true` | Enables the upstream `amazon-cloudwatch-observability` subchart. Set to `false` on an observability-plane-only install. |
 | `cloudWatchAgent.bridgeService.enabled` | `false` | Optional compatibility bridge from `amazon-cloudwatch/cloudwatch-agent` to the real Service. Only needed if Pod Association is re-enabled in Fluent Bit. |
 | `cloudWatchAgent.injectAwsCredentials.enabled` | `false` | Patches Fluent Bit to consume static AWS credentials. Enable this with `awsCredentials.create=true` for non-EKS clusters. |

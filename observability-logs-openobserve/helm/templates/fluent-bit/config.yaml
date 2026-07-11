@@ -87,5 +87,5 @@ data:
         type          regex
         flush_timeout 2000
         rule          "start_state" "/^.*Exception[:,].*$/" "cont"
-        rule          "cont"        "/^\s+(at|--- End of).*$/" "cont"
+        rule          "cont"        "/^\s+(at\s|--- End of).*$/" "cont"
 {{- end }}

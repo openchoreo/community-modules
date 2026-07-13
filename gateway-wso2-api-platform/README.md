@@ -437,6 +437,10 @@ The trait uses OpenChoreo's template rendering pipeline to:
 
 4. **Patch the HTTPRoute URL rewrite** — Updates the `URLRewrite` filter's `replacePrefixMatch` to use the derived API context path (`/<environment>-<namespace>-<componentName>`), ensuring the WSO2 router receives the correct path prefix to match the `RestApi` configuration.
 
+#### Composing with KEDA scale-to-zero
+
+The `api-management` trait can share a component with the `keda-scaling` trait (the `autoscaling-keda` module), giving a service both WSO2 API management and scale-to-zero. Because both traits repoint the HTTPRoute `backendRef`, list `api-management` **before** `keda-scaling` in `spec.traits`: `api-management` takes the edge route through the WSO2 router, and `keda-scaling` detects it no longer owns the route, skips its own edge patch, and wires its interceptor behind the component's Service so the WSO2 router's upstream call wakes the pod. Traffic flows kgateway -> WSO2 router -> component ExternalName -> KEDA interceptor -> pod, and the API policies (rate limiting, auth, headers) still apply. See the autoscaling-keda module's `CONFIGURATION.md` ("Composing with an API gateway trait") for the details.
+
 #### Key Differences from Other Gateway Modules
 
 | Feature           | Kong                    | Envoy Gateway                    | Traefik                       | WSO2 API Platform                                                                            |

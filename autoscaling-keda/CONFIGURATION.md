@@ -179,6 +179,8 @@ This is deliberately simpler than a per-data-plane backend switch. Heterogeneous
 
 Both modes patch the Deployment to remove `spec.replicas`, handing replica ownership to KEDA. If `spec.replicas` stuck around, server-side apply would reset it on every render and fight the autoscaler.
 
+The three HTTP-mode `HTTPRoute` patches (repoint the `backendRef`, add the `request` timeout, add the `urlRewrite.hostname`) only apply while keda still owns the external route, i.e. a `backendRef` named after the component is still present. If another edge trait attached ahead of `keda-scaling` has already repointed the route, keda skips those three patches and keeps only the ExternalName/interceptor wiring. See [Composing with an API gateway trait](#composing-with-an-api-gateway-trait).
+
 ### In-cluster wake: the ExternalName alias mechanism
 
 OpenChoreo connection bindings inject the callee's in-cluster Service URL (`http://<component>.<ns>.svc.cluster.local:<port>`). Left alone, that URL goes straight to the Deployment pods and gets refused while the service sleeps.
@@ -187,7 +189,7 @@ In HTTP mode the trait closes that gap:
 
 1. The component's own Service (named `${metadata.componentName}`) is patched to `type: ExternalName`, with `externalName` pointing at `keda-add-ons-http-interceptor-multiport.<interceptorNamespace>.svc.cluster.local`. An in-cluster call to the injected URL now resolves to the interceptor.
 2. A separate ClusterIP Service (`${componentName}-keda-upstream`) is created with the original pod selector and ports. The `InterceptorRoute` forwards here once a pod is ready.
-3. The `InterceptorRoute` registers exactly one `rules[].hosts` entry: the component's FQDN (`<componentName>.<namespace>.svc.cluster.local`). The HTTPRoute patch adds a `urlRewrite.hostname` filter that rewrites the outbound Host header to this FQDN, so gateway traffic and in-cluster traffic match the same interceptor rule.
+3. The `InterceptorRoute` registers two `rules[].hosts` entries: the component's FQDN (`<componentName>.<namespace>.svc.cluster.local`) and its two-label form (`<componentName>.<namespace>`). The HTTPRoute patch adds a `urlRewrite.hostname` filter that rewrites the outbound Host header to the FQDN, so gateway traffic and in-cluster traffic match the same interceptor rule. The two-label host is what an edge API-gateway trait sends when it fronts the component (see [Composing with an API gateway trait](#composing-with-an-api-gateway-trait)).
 
 The Service is born as ExternalName on first render, so there's no ClusterIP-to-ExternalName mutation to trip over. If you convert a long-lived component and the data-plane apply rejects the in-place Service type change, redeploy the component so the Service is recreated from scratch.
 
@@ -204,6 +206,19 @@ A service that doesn't fit (multiple endpoints, or a port outside `wakeablePorts
 - Split the extra endpoints into a separate component, each with its own trait attachment.
 - Add the port to `keda-interceptor-multiport.yaml` and `wakeablePorts`.
 - Keep `minReplicas >= 1` on the component, which skips scale-to-zero and the ExternalName takeover.
+
+### Composing with an API gateway trait
+
+`keda-scaling` can coexist on one component with an edge API-management trait such as `api-management` (the `gateway-wso2-api-platform` module). Both traits repoint the external `HTTPRoute`'s `backendRef`, selecting it by the component's Service name, so naively attaching both would make the second one to render match zero elements and fail.
+
+Two things make the composition work:
+
+1. **The edge trait renders first and keda defers.** List the API-gateway trait before `keda-scaling` in `spec.traits`. Traits render in list order, so the gateway trait repoints the route's `backendRef` to its own backend first. keda's three HTTPRoute patches are guarded on the route still carrying a `backendRef` named after the component; once the gateway trait has renamed it, that guard is false and keda skips the edge-route patches. keda still applies its Service->ExternalName patch, so in-cluster wiring stays intact. If keda rendered first, the gateway trait would fail to find the component-named `backendRef`, which is why the order is required.
+2. **The interceptor accepts the gateway's upstream host.** The API gateway forwards to the component's upstream by its configured authority `<component>.<namespace>` (a two-label name), not the full `.svc.cluster.local` FQDN. The `InterceptorRoute` lists both hosts for this reason, so the gateway's request matches an interceptor rule and wakes the pod.
+
+The resulting path is edge gateway -> API gateway -> the component's ExternalName Service -> the KEDA interceptor -> the pod. Idle scale-to-zero and the API gateway's policies both keep working.
+
+The order dependency is currently conventional, not enforced. A wrong order fails at render time with the gateway trait's zero-match error rather than silently misrouting.
 
 ## Limitations
 

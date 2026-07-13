@@ -194,6 +194,33 @@ spec:
 
 The full parameter reference, tuning notes (request rate vs. concurrency), extension points, architecture, and troubleshooting all live in [CONFIGURATION.md](./CONFIGURATION.md).
 
+## Composing with an API gateway trait
+
+`keda-scaling` can share a component with an edge API-management trait such as `api-management` (from the `gateway-wso2-api-platform` module), so one service gets both scale-to-zero and API management. Both traits repoint the external `HTTPRoute`, so two rules apply:
+
+- **Order matters.** List the API-gateway trait *before* `keda-scaling` in `spec.traits`. The gateway trait takes over the edge route, and `keda-scaling` then sees it no longer owns that route and skips its own edge-route patches, keeping just the in-cluster ExternalName wiring. Reverse the order and the gateway trait fails to render.
+- **The chain.** Traffic flows edge gateway -> API gateway (e.g. WSO2) -> the component's ExternalName Service -> the KEDA interceptor -> the pod, and the interceptor wakes the pod on the first request. Idle scale-to-zero and the API gateway's own policies (rate limiting, auth, headers) both keep working.
+
+```yaml
+traits:
+  - name: api-management        # edge trait first: it owns the external route
+    instanceName: my-api
+    kind: ClusterTrait
+    parameters:
+      rateLimit:
+        enabled: true
+        limits:
+          - requests: 100
+            duration: "1m"
+  - name: keda-scaling          # keda second: defers the edge route, keeps scale-to-zero
+    instanceName: keda-scaling
+    kind: ClusterTrait
+    parameters:
+      minReplicas: 0
+```
+
+See [CONFIGURATION.md](./CONFIGURATION.md) for how the deferral works and why the interceptor accepts the API gateway's upstream host.
+
 ## Limitations
 
 - One external HTTP endpoint per service. The interceptor routes by `Host` only (it strips the port first), and an ExternalName alias can't remap ports. See CONFIGURATION.md for the reasoning.

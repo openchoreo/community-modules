@@ -55,14 +55,14 @@ const minAlignmentPeriod = time.Minute
 // metadata.user_labels, which Cloud Monitoring populates from the pod labels
 // of k8s_container resources.
 //
-// Scoping is by the three UID labels (component/project/environment) ONLY —
-// mirroring the Prometheus sibling's BuildComponentLabelFilter. The rule's
-// `namespace` is deliberately NOT a metric filter: the control plane sends the
-// data-plane runtime namespace (e.g. "dp-default-<project>-<env>-...") as the
-// rule namespace, whereas the pod's `openchoreo.dev/namespace` metadata label
-// carries the *control-plane* namespace (e.g. "default"), so filtering on it
-// matches zero series. Namespace is retained only as policy identity/dedup
-// metadata (see policyUserLabels), never in the metric-matching filter.
+// Scoping is by the three UID labels (component/project/environment) ONLY.
+// The rule's `namespace` is deliberately NOT a metric filter: the control
+// plane sends the data-plane runtime namespace (e.g.
+// "dp-default-<project>-<env>-...") as the rule namespace, whereas the pod's
+// `openchoreo.dev/namespace` metadata label carries the *control-plane*
+// namespace (e.g. "default"), so filtering on it matches zero series.
+// Namespace is retained only as policy identity/dedup metadata (see
+// policyUserLabels), never in the metric-matching filter.
 func BuildResourceMetricsFilter(spec metricSpec, p MetricsQueryParams) string {
 	clauses := []string{
 		fmt.Sprintf("metric.type = %s", quote(spec.metricType)),

@@ -110,10 +110,9 @@ func ToAlertPolicy(in RuleInput, cfg TranslatorConfig) (*monitoringpb.AlertPolic
 
 	// cpu_usage / memory_usage thresholds are a PERCENTAGE of the pod's
 	// limit (e.g. threshold 80 == "usage > 80% of limit"), matching the
-	// OpenChoreo alert semantics used by the Azure/AWS siblings. Cloud
-	// Monitoring's MetricThreshold computes usage÷limit natively via the
-	// denominator filter, so the threshold is converted percent→fraction
-	// (80 → 0.80) and compared against the ratio.
+	// OpenChoreo alert semantics. Cloud Monitoring's MetricThreshold computes
+	// usage÷limit natively via the denominator filter, so the threshold is
+	// converted percent→fraction (80 → 0.80) and compared against the ratio.
 	numeratorFilter := BuildResourceMetricsFilter(usageSpec, scope)
 	denominatorFilter := BuildResourceMetricsFilter(limitSpec, scope)
 	alignPeriod := durationpb.New(alignmentPeriod(window))
@@ -195,7 +194,7 @@ func validateRule(in RuleInput, cfg TranslatorConfig) error {
 }
 
 // mapComparison maps an OpenChoreo operator to the Cloud Monitoring enum.
-// Unlike CloudWatch (which rejects eq/neq), Cloud Monitoring supports all six.
+// Cloud Monitoring supports all six operators, including eq/neq.
 func mapComparison(op string) (monitoringpb.ComparisonType, error) {
 	switch strings.ToLower(strings.TrimSpace(op)) {
 	case "gt", ">":

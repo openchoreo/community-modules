@@ -61,7 +61,7 @@ the *control-plane* namespace, so filtering on it would match zero series.
 | Endpoint | Purpose |
 | --- | --- |
 | `POST /api/v1/metrics/query` (`metric: resource`) | Six parallel `ListTimeSeries` calls (CPU/memory usage, requests, limits) scoped by UID; returns per-metric aggregated series. |
-| `POST /api/v1/metrics/query` (`metric: http`) | HTTP RED metrics not implemented; returns an empty series with the `X-OpenChoreo-Adapter-Notice: http-metrics-not-implemented` header (same as the Azure Monitor and AWS CloudWatch siblings). |
+| `POST /api/v1/metrics/query` (`metric: http`) | HTTP RED metrics not implemented; returns an empty series with the `X-OpenChoreo-Adapter-Notice: http-metrics-not-implemented` header. |
 | `POST /api/v1alpha1/metrics/runtime-topology` | Not supported — GKE system metrics carry no pod-to-pod traffic data; returns `501` with error code `OBS-V1-M-GCP-501`. |
 | `POST /api/v1alpha1/alerts/rules` | Creates a Cloud Monitoring alert policy (a usage÷limit ratio MetricThreshold) wired to the configured notification channel. Returns `409` if a rule with the same identity already exists (use `PUT` to replace). |
 | `GET /api/v1alpha1/alerts/rules/{ruleName}` | Looks the policy up by its `openchoreo_rule_name` user label. |

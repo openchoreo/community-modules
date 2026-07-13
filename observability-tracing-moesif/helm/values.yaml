@@ -1,0 +1,57 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+## -----------------------------------------------------------
+## Values for OpenTelemetry Collector configuration
+## -----------------------------------------------------------
+opentelemetry-collector:
+  enabled: true
+  fullnameOverride: "moesif-tracing-collector"
+
+  clusterRole:
+    create: true
+    rules:
+      - apiGroups: [""]
+        resources: ["pods"]
+        verbs: ["list", "watch"]
+      - apiGroups: ["apps"]
+        resources: ["replicasets"]
+        verbs: ["list", "watch"]
+
+  configMap:
+    create: false
+    existingName: "moesif-tracing-collector-config"
+
+  image:
+    repository: otel/opentelemetry-collector-contrib
+
+  mode: deployment
+
+  extraEnvsFrom:
+    - secretRef:
+        name: moesif-tracing-secret
+
+  resources:
+    limits:
+      cpu: 100m
+      memory: 200Mi
+    requests:
+      cpu: 50m
+      memory: 100Mi
+
+  service:
+    type: ClusterIP
+
+opentelemetryCollectorCustomizations:
+  debug:
+    enabled: false
+
+  tailSampling:
+    enabled: true
+    decisionWait: 10s
+    numTraces: 100
+    expectedNewTracesPerSec: 10
+    decisionCache:
+      sampledCacheSize: 10000
+      nonSampledCacheSize: 1000
+    spansPerSecond: 10

@@ -345,3 +345,24 @@ func TestGetComponentEvents_ServerError(t *testing.T) {
 		t.Fatal("expected error on server failure")
 	}
 }
+
+func TestGetComponentEvents_StreamNotFound(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"code":20002,"message":"Search stream not found: k8s_events"}`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(server.URL)
+	result, err := client.GetComponentEvents(context.Background(), EventsQueryParams{
+		Namespace: "default",
+		StartTime: evStart,
+		EndTime:   evEnd,
+	})
+	if err != nil {
+		t.Fatalf("expected no error for a not-yet-created stream, got: %v", err)
+	}
+	if len(result.Events) != 0 || result.TotalCount != 0 {
+		t.Errorf("expected empty result, got events=%d total=%d", len(result.Events), result.TotalCount)
+	}
+}

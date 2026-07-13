@@ -175,6 +175,27 @@ func TestGetComponentLogs_ServerError(t *testing.T) {
 	}
 }
 
+func TestGetComponentLogs_StreamNotFound(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"code":20002,"message":"Search stream not found: container_logs"}`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(server.URL)
+	result, err := client.GetComponentLogs(context.Background(), ComponentLogsParams{
+		Namespace: "test-ns",
+		StartTime: time.Now().Add(-time.Hour),
+		EndTime:   time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("expected no error for a not-yet-created stream, got: %v", err)
+	}
+	if len(result.Logs) != 0 || result.TotalCount != 0 {
+		t.Errorf("expected empty result, got logs=%d total=%d", len(result.Logs), result.TotalCount)
+	}
+}
+
 func TestGetWorkflowLogs(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if isCountQuery(r) {

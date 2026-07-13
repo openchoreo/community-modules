@@ -1,0 +1,111 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 560" font-family="'Segoe UI', system-ui, -apple-system, sans-serif">
+  <defs>
+    <linearGradient id="controlPlane" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#e8eaf6"/>
+      <stop offset="100%" stop-color="#c5cae9"/>
+    </linearGradient>
+    <linearGradient id="dataPlane" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ede7f6"/>
+      <stop offset="100%" stop-color="#d1c4e9"/>
+    </linearGradient>
+    <linearGradient id="controllerGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#5c6bc0"/>
+      <stop offset="100%" stop-color="#3949ab"/>
+    </linearGradient>
+    <filter id="shadow" x="-2%" y="-2%" width="104%" height="108%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.12"/>
+    </filter>
+    <filter id="shadowSm" x="-2%" y="-2%" width="104%" height="108%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-opacity="0.1"/>
+    </filter>
+    <marker id="arrowHead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#546e7a"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="780" height="560" rx="12" fill="#fafafa"/>
+
+  <!-- Title -->
+  <text x="390" y="36" text-anchor="middle" font-size="18" font-weight="700" fill="#263238">keda-scaling Trait &#x2014; What It Renders</text>
+  <text x="390" y="56" text-anchor="middle" font-size="11" fill="#78909c">Attach the trait on the control plane &#x00B7; the cluster-agent applies the result on the data plane</text>
+
+  <!-- ==================== CONTROL PLANE ==================== -->
+  <rect x="40" y="76" width="700" height="88" rx="8" fill="url(#controlPlane)" filter="url(#shadow)" stroke="#9fa8da" stroke-width="1"/>
+  <text x="52" y="94" font-size="9" font-weight="600" fill="#3949ab" letter-spacing="1">CONTROL PLANE</text>
+
+  <!-- Component card -->
+  <rect x="52" y="104" width="210" height="46" rx="5" fill="#fff" filter="url(#shadowSm)" stroke="#9fa8da" stroke-width="1"/>
+  <text x="64" y="122" font-size="9" font-weight="600" fill="#3949ab">Component</text>
+  <text x="64" y="137" font-size="8" fill="#546e7a">spec.traits: keda-scaling</text>
+
+  <!-- Controllers box -->
+  <rect x="330" y="104" width="220" height="46" rx="5" fill="url(#controllerGrad)" filter="url(#shadowSm)"/>
+  <text x="440" y="123" text-anchor="middle" font-size="11" font-weight="600" fill="#fff">OpenChoreo Controllers</text>
+  <text x="440" y="137" text-anchor="middle" font-size="8" fill="#c5cae9">render CEL templates + patches</text>
+
+  <!-- ClusterTrait card -->
+  <rect x="598" y="104" width="130" height="46" rx="5" fill="#fff" filter="url(#shadowSm)" stroke="#9fa8da" stroke-width="1"/>
+  <text x="610" y="122" font-size="9" font-weight="600" fill="#3949ab">ClusterTrait</text>
+  <text x="610" y="137" font-size="8" fill="#546e7a">keda-scaling</text>
+
+  <!-- Arrows within control plane -->
+  <line x1="262" y1="127" x2="327" y2="127" stroke="#546e7a" stroke-width="1.5" marker-end="url(#arrowHead)"/>
+  <line x1="598" y1="127" x2="553" y2="127" stroke="#546e7a" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrowHead)"/>
+
+  <!-- Arrow: Control Plane -> Data Plane -->
+  <line x1="440" y1="150" x2="440" y2="200" stroke="#546e7a" stroke-width="1.5" marker-end="url(#arrowHead)"/>
+  <text x="452" y="182" font-size="8" fill="#78909c">cluster-agent applies (outbound wss)</text>
+
+  <!-- ==================== DATA PLANE ==================== -->
+  <rect x="40" y="204" width="700" height="296" rx="8" fill="url(#dataPlane)" filter="url(#shadow)" stroke="#b39ddb" stroke-width="1"/>
+  <text x="52" y="222" font-size="9" font-weight="600" fill="#4527a0" letter-spacing="1">DATA PLANE</text>
+
+  <!-- Column divider -->
+  <line x1="496" y1="236" x2="496" y2="476" stroke="#b39ddb" stroke-width="1" stroke-dasharray="4,4"/>
+
+  <!-- ===== Left column: HTTP mode ===== -->
+  <text x="52" y="245" font-size="9" font-weight="600" fill="#00695c" letter-spacing="0.5">HTTP MODE &#x00B7; no trigger.type</text>
+
+  <rect x="52" y="254" width="210" height="44" rx="5" fill="#fff" filter="url(#shadowSm)" stroke="#26a69a" stroke-width="1"/>
+  <text x="64" y="271" font-size="9" font-weight="600" fill="#00897b">InterceptorRoute</text>
+  <text x="64" y="285" font-size="8" fill="#546e7a">Host &#x2192; upstream &#x00B7; request-rate metric</text>
+
+  <rect x="274" y="254" width="210" height="44" rx="5" fill="#fff" filter="url(#shadowSm)" stroke="#26a69a" stroke-width="1"/>
+  <text x="286" y="271" font-size="9" font-weight="600" fill="#00897b">ScaledObject</text>
+  <text x="286" y="285" font-size="8" fill="#546e7a">external-push &#x2190; interceptor scaler</text>
+
+  <rect x="52" y="308" width="210" height="44" rx="5" fill="#fff" filter="url(#shadowSm)" stroke="#7e57c2" stroke-width="1"/>
+  <text x="64" y="325" font-size="9" font-weight="600" fill="#5e35b1">Backend (kgateway)</text>
+  <text x="64" y="339" font-size="8" fill="#546e7a">static host &#x2192; interceptor proxy</text>
+
+  <rect x="274" y="308" width="210" height="44" rx="5" fill="#fff" filter="url(#shadowSm)" stroke="#26a69a" stroke-width="1"/>
+  <text x="286" y="325" font-size="9" font-weight="600" fill="#00897b">Service &#x2039;comp&#x203A;-keda-upstream</text>
+  <text x="286" y="339" font-size="8" fill="#546e7a">ClusterIP &#x2192; the component's pods</text>
+
+  <text x="52" y="376" font-size="8" font-weight="600" fill="#4527a0" letter-spacing="1">PATCHES</text>
+  <rect x="52" y="384" width="432" height="24" rx="4" fill="#e0f2f1" stroke="#80cbc4" stroke-width="0.5"/>
+  <text x="62" y="399" font-size="8" fill="#00695c">Deployment &#x2014; spec.replicas removed &#x00B7; KEDA owns the replica count</text>
+  <rect x="52" y="416" width="432" height="24" rx="4" fill="#e0f2f1" stroke="#80cbc4" stroke-width="0.5"/>
+  <text x="62" y="431" font-size="8" fill="#00695c">HTTPRoute &#x2014; backendRef &#x2192; Backend &#x00B7; adds 120s timeout + Host rewrite</text>
+  <rect x="52" y="448" width="432" height="24" rx="4" fill="#e0f2f1" stroke="#80cbc4" stroke-width="0.5"/>
+  <text x="62" y="463" font-size="8" fill="#00695c">Service &#x2014; type &#x2192; ExternalName &#x00B7; points at the interceptor multiport</text>
+
+  <!-- ===== Right column: Trigger mode ===== -->
+  <text x="512" y="245" font-size="9" font-weight="600" fill="#00695c" letter-spacing="0.5">TRIGGER MODE &#x00B7; trigger.type set</text>
+
+  <rect x="512" y="254" width="216" height="44" rx="5" fill="#fff" filter="url(#shadowSm)" stroke="#26a69a" stroke-width="1"/>
+  <text x="524" y="271" font-size="9" font-weight="600" fill="#00897b">ScaledObject</text>
+  <text x="524" y="285" font-size="8" fill="#546e7a">cron &#x00B7; kafka &#x00B7; rabbitmq &#x00B7; any scaler</text>
+
+  <text x="512" y="322" font-size="8" fill="#78909c">trigger.type and trigger.metadata pass</text>
+  <text x="512" y="335" font-size="8" fill="#78909c">straight through to the ScaledObject,</text>
+  <text x="512" y="348" font-size="8" fill="#78909c">so every KEDA scaler works.</text>
+
+  <text x="512" y="376" font-size="8" font-weight="600" fill="#4527a0" letter-spacing="1">PATCHES</text>
+  <rect x="512" y="384" width="216" height="24" rx="4" fill="#e0f2f1" stroke="#80cbc4" stroke-width="0.5"/>
+  <text x="522" y="399" font-size="8" fill="#00695c">Deployment &#x2014; spec.replicas removed</text>
+
+  <!-- Footer -->
+  <text x="390" y="536" text-anchor="middle" font-size="10" fill="#90a4ae">Attaching the trait activates it; detaching removes everything it rendered.</text>
+</svg>

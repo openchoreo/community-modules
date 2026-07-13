@@ -14,12 +14,22 @@ KEDA core and the KEDA HTTP Add-on come from their own upstream Helm charts (see
 
 ## How it works
 
-Attach the `keda-scaling` trait to a component and it renders the right KEDA objects; detach it and they're gone. Attaching is the on/off switch, there's no separate flag to set. The trait assumes every data plane it targets runs KEDA. Mixed fleets, where only some data planes run KEDA, are a separate design still being worked out; for now keep the data planes a component promotes across identical.
+Attach the `keda-scaling` trait to a component and it renders the right KEDA objects; detach it and they're gone. Attaching is the on/off switch, there's no separate flag to set. The trait definition lives on the control plane, and the cluster-agent applies whatever it renders onto the data plane:
+
+![What the keda-scaling trait renders in each mode](keda-overview.svg)
 
 | Mode | When | What KEDA creates |
 |------|------|-------------------|
 | **HTTP** | service or web-application with one external HTTP endpoint, no `trigger.type` | `InterceptorRoute` + companion `ScaledObject`; gateway and in-cluster traffic both wake the component |
 | **Trigger** | any component with `trigger.type` set | `ScaledObject` with that trigger (cron, kafka, rabbitmq, …) |
+
+### Waking a sleeping service
+
+In HTTP mode the component scales to zero when idle, and the first request wakes it, whichever way it arrives. Gateway traffic reaches the interceptor because the trait repoints the external `HTTPRoute` at it. In-cluster calls reach it because the component's Service becomes an ExternalName alias for the interceptor. Either way the interceptor holds the request while a pod starts, then forwards it:
+
+![How a request wakes a scaled-to-zero service](keda-http-flow.svg)
+
+The trait assumes every data plane it targets runs KEDA. Mixed fleets, where only some data planes run KEDA, are a separate design still being worked out; for now keep the data planes a component promotes across identical.
 
 You need OpenChoreo 1.2 or later. For the architecture, tuning, and extension details, see [CONFIGURATION.md](./CONFIGURATION.md).
 
@@ -105,7 +115,7 @@ WL_NS=$(kubectl get ns -o name | sed 's|namespace/||' | grep '^dp-default-defaul
 echo "$WL_NS"
 ```
 
-Watch it scale to zero after about 30 seconds of no traffic:
+Watch it scale to zero. This happens once no request has arrived for the full request-rate window (1 minute by default) plus the sample's `cooldownPeriod: 30`, so roughly 90 seconds after the last request:
 
 ```bash
 kubectl get deploy -n "$WL_NS" -w        # replicas -> 0, then Ctrl-C
@@ -196,30 +206,7 @@ The full parameter reference, tuning notes (request rate vs. concurrency), exten
 
 ## Composing with an API gateway trait
 
-`keda-scaling` can share a component with an edge API-management trait such as `api-management` (from the `gateway-wso2-api-platform` module), so one service gets both scale-to-zero and API management. Both traits repoint the external `HTTPRoute`, so two rules apply:
-
-- **Order matters.** List the API-gateway trait *before* `keda-scaling` in `spec.traits`. The gateway trait takes over the edge route, and `keda-scaling` then sees it no longer owns that route and skips its own edge-route patches, keeping just the in-cluster ExternalName wiring. Reverse the order and the gateway trait fails to render.
-- **The chain.** Traffic flows edge gateway -> API gateway (e.g. WSO2) -> the component's ExternalName Service -> the KEDA interceptor -> the pod, and the interceptor wakes the pod on the first request. Idle scale-to-zero and the API gateway's own policies (rate limiting, auth, headers) both keep working.
-
-```yaml
-traits:
-  - name: api-management        # edge trait first: it owns the external route
-    instanceName: my-api
-    kind: ClusterTrait
-    parameters:
-      rateLimit:
-        enabled: true
-        limits:
-          - requests: 100
-            duration: "1m"
-  - name: keda-scaling          # keda second: defers the edge route, keeps scale-to-zero
-    instanceName: keda-scaling
-    kind: ClusterTrait
-    parameters:
-      minReplicas: 0
-```
-
-See [CONFIGURATION.md](./CONFIGURATION.md) for how the deferral works and why the interceptor accepts the API gateway's upstream host.
+`keda-scaling` can share a component with an edge API-management trait such as `api-management` (from the `gateway-wso2-api-platform` module), so one service gets both scale-to-zero and API management. List the API-gateway trait *before* `keda-scaling` in `spec.traits`: the gateway trait takes over the external route, and keda keeps its in-cluster wake wiring, so scale-to-zero and the gateway's policies both keep working. The reverse order fails to render. How the deferral works is covered in [CONFIGURATION.md](./CONFIGURATION.md#composing-with-an-api-gateway-trait).
 
 ## Limitations
 

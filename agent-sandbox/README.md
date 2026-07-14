@@ -9,6 +9,26 @@ This module installs the [kubernetes-sigs/agent-sandbox](https://github.com/kube
 - Installs the upstream `kubernetes-sigs/agent-sandbox` controller and CRDs on the data plane cluster via a Helm pre-install hook
 - Grants the data plane `cluster-agent` service account permissions to manage `SandboxTemplate`, `SandboxClaim`, `SandboxWarmPool`, and `Sandbox` resources
 - Registers the `ai-agent` ClusterComponentType (`proxy/ai-agent`) that renders sandbox resources via the standard OpenChoreo pipeline; this module provides the upstream controller that fulfills them on the data plane
+- Bundles agent-specific ClusterComponentTypes with custom portal scaffolder templates (see below)
+
+## Bundled agent component types
+
+In addition to the generic `ai-agent` type, this module ships agent-specific
+`ClusterComponentType`s that reference a fixed, pre-built agent image and a
+tailored Backstage scaffolder template. Each such CCT carries a
+`scaffolder.openchoreo.dev/backstage-template-url` annotation; when the portal
+detects it, it fetches that custom template (which omits the irrelevant Build &
+Deploy steps) instead of auto-generating one.
+
+The `ClusterComponentType` ships in the Helm chart (`helm/templates/`) and is
+applied to the cluster on install. The scaffolder template lives under
+`agent-sandbox/templates/<name>.yaml` (outside the chart) and is served raw over
+HTTP via the annotation URL.
+
+| Component type | Template | Notes |
+|---|---|---|
+| `ai-agent-openclaw` | `templates/create-ai-agent-openclaw.yaml` | Multi-provider OpenClaw agent on a fixed image, always kata-isolated. Prompts for an LLM provider + model, injects the provider's API key env var, optionally sets a gateway token (`OPENCLAW_GATEWAY_TOKEN`) to gate access to the Control UI — falls back to a built-in default if left blank, and mounts `openclaw.json` (via `OPENCLAW_CONFIG_PATH`) to set the default model — usable without `openclaw setup`. |
+| `ai-agent-claude` | `templates/create-ai-agent-claude.yaml` | Claude Code CLI on the fixed [`docker/sandbox-templates:claude-code`](https://docs.docker.com/ai/sandboxes/agents/claude-code/) image, always kata-isolated. Prompts for an Anthropic model + API key; injects `ANTHROPIC_MODEL` and `ANTHROPIC_API_KEY`. Terminal-only — no HTTP endpoint; the pod runs `sleep infinity` and you attach with `kubectl exec -it <pod> -- claude`. |
 
 ## Upstream CRDs installed
 

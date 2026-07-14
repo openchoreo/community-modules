@@ -1,0 +1,210 @@
+apiVersion: openchoreo.dev/v1alpha1
+kind: ClusterComponentType
+metadata:
+  name: ai-agent-openclaw
+  annotations:
+    openchoreo.dev/display-name: "AI Agent — OpenClaw"
+    openchoreo.dev/description: "Multi-provider OpenClaw AI agent in a kernel-isolated sandbox."
+    # Portal fetches this custom scaffolder template instead of auto-generating Build & Deploy steps.
+    scaffolder.openchoreo.dev/backstage-template-url: "https://github.com/openchoreo/community-modules/blob/main/agent-sandbox/templates/create-ai-agent-openclaw.yaml"
+spec:
+  # Fixed image, kata isolation, egress allowed — no user-tunable parameters.
+  workloadType: proxy
+
+  validations:
+    - rule: >-
+        ${workload.endpoints.exists(name, ep, "external" in ep.visibility)
+          ? has(gateway.ingress) && has(gateway.ingress.external)
+          : true}
+      message: "Endpoints with 'external' visibility require gateway.ingress.external to be configured on the Environment or DataPlane."
+
+  environmentConfigs:
+    openAPIV3Schema:
+      type: object
+      $defs:
+        ResourceQuantity:
+          type: object
+          default: {}
+          properties:
+            cpu:
+              type: string
+              default: "500m"
+            memory:
+              type: string
+              default: "1Gi"
+        ResourceRequirements:
+          type: object
+          properties:
+            requests:
+              $ref: "#/$defs/ResourceQuantity"
+            limits:
+              $ref: "#/$defs/ResourceQuantity"
+          default: {}
+      properties:
+        resources:
+          $ref: "#/$defs/ResourceRequirements"
+        imagePullPolicy:
+          type: string
+          default: IfNotPresent
+          enum:
+            - Always
+            - IfNotPresent
+            - Never
+
+  resources:
+    # ── SandboxTemplate ──────────────────────────────────────────────────
+    - id: sandbox-template
+      template:
+        apiVersion: extensions.agents.x-k8s.io/v1alpha1
+        kind: SandboxTemplate
+        metadata:
+          name: ${metadata.name}
+          namespace: ${metadata.namespace}
+          labels: ${metadata.labels}
+          annotations:
+            openchoreo.dev/sandbox-policy: development
+        spec:
+          podTemplate:
+            metadata:
+              labels: ${metadata.podSelectors}
+            spec:
+              automountServiceAccountToken: false
+              runtimeClassName: kata-qemu
+              nodeSelector:
+                kata-enabled: "true"
+              tolerations:
+                - key: sandbox
+                  operator: Equal
+                  value: "true"
+                  effect: NoSchedule
+              containers:
+                - name: main
+                  image: ${workload.container.image}
+                  imagePullPolicy: ${environmentConfigs.imagePullPolicy}
+                  command: |
+                    ${has(workload.container.command) ? workload.container.command : oc_omit()}
+                  args: |
+                    ${has(workload.container.args) ? workload.container.args : oc_omit()}
+                  resources:
+                    requests:
+                      cpu: ${environmentConfigs.resources.requests.cpu}
+                      memory: ${environmentConfigs.resources.requests.memory}
+                    limits:
+                      cpu: ${environmentConfigs.resources.limits.cpu}
+                      memory: ${environmentConfigs.resources.limits.memory}
+                  env: ${dependencies.toContainerEnvs()}
+                  envFrom: ${configurations.toContainerEnvFrom()}
+                  volumeMounts: ${configurations.toContainerVolumeMounts()}
+              volumes: ${configurations.toVolumes()}
+
+    # ── SandboxClaim ─────────────────────────────────────────────────────
+    - id: sandbox-claim
+      template:
+        apiVersion: extensions.agents.x-k8s.io/v1alpha1
+        kind: SandboxClaim
+        metadata:
+          name: ${metadata.name}
+          namespace: ${metadata.namespace}
+          labels: ${metadata.labels}
+          annotations:
+            openchoreo.dev/sandbox-policy: development
+        spec:
+          sandboxTemplateRef:
+            name: ${metadata.name}
+
+    # ── Service (Control UI port, only when endpoints are defined) ────────
+    - id: service
+      includeWhen: ${size(workload.endpoints) > 0}
+      template:
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: ${metadata.componentName}
+          namespace: ${metadata.namespace}
+          labels: ${metadata.labels}
+        spec:
+          type: ClusterIP
+          selector: ${metadata.podSelectors}
+          ports: ${workload.toServicePorts()}
+
+    # ── HTTPRoute: routes the Control UI through the external gateway ─────
+    - id: httproute-external
+      forEach: '${workload.endpoints.transformMap(name, ep, "external" in ep.visibility && ep.type in ["HTTP", "GraphQL", "Websocket"], ep)}'
+      var: endpoint
+      template:
+        apiVersion: gateway.networking.k8s.io/v1
+        kind: HTTPRoute
+        metadata:
+          name: ${oc_generate_name(metadata.componentName, endpoint.key)}
+          namespace: ${metadata.namespace}
+          labels: '${oc_merge(metadata.labels, {"openchoreo.dev/endpoint-name": endpoint.key, "openchoreo.dev/endpoint-visibility": "external"})}'
+        spec:
+          parentRefs:
+            - name: ${gateway.ingress.external.name}
+              namespace: ${gateway.ingress.external.namespace}
+          hostnames: |
+            ${[gateway.ingress.external.?http, gateway.ingress.external.?https]
+              .filter(g, g.hasValue()).map(g, g.value().host).distinct()
+              .map(h, metadata.componentName + "-" + metadata.environmentName + "-" + metadata.componentNamespace + "." + h)}
+          rules:
+          - matches:
+            - path:
+                type: PathPrefix
+                value: /
+            backendRefs:
+            - name: ${metadata.componentName}
+              port: ${endpoint.value.port}
+
+    # ── ConfigMap: plain env vars from the Configuration API ─────────────
+    - id: env-config
+      forEach: ${configurations.toConfigEnvsByContainer()}
+      var: envConfig
+      template:
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: ${envConfig.resourceName}
+          namespace: ${metadata.namespace}
+        data: |
+          ${envConfig.envs.transformMapEntry(index, env, {env.name: env.value})}
+
+    # ── ConfigMap: file mounts, e.g. ~/.openclaw/openclaw.json ───────────
+    - id: file-config
+      forEach: ${configurations.toConfigFileList()}
+      var: config
+      template:
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: ${config.resourceName}
+          namespace: ${metadata.namespace}
+        data:
+          ${config.name}: |
+            ${config.value}
+
+    # ── ExternalSecret: LLM provider API keys injected as env vars ───────
+    - id: secret-env-external
+      forEach: ${configurations.toSecretEnvsByContainer()}
+      var: secretEnv
+      template:
+        apiVersion: external-secrets.io/v1
+        kind: ExternalSecret
+        metadata:
+          name: ${secretEnv.resourceName}
+          namespace: ${metadata.namespace}
+        spec:
+          refreshInterval: 15s
+          secretStoreRef:
+            name: ${dataplane.secretStore}
+            kind: ClusterSecretStore
+          target:
+            name: ${secretEnv.resourceName}
+            creationPolicy: Owner
+          data: |
+            ${secretEnv.envs.map(secret, {
+              "secretKey": secret.name,
+              "remoteRef": {
+                "key": secret.remoteRef.key,
+                ?"property": secret.remoteRef.?property
+              }
+            })}

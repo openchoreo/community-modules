@@ -1,8 +1,6 @@
 // Copyright 2026 The OpenChoreo Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package webhook parses GCP Cloud Monitoring notification payloads into the
-// OpenChoreo identity + value the Observer needs.
 package webhook
 
 import (
@@ -14,18 +12,11 @@ import (
 	"time"
 )
 
-// The OpenChoreo identity user-labels stamped on managed alert policies. Cloud
-// Monitoring surfaces a policy's user_labels on the webhook as
-// incident.policy_user_labels. These keys mirror alert_translator.go.
 const (
 	labelNamespace = "openchoreo_namespace"
 	labelRuleName  = "openchoreo_rule_name"
 )
 
-// CloudMonitoringWebhook is the JSON body Cloud Monitoring POSTs to a webhook
-// notification channel. Only the fields the adapter needs are modelled.
-//
-// See https://cloud.google.com/monitoring/support/notification-options#webhooks
 type CloudMonitoringWebhook struct {
 	Incident *Incident `json:"incident"`
 	Version  string    `json:"version"`
@@ -38,10 +29,8 @@ type Incident struct {
 	StartedAt        int64             `json:"started_at"`
 	EndedAt          int64             `json:"ended_at"`
 	PolicyUserLabels map[string]string `json:"policy_user_labels"`
-	// ObservedValue is a stringified number in Cloud Monitoring payloads
-	// (e.g. "0.812"); Metric.Value is not always present.
-	ObservedValue string `json:"observed_value"`
-	Metric        struct {
+	ObservedValue    string            `json:"observed_value"`
+	Metric           struct {
 		Type string `json:"type"`
 	} `json:"metric"`
 }

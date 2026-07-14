@@ -55,10 +55,7 @@ func (r realAlertPolicyAPI) ListAlertPolicies(ctx context.Context, req *monitori
 }
 
 var (
-	// ErrRuleNotFound is returned when no managed policy matches a rule.
-	ErrRuleNotFound = errors.New("alert rule not found")
-	// ErrRuleAlreadyExists is returned when CreateRule would clobber an
-	// existing managed policy for the same (namespace, rule name).
+	ErrRuleNotFound      = errors.New("alert rule not found")
 	ErrRuleAlreadyExists = errors.New("alert rule already exists")
 )
 
@@ -161,9 +158,7 @@ func (c *AlertClient) Close() error {
 	return firstErr
 }
 
-// CreateRule creates a new managed alert policy. It refuses to overwrite an
-// existing rule (the Observer uses UpdateRule for that), so it guards with a
-// hash-label lookup first.
+// CreateRule creates a new managed alert policy.
 func (c *AlertClient) CreateRule(ctx context.Context, in RuleInput) (*RuleResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()

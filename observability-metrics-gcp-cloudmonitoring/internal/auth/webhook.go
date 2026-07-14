@@ -1,8 +1,6 @@
 // Copyright 2026 The OpenChoreo Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package auth provides the shared-secret middleware guarding the publicly
-// exposed alert webhook path.
 package auth
 
 import (
@@ -17,13 +15,6 @@ const (
 	webhookPath       = "/api/v1alpha1/alerts/webhook"
 )
 
-// WebhookAuthMiddleware checks the shared-secret token on the webhook path.
-// When `enabled` is false the middleware is a passthrough. When enabled and
-// the secret is empty, all webhook calls are rejected.
-//
-// The webhook path is exposed publicly (a GCP Cloud Monitoring notification
-// channel POSTs to it from Google's infrastructure), so this middleware is the
-// only thing preventing arbitrary callers from injecting fake alerts.
 func WebhookAuthMiddleware(secret string, enabled bool, logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

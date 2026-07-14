@@ -16,17 +16,12 @@ import (
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
-// ErrValidation wraps input errors that must surface as HTTP 400 rather than
-// 500. Handlers test with errors.Is(err, ErrValidation).
 var ErrValidation = errors.New("validation error")
 
 func validationErrf(format string, args ...any) error {
 	return fmt.Errorf("%w: %s", ErrValidation, fmt.Sprintf(format, args...))
 }
 
-// User-label keys stamped on every managed alert policy. These identify a
-// policy as OpenChoreo-managed and carry the (namespace, rule name) so the
-// policy can be found again without relying on the (non-unique) display name.
 const (
 	policyLabelManagedBy      = "managed_by"
 	policyLabelManagedByValue = "openchoreo"

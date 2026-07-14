@@ -34,9 +34,6 @@ type metricSpec struct {
 // resourceMetricSpecs lists the GKE system metrics backing the resource
 // series. All are resource.type k8s_container and are populated by GKE's
 // built-in metrics agent — nothing extra has to be deployed in the cluster.
-//
-// memory/used_bytes carries a memory_type label; "non-evictable" approximates
-// the working set (matching container_memory_working_set_bytes elsewhere).
 var resourceMetricSpecs = []metricSpec{
 	{key: "cpuUsage", metricType: "kubernetes.io/container/cpu/core_usage_time", aligner: monitoringpb.Aggregation_ALIGN_RATE},
 	{key: "cpuRequests", metricType: "kubernetes.io/container/cpu/request_cores", aligner: monitoringpb.Aggregation_ALIGN_MEAN},
@@ -54,15 +51,6 @@ const minAlignmentPeriod = time.Minute
 // spec scoped to the OpenChoreo identity labels. Scoping rides on
 // metadata.user_labels, which Cloud Monitoring populates from the pod labels
 // of k8s_container resources.
-//
-// Scoping is by the three UID labels (component/project/environment) ONLY.
-// The rule's `namespace` is deliberately NOT a metric filter: the control
-// plane sends the data-plane runtime namespace (e.g.
-// "dp-default-<project>-<env>-...") as the rule namespace, whereas the pod's
-// `openchoreo.dev/namespace` metadata label carries the *control-plane*
-// namespace (e.g. "default"), so filtering on it matches zero series.
-// Namespace is retained only as policy identity/dedup metadata (see
-// policyUserLabels), never in the metric-matching filter.
 func BuildResourceMetricsFilter(spec metricSpec, p MetricsQueryParams) string {
 	clauses := []string{
 		fmt.Sprintf("metric.type = %s", quote(spec.metricType)),

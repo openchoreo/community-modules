@@ -33,9 +33,6 @@ func main() {
 		slog.Duration("queryTimeout", cfg.QueryTimeout),
 	)
 
-	// Each bootstrap step gets its own timeout rather than sharing one
-	// cumulative deadline, so a slow early call (Workload Identity token
-	// exchange, a cold GCP API) can't starve later steps.
 	bootstrap := func() (context.Context, context.CancelFunc) {
 		return context.WithTimeout(context.Background(), 30*time.Second)
 	}

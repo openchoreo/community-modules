@@ -42,9 +42,25 @@ jobs:
         with:
           go-version: ${{ steps.go-version.outputs.version }}
 
-      - name: Run unit tests for all modules
+      - name: Run unit tests for changed modules
         run: |
           set -euo pipefail
+
+          EVENT_NAME="${{ github.event_name }}"
+          BEFORE_SHA="${{ github.event.before }}"
+
+          # Determine changed files
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            CHANGED_FILES=$(git ls-files)
+          elif [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ]; then
+            CHANGED_FILES=$(git diff --name-only "$BEFORE_SHA" HEAD)
+          else
+            CHANGED_FILES=$(git ls-files)
+          fi
+
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+          echo ""
 
           TEST_COUNT=0
           FAILED=false
@@ -54,6 +70,11 @@ jobs:
 
             # Skip if this module has no module.yaml
             if [ ! -f "${module}/module.yaml" ]; then
+              continue
+            fi
+
+            # Check if any files in this module were changed
+            if ! echo "$CHANGED_FILES" | grep -q "^${module}/"; then
               continue
             fi
 
@@ -83,7 +104,7 @@ jobs:
 
           echo ""
           if [ "$TEST_COUNT" -eq 0 ]; then
-            echo "No modules with unit tests found."
+            echo "No modules with unit tests found for changed files."
           else
             echo "Successfully tested ${TEST_COUNT} module(s). ✓"
           fi

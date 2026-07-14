@@ -47,6 +47,7 @@ spec:
       required:
         - llmProvider
         - llmApiKey
+        - gatewayToken
       properties:
         llmProvider:
           title: LLM Provider
@@ -71,7 +72,7 @@ spec:
         gatewayToken:
           title: Gateway Token
           type: string
-          description: Token used to authenticate access to OpenClaw's Control UI. Leave blank to use the built-in default.
+          description: Token used to authenticate access to OpenClaw's Control UI.
           ui:field: Secret
       # Each branch sets the hidden provider key env var (Gemini's is GEMINI_API_KEY).
       dependencies:
@@ -169,7 +170,7 @@ spec:
             - key: ${{ parameters.apiKeyEnvVar }}
               value: ${{ secrets.llmApiKey }}
             - key: OPENCLAW_GATEWAY_TOKEN
-              value: ${{ secrets.gatewayToken | default('openclaw-changeme', true) }}
+              value: ${{ secrets.gatewayToken }}
             # Read-only mounted config; don't mount over ~/.openclaw runtime state or startup breaks.
             - key: OPENCLAW_CONFIG_PATH
               value: /etc/openclaw/openclaw.json

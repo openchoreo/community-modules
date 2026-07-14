@@ -27,7 +27,7 @@ HTTP via the annotation URL.
 
 | Component type | Template | Notes |
 |---|---|---|
-| `ai-agent-openclaw` | `templates/create-ai-agent-openclaw.yaml` | Multi-provider OpenClaw agent on a fixed image, always kata-isolated. Prompts for an LLM provider + model, injects the provider's API key env var, optionally sets a gateway token (`OPENCLAW_GATEWAY_TOKEN`) to gate access to the Control UI — falls back to a built-in default if left blank, and mounts `openclaw.json` (via `OPENCLAW_CONFIG_PATH`) to set the default model — usable without `openclaw setup`. |
+| `ai-agent-openclaw` | `templates/create-ai-agent-openclaw.yaml` | Multi-provider OpenClaw agent on a fixed image, always kata-isolated. Prompts for an LLM provider + model, injects the provider's API key env var, requires a gateway token (`OPENCLAW_GATEWAY_TOKEN`) to gate access to the Control UI, and mounts `openclaw.json` (via `OPENCLAW_CONFIG_PATH`) to set the default model — usable without `openclaw setup`. |
 | `ai-agent-claude` | `templates/create-ai-agent-claude.yaml` | Claude Code CLI on the fixed [`docker/sandbox-templates:claude-code`](https://docs.docker.com/ai/sandboxes/agents/claude-code/) image, always kata-isolated. Prompts for an Anthropic model + API key; injects `ANTHROPIC_MODEL` and `ANTHROPIC_API_KEY`. Terminal-only — no HTTP endpoint; the pod runs `sleep infinity` and you attach with `kubectl exec -it <pod> -- claude`. |
 
 ## Upstream CRDs installed

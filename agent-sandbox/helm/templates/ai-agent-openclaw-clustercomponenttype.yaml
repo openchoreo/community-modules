@@ -6,7 +6,7 @@ metadata:
     openchoreo.dev/display-name: "AI Agent — OpenClaw"
     openchoreo.dev/description: "Multi-provider OpenClaw AI agent in a kernel-isolated sandbox."
     # Portal fetches this custom scaffolder template instead of auto-generating Build & Deploy steps.
-    scaffolder.openchoreo.dev/backstage-template-url: "https://github.com/openchoreo/community-modules/blob/main/agent-sandbox/templates/create-ai-agent-openclaw.yaml"
+    scaffolder.openchoreo.dev/backstage-template-url: "https://raw.githubusercontent.com/openchoreo/community-modules/main/agent-sandbox/templates/create-ai-agent-openclaw.yaml"
 spec:
   # Fixed image, kata isolation, egress allowed — no user-tunable parameters.
   workloadType: proxy

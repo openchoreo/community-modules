@@ -41,8 +41,7 @@ The chart deploys:
 1. A Go **Cloud Monitoring Adapter** Deployment that implements the OpenChoreo
    Metrics Adapter API.
 2. A Service, ServiceAccount (with a Workload Identity annotation), ConfigMap,
-   and — optionally — a webhook Secret, a Gateway API HTTPRoute, and a
-   NetworkPolicy.
+   and — optionally — a webhook Secret and a Gateway API HTTPRoute.
 
 Metrics are read from `k8s_container` time series. Cloud Monitoring attaches
 the OpenChoreo pod labels as **system metadata**, filterable as
@@ -483,11 +482,6 @@ rule created out-of-band rather than through the CR).
 | `adapter.webhookRoute.parentRef.namespace` | `""` | Gateway namespace; defaults to the release namespace. |
 | `adapter.webhookRoute.parentRef.sectionName` | `""` | Optional Gateway listener name. |
 | `adapter.webhookRoute.hostnames` | `[]` | Optional hostnames matched at the route level. |
-| `adapter.networkPolicy.enabled` | `false` | Render a NetworkPolicy restricting ingress to the adapter Pod. |
-| `adapter.networkPolicy.observerNamespaceLabels` | `{kubernetes.io/metadata.name: openchoreo-observability-plane}` | Namespace labels selecting the Observer's namespace. |
-| `adapter.networkPolicy.observerPodLabels` | `{}` | Pod labels selecting the Observer Pod. Required when the policy is enabled. |
-| `adapter.networkPolicy.gatewayNamespaceLabels` | `{}` | Namespace labels selecting the Gateway data-plane that proxies the webhook. |
-| `adapter.networkPolicy.allowProbeIPBlock` | `""` | Optional CIDR allowed through ingress for liveness/readiness probes. |
 | `adapter.resources` | `200m/256Mi limits, 50m/128Mi requests` | Standard resource requests/limits. |
 
 ## Building and testing

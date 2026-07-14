@@ -80,18 +80,6 @@ adapter:
       sectionName: ""
     hostnames: []
 
-  networkPolicy:
-    enabled: false
-    observerNamespaceLabels:
-      kubernetes.io/metadata.name: openchoreo-observability-plane
-    observerPodLabels: {}
-    # Namespace labels for the Gateway data-plane pods that proxy the webhook
-    # to the adapter. Default empty: when the route is enabled, set this to
-    # match your Gateway controller's data-plane namespace
-    # (e.g. `kubernetes.io/metadata.name: openchoreo-data-plane`).
-    gatewayNamespaceLabels: {}
-    allowProbeIPBlock: ""
-
   resources:
     limits:
       cpu: 200m

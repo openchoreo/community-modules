@@ -66,14 +66,15 @@ adapter:
       name: ""
       key: token
 
-  # Optional Gateway API HTTPRoute that exposes only the public webhook path
-  # via an existing Gateway. A GCP notification channel POSTs firing alerts to
-  # it from outside the cluster. GCP silently drops webhooks to self-signed
+  # Gateway API HTTPRoute that exposes only the public webhook path via an
+  # existing Gateway. A GCP notification channel POSTs firing alerts to it
+  # from outside the cluster. GCP silently drops webhooks to self-signed
   # TLS endpoints, so route via a plain-HTTP listener or a listener with a
   # publicly-trusted certificate. Auth is enforced by the adapter, so exposing
-  # only this path is safe.
+  # only this path is safe. Set enabled=false if the webhook is reachable some
+  # other way (or alerting is not used).
   webhookRoute:
-    enabled: false
+    enabled: true
     parentRef:
       name: gateway-default
       namespace: ""

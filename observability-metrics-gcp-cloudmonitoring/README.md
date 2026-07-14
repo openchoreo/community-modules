@@ -69,25 +69,6 @@ the *control-plane* namespace, so filtering on it would match zero series.
 | `POST /api/v1alpha1/alerts/webhook` | Receives a fired-alert payload from the notification channel and forwards a normalised alert to the Observer. |
 | `GET /healthz` | Readiness/liveness check. |
 
-### How a fired alert flows back into OpenChoreo
-
-Cloud Monitoring alert policies cannot call OpenChoreo controllers directly.
-The path is:
-
-```
-GKE system metrics (k8s_container CPU/memory)
-  → alert policy: usage÷limit ratio over the window, compare to threshold
-  → GCP notification channel (webhook_basicauth) POSTs the incident
-  → adapter /api/v1alpha1/alerts/webhook (Basic-auth password checked)
-  → adapter forwards to the Observer's INTERNAL endpoint (:8081)
-  → Observer correlates the ObservabilityAlertRule and dispatches the
-    user-facing notification (email / Slack / webhook)
-```
-
-The notification channel is pure transport back into the cluster; the
-user-facing delivery is configured separately via an
-`ObservabilityAlertsNotificationChannel` resource.
-
 ## Choose a deployment topology
 
 | Topology | Install location | Purpose | Required Helm values |
@@ -110,13 +91,6 @@ Observer needs to query metrics and manage rules.
 
 See the [OpenChoreo documentation](https://openchoreo.dev/docs) for the base
 installation steps.
-
-### Local tooling
-
-- `go` (1.26+)
-- `gcloud` CLI, authenticated (`gcloud auth login`) with the target project set
-  (`gcloud config set project <project>`)
-- `helm` and `kubectl`
 
 ### GCP prerequisites
 
@@ -255,14 +229,17 @@ the Observer expects instead.
 ### Expose the webhook through a Gateway
 
 A GCP notification channel POSTs firing alerts from outside the cluster, so the
-webhook path must be reachable. To carve it out through an existing Gateway API
-Gateway:
+webhook path must be reachable. The chart renders an HTTPRoute for it by
+default, attached to the `gateway-default` Gateway; point it at your Gateway
+and hostname:
 
 ```bash
---set adapter.webhookRoute.enabled=true \
 --set adapter.webhookRoute.parentRef.name=gateway-default \
 --set adapter.webhookRoute.hostnames[0]=metrics-adapter.<your-domain>
 ```
+
+Set `adapter.webhookRoute.enabled=false` if the webhook is exposed some other
+way or alerting is not used.
 
 The chart guards against exposing the webhook without auth: enabling
 `webhookRoute` while `webhookAuth.enabled=false` is rejected by
@@ -477,7 +454,7 @@ rule created out-of-band rather than through the CR).
 | `adapter.webhookAuth.sharedSecret` | `""` | Inline secret value. Chart creates a Secret; min 16 characters. |
 | `adapter.webhookAuth.sharedSecretRef.name` | `""` | Reference an existing Secret instead of supplying the value inline. |
 | `adapter.webhookAuth.sharedSecretRef.key` | `token` | Key inside the referenced Secret. |
-| `adapter.webhookRoute.enabled` | `false` | Render a Gateway API HTTPRoute exposing only `/api/v1alpha1/alerts/webhook`. |
+| `adapter.webhookRoute.enabled` | `true` | Render a Gateway API HTTPRoute exposing only `/api/v1alpha1/alerts/webhook`. |
 | `adapter.webhookRoute.parentRef.name` | `gateway-default` | Gateway to attach to. |
 | `adapter.webhookRoute.parentRef.namespace` | `""` | Gateway namespace; defaults to the release namespace. |
 | `adapter.webhookRoute.parentRef.sectionName` | `""` | Optional Gateway listener name. |

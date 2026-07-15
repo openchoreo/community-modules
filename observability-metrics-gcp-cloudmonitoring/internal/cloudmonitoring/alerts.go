@@ -229,21 +229,20 @@ func (c *AlertClient) FindRuleByName(ctx context.Context, ruleName string) (*Rul
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 
+	want := sanitizeLabelValue(ruleName)
 	policies, err := c.api.ListAlertPolicies(ctx, &monitoringpb.ListAlertPoliciesRequest{
 		Name:   "projects/" + c.projectID,
-		Filter: managedFilter(),
+		Filter: fmt.Sprintf(`%s AND user_labels.%q="%s"`, managedFilter(), policyLabelRuleName, want),
 	})
 	if err != nil {
 		return nil, "", fmt.Errorf("list alert policies: %w", err)
 	}
-	want := sanitizeLabelValue(ruleName)
-	for _, p := range policies {
-		if p.GetUserLabels()[policyLabelRuleName] == want {
-			ns := p.GetUserLabels()[policyLabelNamespace]
-			return ruleResultFrom(p, ruleName), ns, nil
-		}
+	if len(policies) == 0 {
+		return nil, "", ErrRuleNotFound
 	}
-	return nil, "", ErrRuleNotFound
+	p := policies[0]
+	ns := p.GetUserLabels()[policyLabelNamespace]
+	return ruleResultFrom(p, ruleName), ns, nil
 }
 
 // DeleteRule removes the managed policy for a rule identified by name.

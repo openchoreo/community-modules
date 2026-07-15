@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -73,49 +74,41 @@ func (f *fakeAlertAPI) ListAlertPolicies(_ context.Context, req *monitoringpb.Li
 	if f.listErr != nil {
 		return nil, f.listErr
 	}
-	// The fake honours only the hash-label sub-filter (the piece CreateRule /
-	// findByHash rely on); managedFilter() is assumed to match all our
-	// policies since every one is created via the translator.
+	// The fake honours the hash- and rule-name-label sub-filters (the pieces
+	// findByHash / FindRuleByName rely on); managedFilter() is assumed to
+	// match all our policies since every one is created via the translator.
 	var out []*monitoringpb.AlertPolicy
 	for _, p := range f.policies {
 		out = append(out, p)
 	}
-	// Emulate server-side filter by rule hash when present.
-	if hash := extractHashFromFilter(req.GetFilter()); hash != "" {
-		var filtered []*monitoringpb.AlertPolicy
-		for _, p := range out {
-			if p.GetUserLabels()[policyLabelRuleHash] == hash {
-				filtered = append(filtered, p)
+	for _, label := range []string{policyLabelRuleHash, policyLabelRuleName} {
+		if want := extractLabelFromFilter(req.GetFilter(), label); want != "" {
+			var filtered []*monitoringpb.AlertPolicy
+			for _, p := range out {
+				if p.GetUserLabels()[label] == want {
+					filtered = append(filtered, p)
+				}
 			}
+			return filtered, nil
 		}
-		return filtered, nil
 	}
 	return out, nil
 }
 
-// extractHashFromFilter pulls the rule-hash value out of a filter string of the
-// form ... user_labels."openchoreo_rule_hash"="<hash>".
-func extractHashFromFilter(filter string) string {
-	marker := policyLabelRuleHash + `"="`
-	i := indexOf(filter, marker)
+// extractLabelFromFilter pulls a user-label value out of a filter string of
+// the form ... user_labels."<label>"="<value>".
+func extractLabelFromFilter(filter, label string) string {
+	marker := label + `"="`
+	i := strings.Index(filter, marker)
 	if i < 0 {
 		return ""
 	}
 	rest := filter[i+len(marker):]
-	j := indexOf(rest, `"`)
+	j := strings.Index(rest, `"`)
 	if j < 0 {
 		return rest
 	}
 	return rest[:j]
-}
-
-func indexOf(s, sub string) int {
-	for i := 0; i+len(sub) <= len(s); i++ {
-		if s[i:i+len(sub)] == sub {
-			return i
-		}
-	}
-	return -1
 }
 
 func newTestAlertClient(api alertPolicyAPI) *AlertClient {

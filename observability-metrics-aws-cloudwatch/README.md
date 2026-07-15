@@ -32,7 +32,7 @@ This module has two main responsibilities:
 
 In the default single-cluster topology, the chart deploys two workloads:
 
-1. An **OpenTelemetry collector** DaemonSet that scrapes pod CPU and memory usage from kubelet, scrapes pod requests and limits from `kube-state-metrics`, scrapes Cilium **Hubble** L7 HTTP metrics for the HTTP RED and runtime-topology paths, enriches series with OpenChoreo pod labels, and publishes metrics to CloudWatch through the AWS EMF exporter.
+1. An **OpenTelemetry collector** DaemonSet that collects resource and Cilium Hubble HTTP metrics, associates them with OpenChoreo components, and publishes them to CloudWatch.
 2. A Go **CloudWatch Metrics Adapter** Deployment that implements the OpenChoreo Metrics Adapter API.
 
 The OpenTelemetry collector writes Embedded Metric Format events to this CloudWatch Logs log group:
@@ -59,8 +59,8 @@ All participating clusters write to the same configured EMF log group and metric
 
 | Endpoint | Purpose |
 | --- | --- |
-| `POST /api/v1/metrics/query` | For `metric: resource`, runs a CloudWatch `GetMetricData` request. For `metric: http`, runs a CloudWatch Logs Insights query over enriched Hubble EMF events and returns per-component HTTP RED time series, including latency percentiles reconstructed from preserved histogram buckets. |
-| `POST /api/v1alpha1/metrics/runtime-topology` | Runs a CloudWatch Logs Insights query over enriched Hubble EMF events and returns observed component-to-component HTTP edges. |
+| `POST /api/v1/metrics/query` | Returns resource metrics or per-component HTTP RED metrics. |
+| `POST /api/v1alpha1/metrics/runtime-topology` | Returns observed component-to-component HTTP traffic edges. |
 | `POST /api/v1alpha1/alerts/rules` | Creates a CloudWatch metric math alarm evaluating `(usage / limit) * 100` against the threshold percentage. |
 | `GET /api/v1alpha1/alerts/rules/{ruleName}` | Gets the alert rule identified by `{ruleName}`. |
 | `PUT /api/v1alpha1/alerts/rules/{ruleName}` | Updates the alert rule identified by `{ruleName}`. |
@@ -72,23 +72,14 @@ All participating clusters write to the same configured EMF log group and metric
 ### HTTP RED metrics (Cilium Hubble)
 
 `POST /api/v1/metrics/query` with `metric: http` returns per-component HTTP RED
-time series, powered by the **same enriched Hubble EMF events** as the
-runtime-topology path (no separate ingest). The query scopes to the **destination**
-component (`reporter="server"`, `DestinationComponentUID`) and buckets the result
-by the requested `step`:
+time series from Cilium Hubble traffic data:
 
 - `requestCount`, `successfulRequestCount` (1xx/2xx/3xx), and
-  `unsuccessfulRequestCount` (4xx/5xx) are returned as **per-second rates** over
-  each step bucket, matching the Prometheus reference module.
-- `meanLatency` is in seconds (`duration_sum / duration_count`).
-- `latencyP50` / `latencyP90` / `latencyP99` are reconstructed per step bucket
-  from the preserved histogram `le` buckets (see "Latency percentiles" below),
-  matching the Prometheus reference module's `histogram_quantile()`. A bucket with
-  no duration samples yields no percentile point.
-
-> **Note on `step`.** CloudWatch Logs Insights `bin()` only honors minute/hour
-> units, so the adapter rounds `step` up to the nearest whole minute (minimum one
-> minute) when bucketing.
+  `unsuccessfulRequestCount` (4xx/5xx) are returned as per-second rates.
+- `meanLatency` is returned in seconds.
+- `latencyP50`, `latencyP90`, and `latencyP99` are returned when Hubble latency
+  histogram data is available.
+- The minimum supported `step` is one minute. Sub-minute values are rounded up.
 
 ### Runtime topology (Cilium Hubble)
 
@@ -96,58 +87,30 @@ The `POST /api/v1alpha1/metrics/runtime-topology` endpoint returns the live HTTP
 traffic graph as component-to-component edges. It is powered by **Cilium Hubble**
 L7 metrics rather than the CloudWatch metric path:
 
-- The collector scrapes the headless `hubble-metrics` service (port `9965`) and
-  runs a **dual-sided enrichment** pass that maps both the source and destination
-  pod IPs to their OpenChoreo `component-uid` / `project-uid` / `environment-uid`
-  labels, stamping `Source*` and `Destination*` fields onto each series.
-- Enriched series are written as **EMF log events** to `/aws/openchoreo/metrics`
-  with an empty dimension set, so the high-cardinality source×destination edge
-  pairs are **not** promoted to CloudWatch metrics. The adapter answers topology
-  with a CloudWatch Logs Insights query over these log fields.
-- Counters are converted to per-interval deltas in the collector, so the adapter
-  aggregates them with `sum()` over the requested window.
-
-> **Scoping note.** Results are isolated by the required `projectUid` and
-> `environmentUid` (plus the optional `componentUid`) — the globally-unique UIDs
-> the collector enriches onto each edge. The request's `namespace` is the
-> OpenChoreo namespace (e.g. `default`) and is **not** applied as a filter on
-> Hubble's raw dataplane namespace (e.g. `dp-default-default-development-<hash>`),
-> because those never match. This mirrors how the Prometheus reference module
-> keys on the `openchoreo.dev/*` UID labels. The same applies to the `metric: http`
-> path, which scopes by `DestinationComponentUID`.
+- The collector enriches Hubble traffic data with OpenChoreo component identity
+  and writes it to CloudWatch EMF logs.
+- The adapter queries those logs with CloudWatch Logs Insights to return
+  component-to-component edges and HTTP RED time series.
 
 Prerequisites:
 
 - Cilium installed with Hubble metrics enabled, including the **`httpV2`** metric
-  and a `labelsContext` that exposes `source_namespace`, `source_pod`,
-  `destination_namespace`, and `destination_pod`.
+  and source/destination namespace and IP labels.
 - The workloads whose traffic should appear must have **Layer-7 visibility**
   (OpenChoreo components get this from their generated `CiliumNetworkPolicy`).
   Traffic between pods without L7 visibility is not captured.
 
 Reported per edge: `requestCount`, `unsuccessfulRequestCount` (4xx/5xx),
-`meanLatency`, and latency `p50`/`p90`/`p99` (see "Latency percentiles" below).
-The first cut is scoped to component-to-component edges (gateway→component,
-component→external, and per-node aggregates are future work), matching the
-Prometheus module.
+`meanLatency`, and latency `p50`/`p90`/`p99` when latency histogram data is
+available. The current scope is component-to-component edges. Gateway,
+external-service, and per-node aggregates are not included.
 
 #### Latency percentiles
 
-The awsemf exporter collapses an assembled explicit-bucket histogram to a
-`{Count, Sum}` statistic set and discards the bucket distribution, so percentiles
-cannot be derived from the primary duration metric. To recover them, the collector
-runs a **second Hubble scrape** (`prometheus/hubble-buckets`) that keeps only the
-`hubble_http_request_duration_seconds_bucket` series and renames it to
-`hubble_http_request_duration_seconds_lebucket` so the OpenTelemetry prometheus
-receiver does **not** fold it back into the histogram family. That standalone
-series (a cumulative counter carrying the `le` label) is converted to a cumulative
-`Sum`, delta-converted, dual-side enriched, and written to EMF alongside the other
-Hubble fields. The adapter then runs a second Logs Insights query that sums the
-per-`le` deltas over the window and reconstructs `histogram_quantile()` exactly as
-the Prometheus reference module does — for both runtime topology (per edge) and
-`metric: http` (per step bucket). Percentile accuracy is bounded by Hubble's
-histogram bucket resolution. The primary scrape is untouched, so request/error/mean
-are unaffected.
+Latency percentiles are derived from Hubble HTTP latency histograms for both
+runtime topology and `metric: http`. Percentile accuracy is limited by Hubble's
+histogram bucket resolution, so very fast requests may appear rounded to the
+nearest available bucket.
 
 ## Choose a deployment topology
 
@@ -1286,7 +1249,7 @@ kubectl -n "$NS" logs -l job-name=metrics-aws-cloudwatch-retention --tail=100
 | `opentelemetry-collector.fullnameOverride` | `metrics-opentelemetry-collector` | Overrides the subchart resource name prefix. |
 | `opentelemetry-collector.enabled` | `true` | Enables the OpenTelemetry collector subchart. Set to `false` on an observability-plane-only install. |
 | `opentelemetry-collector.mode` | `daemonset` | Runs one collector per node. |
-| `opentelemetry-collector.image.repository` | `otel/opentelemetry-collector-contrib` | Collector image repository. The contrib image includes kubeletstats and awsemfexporter. |
+| `opentelemetry-collector.image.repository` | `otel/opentelemetry-collector-contrib` | Collector image repository. The contrib image includes the receivers and exporters required by this module. |
 | `opentelemetry-collector.image.tag` | `0.149.0` | Collector image tag. |
 | `opentelemetry-collector.serviceAccount.annotations` | `{}` | ServiceAccount annotations for IRSA or other identity integrations. |
 | `opentelemetry-collector.extraEnvsFrom` | `[{configMapRef: {name: metrics-aws-cloudwatch-cluster-env}}]` | Extra `envFrom` entries for the OpenTelemetry collector. The default ConfigMap supplies `AWS_REGION` and `EMF_LOG_GROUP_NAME`; append the static AWS credentials Secret at index `1` on non-EKS clusters. |

@@ -73,7 +73,7 @@ helm upgrade --install observability-tracing-opensearch \
   oci://ghcr.io/openchoreo/helm-charts/observability-tracing-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.4.2 \
+  --version 0.5.0 \
   --set openSearchSetup.openSearchSecretName="opensearch-admin-credentials"
 ```
 
@@ -84,7 +84,7 @@ helm upgrade --install observability-tracing-opensearch \
 >   oci://ghcr.io/openchoreo/helm-charts/observability-tracing-opensearch \
 >   --create-namespace \
 >   --namespace openchoreo-observability-plane \
->   --version 0.4.2 \
+>   --version 0.5.0 \
 >   --set openSearch.enabled=false \
 >   --set openSearchSetup.openSearchSecretName="opensearch-admin-credentials"
 > ```
@@ -105,7 +105,7 @@ helm upgrade --install observability-tracing-opensearch \
   oci://ghcr.io/openchoreo/helm-charts/observability-tracing-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.4.2 \
+  --version 0.5.0 \
   --set global.installationMode="multiClusterReceiver" \
   --set openSearchSetup.openSearchSecretName="opensearch-admin-credentials"
 ```
@@ -117,7 +117,7 @@ helm upgrade --install observability-tracing-opensearch \
 >   oci://ghcr.io/openchoreo/helm-charts/observability-tracing-opensearch \
 >   --create-namespace \
 >   --namespace openchoreo-observability-plane \
->   --version 0.4.2 \
+>   --version 0.5.0 \
 >   --set openSearch.enabled=false \
 >   --set global.installationMode="multiClusterReceiver" \
 >   --set openSearchSetup.openSearchSecretName="opensearch-admin-credentials"
@@ -136,7 +136,7 @@ helm upgrade --install observability-tracing-opensearch \
   oci://ghcr.io/openchoreo/helm-charts/observability-tracing-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.4.2 \
+  --version 0.5.0 \
   --set global.installationMode="multiClusterExporter" \
   --set openSearch.enabled=false \
   --set openSearchCluster.enabled=false \
@@ -170,5 +170,6 @@ Bundled upstream Helm charts:
 
 | Module Version | OpenChoreo Version |
 | -------------- | ------------------ |
+| v0.5.x         | v1.2.x             |
 | v0.4.x         | v1.1.x             |
 | v0.3.x         | v1.0.x             |

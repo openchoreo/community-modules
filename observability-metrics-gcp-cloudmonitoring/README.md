@@ -328,8 +328,7 @@ Two ways to provide the secret:
 
 - Inline via `adapter.webhookAuth.sharedSecret`. The chart creates a Secret
   named `metrics-adapter-gcp-cloudmonitoring-webhook-token` and the Deployment
-  mounts it via `secretKeyRef`. The Secret carries `helm.sh/resource-policy:
-  keep` so it survives a `helm uninstall`.
+  mounts it via `secretKeyRef`.
 - External reference via `adapter.webhookAuth.sharedSecretRef.name`. The chart
   does not create the Secret; the named one must exist in the release
   namespace.

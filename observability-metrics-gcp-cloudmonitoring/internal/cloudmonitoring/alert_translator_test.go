@@ -89,13 +89,12 @@ func TestToAlertPolicyHappyPath(t *testing.T) {
 }
 
 func TestToAlertPolicyAllOperators(t *testing.T) {
+	// MetricThreshold conditions support only COMPARISON_GT and COMPARISON_LT;
+	// the remaining OpenChoreo operators are rejected (see the validation
+	// errors test).
 	cases := map[string]monitoringpb.ComparisonType{
-		"gt":  monitoringpb.ComparisonType_COMPARISON_GT,
-		"gte": monitoringpb.ComparisonType_COMPARISON_GE,
-		"lt":  monitoringpb.ComparisonType_COMPARISON_LT,
-		"lte": monitoringpb.ComparisonType_COMPARISON_LE,
-		"eq":  monitoringpb.ComparisonType_COMPARISON_EQ,
-		"neq": monitoringpb.ComparisonType_COMPARISON_NE,
+		"gt": monitoringpb.ComparisonType_COMPARISON_GT,
+		"lt": monitoringpb.ComparisonType_COMPARISON_LT,
 	}
 	for op, want := range cases {
 		in := validRuleInput()
@@ -143,7 +142,12 @@ func TestToAlertPolicyValidationErrors(t *testing.T) {
 		{"missing metric", func(in *RuleInput) { in.Metric = "" }},
 		{"unsupported metric", func(in *RuleInput) { in.Metric = "disk_usage" }},
 		{"unsupported operator", func(in *RuleInput) { in.Operator = "between" }},
+		{"operator gte unsupported by MetricThreshold", func(in *RuleInput) { in.Operator = "gte" }},
+		{"operator lte unsupported by MetricThreshold", func(in *RuleInput) { in.Operator = "lte" }},
+		{"operator eq unsupported by MetricThreshold", func(in *RuleInput) { in.Operator = "eq" }},
+		{"operator neq unsupported by MetricThreshold", func(in *RuleInput) { in.Operator = "neq" }},
 		{"bad interval", func(in *RuleInput) { in.Interval = "5x" }},
+		{"non-minute interval", func(in *RuleInput) { in.Interval = "90s" }},
 		{"negative window", func(in *RuleInput) { in.Window = "-5m" }},
 	}
 	for _, tc := range cases {

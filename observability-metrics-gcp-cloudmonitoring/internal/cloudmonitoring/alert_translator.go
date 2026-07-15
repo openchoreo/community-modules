@@ -44,7 +44,7 @@ type RuleInput struct {
 	ProjectUID     string
 	EnvironmentUID string
 	Metric         string  // cpu_usage | memory_usage
-	Operator       string  // gt | gte | lt | lte | eq | neq
+	Operator       string  // gt | lt (the only MetricThreshold comparisons)
 	Threshold      float64 // cores (cpu) or bytes (memory)
 	Interval       string  // Go duration; condition duration
 	Window         string  // Go duration; alignment period
@@ -90,6 +90,12 @@ func ToAlertPolicy(in RuleInput, cfg TranslatorConfig) (*monitoringpb.AlertPolic
 	interval, err := durationOrDefault(in.Interval, cfg.DefaultInterval)
 	if err != nil {
 		return nil, fmt.Errorf("%w: interval: %v", ErrValidation, err)
+	}
+	// Cloud Monitoring requires the condition duration to be a whole-minute
+	// multiple; anything else is rejected at policy-creation time, so validate
+	// up front to surface a 400 instead of a late API error.
+	if interval%time.Minute != 0 {
+		return nil, validationErrf("interval must be a whole-minute multiple, got %s", interval)
 	}
 	window, err := durationOrDefault(in.Window, cfg.DefaultWindow)
 	if err != nil {
@@ -189,24 +195,18 @@ func validateRule(in RuleInput, cfg TranslatorConfig) error {
 }
 
 // mapComparison maps an OpenChoreo operator to the Cloud Monitoring enum.
-// Cloud Monitoring supports all six operators, including eq/neq.
+// MetricThreshold conditions support only COMPARISON_GT and COMPARISON_LT;
+// the other operators are rejected up front so the failure surfaces as a 400
+// instead of an opaque API error at policy creation.
 func mapComparison(op string) (monitoringpb.ComparisonType, error) {
 	switch strings.ToLower(strings.TrimSpace(op)) {
 	case "gt", ">":
 		return monitoringpb.ComparisonType_COMPARISON_GT, nil
-	case "gte", ">=":
-		return monitoringpb.ComparisonType_COMPARISON_GE, nil
 	case "lt", "<":
 		return monitoringpb.ComparisonType_COMPARISON_LT, nil
-	case "lte", "<=":
-		return monitoringpb.ComparisonType_COMPARISON_LE, nil
-	case "eq", "==":
-		return monitoringpb.ComparisonType_COMPARISON_EQ, nil
-	case "neq", "!=":
-		return monitoringpb.ComparisonType_COMPARISON_NE, nil
 	default:
 		return monitoringpb.ComparisonType_COMPARISON_UNSPECIFIED,
-			validationErrf("unsupported operator %q (expected gt|gte|lt|lte|eq|neq)", op)
+			validationErrf("unsupported operator %q (Cloud Monitoring metric-threshold policies support only gt|lt)", op)
 	}
 }
 

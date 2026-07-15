@@ -261,9 +261,11 @@ policy**:
   | `cpu_usage` | `cpu/core_usage_time` (RATE) | `cpu/limit_cores` |
   | `memory_usage` | `memory/used_bytes` (MEAN) | `memory/limit_bytes` |
 
-  Operators `gt`/`gte`/`lt`/`lte`/`eq`/`neq` map to Cloud Monitoring's
-  `COMPARISON_GT/GE/LT/LE/EQ/NE` (all six supported natively). `condition.interval`
-  becomes the condition duration and `condition.window` the alignment period.
+  Only operators `gt`/`lt` are supported — Cloud Monitoring metric-threshold
+  policies accept only `COMPARISON_GT`/`COMPARISON_LT`; the rest are rejected
+  with a validation error. `condition.interval` becomes the condition duration
+  (must be a whole-minute multiple) and `condition.window` the alignment
+  period.
 - Managed policies carry `user_labels` (`managed_by=openchoreo`,
   `openchoreo_namespace`, `openchoreo_rule_name`, and a stable
   `openchoreo_rule_hash`) so a rule is found, updated in place, and deleted by

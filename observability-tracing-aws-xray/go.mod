@@ -5,7 +5,7 @@ go 1.26.2
 require (
 	github.com/aws/aws-sdk-go-v2 v1.42.1
 	github.com/aws/aws-sdk-go-v2/config v1.32.28
-	github.com/aws/aws-sdk-go-v2/service/sts v1.44.0
+	github.com/aws/aws-sdk-go-v2/service/sts v1.44.1
 	github.com/aws/aws-sdk-go-v2/service/xray v1.36.23
 	github.com/getkin/kin-openapi v0.142.0
 	github.com/oapi-codegen/runtime v1.4.2

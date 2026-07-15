@@ -336,6 +336,7 @@ func TestQueryRuntimeTopologyReturnsEdges(t *testing.T) {
 			if p.Namespace != "payments" || p.ProjectUID != "proj-1" || p.EnvironmentUID != "env-1" {
 				t.Fatalf("unexpected params: %#v", p)
 			}
+			mean := 0.12
 			return &cloudwatchmetrics.RuntimeTopologyResult{Edges: []cloudwatchmetrics.RuntimeTopologyEdgeResult{
 				{
 					SourceComponentUID:       "src-1",
@@ -346,7 +347,7 @@ func TestQueryRuntimeTopologyReturnsEdges(t *testing.T) {
 					DestinationNamespace:     "payments",
 					RequestCount:             12,
 					ErrorCount:               2,
-					MeanLatency:              0.12,
+					MeanLatency:              &mean,
 				},
 			}}, nil
 		},
@@ -373,6 +374,50 @@ func TestQueryRuntimeTopologyReturnsEdges(t *testing.T) {
 	}
 	if (*ok.Edges)[0].Id != "src-1->dst-1" {
 		t.Fatalf("unexpected edge id: %s", (*ok.Edges)[0].Id)
+	}
+}
+
+// An edge with no duration samples must omit meanLatency from the serialized
+// response rather than emit a misleading zero.
+func TestQueryRuntimeTopologyOmitsMeanLatencyWhenNoDurationSamples(t *testing.T) {
+	now := time.Date(2026, 5, 4, 12, 0, 0, 0, time.UTC)
+	client := &stubMetricsClient{
+		getRuntimeTopologyFn: func(_ context.Context, _ cloudwatchmetrics.RuntimeTopologyQueryParams) (*cloudwatchmetrics.RuntimeTopologyResult, error) {
+			return &cloudwatchmetrics.RuntimeTopologyResult{Edges: []cloudwatchmetrics.RuntimeTopologyEdgeResult{
+				{
+					SourceComponentUID:      "src-1",
+					DestinationComponentUID: "dst-1",
+					RequestCount:            12,
+					ErrorCount:              2,
+					MeanLatency:             nil, // no duration samples
+				},
+			}}, nil
+		},
+	}
+	h := newTestHandler(client, nil)
+	body := &gen.RuntimeTopologyRequest{StartTime: now.Add(-time.Hour), EndTime: now}
+	body.SearchScope.Namespace = "payments"
+	body.SearchScope.ProjectUid = "proj-1"
+	body.SearchScope.EnvironmentUid = "env-1"
+
+	resp, err := h.QueryRuntimeTopology(context.Background(), gen.QueryRuntimeTopologyRequestObject{Body: body})
+	if err != nil {
+		t.Fatalf("QueryRuntimeTopology() error = %v", err)
+	}
+	ok, isOK := resp.(gen.QueryRuntimeTopology200JSONResponse)
+	if !isOK {
+		t.Fatalf("expected 200 response, got %T", resp)
+	}
+	encoded, err := json.Marshal(gen.RuntimeTopologyResponse(ok))
+	if err != nil {
+		t.Fatalf("marshal response: %v", err)
+	}
+	if strings.Contains(string(encoded), "meanLatency") {
+		t.Fatalf("meanLatency must be omitted when there are no duration samples:\n%s", encoded)
+	}
+	// The RED counts must still be present.
+	if !strings.Contains(string(encoded), "requestCount") {
+		t.Fatalf("requestCount should be present:\n%s", encoded)
 	}
 }
 

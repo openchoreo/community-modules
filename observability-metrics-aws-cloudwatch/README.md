@@ -212,14 +212,19 @@ Create the following custom IAM policy and attach it to the adapter IAM principa
       "Resource": "*"
     },
     {
-      "Sid": "RuntimeTopologyLogsInsights",
+      "Sid": "RuntimeTopologyStartQuery",
+      "Effect": "Allow",
+      "Action": "logs:StartQuery",
+      "Resource": "arn:aws:logs:<region>:<account-id>:log-group:/aws/openchoreo/metrics:*"
+    },
+    {
+      "Sid": "RuntimeTopologyQueryResults",
       "Effect": "Allow",
       "Action": [
-        "logs:StartQuery",
         "logs:GetQueryResults",
         "logs:StopQuery"
       ],
-      "Resource": "arn:aws:logs:<region>:<account-id>:log-group:/aws/openchoreo/metrics:*"
+      "Resource": "*"
     },
     {
       "Sid": "MetricAlarms",
@@ -300,14 +305,19 @@ Replace:
       "Resource": "*"
     },
     {
-      "Sid": "RuntimeTopologyLogsInsights",
+      "Sid": "RuntimeTopologyStartQuery",
+      "Effect": "Allow",
+      "Action": "logs:StartQuery",
+      "Resource": "arn:aws:logs:<region>:<account-id>:log-group:/aws/openchoreo/metrics:*"
+    },
+    {
+      "Sid": "RuntimeTopologyQueryResults",
       "Effect": "Allow",
       "Action": [
-        "logs:StartQuery",
         "logs:GetQueryResults",
         "logs:StopQuery"
       ],
-      "Resource": "arn:aws:logs:<region>:<account-id>:log-group:/aws/openchoreo/metrics:*"
+      "Resource": "*"
     },
     {
       "Sid": "WriteEMFLogs",
@@ -439,14 +449,19 @@ aws iam create-policy \
       "Resource": "*"
     },
     {
-      "Sid": "RuntimeTopologyLogsInsights",
+      "Sid": "RuntimeTopologyStartQuery",
+      "Effect": "Allow",
+      "Action": "logs:StartQuery",
+      "Resource": "arn:aws:logs:${AWS_REGION}:${AWS_ACCOUNT_ID}:log-group:/aws/openchoreo/metrics:*"
+    },
+    {
+      "Sid": "RuntimeTopologyQueryResults",
       "Effect": "Allow",
       "Action": [
-        "logs:StartQuery",
         "logs:GetQueryResults",
         "logs:StopQuery"
       ],
-      "Resource": "arn:aws:logs:${AWS_REGION}:${AWS_ACCOUNT_ID}:log-group:/aws/openchoreo/metrics:*"
+      "Resource": "*"
     },
     {
       "Sid": "MetricAlarms",
@@ -791,14 +806,19 @@ aws iam create-policy \
       "Resource": "*"
     },
     {
-      "Sid": "RuntimeTopologyLogsInsights",
+      "Sid": "RuntimeTopologyStartQuery",
+      "Effect": "Allow",
+      "Action": "logs:StartQuery",
+      "Resource": "arn:aws:logs:${AWS_REGION}:${AWS_ACCOUNT_ID}:log-group:/aws/openchoreo/metrics:*"
+    },
+    {
+      "Sid": "RuntimeTopologyQueryResults",
       "Effect": "Allow",
       "Action": [
-        "logs:StartQuery",
         "logs:GetQueryResults",
         "logs:StopQuery"
       ],
-      "Resource": "arn:aws:logs:${AWS_REGION}:${AWS_ACCOUNT_ID}:log-group:/aws/openchoreo/metrics:*"
+      "Resource": "*"
     },
     {
       "Sid": "WriteEMFLogs",

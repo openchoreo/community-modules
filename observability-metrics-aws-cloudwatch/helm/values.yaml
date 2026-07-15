@@ -125,7 +125,7 @@ opentelemetry-collector:
                 # named container port (4244) on its Endpoints. Force the scrape
                 # to the Hubble metrics port 9965 regardless of discovered port.
                 - source_labels: [__address__]
-                  regex: '([^:]+)(:\d+)?'
+                  regex: '(.+):\d+'
                   target_label: __address__
                   # `$$` escapes the OTel config env-var resolver so Prometheus
                   # receives a literal `${1}` relabel group reference.
@@ -158,7 +158,7 @@ opentelemetry-collector:
                   regex: kube-system;hubble-metrics
                   action: keep
                 - source_labels: [__address__]
-                  regex: '([^:]+)(:\d+)?'
+                  regex: '(.+):\d+'
                   target_label: __address__
                   replacement: '$${1}:9965'
               metric_relabel_configs:

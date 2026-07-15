@@ -118,7 +118,7 @@ func TestRuntimeTopologyFromRowsAggregatesEdges(t *testing.T) {
 	if edge.ErrorCount != 5 {
 		t.Fatalf("error count = %v, want 5", edge.ErrorCount)
 	}
-	if edge.MeanLatency != 13.0/65.0 {
+	if edge.MeanLatency == nil || *edge.MeanLatency != 13.0/65.0 {
 		t.Fatalf("mean latency = %v, want %v", edge.MeanLatency, 13.0/65.0)
 	}
 	if edge.SourceComponentName != "frontend" || edge.DestinationNamespace != "payments" {

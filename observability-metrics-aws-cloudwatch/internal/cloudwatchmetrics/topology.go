@@ -64,7 +64,9 @@ type RuntimeTopologyEdgeResult struct {
 	DestinationNamespace     string
 	RequestCount             float64
 	ErrorCount               float64
-	MeanLatency              float64
+	// MeanLatency is nil when the edge has no duration samples in the window, so
+	// it is omitted rather than serialized as a misleading zero.
+	MeanLatency *float64
 	// Latency percentiles reconstructed from the preserved `le` buckets. Nil
 	// when the edge has no duration samples in the window.
 	LatencyP50 *float64
@@ -304,7 +306,8 @@ func runtimeTopologyFromRows(rows []map[string]string, componentUIDFilter string
 			ErrorCount:               edge.errorCount,
 		}
 		if edge.durationCount > 0 {
-			result.MeanLatency = edge.durationSum / edge.durationCount
+			mean := edge.durationSum / edge.durationCount
+			result.MeanLatency = &mean
 		}
 		edges = append(edges, result)
 	}

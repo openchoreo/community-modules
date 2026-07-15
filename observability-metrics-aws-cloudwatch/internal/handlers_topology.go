@@ -48,7 +48,10 @@ func (h *MetricsHandler) QueryRuntimeTopology(ctx context.Context, request gen.Q
 			slog.String("environmentUID", params.EnvironmentUID),
 			slog.Any("error", err),
 		)
-		return runtimeTopologyServerError(fmt.Sprintf("query failed: %v", err)), nil
+		// The full error is logged above; keep the client-facing detail generic
+		// so internal specifics (AWS messages, log-group ARNs, query text) are
+		// not leaked in the response.
+		return runtimeTopologyServerError("failed to query runtime topology"), nil
 	}
 
 	edges := topologyEdgesFromResult(params.Namespace, params.ProjectUID, result)
@@ -96,7 +99,7 @@ func topologyEdgesFromResult(namespace, projectUID string, result *cloudwatchmet
 			Metrics: &gen.RuntimeTopologyMetrics{
 				RequestCount:             &edge.RequestCount,
 				UnsuccessfulRequestCount: &edge.ErrorCount,
-				MeanLatency:              &edge.MeanLatency,
+				MeanLatency:              edge.MeanLatency,
 				// Latency percentiles are reconstructed from the preserved `le`
 				// buckets (the collector emits a dedicated bucket series so they
 				// survive the awsemf histogram path). Nil when the edge has no

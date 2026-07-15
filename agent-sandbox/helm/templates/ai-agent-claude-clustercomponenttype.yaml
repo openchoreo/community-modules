@@ -1,0 +1,144 @@
+apiVersion: openchoreo.dev/v1alpha1
+kind: ClusterComponentType
+metadata:
+  name: ai-agent-claude
+  annotations:
+    openchoreo.dev/display-name: "AI Agent — Claude Code"
+    openchoreo.dev/description: "Claude Code CLI running in a kernel-isolated sandbox."
+    # Portal fetches this custom scaffolder template instead of auto-generating Build & Deploy steps.
+    scaffolder.openchoreo.dev/backstage-template-url: "https://raw.githubusercontent.com/openchoreo/community-modules/main/agent-sandbox/templates/create-ai-agent-claude.yaml"
+spec:
+  # Fixed image, kata isolation, terminal-only — no user-tunable parameters.
+  workloadType: proxy
+
+  environmentConfigs:
+    openAPIV3Schema:
+      type: object
+      $defs:
+        ResourceQuantity:
+          type: object
+          default: {}
+          properties:
+            cpu:
+              type: string
+              default: "500m"
+            memory:
+              type: string
+              default: "1Gi"
+        ResourceRequirements:
+          type: object
+          properties:
+            requests:
+              $ref: "#/$defs/ResourceQuantity"
+            limits:
+              $ref: "#/$defs/ResourceQuantity"
+          default: {}
+      properties:
+        resources:
+          $ref: "#/$defs/ResourceRequirements"
+        imagePullPolicy:
+          type: string
+          default: IfNotPresent
+          enum:
+            - Always
+            - IfNotPresent
+            - Never
+
+  resources:
+    # ── SandboxTemplate ──────────────────────────────────────────────────
+    - id: sandbox-template
+      template:
+        apiVersion: extensions.agents.x-k8s.io/v1alpha1
+        kind: SandboxTemplate
+        metadata:
+          name: ${metadata.name}
+          namespace: ${metadata.namespace}
+          labels: ${metadata.labels}
+          annotations:
+            openchoreo.dev/sandbox-policy: development
+        spec:
+          podTemplate:
+            metadata:
+              labels: ${metadata.podSelectors}
+            spec:
+              automountServiceAccountToken: false
+              runtimeClassName: kata-qemu
+              nodeSelector:
+                kata-enabled: "true"
+              tolerations:
+                - key: sandbox
+                  operator: Equal
+                  value: "true"
+                  effect: NoSchedule
+              containers:
+                - name: main
+                  image: ${workload.container.image}
+                  imagePullPolicy: ${environmentConfigs.imagePullPolicy}
+                  # `claude` is interactive and exits without a TTY; keep the pod alive for exec.
+                  command: ["sleep", "infinity"]
+                  resources:
+                    requests:
+                      cpu: ${environmentConfigs.resources.requests.cpu}
+                      memory: ${environmentConfigs.resources.requests.memory}
+                    limits:
+                      cpu: ${environmentConfigs.resources.limits.cpu}
+                      memory: ${environmentConfigs.resources.limits.memory}
+                  env: ${dependencies.toContainerEnvs()}
+                  envFrom: ${configurations.toContainerEnvFrom()}
+                  volumeMounts: ${configurations.toContainerVolumeMounts()}
+              volumes: ${configurations.toVolumes()}
+
+    # ── SandboxClaim ─────────────────────────────────────────────────────
+    - id: sandbox-claim
+      template:
+        apiVersion: extensions.agents.x-k8s.io/v1alpha1
+        kind: SandboxClaim
+        metadata:
+          name: ${metadata.name}
+          namespace: ${metadata.namespace}
+          labels: ${metadata.labels}
+          annotations:
+            openchoreo.dev/sandbox-policy: development
+        spec:
+          sandboxTemplateRef:
+            name: ${metadata.name}
+
+    # ── ConfigMap: plain env vars (e.g. ANTHROPIC_MODEL) ─────────────────
+    - id: env-config
+      forEach: ${configurations.toConfigEnvsByContainer()}
+      var: envConfig
+      template:
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: ${envConfig.resourceName}
+          namespace: ${metadata.namespace}
+        data: |
+          ${envConfig.envs.transformMapEntry(index, env, {env.name: env.value})}
+
+    # ── ExternalSecret: ANTHROPIC_API_KEY injected as an env var ─────────
+    - id: secret-env-external
+      forEach: ${configurations.toSecretEnvsByContainer()}
+      var: secretEnv
+      template:
+        apiVersion: external-secrets.io/v1
+        kind: ExternalSecret
+        metadata:
+          name: ${secretEnv.resourceName}
+          namespace: ${metadata.namespace}
+        spec:
+          refreshInterval: 15s
+          secretStoreRef:
+            name: ${dataplane.secretStore}
+            kind: ClusterSecretStore
+          target:
+            name: ${secretEnv.resourceName}
+            creationPolicy: Owner
+          data: |
+            ${secretEnv.envs.map(secret, {
+              "secretKey": secret.name,
+              "remoteRef": {
+                "key": secret.remoteRef.key,
+                ?"property": secret.remoteRef.?property
+              }
+            })}

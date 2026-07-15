@@ -3,6 +3,19 @@
 
 global:
   installationMode: "singleCluster" # supports "singleCluster", "multiClusterExporter", "multiClusterReceiver"
+  # Registry override for the module's own container images (adapter).
+  # When set, it replaces the registry host of each image repository. May
+  # include a path (e.g. registry.example.com/ghcr.io) for path-preserving
+  # mirrors. Empty uses each image's default registry.
+  # NOTE: subchart images are governed by the subcharts' own keys — the
+  # kube-prometheus-stack subchart honors its own global.imageRegistry (this
+  # same key flows to it). Prometheus agent pods are spawned by the operator
+  # with its default image; set the Prometheus CR spec.image explicitly when
+  # mirroring.
+  imageRegistry: ""
+  # Pull secrets for the module's own pods, for authenticated mirrors.
+  # e.g. imagePullSecrets: [{name: my-registry-cred}]
+  imagePullSecrets: []
 
 kube-prometheus-stack:
   enabled: true

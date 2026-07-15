@@ -215,16 +215,11 @@ notification channel is reachable.
 
 The Observer resolves the metrics adapter at the URL configured by
 `METRICS_ADAPTER_URL`, which defaults to `http://metrics-adapter:9099`. This
-chart names its Service `metrics-adapter-gcp-cloudmonitoring` and serves on
-port `9099`, so set the Observer to match:
-
-```bash
---set observer.metricsAdapter.url=http://metrics-adapter-gcp-cloudmonitoring:9099
-```
-
-(on the observability-plane install). If you prefer to keep the Observer's
-default, override `adapter.service.port` and expose the Service under the name
-the Observer expects instead.
+chart names its Service `metrics-adapter` and serves on port `9099` to match
+that default, so no Observer configuration is needed — metrics adapters can be
+swapped without reconfiguring the Observer. If the Observer runs in a
+different namespace, set `METRICS_ADAPTER_URL` to the fully qualified Service
+DNS name instead.
 
 ### Expose the webhook through a Gateway
 

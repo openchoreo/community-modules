@@ -26,9 +26,9 @@ adapter:
   service:
     # The Observer resolves the metrics adapter at the URL configured by
     # `METRICS_ADAPTER_URL` on the Observer, which defaults to
-    # `http://metrics-adapter:9099`. This Service is named after the adapter;
-    # point the Observer at it, e.g.
-    #   --set observer.metricsAdapter.url=http://metrics-adapter-gcp-cloudmonitoring:9099
+    # `http://metrics-adapter:9099`. The Service is named `metrics-adapter`
+    # and serves on this port to match that default, so metrics adapters can
+    # be swapped without reconfiguring the Observer.
     port: 9099
   # Annotations applied to the adapter ServiceAccount. Attach the GKE Workload
   # Identity binding here, e.g.:

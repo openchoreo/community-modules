@@ -33,7 +33,7 @@ spec:
         {{- end }}
     spec:
       serviceAccountName: {{ include "events-collector.serviceAccountName" . }}
-      {{- with .Values.collector.imagePullSecrets }}
+      {{- with (.Values.collector.imagePullSecrets | default .Values.global.imagePullSecrets) }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
@@ -41,7 +41,7 @@ spec:
         {{- toYaml .Values.collector.podSecurityContext | nindent 8 }}
       containers:
         - name: collector
-          image: "{{ .Values.collector.image.repository }}:{{ .Values.collector.image.tag | default .Chart.AppVersion }}"
+          image: {{ include "events-collector.image" (dict "image" .Values.collector.image "context" .) | quote }}
           imagePullPolicy: {{ .Values.collector.image.pullPolicy }}
           args: ["--config", "/etc/otelcol/config.yaml"]
           {{- with .Values.collector.extraEnv }}

@@ -1,12 +1,10 @@
 # Configuration and architecture
 
-The README covers installation and the quick start. This document goes deeper. It's the full parameter reference, the guide to tuning and extending the trait, the reasoning behind the architecture, and the troubleshooting notes for the `autoscaling-keda` module and its `keda-scaling` trait.
+The README covers installation and the quick start. This document has the full parameter reference, the tuning and extension guide, the reasoning behind the architecture, and the troubleshooting notes for the `autoscaling-keda` module and its `keda-scaling` trait.
 
 ## Parameter reference
 
 All parameters live under `spec.traits[].parameters` on the component. The trait is named `keda-scaling`, and the samples reuse that same value for `instanceName`. Per-environment overrides in the `ReleaseBinding` are keyed by whatever `instanceName` you pick.
-
-Attaching the trait to a component activates it; detaching removes everything it rendered. There's no `enabled` flag.
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
@@ -168,7 +166,7 @@ The trait doesn't expose every `ScaledObject` field as a parameter. Fields like 
 
 Attaching the trait to a component is what activates it; there's no data-plane flag. The trait assumes every data plane the component promotes across runs KEDA, so it renders KEDA objects unconditionally when attached.
 
-This is deliberately simpler than a per-data-plane backend switch. Heterogeneous fleets, where only some data planes run KEDA (or run a different scaling backend entirely), need a consistent cross-plane mechanism that OpenChoreo doesn't have yet; until then, keep the data planes in a component's promotion path identical. If a plane in that path doesn't run KEDA, don't attach the trait to components that promote onto it.
+This is deliberately simpler than a per-data-plane backend switch. Heterogeneous fleets, where only some data planes run KEDA (or run a different scaling backend entirely), need a consistent cross-plane mechanism that OpenChoreo doesn't have yet. Until then, keep the data planes in a component's promotion path identical. If a plane in that path doesn't run KEDA, don't attach the trait to components that promote onto it.
 
 ### Rendering modes
 
@@ -177,7 +175,7 @@ This is deliberately simpler than a per-data-plane backend switch. Heterogeneous
 | **HTTP** | `trigger.type == ""`, one external HTTP/GraphQL/WebSocket endpoint | `InterceptorRoute` + companion `ScaledObject`, kgateway `Backend`, pod-backing Service, patches to ExternalName the component's Service for in-cluster wake, and repoint the `HTTPRoute` at the Backend for gateway traffic |
 | **Trigger** | `trigger.type != ""` | `ScaledObject` with the given trigger |
 
-Both modes patch the Deployment to remove `spec.replicas`, handing replica ownership to KEDA. If `spec.replicas` stuck around, server-side apply would reset it on every render and fight the autoscaler.
+Both modes patch the Deployment to remove `spec.replicas`, which hands replica ownership to KEDA. If `spec.replicas` stuck around, server-side apply would reset it on every render and fight the autoscaler.
 
 The three HTTP-mode `HTTPRoute` patches (repoint the `backendRef`, add the `request` timeout, add the `urlRewrite.hostname`) only apply while keda still owns the external route, i.e. a `backendRef` named after the component is still present. If another edge trait attached ahead of `keda-scaling` has already repointed the route, keda skips those three patches and keeps only the ExternalName/interceptor wiring. See [Composing with an API gateway trait](#composing-with-an-api-gateway-trait).
 
@@ -197,9 +195,9 @@ The Service is born as ExternalName on first render, so there's no ClusterIP-to-
 
 Two constraints force the single-endpoint shape.
 
-The first is one Service, one Host. OpenChoreo gives a component a single Service (one DNS name, possibly many ports), and connection bindings inject that one name. Every endpoint on the component is reached as the same host (`<component>.<ns>.svc.cluster.local`), differing only by port. The KEDA interceptor routes purely by the `Host` header and strips the port first, so it can't tell two endpoints on the same component apart. A second endpoint would be forwarded to the wrong port without warning. So there can be only one endpoint.
+First, OpenChoreo gives a component a single Service (one DNS name, possibly many ports), and connection bindings inject that one name. Every endpoint on the component is reached as the same host (`<component>.<ns>.svc.cluster.local`), differing only by port. The KEDA interceptor routes purely by the `Host` header and strips the port first, so it can't tell two endpoints on the same component apart. A second endpoint would be forwarded to the wrong port without warning. So there can be only one endpoint.
 
-The second is that a CNAME can't remap ports. An ExternalName Service is a DNS CNAME, so a caller hitting the component on its endpoint port lands on the interceptor on that same port. The endpoint port has to be one the interceptor already answers on. The multiport Service (`keda-interceptor-multiport.yaml`) fronts the interceptor on a set of common ports for exactly this reason, so you're not pinned to a single port. That's why the endpoint port has to be in `wakeablePorts`.
+Second, a CNAME can't remap ports. An ExternalName Service is a DNS CNAME, so a caller hitting the component on its endpoint port lands on the interceptor on that same port. The endpoint port has to be one the interceptor already answers on. The multiport Service (`keda-interceptor-multiport.yaml`) fronts the interceptor on a set of common ports for exactly this reason, so you're not pinned to a single port. That's why the endpoint port has to be in `wakeablePorts`.
 
 A service that doesn't fit (multiple endpoints, or a port outside `wakeablePorts`) has three ways out:
 
@@ -211,20 +209,15 @@ A service that doesn't fit (multiple endpoints, or a port outside `wakeablePorts
 
 `keda-scaling` can coexist on one component with an edge API-management trait such as `api-management` (the `gateway-wso2-api-platform` module). Both traits repoint the external `HTTPRoute`'s `backendRef`, selecting it by the component's Service name, so naively attaching both would make the second one to render match zero elements and fail.
 
-Two things make the composition work:
+Two things make the composition work.
 
-1. **The edge trait renders first and keda defers.** List the API-gateway trait before `keda-scaling` in `spec.traits`. Traits render in list order, so the gateway trait repoints the route's `backendRef` to its own backend first. keda's three HTTPRoute patches are guarded on the route still carrying a `backendRef` named after the component; once the gateway trait has renamed it, that guard is false and keda skips the edge-route patches. keda still applies its Service->ExternalName patch, so in-cluster wiring stays intact. If keda rendered first, the gateway trait would fail to find the component-named `backendRef`, which is why the order is required.
-2. **The interceptor accepts the gateway's upstream host.** The API gateway forwards to the component's upstream by its configured authority `<component>.<namespace>` (a two-label name), not the full `.svc.cluster.local` FQDN. The `InterceptorRoute` lists both hosts for this reason, so the gateway's request matches an interceptor rule and wakes the pod.
+The first is that the edge trait renders first and keda defers. List the API-gateway trait before `keda-scaling` in `spec.traits`. Traits render in list order, so the gateway trait repoints the route's `backendRef` to its own backend first. keda's three HTTPRoute patches are guarded on the route still carrying a `backendRef` named after the component. Once the gateway trait has renamed it, that guard is false and keda skips the edge-route patches. keda still applies its Service->ExternalName patch, so in-cluster wiring stays intact. If keda rendered first, the gateway trait would fail to find the component-named `backendRef`, which is why the order is required.
+
+The second is that the interceptor accepts the gateway's upstream host. The API gateway forwards to the component's upstream by its configured authority `<component>.<namespace>` (a two-label name), not the full `.svc.cluster.local` FQDN. The `InterceptorRoute` lists both hosts for this reason, so the gateway's request matches an interceptor rule and wakes the pod.
 
 The resulting path is edge gateway -> API gateway -> the component's ExternalName Service -> the KEDA interceptor -> the pod. Idle scale-to-zero and the API gateway's policies both keep working.
 
 The order dependency is currently conventional, not enforced. A wrong order fails at render time with the gateway trait's zero-match error rather than silently misrouting.
-
-## Limitations
-
-- Exactly one external HTTP endpoint per service in HTTP mode. The interceptor routes by `Host` only (port stripped), and the ExternalName alias is a DNS CNAME that can't remap ports. See the Architecture section for the full reasoning and the escape hatches.
-- The HTTP path is kgateway-specific. The trait routes to the interceptor through a `gateway.kgateway.dev/Backend`. On a different Gateway API implementation, adapt the Backend resource and the HTTPRoute patch to whatever reaches the interceptor Service there.
-- It's mutually exclusive with HPA-style traits. Both claim ownership of the Deployment's replica count, so don't attach an HPA-style trait and `keda-scaling` to the same component.
 
 ## Troubleshooting
 

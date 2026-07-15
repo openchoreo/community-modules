@@ -27,10 +27,10 @@ func main() {
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.LogLevel}))
 	logger.Info("configuration loaded",
-		slog.String("logLevel", cfg.LogLevel.String()),
-		slog.String("serverPort", cfg.ServerPort),
-		slog.String("projectId", cfg.ProjectID),
-		slog.Duration("queryTimeout", cfg.QueryTimeout),
+		slog.String("LOG_LEVEL", cfg.LogLevel.String()),
+		slog.String("SERVER_PORT", cfg.ServerPort),
+		slog.String("GCP_PROJECT_ID", cfg.ProjectID),
+		slog.Duration("QUERY_TIMEOUT", cfg.QueryTimeout),
 	)
 
 	bootstrap := func() (context.Context, context.CancelFunc) {
@@ -54,12 +54,12 @@ func main() {
 	cancel()
 	if err != nil {
 		logger.Error("Cloud Monitoring ping failed at boot",
-			slog.String("projectId", cfg.ProjectID),
+			slog.String("GCP_PROJECT_ID", cfg.ProjectID),
 			slog.Any("error", err),
 		)
 		os.Exit(1)
 	}
-	logger.Info("Cloud Monitoring reachable", slog.String("projectId", cfg.ProjectID))
+	logger.Info("Cloud Monitoring reachable", slog.String("GCP_PROJECT_ID", cfg.ProjectID))
 
 	// Alert rule management. Wired only when both an Observer URL
 	// and a pre-configured notification channel are set; otherwise the
@@ -85,12 +85,12 @@ func main() {
 		cancel()
 		if err != nil {
 			logger.Error("notification channel verification failed at boot",
-				slog.String("notificationChannelId", cfg.NotificationChannelID), slog.Any("error", err))
+				slog.String("NOTIFICATION_CHANNEL_ID", cfg.NotificationChannelID), slog.Any("error", err))
 			os.Exit(1)
 		}
 		logger.Info("alert rule management enabled",
-			slog.String("observerUrl", cfg.ObserverURL),
-			slog.String("notificationChannelId", cfg.NotificationChannelID))
+			slog.String("OBSERVER_URL", cfg.ObserverURL),
+			slog.String("NOTIFICATION_CHANNEL_ID", cfg.NotificationChannelID))
 
 		obsClient := observer.NewClient(cfg.ObserverURL)
 		handler = app.NewMetricsHandlerWithAlerting(metricsClient, alertClient, obsClient, logger.With("component", "handler"))

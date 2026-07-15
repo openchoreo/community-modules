@@ -38,16 +38,14 @@ spec:
           envFrom:
             - configMapRef:
                 name: metrics-adapter-gcp-cloudmonitoring
+          {{- if and .Values.adapter.webhookAuth.enabled (or .Values.adapter.webhookAuth.sharedSecret .Values.adapter.webhookAuth.sharedSecretRef.name) }}
           env:
-            - name: WEBHOOK_AUTH_ENABLED
-              value: {{ .Values.adapter.webhookAuth.enabled | quote }}
-            {{- if and .Values.adapter.webhookAuth.enabled (or .Values.adapter.webhookAuth.sharedSecret .Values.adapter.webhookAuth.sharedSecretRef.name) }}
             - name: WEBHOOK_SHARED_SECRET
               valueFrom:
                 secretKeyRef:
                   name: {{ include "metrics-gcp-cloudmonitoring.webhookSecretName" . }}
                   key: {{ .Values.adapter.webhookAuth.sharedSecretRef.key | default "token" | quote }}
-            {{- end }}
+          {{- end }}
           livenessProbe:
             httpGet:
               path: /healthz

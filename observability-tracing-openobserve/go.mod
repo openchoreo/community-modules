@@ -4,7 +4,7 @@ go 1.25
 
 require (
 	github.com/getkin/kin-openapi v0.140.0
-	github.com/oapi-codegen/runtime v1.4.2
+	github.com/oapi-codegen/runtime v1.5.0
 )
 
 require (

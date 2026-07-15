@@ -169,21 +169,25 @@ func TestFindRuleByName(t *testing.T) {
 	}
 }
 
-func TestUpdateRuleUpsert(t *testing.T) {
+func TestUpdateRule(t *testing.T) {
 	api := newFakeAlertAPI()
 	c := newTestAlertClient(api)
 
-	// Update with no existing rule creates it.
-	res, err := c.UpdateRule(context.Background(), validRuleInput())
-	if err != nil {
-		t.Fatalf("update(create): %v", err)
+	// Update with no existing rule is rejected, never creates.
+	if _, err := c.UpdateRule(context.Background(), validRuleInput()); !errors.Is(err, ErrRuleNotFound) {
+		t.Fatalf("update(missing) err = %v, want ErrRuleNotFound", err)
 	}
-	firstName := res.BackendID
-	if len(api.created) != 1 {
-		t.Fatalf("expected create via update, got %d creates", len(api.created))
+	if len(api.created) != 0 {
+		t.Fatalf("update of a missing rule must not create, got %d creates", len(api.created))
 	}
 
-	// Update again replaces in place (same resource name, no new create).
+	res, err := c.CreateRule(context.Background(), validRuleInput())
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	firstName := res.BackendID
+
+	// Update replaces in place (same resource name, no new create).
 	in := validRuleInput()
 	in.Threshold = 0.95
 	res2, err := c.UpdateRule(context.Background(), in)

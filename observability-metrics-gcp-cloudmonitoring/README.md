@@ -64,7 +64,7 @@ the *control-plane* namespace, so filtering on it would match zero series.
 | `POST /api/v1alpha1/metrics/runtime-topology` | Not supported — GKE system metrics carry no pod-to-pod traffic data; returns `501` with error code `OBS-V1-M-GCP-501`. |
 | `POST /api/v1alpha1/alerts/rules` | Creates a Cloud Monitoring alert policy (a usage÷limit ratio MetricThreshold) wired to the configured notification channel. Returns `409` if a rule with the same identity already exists (use `PUT` to replace). |
 | `GET /api/v1alpha1/alerts/rules/{ruleName}` | Looks the policy up by its `openchoreo_rule_name` user label. |
-| `PUT /api/v1alpha1/alerts/rules/{ruleName}` | Updates the rule's policy in place. Creates it if absent. |
+| `PUT /api/v1alpha1/alerts/rules/{ruleName}` | Updates the rule's policy in place. Returns `404` if the rule does not exist. |
 | `DELETE /api/v1alpha1/alerts/rules/{ruleName}` | Deletes the alert policy. |
 | `POST /api/v1alpha1/alerts/webhook` | Receives a fired-alert payload from the notification channel and forwards a normalised alert to the Observer. |
 | `GET /healthz` | Readiness/liveness check. |

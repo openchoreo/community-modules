@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"net/http"
 	"strings"
 	"time"
 
@@ -26,6 +27,19 @@ func (h *MetricsHandler) alertingEnabled() bool { return h.alertClient != nil }
 
 func notImplementedErr() gen.ErrorResponse {
 	return makeError(gen.InternalServerError, errCodeNotImplemented, alertsNotImplementedDetail)
+}
+
+// updateAlertRuleNotFoundResponse returns 404 for an update of a missing rule.
+// The generated spec defines no 404 response for PUT (unlike GET/DELETE), so
+// this custom visitor supplies it.
+type updateAlertRuleNotFoundResponse struct {
+	gen.ErrorResponse
+}
+
+func (r updateAlertRuleNotFoundResponse) VisitUpdateAlertRuleResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusNotFound)
+	return json.NewEncoder(w).Encode(r.ErrorResponse)
 }
 
 // --- Alert endpoints ---
@@ -107,6 +121,9 @@ func (h *MetricsHandler) UpdateAlertRule(ctx context.Context, request gen.Update
 
 	res, err := h.alertClient.UpdateRule(ctx, in)
 	if err != nil {
+		if errors.Is(err, cloudmonitoring.ErrRuleNotFound) {
+			return updateAlertRuleNotFoundResponse{makeError(gen.BadRequest, errCodeNotFound, "alert rule not found")}, nil
+		}
 		if errors.Is(err, cloudmonitoring.ErrValidation) {
 			return gen.UpdateAlertRule400JSONResponse(makeError(gen.BadRequest, errCodeBadRequest, err.Error())), nil
 		}

@@ -184,9 +184,9 @@ func (c *AlertClient) CreateRule(ctx context.Context, in RuleInput) (*RuleResult
 	return ruleResultFrom(created, in.RuleName), nil
 }
 
-// UpdateRule upserts a managed alert policy. If a policy already exists for the
-// rule it is replaced in place (preserving its resource name); otherwise a new
-// one is created.
+// UpdateRule replaces the managed alert policy for an existing rule in place
+// (preserving its resource name). It returns ErrRuleNotFound when no policy
+// exists for the rule; creating one is CreateRule's job.
 func (c *AlertClient) UpdateRule(ctx context.Context, in RuleInput) (*RuleResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
@@ -199,14 +199,7 @@ func (c *AlertClient) UpdateRule(ctx context.Context, in RuleInput) (*RuleResult
 	existing, err := c.findByHash(ctx, ruleHash(in.Namespace, in.RuleName))
 	if err != nil {
 		if errors.Is(err, ErrRuleNotFound) {
-			created, cerr := c.api.CreateAlertPolicy(ctx, &monitoringpb.CreateAlertPolicyRequest{
-				Name:        "projects/" + c.projectID,
-				AlertPolicy: policy,
-			})
-			if cerr != nil {
-				return nil, fmt.Errorf("create alert policy (via update): %w", cerr)
-			}
-			return ruleResultFrom(created, in.RuleName), nil
+			return nil, ErrRuleNotFound
 		}
 		return nil, fmt.Errorf("update lookup: %w", err)
 	}

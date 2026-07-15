@@ -5,6 +5,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"sync"
 	"testing"
@@ -224,12 +225,32 @@ func TestHandleWebhookForwardsFiring(t *testing.T) {
 	})
 	resp, _ := h.HandleAlertWebhook(context.Background(), gen.HandleAlertWebhookRequestObject{Body: &body})
 	if _, ok := resp.(gen.HandleAlertWebhook200JSONResponse); !ok {
-		t.Fatalf("resp = %T, want 200 ack", resp)
+		t.Fatalf("resp = %T, want 200", resp)
 	}
-	// forwardAlert runs in a goroutine; wait briefly for it.
-	waitFor(t, func() bool { return obs.callCount() == 1 })
+	if obs.callCount() != 1 {
+		t.Fatalf("forward calls = %d, want 1", obs.callCount())
+	}
 	if obs.last.ruleName != "high-cpu" || obs.last.ns != "default" || obs.last.value != 0.9 {
 		t.Errorf("forwarded = %+v", obs.last)
+	}
+}
+
+func TestHandleWebhookForwardFailureIs500(t *testing.T) {
+	obs := &fakeObserver{err: errors.New("observer down")}
+	h := newAlertingHandler(&fakeAlertClient{}, obs)
+	body := gen.HandleAlertWebhookJSONRequestBody(map[string]interface{}{
+		"incident": map[string]interface{}{
+			"state":          "open",
+			"observed_value": "0.9",
+			"policy_user_labels": map[string]interface{}{
+				"openchoreo_namespace": "default",
+				"openchoreo_rule_name": "high-cpu",
+			},
+		},
+	})
+	resp, _ := h.HandleAlertWebhook(context.Background(), gen.HandleAlertWebhookRequestObject{Body: &body})
+	if _, ok := resp.(gen.HandleAlertWebhook500JSONResponse); !ok {
+		t.Fatalf("resp = %T, want 500 so Cloud Monitoring redelivers", resp)
 	}
 }
 
@@ -249,31 +270,20 @@ func TestHandleWebhookSkipsResolved(t *testing.T) {
 	if _, ok := resp.(gen.HandleAlertWebhook200JSONResponse); !ok {
 		t.Fatalf("resp = %T, want 200 ack", resp)
 	}
-	// Give any (erroneous) goroutine a chance, then assert none forwarded.
-	time.Sleep(50 * time.Millisecond)
 	if obs.callCount() != 0 {
 		t.Errorf("resolved incident should not forward, got %d calls", obs.callCount())
 	}
 }
 
-func TestHandleWebhookAcksUnparseable(t *testing.T) {
+func TestHandleWebhookRejectsUnparseable(t *testing.T) {
 	obs := &fakeObserver{}
 	h := newAlertingHandler(&fakeAlertClient{}, obs)
 	body := gen.HandleAlertWebhookJSONRequestBody(map[string]interface{}{"garbage": true})
 	resp, _ := h.HandleAlertWebhook(context.Background(), gen.HandleAlertWebhookRequestObject{Body: &body})
-	if _, ok := resp.(gen.HandleAlertWebhook200JSONResponse); !ok {
-		t.Errorf("resp = %T, want 200 ack even on bad payload", resp)
+	if _, ok := resp.(gen.HandleAlertWebhook400JSONResponse); !ok {
+		t.Errorf("resp = %T, want 400 on unparseable payload", resp)
 	}
-}
-
-func waitFor(t *testing.T, cond func() bool) {
-	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		if cond() {
-			return
-		}
-		time.Sleep(5 * time.Millisecond)
+	if obs.callCount() != 0 {
+		t.Errorf("unparseable payload should not forward, got %d calls", obs.callCount())
 	}
-	t.Fatalf("condition not met within timeout")
 }

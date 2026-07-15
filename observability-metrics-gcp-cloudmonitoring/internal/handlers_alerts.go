@@ -10,7 +10,6 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
-	"time"
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
@@ -156,56 +155,46 @@ func (h *MetricsHandler) DeleteAlertRule(ctx context.Context, request gen.Delete
 // HandleAlertWebhook handles POST /api/v1alpha1/alerts/webhook.
 //
 // Cloud Monitoring's webhook notification channel POSTs here when an alert
-// fires. The endpoint always acknowledges with 200 (never fails an alert back
-// to the notification provider, which would trigger retries) and forwards the
-// parsed alert to the Observer asynchronously.
-func (h *MetricsHandler) HandleAlertWebhook(_ context.Context, request gen.HandleAlertWebhookRequestObject) (gen.HandleAlertWebhookResponseObject, error) {
-	status := gen.Success
-	ack := gen.HandleAlertWebhook200JSONResponse{Status: &status, Message: strPtr("alert webhook received")}
-
+// fires. The alert is forwarded to the Observer synchronously: a forwarding
+// failure returns 500 so Cloud Monitoring redelivers the notification, while
+// parse failures return 400 (a redelivery cannot fix a malformed payload).
+// Resolved (non-firing) incidents are acknowledged and skipped.
+func (h *MetricsHandler) HandleAlertWebhook(ctx context.Context, request gen.HandleAlertWebhookRequestObject) (gen.HandleAlertWebhookResponseObject, error) {
 	if h.observerClient == nil {
-		// Alerting not fully wired: acknowledge but drop.
-		h.logger.Debug("observer not configured; dropping alert webhook")
-		return ack, nil
+		return gen.HandleAlertWebhook500JSONResponse(notImplementedErr()), nil
 	}
 	if request.Body == nil {
-		h.logger.Warn("alert webhook received with nil body")
-		return ack, nil
+		return gen.HandleAlertWebhook400JSONResponse(makeError(gen.BadRequest, errCodeBadRequest, "request body is required")), nil
 	}
 	raw, err := json.Marshal(*request.Body)
 	if err != nil {
-		h.logger.Warn("failed to re-encode webhook body", slog.Any("error", err))
-		return ack, nil
+		return gen.HandleAlertWebhook400JSONResponse(makeError(gen.BadRequest, errCodeBadRequest, "failed to re-encode webhook body")), nil
 	}
 	details, err := webhook.Parse(raw)
 	if err != nil {
 		h.logger.Warn("webhook parse failed", slog.Any("error", err))
-		return ack, nil
+		return gen.HandleAlertWebhook400JSONResponse(makeError(gen.BadRequest, errCodeBadRequest, err.Error())), nil
 	}
+	status := gen.Success
 	if !details.IsFiring() {
 		h.logger.Debug("ignoring non-firing incident",
 			slog.String("ruleName", details.RuleName), slog.String("state", details.State))
-		return ack, nil
+		return gen.HandleAlertWebhook200JSONResponse{Status: &status, Message: strPtr("non-firing incident ignored")}, nil
 	}
 
-	go h.forwardAlert(details)
-	return ack, nil
-}
-
-func (h *MetricsHandler) forwardAlert(details *webhook.AlertDetails) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
 	if err := h.observerClient.ForwardAlert(ctx, details.RuleName, details.RuleNamespace, details.AlertValue, details.AlertTimestamp); err != nil {
-		h.logger.Error("failed to forward alert to observer",
+		h.logger.Error("forward to observer failed",
 			slog.String("ruleName", details.RuleName),
 			slog.String("ruleNamespace", details.RuleNamespace),
-			slog.Any("error", err))
-		return
+			slog.Any("error", err),
+		)
+		return gen.HandleAlertWebhook500JSONResponse(makeError(gen.InternalServerError, errCodeInternal, "failed to forward alert to observer")), nil
 	}
 	h.logger.Info("forwarded alert to observer",
 		slog.String("ruleName", details.RuleName),
 		slog.String("ruleNamespace", details.RuleNamespace),
 		slog.Float64("alertValue", details.AlertValue))
+	return gen.HandleAlertWebhook200JSONResponse{Status: &status, Message: strPtr("alert forwarded to observer")}, nil
 }
 
 // ruleInputFromRequest maps the generated AlertRuleRequest to the backend

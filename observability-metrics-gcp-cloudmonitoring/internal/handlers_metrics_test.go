@@ -178,13 +178,8 @@ func TestAlertEndpointsNotImplemented(t *testing.T) {
 	if resp, _ := h.DeleteAlertRule(ctx, gen.DeleteAlertRuleRequestObject{}); !isNotImplemented500(t, resp) {
 		t.Errorf("DeleteAlertRule = %T", resp)
 	}
-	// The webhook always acknowledges with 200 (it must never fail an alert
-	// back to the notification provider); when alerting is disabled it acks
-	// and drops rather than returning 500.
-	if resp, _ := h.HandleAlertWebhook(ctx, gen.HandleAlertWebhookRequestObject{}); resp == nil {
-		t.Errorf("HandleAlertWebhook returned nil")
-	} else if _, ok := resp.(gen.HandleAlertWebhook200JSONResponse); !ok {
-		t.Errorf("HandleAlertWebhook = %T, want 200 ack", resp)
+	if resp, _ := h.HandleAlertWebhook(ctx, gen.HandleAlertWebhookRequestObject{}); !isNotImplemented500(t, resp) {
+		t.Errorf("HandleAlertWebhook = %T", resp)
 	}
 }
 

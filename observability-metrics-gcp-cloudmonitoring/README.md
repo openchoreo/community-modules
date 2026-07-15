@@ -66,7 +66,7 @@ the *control-plane* namespace, so filtering on it would match zero series.
 | `GET /api/v1alpha1/alerts/rules/{ruleName}` | Looks the policy up by its `openchoreo_rule_name` user label. |
 | `PUT /api/v1alpha1/alerts/rules/{ruleName}` | Updates the rule's policy in place. Returns `404` if the rule does not exist. |
 | `DELETE /api/v1alpha1/alerts/rules/{ruleName}` | Deletes the alert policy. |
-| `POST /api/v1alpha1/alerts/webhook` | Receives a fired-alert payload from the notification channel and forwards a normalised alert to the Observer. |
+| `POST /api/v1alpha1/alerts/webhook` | Receives a fired-alert payload from the notification channel and forwards a normalised alert to the Observer synchronously. A forwarding failure returns `500` so Cloud Monitoring redelivers. |
 | `GET /healthz` | Readiness/liveness check. |
 
 ## Choose a deployment topology

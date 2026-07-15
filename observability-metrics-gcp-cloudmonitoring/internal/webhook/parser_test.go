@@ -59,6 +59,18 @@ func TestParseResolved(t *testing.T) {
 	}
 }
 
+func TestParseMissingStateNotFiring(t *testing.T) {
+	body := `{"incident":{"observed_value":"0.9",
+	  "policy_user_labels":{"openchoreo_namespace":"ns","openchoreo_rule_name":"r"}}}`
+	d, err := Parse([]byte(body))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if d.IsFiring() {
+		t.Errorf("incident without a state must not be treated as firing")
+	}
+}
+
 func TestParsePrefersPolicyNameOverTruncatedLabel(t *testing.T) {
 	// The user-label value is truncated at 63 chars, but policy_name carries
 	// the full "<namespace>/<rule name>". The parser must use policy_name.

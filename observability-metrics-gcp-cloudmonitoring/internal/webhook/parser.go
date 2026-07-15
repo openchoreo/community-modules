@@ -45,9 +45,10 @@ type AlertDetails struct {
 }
 
 // IsFiring reports whether the incident represents a firing (open) alert as
-// opposed to a resolution.
+// opposed to a resolution. A missing state is treated as not firing so a
+// malformed payload cannot produce a false alert.
 func (d *AlertDetails) IsFiring() bool {
-	return strings.EqualFold(d.State, "open") || d.State == ""
+	return strings.EqualFold(d.State, "open")
 }
 
 // Parse decodes a Cloud Monitoring webhook body and extracts the OpenChoreo

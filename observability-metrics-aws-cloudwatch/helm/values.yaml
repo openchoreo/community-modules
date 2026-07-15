@@ -43,8 +43,7 @@ opentelemetry-collector:
   mode: daemonset
   image:
     # The upstream opentelemetry-collector-contrib image bundles
-    # kubeletstats and the AWS exporters/receivers we need (awsemf,
-    # awsxray).
+    # kubeletstats and the awsemf exporter we need.
     repository: otel/opentelemetry-collector-contrib
     tag: 0.149.0
   serviceAccount:
@@ -55,9 +54,11 @@ opentelemetry-collector:
     annotations: {}
   clusterRole:
     create: false
-  # Extra environment variables consumed by the OpenTelemetry collector ConfigMap.
-  # AWS_REGION is sourced by awsemfexporter; K8S_NODE_NAME is used for the
-  # CloudWatch Logs stream name.
+  # Extra environment variables for the collector container, consumed by the
+  # collector config below. K8S_NODE_IP is the kubeletstats scrape endpoint host;
+  # K8S_NODE_NAME is the CloudWatch Logs stream name. AWS_REGION and
+  # EMF_LOG_GROUP_NAME come from the metrics-aws-cloudwatch-cluster-env ConfigMap
+  # via extraEnvsFrom (below).
   extraEnvs:
     - name: K8S_NODE_NAME
       valueFrom:
@@ -102,6 +103,74 @@ opentelemetry-collector:
                 - source_labels: [__name__]
                   regex: kube_pod_container_resource_(requests|limits)
                   action: keep
+      # Dedicated Hubble L7 HTTP scrape. Cilium exposes the headless
+      # `hubble-metrics` service on port 9965 when hubble.metrics.enabled is
+      # non-empty (httpV2). These series carry source/destination pod + IP
+      # labels that the dual-sided enrichment below maps to OpenChoreo
+      # component identity. Kept on a separate receiver so it can run through
+      # its own enrichment pipeline (metrics/hubble).
+      prometheus/hubble:
+        config:
+          scrape_configs:
+            - job_name: hubble
+              scrape_interval: 30s
+              kubernetes_sd_configs:
+                - role: endpoints
+              relabel_configs:
+                - source_labels:
+                    [__meta_kubernetes_namespace, __meta_kubernetes_service_name]
+                  regex: kube-system;hubble-metrics
+                  action: keep
+                # The headless hubble-metrics service advertises the agent's
+                # named container port (4244) on its Endpoints. Force the scrape
+                # to the Hubble metrics port 9965 regardless of discovered port.
+                - source_labels: [__address__]
+                  regex: '([^:]+)(:\d+)?'
+                  target_label: __address__
+                  # `$$` escapes the OTel config env-var resolver so Prometheus
+                  # receives a literal `${1}` relabel group reference.
+                  replacement: '$${1}:9965'
+              metric_relabel_configs:
+                - source_labels: [__name__]
+                  regex: hubble_http_requests_total|hubble_http_request_duration_seconds(_sum|_count|_bucket)?
+                  action: keep
+      # Second Hubble scrape dedicated to preserving the duration histogram's
+      # explicit `le` buckets, which are needed for latency percentiles. The
+      # awsemf exporter collapses an assembled explicit-bucket histogram to
+      # {Count,Sum} and discards the bucket distribution, so p50/p90/p99 cannot
+      # be derived from the primary `prometheus/hubble` path. Here we keep ONLY
+      # the `_bucket` series and rename it to a standalone name so the OTel
+      # prometheus receiver does NOT fold it back into the
+      # `hubble_http_request_duration_seconds` histogram family; it then flows
+      # through as an ordinary series carrying the `le` label, which awsemf writes
+      # as an EMF field the adapter reconstructs quantiles from. The primary
+      # scrape above is left untouched (no regression to count/error/mean).
+      prometheus/hubble-buckets:
+        config:
+          scrape_configs:
+            - job_name: hubble-buckets
+              scrape_interval: 30s
+              kubernetes_sd_configs:
+                - role: endpoints
+              relabel_configs:
+                - source_labels:
+                    [__meta_kubernetes_namespace, __meta_kubernetes_service_name]
+                  regex: kube-system;hubble-metrics
+                  action: keep
+                - source_labels: [__address__]
+                  regex: '([^:]+)(:\d+)?'
+                  target_label: __address__
+                  replacement: '$${1}:9965'
+              metric_relabel_configs:
+                # Keep only the duration histogram bucket series.
+                - source_labels: [__name__]
+                  regex: hubble_http_request_duration_seconds_bucket
+                  action: keep
+                # Rename so the receiver does not treat it as a histogram member.
+                - source_labels: [__name__]
+                  regex: hubble_http_request_duration_seconds_bucket
+                  target_label: __name__
+                  replacement: hubble_http_request_duration_seconds_lebucket
     processors:
       k8sattributes:
         auth_type: serviceAccount
@@ -181,6 +250,92 @@ opentelemetry-collector:
           - action: upsert
             key: k8s.namespace.name
             from_attribute: namespace
+      # --- Hubble dual-sided pod -> component enrichment ---------------------
+      # Hubble series carry TWO pod identities (source_pod/source_ip and
+      # destination_pod/destination_ip) as data-point attributes. k8sattributes
+      # enriches ONE pod per resource, so we run two passes. Each pass lifts one
+      # side's IP to a resource attribute (k8s.pod.ip), associates the pod by IP,
+      # and stamps that pod's OpenChoreo labels under Source*/Destination* tag
+      # names. Namespaces come directly from Hubble's *_namespace labels.
+      # Convert Hubble's cumulative counters/histograms to per-interval deltas
+      # up front, keyed by the original Hubble labels. Downstream the adapter
+      # simply sums delta values over the query window (correct across counter
+      # resets), instead of reconstructing increases from cumulative min/max.
+      # The renamed bucket series arrives as an untyped Gauge (the receiver has no
+      # histogram metadata for the standalone name). Classic histogram buckets are
+      # cumulative monotonic counters, so convert it to a cumulative Sum before
+      # cumulativetodelta can turn it into per-interval deltas.
+      transform/hubble-buckets:
+        metric_statements:
+          - context: metric
+            statements:
+              - convert_gauge_to_sum("cumulative", true) where name == "hubble_http_request_duration_seconds_lebucket"
+      cumulativetodelta/hubble:
+        include:
+          match_type: strict
+          metrics:
+            - hubble_http_requests_total
+            - hubble_http_request_duration_seconds
+            - hubble_http_request_duration_seconds_lebucket
+      groupbyattrs/hubble-source:
+        keys: [source_ip]
+      resource/hubble-source-ip:
+        attributes:
+          - action: upsert
+            key: k8s.pod.ip
+            from_attribute: source_ip
+      k8sattributes/hubble-source:
+        auth_type: serviceAccount
+        extract:
+          # Only the OpenChoreo identity labels; suppress the default pod/owner
+          # metadata (k8s.pod.name, k8s.deployment.name, ...) that would bloat
+          # the EMF and reflect the wrong side after the second pass.
+          metadata: []
+          labels:
+            - tag_name: SourceComponentUID
+              key: openchoreo.dev/component-uid
+              from: pod
+            - tag_name: SourceComponent
+              key: openchoreo.dev/component
+              from: pod
+            - tag_name: SourceProjectUID
+              key: openchoreo.dev/project-uid
+              from: pod
+            - tag_name: SourceEnvironmentUID
+              key: openchoreo.dev/environment-uid
+              from: pod
+        pod_association:
+          - sources:
+              - from: resource_attribute
+                name: k8s.pod.ip
+      groupbyattrs/hubble-destination:
+        keys: [destination_ip]
+      resource/hubble-destination-ip:
+        attributes:
+          - action: upsert
+            key: k8s.pod.ip
+            from_attribute: destination_ip
+      k8sattributes/hubble-destination:
+        auth_type: serviceAccount
+        extract:
+          metadata: []
+          labels:
+            - tag_name: DestinationComponentUID
+              key: openchoreo.dev/component-uid
+              from: pod
+            - tag_name: DestinationComponent
+              key: openchoreo.dev/component
+              from: pod
+            - tag_name: DestinationProjectUID
+              key: openchoreo.dev/project-uid
+              from: pod
+            - tag_name: DestinationEnvironmentUID
+              key: openchoreo.dev/environment-uid
+              from: pod
+        pod_association:
+          - sources:
+              - from: resource_attribute
+                name: k8s.pod.ip
       batch:
         timeout: 30s
         send_batch_size: 8192
@@ -210,6 +365,26 @@ opentelemetry-collector:
               - "pod_cpu_limit"
               - "pod_memory_request"
               - "pod_memory_limit"
+      # Hubble EMF exporter. Writes enriched L7 series to the SAME log group as
+      # a separate log stream. Uses an empty dimension set so the high-cardinality
+      # source x destination edge pairs are NOT promoted to CloudWatch metrics —
+      # the per-edge detail lives in the EMF log FIELDS, which the adapter reads
+      # via Logs Insights (Option B). Cost scales with log volume, not edge count.
+      awsemf/hubble:
+        region: ${env:AWS_REGION}
+        namespace: OpenChoreo/HubbleMetrics
+        log_group_name: ${env:EMF_LOG_GROUP_NAME}
+        log_stream_name: ${env:K8S_NODE_NAME}-hubble
+        log_retention: ${env:EMF_RETENTION_DAYS}
+        dimension_rollup_option: NoDimensionRollup
+        resource_to_telemetry_conversion:
+          enabled: true
+        metric_declarations:
+          - dimensions: [[]]
+            metric_name_selectors:
+              - "hubble_http_requests_total"
+              - "hubble_http_request_duration_seconds"
+              - "hubble_http_request_duration_seconds_lebucket"
     extensions:
       health_check: {}
     service:
@@ -222,6 +397,34 @@ opentelemetry-collector:
           receivers: [kubeletstats, prometheus]
           processors: [groupbyattrs, resource/promlabels, k8sattributes, metricstransform, batch]
           exporters: [awsemf]
+        metrics/hubble:
+          receivers: [prometheus/hubble]
+          processors:
+            - cumulativetodelta/hubble
+            - groupbyattrs/hubble-source
+            - resource/hubble-source-ip
+            - k8sattributes/hubble-source
+            - groupbyattrs/hubble-destination
+            - resource/hubble-destination-ip
+            - k8sattributes/hubble-destination
+            - batch
+          exporters: [awsemf/hubble]
+        # Histogram-bucket path for latency percentiles. Same dual-sided
+        # enrichment as metrics/hubble, with the extra transform that makes the
+        # renamed bucket series a cumulative Sum before delta conversion.
+        metrics/hubble-buckets:
+          receivers: [prometheus/hubble-buckets]
+          processors:
+            - transform/hubble-buckets
+            - cumulativetodelta/hubble
+            - groupbyattrs/hubble-source
+            - resource/hubble-source-ip
+            - k8sattributes/hubble-source
+            - groupbyattrs/hubble-destination
+            - resource/hubble-destination-ip
+            - k8sattributes/hubble-destination
+            - batch
+          exporters: [awsemf/hubble]
 
 # ---------------------------------------------------------------------------
 # Metric storage settings.

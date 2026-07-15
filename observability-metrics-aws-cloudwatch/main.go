@@ -29,6 +29,7 @@ func main() {
 		slog.String("logLevel", cfg.LogLevel.String()),
 		slog.String("awsRegion", cfg.AWSRegion),
 		slog.String("metricNamespace", cfg.MetricNamespace),
+		slog.String("metricsLogGroup", cfg.MetricsLogGroup),
 		slog.String("serverPort", cfg.ServerPort),
 	)
 
@@ -38,6 +39,8 @@ func main() {
 	cwClient, err := cloudwatchmetrics.NewClient(bootstrapCtx, cloudwatchmetrics.Config{
 		Region:                     cfg.AWSRegion,
 		MetricNamespace:            cfg.MetricNamespace,
+		MetricsLogGroup:            cfg.MetricsLogGroup,
+		QueryTimeout:               cfg.QueryTimeout,
 		AlarmActionARNs:            cfg.AlarmActionARNs,
 		OKActionARNs:               cfg.OKActionARNs,
 		InsufficientDataActionARNs: cfg.InsufficientDataActionARNs,

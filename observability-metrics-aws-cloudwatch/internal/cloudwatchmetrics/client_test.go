@@ -100,7 +100,7 @@ func (s *stubSTSAPI) GetCallerIdentity(_ context.Context, _ *sts.GetCallerIdenti
 }
 
 func newTestClient(cw *stubCloudWatchAPI) *Client {
-	return NewClientWithAWS(cw, &stubSTSAPI{}, Config{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	return NewClientWithAWS(cw, nil, &stubSTSAPI{}, Config{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 }
 
 func TestPingDelegatesToSTS(t *testing.T) {
@@ -111,21 +111,21 @@ func TestPingDelegatesToSTS(t *testing.T) {
 }
 
 func TestPingPropagatesError(t *testing.T) {
-	c := NewClientWithAWS(&stubCloudWatchAPI{}, &stubSTSAPI{err: errors.New("sts boom")}, Config{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	c := NewClientWithAWS(&stubCloudWatchAPI{}, nil, &stubSTSAPI{err: errors.New("sts boom")}, Config{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err := c.Ping(context.Background()); err == nil {
 		t.Fatal("expected sts error to propagate")
 	}
 }
 
 func TestNewClientWithAWSDefaultsNamespace(t *testing.T) {
-	c := NewClientWithAWS(&stubCloudWatchAPI{}, &stubSTSAPI{}, Config{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	c := NewClientWithAWS(&stubCloudWatchAPI{}, nil, &stubSTSAPI{}, Config{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if c.MetricNamespace() != DefaultMetricNamespace {
 		t.Fatalf("expected default namespace, got %q", c.MetricNamespace())
 	}
 }
 
 func TestNewClientWithAWSHonoursOverride(t *testing.T) {
-	c := NewClientWithAWS(&stubCloudWatchAPI{}, &stubSTSAPI{}, Config{MetricNamespace: "Custom/NS"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	c := NewClientWithAWS(&stubCloudWatchAPI{}, nil, &stubSTSAPI{}, Config{MetricNamespace: "Custom/NS"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if c.MetricNamespace() != "Custom/NS" {
 		t.Fatalf("expected override namespace, got %q", c.MetricNamespace())
 	}

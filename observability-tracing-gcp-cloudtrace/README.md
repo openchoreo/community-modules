@@ -9,13 +9,12 @@ It ships two components in one Helm chart:
 
 ## Architecture
 
-```
-workload pods ──OTLP──▶ OTel Collector ──googlecloud exporter──▶ Cloud Trace
-                          │  k8sattributes (pod labels → resource attrs)
-                          │  transform (openchoreo.dev/* → span attrs)
-                          │  tail_sampling (rate limiting)
-                          │
-Observer ──POST /api/v1alpha1/traces/query──▶ tracing adapter ──ListTraces/GetTrace──▶ Cloud Trace v1 API
+```mermaid
+flowchart TD
+  app["Workload pods (OTel SDK)"] -->|OTLP 4317/4318| col["OTel Collector (contrib)<br/>k8sattributes (pod labels &rarr; resource attrs)<br/>transform (openchoreo.dev/* &rarr; span attrs)<br/>tail_sampling (rate limiting)"]
+  col -->|googlecloud exporter<br/>Workload Identity: roles/cloudtrace.agent| ct["Google Cloud Trace"]
+  ct -->|ListTraces / GetTrace (v1 read API)<br/>Workload Identity: roles/cloudtrace.user| adapter["tracing-adapter :9100"]
+  observer["Observer"] -->|POST /api/v1alpha1/traces/query| adapter
 ```
 
 The collector promotes the four OpenChoreo pod labels to **span attributes** (`openchoreo.dev/namespace`, `openchoreo.dev/component-uid`, `openchoreo.dev/project-uid`, `openchoreo.dev/environment-uid`). This step is load-bearing: the `googlecloud` exporter does not write resource attributes onto Cloud Trace spans, and the adapter scopes every query with exact-match label filters such as:

@@ -8,9 +8,7 @@ import (
 	"strings"
 )
 
-// eventResultFields lists the aliased columns every events query projects. The
-// aliases become the keys of the row maps runQuery returns, so the client mapping
-// can read them by clean name instead of the raw flattened JSON path.
+// eventResultFields maps each Insights field path to the alias used as the row key.
 var eventResultFields = []struct {
 	source string
 	alias  string
@@ -39,10 +37,8 @@ func writeEventFields(b *strings.Builder) {
 	b.WriteString("\n")
 }
 
-// buildComponentEventsQuery constructs a CloudWatch Logs Insights query for
-// component-scoped Kubernetes events. It filters on the OpenChoreo scope labels the
-// k8seventenrich processor copied onto each event's involved object — mirroring
-// buildComponentQuery, but against the OTEL/awscloudwatchlogsexporter field shape.
+// buildComponentEventsQuery builds the Insights query for component-scoped events,
+// filtering on the OpenChoreo scope labels.
 func buildComponentEventsQuery(p ComponentEventsParams) string {
 	var b strings.Builder
 
@@ -65,32 +61,27 @@ func buildComponentEventsQuery(p ComponentEventsParams) string {
 	return b.String()
 }
 
-// buildWorkflowEventsQuery constructs a CloudWatch Logs Insights query for
-// workflow-scoped events. Workflow pods/jobs are named "<workflowRunName>-<...>" and
-// run in the "workflows-<namespace>" Kubernetes namespace, so — like the workflow
-// log query — events are matched by the involved object's name and namespace rather
-// than the OpenChoreo component labels.
+// buildWorkflowEventsQuery builds the Insights query for workflow-scoped events,
+// matching by object name and the "workflows-<namespace>" namespace.
 func buildWorkflowEventsQuery(p WorkflowEventsParams) string {
 	var b strings.Builder
 
 	writeEventFields(&b)
 
 	fmt.Fprintf(&b, "| filter %s = \"workflows-%s\"\n", eventField(evObjectNamespace), escapeInsights(p.Namespace))
+	// TaskName only narrows within a run, so it applies only alongside WorkflowRunName
+	// (the handler guarantees WorkflowRunName is set whenever TaskName is).
 	if p.WorkflowRunName != "" {
-		// Match the workflow object itself ("<run>") and its pods/jobs ("<run>-<...>").
+		// Match the workflow object ("<run>") and its pods/jobs ("<run>-<...>").
 		fmt.Fprintf(&b, "| filter %s like /^%s(-|$)/\n", eventField(evObjectName), escapeInsightsRegex(p.WorkflowRunName))
-	}
-	if p.TaskName != "" {
-		// Workflow controller events keep the step name in the message body, while
-		// pod/job events may include either the step name or the referenced template
-		// name in the object name. For example, the checkout-source step creates
-		// pods named "<workflow>-checkout-<hash>".
-		taskName := escapeInsights(p.TaskName)
-		fmt.Fprintf(&b, "| filter %s like \"%s\" or %s like \"%s\"",
-			eventField(evObjectName), taskName,
-			eventField(evMessage), taskName,
-		)
-		if p.WorkflowRunName != "" {
+
+		if p.TaskName != "" {
+			// Task name may appear in the message body or the object name.
+			taskName := escapeInsights(p.TaskName)
+			fmt.Fprintf(&b, "| filter %s like \"%s\" or %s like \"%s\"",
+				eventField(evObjectName), taskName,
+				eventField(evMessage), taskName,
+			)
 			for _, objectPrefix := range workflowTaskObjectPrefixes(p.TaskName) {
 				fmt.Fprintf(&b, " or %s like /^%s-%s(-|$)/",
 					eventField(evObjectName),
@@ -98,8 +89,8 @@ func buildWorkflowEventsQuery(p WorkflowEventsParams) string {
 					escapeInsightsRegex(objectPrefix),
 				)
 			}
+			b.WriteString("\n")
 		}
-		b.WriteString("\n")
 	}
 
 	fmt.Fprintf(&b, "| sort @timestamp %s\n", normaliseSortOrder(p.SortOrder))

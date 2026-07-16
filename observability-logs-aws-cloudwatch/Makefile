@@ -1,14 +1,5 @@
 CFG_DIR := internal/api
 OAPI_CODEGEN_VERSION ?= v2.5.1
-# Pinned to an immutable commit SHA so `make openapi-codegen` is reproducible.
-# Bump the SHA when the upstream spec changes.
-#
-# NOTE: the events API (`POST /api/v1/events/query`, EventsQueryRequest/Response,
-# EventEntry) must be present in this upstream spec before regenerating. Until that
-# lands upstream, the generated `internal/api/gen/*` was produced from the local
-# TASKS/logs-event-publishing/openapi.yaml — regenerating against a spec that lacks
-# the events path will strip the events code and break the build. Override with e.g.
-# `make openapi-codegen SPEC=../TASKS/logs-event-publishing/openapi.yaml` in the meantime.
 SPEC := https://raw.githubusercontent.com/openchoreo/openchoreo/main/openapi/observability-logs-adapter-api.yaml
 
 .PHONY: oapi-codegen-install openapi-codegen unit-test

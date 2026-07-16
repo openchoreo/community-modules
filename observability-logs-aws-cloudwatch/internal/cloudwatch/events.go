@@ -12,8 +12,7 @@ import (
 	cwltypes "github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs/types"
 )
 
-// eventsLogGroup returns the CloudWatch log group where the events collector's
-// awscloudwatchlogsexporter ships enriched Kubernetes events.
+// eventsLogGroup returns the log group holding the collected Kubernetes events.
 func (c *Client) eventsLogGroup() string {
 	return c.eventsLogGroupName
 }
@@ -28,11 +27,8 @@ func (c *Client) GetWorkflowEvents(ctx context.Context, params WorkflowEventsPar
 	return c.runEventsQuery(ctx, buildWorkflowEventsQuery(params), params.StartTime, params.EndTime)
 }
 
-// runEventsQuery executes an events query and maps the rows to EventEntry values.
-//
-// The events collector is an optional, opt-in component: when it is not deployed the
-// events log group does not exist. Rather than surfacing that as a 500, treat a
-// missing log group as an empty result so /api/v1/events/query degrades gracefully.
+// runEventsQuery runs an events query and maps the rows to EventEntry values. A
+// missing log group (collector not deployed) returns an empty result, not an error.
 func (c *Client) runEventsQuery(ctx context.Context, query string, startTime, endTime time.Time) (*EventsResult, error) {
 	started := time.Now()
 
@@ -82,9 +78,7 @@ func (c *Client) runEventsQuery(ctx context.Context, query string, startTime, en
 	}, nil
 }
 
-// isResourceNotFound reports whether err is (or wraps) a CloudWatch Logs
-// ResourceNotFoundException — e.g. the events log group has not been created because
-// the events collector is not deployed.
+// isResourceNotFound reports whether err is a CloudWatch Logs ResourceNotFoundException.
 func isResourceNotFound(err error) bool {
 	var notFound *cwltypes.ResourceNotFoundException
 	return errors.As(err, &notFound)

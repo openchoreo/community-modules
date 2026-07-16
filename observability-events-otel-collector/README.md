@@ -149,11 +149,9 @@ EOF
 
 ### AWS CloudWatch Logs
 
-Compatible with `observability-logs-aws-cloudwatch` when the adapter chart is
-installed with `events.enabled=true`. The adapter setup job creates the events
-log group with retention; the collector only needs permission to create streams
-and publish log events. Credentials come from the standard AWS chain (IRSA on
-EKS):
+Compatible with `observability-logs-aws-cloudwatch`. By default the adapter's
+setup job provisions the events log group with retention
+(`events.provisionLogGroup=true`).
 
 ```yaml
 exporters:

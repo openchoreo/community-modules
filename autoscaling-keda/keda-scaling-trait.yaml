@@ -152,6 +152,7 @@ spec:
           rules:
             - hosts:
                 - ${metadata.componentName + "." + metadata.namespace + ".svc.cluster.local"}
+                - ${metadata.componentName + "." + metadata.namespace}
           scalingMetric:
             requestRate:
               targetValue: ${parameters.requestRateTargetValue}
@@ -228,7 +229,7 @@ spec:
         group: gateway.networking.k8s.io
         version: v1
         kind: HTTPRoute
-        where: '${parameters.trigger.type == "" && has(resource.metadata.labels) && resource.metadata.labels["openchoreo.dev/endpoint-visibility"] == "external"}'
+        where: '${parameters.trigger.type == "" && has(resource.metadata.labels) && resource.metadata.labels["openchoreo.dev/endpoint-visibility"] == "external" && resource.spec.rules.exists(r, has(r.backendRefs) && r.backendRefs.exists(b, b.name == metadata.componentName))}'
       operations:
         - op: replace
           path: /spec/rules/[*]/backendRefs/[?(@.name=='${metadata.componentName}')]
@@ -245,7 +246,7 @@ spec:
         group: gateway.networking.k8s.io
         version: v1
         kind: HTTPRoute
-        where: '${parameters.trigger.type == "" && has(resource.metadata.labels) && resource.metadata.labels["openchoreo.dev/endpoint-visibility"] == "external" && has(resource.spec.rules[0].filters) && resource.spec.rules[0].filters.exists(f, f.type == "URLRewrite")}'
+        where: '${parameters.trigger.type == "" && has(resource.metadata.labels) && resource.metadata.labels["openchoreo.dev/endpoint-visibility"] == "external" && resource.spec.rules.exists(r, has(r.backendRefs) && r.backendRefs.exists(b, b.name == metadata.componentName)) && has(resource.spec.rules[0].filters) && resource.spec.rules[0].filters.exists(f, f.type == "URLRewrite")}'
       operations:
         - op: add
           path: /spec/rules/[*]/filters/[?(@.type=='URLRewrite')]/urlRewrite/hostname
@@ -255,7 +256,7 @@ spec:
         group: gateway.networking.k8s.io
         version: v1
         kind: HTTPRoute
-        where: '${parameters.trigger.type == "" && has(resource.metadata.labels) && resource.metadata.labels["openchoreo.dev/endpoint-visibility"] == "external" && !(has(resource.spec.rules[0].filters) && resource.spec.rules[0].filters.exists(f, f.type == "URLRewrite"))}'
+        where: '${parameters.trigger.type == "" && has(resource.metadata.labels) && resource.metadata.labels["openchoreo.dev/endpoint-visibility"] == "external" && resource.spec.rules.exists(r, has(r.backendRefs) && r.backendRefs.exists(b, b.name == metadata.componentName)) && !(has(resource.spec.rules[0].filters) && resource.spec.rules[0].filters.exists(f, f.type == "URLRewrite"))}'
       operations:
         - op: add
           path: /spec/rules/[*]/filters/-

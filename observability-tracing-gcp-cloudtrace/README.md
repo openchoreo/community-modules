@@ -176,17 +176,6 @@ The adapter is configured through these environment variables (set by the Helm c
 
 Credentials come from Application Default Credentials: Workload Identity in-cluster, `gcloud auth application-default login` locally.
 
-## Behavior notes
-
-- **Ingestion latency**: Cloud Trace indexing takes up to several minutes; spans are not queryable immediately after being emitted.
-- **Read API**: only Cloud Trace API v1 supports reads; v2 is write-only. Trace lists use `ListTraces` with the `COMPLETE` view so span count, root span, and error status can be computed without a per-trace follow-up call.
-- **Span kind fidelity**: the v1 API only distinguishes `RPC_SERVER` and `RPC_CLIENT`; other OTel kinds arrive as unspecified. The adapter falls back to the exporter's kind labels and reports `INTERNAL` when no signal exists.
-- **Span IDs**: the v1 API returns span IDs as `fixed64`; the adapter converts them to the 16-char hex convention used by OTLP and the sibling adapters. Trace IDs pass through unchanged (32-char hex on both sides).
-- **Span status**: derived from Cloud Trace labels in order: `g.co/status/code` (0 = ok), `otel.status_code`, the `error` flag, then `/http/status_code` (>= 500 = error); otherwise `unset`.
-- **Tenancy**: `GetTrace` has no filter parameter, so the spans endpoints re-check the search scope against span labels and report out-of-scope traces as empty — the same outcome `ListTraces` filtering produces.
-- **Attributes**: Cloud Trace flattens resource and span attributes into one labels map; the adapter splits them back by key prefix (`openchoreo.dev/`, `k8s.`, `service.`, `g.co/`, ... are reported as resource attributes).
-- **Retention and limits**: Cloud Trace retains spans for **30 days**; queries beyond that return nothing. Spans are capped at **32 labels** — the four promoted OpenChoreo labels count toward this budget.
-
 ## Compatibility
 
 > **Note:** The Helm chart versions specified in the installation commands above are for the latest module version compatible with the development version of OpenChoreo. Refer to the compatibility table below to determine the appropriate module version for your OpenChoreo installation.

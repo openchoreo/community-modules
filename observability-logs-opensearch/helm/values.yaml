@@ -68,27 +68,31 @@ fluent-bit:
   testFramework:
     enabled: false
 
-  initContainers:
-  - name: set-volume-ownership
-    image: busybox
-    command: ["sh", "-c", "chown -R 10000:10000 /var/lib/fluent-bit/db"]
-    resources:
-      limits:
-        cpu: 15m
-        memory: "32Mi"
-      requests:
-        cpu: 10m
-        memory: "24Mi"
-    securityContext:
-      capabilities:
-        drop:
-        - ALL
-      privileged: true
-      readOnlyRootFilesystem: true
-      runAsUser: 0
-    volumeMounts:
-    - name: db
-      mountPath: /var/lib/fluent-bit/db
+  # Passed as a templatable string (the fluent-bit chart tpl-evaluates string
+  # values in its own context, where the shared global.imageRegistry resolves)
+  # so the init image honors the registry override. The fluent-bit main image
+  # has no global support — override fluent-bit.image.repository for mirrors.
+  initContainers: |-
+    - name: set-volume-ownership
+      image: "{{ with .Values.global.imageRegistry }}{{ . }}/{{ end }}busybox:1.37.0"
+      command: ["sh", "-c", "chown -R 10000:10000 /var/lib/fluent-bit/db"]
+      resources:
+        limits:
+          cpu: 15m
+          memory: "32Mi"
+        requests:
+          cpu: 10m
+          memory: "24Mi"
+      securityContext:
+        capabilities:
+          drop:
+          - ALL
+        privileged: true
+        readOnlyRootFilesystem: true
+        runAsUser: 0
+      volumeMounts:
+      - name: db
+        mountPath: /var/lib/fluent-bit/db
 
   # Values for fluent-bit config map
   openSearchHost: "opensearch"

@@ -2,24 +2,26 @@
 
 This module scales OpenChoreo components on demand with [KEDA](https://keda.sh). An HTTP service can drop to zero replicas while it's idle and wake up on the first request. The KEDA HTTP Add-on interceptor holds that request while a pod starts, so nothing gets dropped, and in-cluster service-to-service calls wake the service the same way. Workers scale on cron or queue triggers instead. You get all of this by attaching the `keda-scaling` trait to a plain service or worker component and setting a few parameters.
 
-The module has three pieces:
-
-- `keda-scaling-trait.yaml` holds the `ClusterTrait` that renders the right KEDA objects for each data plane.
-- `cluster-agent-keda-rbac.yaml` gives the data-plane cluster-agent permission to manage KEDA objects.
-- `keda-interceptor-multiport.yaml` is a multi-port Service that fronts the interceptor so in-cluster calls can wake a service.
-
-To use it, add `keda-scaling` to the `allowedTraits` of your existing component types (a one-line patch, see Install step 3) and attach the trait to a component. The module ships no component types of its own; it works with whatever `service`/`web-application`/`worker` types your platform already runs.
-
-KEDA core and the KEDA HTTP Add-on come from their own upstream Helm charts (see Install below). This module is only the OpenChoreo glue.
+The module is just the OpenChoreo glue: a `ClusterTrait` that renders the right KEDA objects, RBAC so the data-plane cluster-agent can manage them, and a multi-port Service that lets in-cluster calls wake a sleeping service. KEDA core and the KEDA HTTP Add-on come from their own upstream Helm charts (see Install below). The module ships no component types of its own. Add `keda-scaling` to the `allowedTraits` of whatever `service`/`web-application`/`worker` types your platform already runs (a one-line patch, Install step 3) and attach the trait to a component.
 
 ## How it works
 
-Attach the `keda-scaling` trait to a component and it renders the right KEDA objects; detach it and they're gone. Attaching is the on/off switch, there's no separate flag to set. The trait assumes every data plane it targets runs KEDA. Mixed fleets, where only some data planes run KEDA, are a separate design still being worked out; for now keep the data planes a component promotes across identical.
+Attach the `keda-scaling` trait to a component and it renders the right KEDA objects. Detach it and they're gone. Attaching is the on/off switch, there's no separate flag to set. The trait definition lives on the control plane, and the cluster-agent applies whatever it renders onto the data plane:
+
+![What the keda-scaling trait renders in each mode](keda-overview.svg)
 
 | Mode | When | What KEDA creates |
 |------|------|-------------------|
 | **HTTP** | service or web-application with one external HTTP endpoint, no `trigger.type` | `InterceptorRoute` + companion `ScaledObject`; gateway and in-cluster traffic both wake the component |
 | **Trigger** | any component with `trigger.type` set | `ScaledObject` with that trigger (cron, kafka, rabbitmq, …) |
+
+### Waking a sleeping service
+
+In HTTP mode the component scales to zero when idle, and the first request wakes it, whichever way it arrives. Gateway traffic reaches the interceptor because the trait repoints the external `HTTPRoute` at it. In-cluster calls reach it because the component's Service becomes an ExternalName alias for the interceptor. Either way the interceptor holds the request while a pod starts, then forwards it:
+
+![How a request wakes a scaled-to-zero service](keda-http-flow.svg)
+
+The trait assumes every data plane it targets runs KEDA. Mixed fleets, where only some data planes run KEDA, are a separate design still being worked out; for now keep the data planes a component promotes across identical.
 
 You need OpenChoreo 1.2 or later. For the architecture, tuning, and extension details, see [CONFIGURATION.md](./CONFIGURATION.md).
 
@@ -52,7 +54,7 @@ helm upgrade --install keda-add-ons-http kedacore/keda-add-ons-http --version 0.
 kubectl wait --for=condition=Established crd/interceptorroutes.http.keda.sh --timeout=120s
 ```
 
-> The `additionalLabels` flag matters. OpenChoreo renders a NetworkPolicy for each component that only admits traffic from the same namespace or from pods carrying the `openchoreo.dev/system-component` label. Leave the flag out and, on any cluster whose CNI enforces NetworkPolicy (k3s and k3d included), the interceptor's forwarded requests get dropped silently. Every request then times out with a 504, even though the wake-up itself worked.
+> Don't skip the `additionalLabels` flag. OpenChoreo renders a NetworkPolicy for each component that only admits traffic from the same namespace or from pods carrying the `openchoreo.dev/system-component` label. Without the label, on any cluster whose CNI enforces NetworkPolicy (k3s and k3d included), the interceptor's forwarded requests get dropped silently and every request times out with a 504, even though the wake-up itself worked.
 
 ### 2. Apply the trait and data-plane resources
 
@@ -105,7 +107,7 @@ WL_NS=$(kubectl get ns -o name | sed 's|namespace/||' | grep '^dp-default-defaul
 echo "$WL_NS"
 ```
 
-Watch it scale to zero after about 30 seconds of no traffic:
+Watch it scale to zero. This happens once no request has arrived for the full request-rate window (1 minute by default) plus the sample's `cooldownPeriod: 30`, so roughly 90 seconds after the last request:
 
 ```bash
 kubectl get deploy -n "$WL_NS" -w        # replicas -> 0, then Ctrl-C
@@ -182,17 +184,13 @@ spec:
             desiredReplicas: "1"
 ```
 
-Platform engineers can floor the bounds per environment from the `ReleaseBinding`:
-
-```yaml
-spec:
-  traitEnvironmentConfigs:
-    keda-scaling:
-      minReplicas: 1        # never scale to zero in production
-      maxReplicas: 10
-```
+Platform engineers can override `minReplicas`, `maxReplicas`, and `cooldownPeriod` per environment from the `ReleaseBinding`, for example to never scale to zero in production. See [per-environment overrides](./CONFIGURATION.md#per-environment-overrides).
 
 The full parameter reference, tuning notes (request rate vs. concurrency), extension points, architecture, and troubleshooting all live in [CONFIGURATION.md](./CONFIGURATION.md).
+
+## Composing with an API gateway trait
+
+`keda-scaling` can share a component with an edge API-management trait such as `api-management` (from the `gateway-wso2-api-platform` module), so one service gets both scale-to-zero and API management. Put the API-gateway trait before `keda-scaling` in `spec.traits`. The gateway trait then takes over the external route while keda keeps its in-cluster wake wiring, so scale-to-zero and the gateway's policies both keep working. The reverse order fails to render. How the deferral works is covered in [CONFIGURATION.md](./CONFIGURATION.md#composing-with-an-api-gateway-trait).
 
 ## Limitations
 

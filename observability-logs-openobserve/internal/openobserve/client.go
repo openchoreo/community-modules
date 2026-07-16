@@ -117,6 +117,13 @@ type OpenObserveResponse struct {
 	Total int                      `json:"total"`
 }
 
+// openObserveErrCodeStreamNotFound is OpenObserve's error code for "Search stream not found".
+const openObserveErrCodeStreamNotFound = 20002
+
+type openObserveErrorBody struct {
+	Code int `json:"code"`
+}
+
 type Client struct {
 	baseURL      string
 	org          string
@@ -171,6 +178,13 @@ func (c *Client) executeSearchQuery(ctx context.Context, queryJSON []byte) (*Ope
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		// OpenObserve only creates a stream on first ingest; querying one that has never
+		// received data 400s with this code instead of returning zero hits like an
+		// existing-but-empty index would. Treat it as "no data yet", not a failure.
+		var oErr openObserveErrorBody
+		if json.Unmarshal(body, &oErr) == nil && oErr.Code == openObserveErrCodeStreamNotFound {
+			return &OpenObserveResponse{Hits: []map[string]interface{}{}}, nil
+		}
 		c.logger.Error("OpenObserve returned error",
 			slog.Int("statusCode", resp.StatusCode),
 			slog.String("body", string(body)))

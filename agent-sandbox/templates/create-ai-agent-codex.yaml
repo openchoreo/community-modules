@@ -1,0 +1,99 @@
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: create-ai-agent-codex
+  title: Codex Agent
+  description: Run OpenAI Codex interactively in a kernel-isolated sandbox.
+  tags:
+    - openchoreo
+    - ai-agent
+    - codex
+spec:
+  type: Component
+  owner: openchoreo
+
+  # Injects the logged-in user's token so the create action authorizes as them.
+  EXPERIMENTAL_formDecorators:
+    - id: openchoreo:inject-user-token
+
+  parameters:
+    - title: Component Metadata
+      required:
+        - project_namespace
+        - name
+      properties:
+        project_namespace:
+          title: Project & Namespace
+          type: object
+          description: The OpenChoreo project and namespace to create the component in.
+          ui:field: ProjectNamespaceField
+        name:
+          title: Component Name
+          type: string
+          description: A unique name for the component (lowercase, DNS-compatible).
+          pattern: "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+          maxLength: 63
+          ui:autofocus: true
+        displayName:
+          title: Display Name
+          type: string
+          description: A human-friendly name shown in the portal.
+        description:
+          title: Description
+          type: string
+          description: A short description of what this agent does.
+
+    - title: Agent Configuration
+      required:
+        - model
+        - openaiApiKey
+      properties:
+        model:
+          title: Model
+          type: string
+          description: The OpenAI model Codex runs on (OPENAI_MODEL env var).
+          default: gpt-5.5-codex
+          enum:
+            - gpt-5.5-codex
+            - gpt-5.5
+            - gpt-5.4-mini
+          enumNames:
+            - GPT-5.5 Codex
+            - GPT-5.5
+            - GPT-5.4 Mini
+        openaiApiKey:
+          title: OpenAI API Key
+          type: string
+          description: The OpenAI API key Codex uses (OPENAI_API_KEY).
+          ui:field: Secret
+
+  steps:
+    - id: create-component
+      name: Create Component
+      action: openchoreo:component:create
+      input:
+        projectName: ${{ parameters.project_namespace.project_name }}
+        namespaceName: ${{ parameters.project_namespace.namespace_name }}
+        componentName: ${{ parameters.name }}
+        displayName: ${{ parameters.displayName }}
+        description: ${{ parameters.description }}
+        componentType: ai-agent-codex
+        component_type_kind: ClusterComponentType
+        component_type_workload_type: proxy
+        # Must be deploy-from-image, or the action drops the image and env vars.
+        deploymentSource: deploy-from-image
+        containerImage: docker/sandbox-templates:codex
+        autoDeploy: true
+        # Terminal-only: no endpoints. Reach it with `kubectl exec -it <pod> -- codex`.
+        workloadDetails:
+          envVars:
+            - key: OPENAI_API_KEY
+              value: ${{ secrets.openaiApiKey }}
+            - key: OPENAI_MODEL
+              value: ${{ parameters.model }}
+
+  output:
+    links:
+      - title: View Component
+        icon: kind:component
+        entityRef: component:${{ steps['create-component'].output.namespaceName }}/${{ steps['create-component'].output.componentName }}

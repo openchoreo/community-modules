@@ -112,7 +112,7 @@ func TestGetResourceMetricsHappyPath(t *testing.T) {
 }
 
 func TestGetResourceMetricsAppliesDefaultStep(t *testing.T) {
-	now := time.Date(2026, 5, 4, 12, 0, 0, 0, time.UTC)
+	now := time.Now().UTC()
 	var captured *cloudwatch.GetMetricDataInput
 	api := &stubCloudWatchAPI{
 		getMetricDataFunc: func(in *cloudwatch.GetMetricDataInput) (*cloudwatch.GetMetricDataOutput, error) {

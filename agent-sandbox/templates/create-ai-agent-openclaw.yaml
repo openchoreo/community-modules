@@ -1,0 +1,195 @@
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: create-ai-agent-openclaw
+  title: OpenClaw AI Agent
+  description: Run the multi-provider OpenClaw agent in a kernel-isolated sandbox.
+  tags:
+    - openchoreo
+    - ai-agent
+    - openclaw
+spec:
+  type: Component
+  owner: openchoreo
+
+  # Injects the logged-in user's token so the create action authorizes as them.
+  EXPERIMENTAL_formDecorators:
+    - id: openchoreo:inject-user-token
+
+  parameters:
+    - title: Component Metadata
+      required:
+        - project_namespace
+        - name
+      properties:
+        project_namespace:
+          title: Project & Namespace
+          type: object
+          description: The OpenChoreo project and namespace to create the component in.
+          ui:field: ProjectNamespaceField
+        name:
+          title: Component Name
+          type: string
+          description: A unique name for the component (lowercase, DNS-compatible).
+          pattern: "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+          maxLength: 63
+          ui:autofocus: true
+        displayName:
+          title: Display Name
+          type: string
+          description: A human-friendly name shown in the portal.
+        description:
+          title: Description
+          type: string
+          description: A short description of what this agent does.
+
+    - title: Agent Configuration
+      required:
+        - llmProvider
+        - llmApiKey
+        - gatewayToken
+      properties:
+        llmProvider:
+          title: LLM Provider
+          type: string
+          description: The LLM provider OpenClaw should use.
+          default: anthropic
+          enum:
+            - anthropic
+            - openai
+            - google
+            - openrouter
+          enumNames:
+            - Anthropic (Claude)
+            - OpenAI
+            - Google Gemini
+            - OpenRouter
+        llmApiKey:
+          title: LLM Provider API Key
+          type: string
+          description: The API key for the selected provider.
+          ui:field: Secret
+        gatewayToken:
+          title: Gateway Token
+          type: string
+          description: Token used to authenticate access to OpenClaw's Control UI.
+          ui:field: Secret
+      # Each branch sets the hidden provider key env var (Gemini's is GEMINI_API_KEY).
+      dependencies:
+        llmProvider:
+          oneOf:
+            - required: [model]
+              properties:
+                llmProvider:
+                  const: anthropic
+                apiKeyEnvVar:
+                  type: string
+                  default: ANTHROPIC_API_KEY
+                  ui:widget: hidden
+                model:
+                  title: Model
+                  type: string
+                  default: anthropic/claude-sonnet-4-6
+                  enum:
+                    - anthropic/claude-opus-4-8
+                    - anthropic/claude-sonnet-4-6
+                    - anthropic/claude-haiku-4-5
+            - required: [model]
+              properties:
+                llmProvider:
+                  const: openai
+                apiKeyEnvVar:
+                  type: string
+                  default: OPENAI_API_KEY
+                  ui:widget: hidden
+                model:
+                  title: Model
+                  type: string
+                  default: openai/gpt-5.5
+                  enum:
+                    - openai/gpt-5.5
+                    - openai/gpt-5.4-mini
+            - required: [model]
+              properties:
+                llmProvider:
+                  const: google
+                apiKeyEnvVar:
+                  type: string
+                  default: GEMINI_API_KEY
+                  ui:widget: hidden
+                model:
+                  title: Model
+                  type: string
+                  default: google/gemini-3.1-pro-preview
+                  enum:
+                    - google/gemini-3.1-pro-preview
+                    - google/gemini-3-flash-preview
+            - required: [model]
+              properties:
+                llmProvider:
+                  const: openrouter
+                apiKeyEnvVar:
+                  type: string
+                  default: OPENROUTER_API_KEY
+                  ui:widget: hidden
+                model:
+                  title: Model
+                  type: string
+                  default: openrouter/openrouter/auto
+                  enum:
+                    - openrouter/openrouter/auto
+                    - openrouter/~anthropic/claude-sonnet-latest
+                    - openrouter/deepseek/deepseek-chat
+
+  steps:
+    - id: create-component
+      name: Create Component
+      action: openchoreo:component:create
+      input:
+        projectName: ${{ parameters.project_namespace.project_name }}
+        namespaceName: ${{ parameters.project_namespace.namespace_name }}
+        componentName: ${{ parameters.name }}
+        displayName: ${{ parameters.displayName }}
+        description: ${{ parameters.description }}
+        componentType: ai-agent-openclaw
+        component_type_kind: ClusterComponentType
+        component_type_workload_type: proxy
+        # Must be deploy-from-image, or the action drops the image and env vars.
+        deploymentSource: deploy-from-image
+        containerImage: alpine/openclaw:2026.6.9
+        autoDeploy: true
+        workloadDetails:
+          # Exposes OpenClaw's token-gated Control UI (18789) via the gateway.
+          endpoints:
+            control-ui:
+              type: HTTP
+              port: 18789
+              visibility:
+                - external
+          envVars:
+            - key: ${{ parameters.apiKeyEnvVar }}
+              value: ${{ secrets.llmApiKey }}
+            - key: OPENCLAW_GATEWAY_TOKEN
+              value: ${{ secrets.gatewayToken }}
+            # Read-only mounted config; don't mount over ~/.openclaw runtime state or startup breaks.
+            - key: OPENCLAW_CONFIG_PATH
+              value: /etc/openclaw/openclaw.json
+          # Sets the primary model so the agent works without `openclaw setup`.
+          fileMounts:
+            - key: openclaw.json
+              mountPath: /etc/openclaw
+              value: |
+                {
+                  "gateway": { "mode": "local" },
+                  "agents": {
+                    "defaults": {
+                      "model": { "primary": "${{ parameters.model }}" }
+                    }
+                  }
+                }
+
+  output:
+    links:
+      - title: View Component
+        icon: kind:component
+        entityRef: component:${{ steps['create-component'].output.namespaceName }}/${{ steps['create-component'].output.componentName }}

@@ -1,0 +1,104 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+# GCP project that Cloud Trace spans are written to and read from.
+# Required when adapter.enabled.
+gcp:
+  projectId: ""
+
+# ---------------------------------------------------------------------------
+# Adapter — the Go service that answers Observer trace queries through the
+# Cloud Trace v1 read API.
+# ---------------------------------------------------------------------------
+adapter:
+  enabled: true
+  replicas: 1
+  image:
+    repository: "ghcr.io/openchoreo/observability-tracing-gcp-cloudtrace-adapter"
+    tag: ""
+    pullPolicy: IfNotPresent
+  service:
+    port: 9100
+  # Annotations applied to the adapter ServiceAccount. Use this to attach the
+  # GKE Workload Identity binding, e.g.:
+  #   iam.gke.io/gcp-service-account: <gsa-name>@<project-id>.iam.gserviceaccount.com
+  # The GSA needs roles/cloudtrace.user on the project and a
+  # roles/iam.workloadIdentityUser binding for this ServiceAccount.
+  serviceAccount:
+    annotations: {}
+    labels: {}
+
+  # Upper bound for how long a single Cloud Trace query may run.
+  queryTimeoutSeconds: 30
+  logLevel: INFO
+
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 20m
+      memory: 64Mi
+
+# ---------------------------------------------------------------------------
+# OpenTelemetry Collector subchart. The contrib image is required: the
+# googlecloud exporter is not part of the core distribution.
+# ---------------------------------------------------------------------------
+opentelemetry-collector:
+  enabled: true
+
+  # The googlecloud exporter authenticates with Application Default
+  # Credentials, so the collector needs its own Workload Identity binding:
+  # annotate this ServiceAccount with a GSA that holds roles/cloudtrace.agent.
+  serviceAccount:
+    create: true
+    annotations: {}
+
+  clusterRole:
+    create: true
+    rules:
+      - apiGroups: [""]
+        resources: ["pods"]
+        verbs: ["list", "watch"]
+      - apiGroups: ["apps"]
+        resources: ["replicasets"]
+        verbs: ["list", "watch"]
+
+  configMap:
+    create: false
+    existingName: "otel-collector-gcp-config"
+
+  # Unique fullname so the cluster-scoped RBAC objects don't collide with
+  # other tracing modules' collectors (they name a ClusterRole after this).
+  fullnameOverride: "otel-collector-gcp"
+
+  image:
+    repository: otel/opentelemetry-collector-contrib
+
+  mode: deployment
+
+  resources:
+    limits:
+      cpu: 100m
+      memory: 200Mi
+    requests:
+      cpu: 50m
+      memory: 100Mi
+
+  service:
+    type: ClusterIP
+
+## -----------------------------------------------------------
+## Values for OpenChoreo specific customizations and workloads
+## -----------------------------------------------------------
+
+opentelemetryCollectorCustomizations:
+  tailSampling:
+    enabled: true
+    decisionWait: 10s
+    numTraces: 100
+    expectedNewTracesPerSec: 10
+    decisionCache:
+      sampledCacheSize: 10000
+      nonSampledCacheSize: 1000
+    spansPerSecond: 10

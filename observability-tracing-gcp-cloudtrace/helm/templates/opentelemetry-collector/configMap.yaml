@@ -1,0 +1,90 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+{{- if (index .Values "opentelemetry-collector" "enabled") }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-gcp-config
+  namespace: {{ .Release.Namespace }}
+data:
+  relay: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+    exporters:
+      googlecloud:
+        project: {{ .Values.gcp.projectId }}
+
+    extensions:
+      health_check:
+        endpoint: ${env:MY_POD_IP}:13133
+
+    processors:
+      # NOTE: "k8sattributes" was renamed "k8s_attributes" upstream; the old
+      # name is a working alias on every contrib version this chart supports,
+      # and the only one accepted by older images. Rename once the pinned
+      # subchart's appVersion is >= 0.153.0 everywhere.
+      k8sattributes:
+        auth_type: "serviceAccount"
+        passthrough: false
+
+        extract:
+          labels:
+            - tag_name: $$1
+              key_regex: (openchoreo\.dev/.*)
+              from: pod
+
+          metadata:
+            - k8s.pod.name
+            - k8s.pod.uid
+            - k8s.deployment.name
+            - k8s.namespace.name
+            - k8s.node.name
+      # The googlecloud exporter does not write resource attributes onto
+      # Cloud Trace spans (its resource_filters option covers only metrics
+      # and logs), so the OpenChoreo labels are promoted to span attributes
+      # here. The adapter's ListTraces filters depend on these labels being
+      # present on every span.
+      transform/openchoreo_annotations:
+        trace_statements:
+          - context: span
+            statements:
+              - set(span.attributes["openchoreo.dev/namespace"], resource.attributes["openchoreo.dev/namespace"]) where resource.attributes["openchoreo.dev/namespace"] != nil
+              - set(span.attributes["openchoreo.dev/component-uid"], resource.attributes["openchoreo.dev/component-uid"]) where resource.attributes["openchoreo.dev/component-uid"] != nil
+              - set(span.attributes["openchoreo.dev/project-uid"], resource.attributes["openchoreo.dev/project-uid"]) where resource.attributes["openchoreo.dev/project-uid"] != nil
+              - set(span.attributes["openchoreo.dev/environment-uid"], resource.attributes["openchoreo.dev/environment-uid"]) where resource.attributes["openchoreo.dev/environment-uid"] != nil
+      {{- if .Values.opentelemetryCollectorCustomizations.tailSampling.enabled }}
+      tail_sampling:
+        decision_wait: {{ .Values.opentelemetryCollectorCustomizations.tailSampling.decisionWait }}
+        num_traces: {{ .Values.opentelemetryCollectorCustomizations.tailSampling.numTraces }}
+        expected_new_traces_per_sec: {{ .Values.opentelemetryCollectorCustomizations.tailSampling.expectedNewTracesPerSec }}
+        decision_cache:
+          sampled_cache_size: {{ .Values.opentelemetryCollectorCustomizations.tailSampling.decisionCache.sampledCacheSize }}
+          non_sampled_cache_size: {{ .Values.opentelemetryCollectorCustomizations.tailSampling.decisionCache.nonSampledCacheSize }}
+        policies: [
+            {
+              name: rate_limiting,
+              type: rate_limiting,
+              rate_limiting: {spans_per_second: {{ .Values.opentelemetryCollectorCustomizations.tailSampling.spansPerSecond }} }
+            },
+        ]
+      {{- end }}
+
+    service:
+      extensions: [health_check]
+      pipelines:
+        traces:
+          receivers: [otlp]
+          {{- $processors := list "k8sattributes" "transform/openchoreo_annotations" }}
+          {{- if .Values.opentelemetryCollectorCustomizations.tailSampling.enabled }}
+          {{- $processors = append $processors "tail_sampling" }}
+          {{- end }}
+          processors: [{{ join ", " $processors }}]
+          exporters: [googlecloud]
+{{- end }}

@@ -6,8 +6,9 @@ global:
   # When set, it replaces the registry host of each image repository. May
   # include a path (e.g. registry.example.com/ghcr.io) for path-preserving
   # mirrors. Empty uses each image's default registry.
-  # NOTE: subchart images are governed by the subcharts' own keys — for the
-  # bundled OpenSearch chart set global.dockerRegistry (it flows to subcharts).
+  # NOTE: subchart images are governed by the subcharts' own keys — the
+  # bundled OpenSearch chart uses global.dockerRegistry (it flows to
+  # subcharts); the fluent-bit image needs fluent-bit.image.repository.
   imageRegistry: ""
   # Pull secrets for the module's own pods, for authenticated mirrors.
   # e.g. imagePullSecrets: [{name: my-registry-cred}]
@@ -70,8 +71,7 @@ fluent-bit:
 
   # Passed as a templatable string (the fluent-bit chart tpl-evaluates string
   # values in its own context, where the shared global.imageRegistry resolves)
-  # so the init image honors the registry override. The fluent-bit main image
-  # has no global support — override fluent-bit.image.repository for mirrors.
+  # so the init image honors the registry override.
   initContainers: |-
     - name: set-volume-ownership
       image: "{{ with .Values.global.imageRegistry }}{{ . }}/{{ end }}busybox:1.37.0"

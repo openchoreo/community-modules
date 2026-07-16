@@ -4,15 +4,10 @@
 # ---------------------------------------------------------------------------
 region: ""
 
-# AWS authentication.
-#
-# Default: EKS Pod Identity / IRSA / EC2 instance-profile via the AWS SDK
-# default credentials chain. No chart-managed Secret is created.
-#
-# For k3d / kind / non-EKS targets, flip `create: true` and supply
-# `accessKeyId` / `secretAccessKey`. The chart will create a Secret and the
-# adapter envFrom's it. The OpenTelemetry collector also envFrom's it via the
-# `opentelemetry-collector.extraEnvsFrom` block (see below).
+# AWS authentication. Default (create: false): AWS SDK default credential chain
+# — EKS Pod Identity / IRSA / EC2 instance profile; no Secret is created.
+# For k3d/kind/non-EKS, set create: true and supply accessKeyId/secretAccessKey;
+# the chart creates a Secret consumed by both the adapter and the collector.
 awsCredentials:
   create: false
   name: ""
@@ -20,11 +15,9 @@ awsCredentials:
   secretAccessKey: ""
 
 # ---------------------------------------------------------------------------
-# kube-state-metrics subchart.
-# Enabled by default. Set kubeStateMetrics.enabled=false if
-# kube-state-metrics is already running in the cluster. The chart
-# hardcodes the metricLabelsAllowlist so the OpenChoreo UID labels are
-# available on kube_pod_container_resource_* series.
+# kube-state-metrics subchart. Set kubeStateMetrics.enabled=false if
+# kube-state-metrics already runs in the cluster. metricLabelsAllowlist exposes
+# the OpenChoreo UID labels on kube_pod_container_resource_* series.
 # ---------------------------------------------------------------------------
 kubeStateMetrics:
   enabled: true
@@ -103,12 +96,10 @@ opentelemetry-collector:
                 - source_labels: [__name__]
                   regex: kube_pod_container_resource_(requests|limits)
                   action: keep
-      # Dedicated Hubble L7 HTTP scrape. Cilium exposes the headless
-      # `hubble-metrics` service on port 9965 when hubble.metrics.enabled is
-      # non-empty (httpV2). These series carry source/destination pod + IP
-      # labels that the dual-sided enrichment below maps to OpenChoreo
-      # component identity. Kept on a separate receiver so it can run through
-      # its own enrichment pipeline (metrics/hubble).
+      # Hubble L7 HTTP scrape (Cilium's headless hubble-metrics service, port
+      # 9965, requires httpV2). Series carry source/destination pod + IP labels
+      # that the dual-sided enrichment below maps to OpenChoreo component
+      # identity. Separate receiver so it feeds its own pipeline (metrics/hubble).
       prometheus/hubble:
         config:
           scrape_configs:
@@ -134,17 +125,13 @@ opentelemetry-collector:
                 - source_labels: [__name__]
                   regex: hubble_http_requests_total|hubble_http_request_duration_seconds(_sum|_count|_bucket)?
                   action: keep
-      # Second Hubble scrape dedicated to preserving the duration histogram's
-      # explicit `le` buckets, which are needed for latency percentiles. The
-      # awsemf exporter collapses an assembled explicit-bucket histogram to
-      # {Count,Sum} and discards the bucket distribution, so p50/p90/p99 cannot
-      # be derived from the primary `prometheus/hubble` path. Here we keep ONLY
-      # the `_bucket` series and rename it to a standalone name so the OTel
-      # prometheus receiver does NOT fold it back into the
-      # `hubble_http_request_duration_seconds` histogram family; it then flows
-      # through as an ordinary series carrying the `le` label, which awsemf writes
-      # as an EMF field the adapter reconstructs quantiles from. The primary
-      # scrape above is left untouched (no regression to count/error/mean).
+      # Second Hubble scrape that preserves the duration histogram's `le`
+      # buckets for latency percentiles. awsemf collapses an explicit-bucket
+      # histogram to {Count,Sum} and drops the distribution, so the primary path
+      # above cannot yield p50/p90/p99. Here we keep only the `_bucket` series
+      # and rename it so the receiver does NOT fold it back into the histogram
+      # family; it stays an ordinary series carrying `le`, which awsemf writes as
+      # an EMF field the adapter reconstructs quantiles from.
       prometheus/hubble-buckets:
         config:
           scrape_configs:
@@ -250,26 +237,18 @@ opentelemetry-collector:
           - action: upsert
             key: k8s.namespace.name
             from_attribute: namespace
-      # --- Hubble dual-sided pod -> component enrichment ---------------------
-      # Hubble series carry TWO pod identities (source_pod/source_ip and
-      # destination_pod/destination_ip) as data-point attributes. k8sattributes
-      # enriches ONE pod per resource, so we run two passes. Each pass lifts one
-      # side's IP to a resource attribute (k8s.pod.ip), associates the pod by IP,
-      # and stamps that pod's OpenChoreo labels under Source*/Destination* tag
-      # names. Namespaces come directly from Hubble's *_namespace labels.
-      # Convert Hubble's cumulative counters/histograms to per-interval deltas
-      # up front, keyed by the original Hubble labels. Downstream the adapter
-      # simply sums delta values over the query window (correct across counter
-      # resets), instead of reconstructing increases from cumulative min/max.
-      # The renamed bucket series arrives as an untyped Gauge (the receiver has no
-      # histogram metadata for the standalone name). Classic histogram buckets are
-      # cumulative monotonic counters, so convert it to a cumulative Sum before
+      # The renamed bucket series arrives as an untyped Gauge (no histogram
+      # metadata for the standalone name). Classic histogram buckets are
+      # cumulative monotonic counters, so convert to a cumulative Sum before
       # cumulativetodelta can turn it into per-interval deltas.
       transform/hubble-buckets:
         metric_statements:
           - context: metric
             statements:
               - convert_gauge_to_sum("cumulative", true) where name == "hubble_http_request_duration_seconds_lebucket"
+      # Convert Hubble's cumulative counters/histograms to per-interval deltas,
+      # keyed by the original Hubble labels, so the adapter sums deltas over the
+      # query window (correct across counter resets).
       cumulativetodelta/hubble:
         include:
           match_type: strict
@@ -277,6 +256,12 @@ opentelemetry-collector:
             - hubble_http_requests_total
             - hubble_http_request_duration_seconds
             - hubble_http_request_duration_seconds_lebucket
+      # --- Hubble dual-sided pod -> component enrichment ---------------------
+      # Hubble series carry TWO pod identities (source_ip / destination_ip).
+      # k8sattributes enriches one pod per resource, so we run two passes: each
+      # lifts one side's IP to k8s.pod.ip, associates the pod by IP, and stamps
+      # its OpenChoreo labels under Source*/Destination* tag names. Namespaces
+      # come directly from Hubble's *_namespace labels.
       groupbyattrs/hubble-source:
         keys: [source_ip]
       resource/hubble-source-ip:
@@ -347,10 +332,9 @@ opentelemetry-collector:
         namespace: OpenChoreo/Metrics
         log_group_name: ${env:EMF_LOG_GROUP_NAME}
         log_stream_name: ${env:K8S_NODE_NAME}
-        # Retention applied by the awsemfexporter itself whenever it creates
-        # the log group, so retention survives manual log-group deletion.
-        # Sourced from metrics.retentionDays via the env-configmap. The
-        # post-install Job in metrics-retention.yaml is belt-and-suspenders.
+        # Retention the awsemf exporter applies when it creates the log group,
+        # so it survives manual log-group deletion. From metrics.retentionDays
+        # via the env-configmap; the Job in metrics-retention.yaml is a backstop.
         log_retention: ${env:EMF_RETENTION_DAYS}
         dimension_rollup_option: NoDimensionRollup
         resource_to_telemetry_conversion:
@@ -365,11 +349,11 @@ opentelemetry-collector:
               - "pod_cpu_limit"
               - "pod_memory_request"
               - "pod_memory_limit"
-      # Hubble EMF exporter. Writes enriched L7 series to the SAME log group as
-      # a separate log stream. Uses an empty dimension set so the high-cardinality
-      # source x destination edge pairs are NOT promoted to CloudWatch metrics —
-      # the per-edge detail lives in the EMF log FIELDS, which the adapter reads
-      # via Logs Insights (Option B). Cost scales with log volume, not edge count.
+      # Hubble EMF exporter. Writes enriched L7 series to the SAME log group in a
+      # separate stream. Empty dimension set so high-cardinality source x
+      # destination edge pairs are NOT promoted to CloudWatch metrics — per-edge
+      # detail lives in the EMF log fields, which the adapter reads via Logs
+      # Insights. Cost scales with log volume, not edge count.
       awsemf/hubble:
         region: ${env:AWS_REGION}
         namespace: OpenChoreo/HubbleMetrics

@@ -1,3 +1,4 @@
+{{- if .Values.rbac.create }}
 # Grant the data plane cluster-agent service account permission to create
 # and manage agent-sandbox resources. The OpenChoreo RenderedRelease controller
 # uses this SA to server-side-apply SandboxTemplate, SandboxClaim, and
@@ -26,3 +27,4 @@ subjects:
   - kind: ServiceAccount
     name: {{ .Values.dataPlaneServiceAccount }}
     namespace: {{ .Values.dataPlaneNamespace }}
+{{- end }}

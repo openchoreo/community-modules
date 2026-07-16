@@ -2,11 +2,13 @@
 
 This module installs the [kubernetes-sigs/agent-sandbox](https://github.com/kubernetes-sigs/agent-sandbox) controller on the data plane, enabling kernel-level isolation for AI agent workloads deployed through OpenChoreo.
 
-> **Important:** This module must be installed on each data plane cluster where agent workloads will run. In a multi-cluster setup, install it on every data plane cluster separately.
+> **Important:** The sandbox controller must run on every cluster where agent
+> workloads are scheduled. See [What lands where](#what-lands-where) for how the
+> chart's control-plane and data-plane resources are split.
 
 ## What it does
 
-- Installs the upstream `kubernetes-sigs/agent-sandbox` controller and CRDs on the data plane cluster via a Helm pre-install hook
+- Installs the upstream `kubernetes-sigs/agent-sandbox` controller and CRDs on the target cluster via a Helm pre-install hook
 - Grants the data plane `cluster-agent` service account permissions to manage `SandboxTemplate`, `SandboxClaim`, `SandboxWarmPool`, and `Sandbox` resources
 - Registers the `ai-agent` ClusterComponentType (`proxy/ai-agent`) that renders sandbox resources via the standard OpenChoreo pipeline; this module provides the upstream controller that fulfills them on the data plane
 - Bundles agent-specific ClusterComponentTypes with custom portal scaffolder templates (see below)
@@ -29,6 +31,8 @@ HTTP via the annotation URL.
 |---|---|---|
 | `ai-agent-openclaw` | `templates/create-ai-agent-openclaw.yaml` | Multi-provider OpenClaw agent on a fixed image, always kata-isolated. Prompts for an LLM provider + model, injects the provider's API key env var, requires a gateway token (`OPENCLAW_GATEWAY_TOKEN`) to gate access to the Control UI, and mounts `openclaw.json` (via `OPENCLAW_CONFIG_PATH`) to set the default model — usable without `openclaw setup`. |
 | `ai-agent-claude` | `templates/create-ai-agent-claude.yaml` | Claude Code CLI on the fixed [`docker/sandbox-templates:claude-code`](https://docs.docker.com/ai/sandboxes/agents/claude-code/) image, always kata-isolated. Prompts for an Anthropic model + API key; injects `ANTHROPIC_MODEL` and `ANTHROPIC_API_KEY`. Terminal-only — no HTTP endpoint; the pod runs `sleep infinity` and you attach with `kubectl exec -it <pod> -- claude`. |
+| `ai-agent-codex` | `templates/create-ai-agent-codex.yaml` | OpenAI Codex CLI on the fixed [`docker/sandbox-templates:codex`](https://docs.docker.com/ai/sandboxes/agents/codex/) image, always kata-isolated. Prompts for an OpenAI model + API key; injects `OPENAI_MODEL` and `OPENAI_API_KEY`. Terminal-only — no HTTP endpoint; the pod runs `sleep infinity` and you attach with `kubectl exec -it <pod> -- codex`. |
+| `ai-agent-gemini` | `templates/create-ai-agent-gemini.yaml` | Gemini CLI on the fixed [`docker/sandbox-templates:gemini`](https://docs.docker.com/ai/sandboxes/agents/gemini/) image, always kata-isolated. Prompts for a Google model + API key; injects `GEMINI_MODEL` and `GEMINI_API_KEY`. Terminal-only — no HTTP endpoint; the pod runs `sleep infinity` and you attach with `kubectl exec -it <pod> -- gemini`. |
 
 ## Upstream CRDs installed
 
@@ -42,55 +46,132 @@ HTTP via the annotation URL.
 ## Prerequisites
 
 - OpenChoreo installed and running
-- `kubectl` configured to point at the **data plane cluster**
+- `kubectl` configured to point at the target cluster
 - `helm` v3.16+
+
+### Node requirements
+
+Sandboxes are scheduled onto nodes by isolation tier. **The cluster must be
+prepared before agents will run** — the chart installs the controller, but it does
+not install container runtimes, register `RuntimeClass`es, or label nodes. Pods
+requesting a tier with no matching node stay `Pending`.
+
+| Isolation tier | Requires `RuntimeClass` | Requires node label |
+|---|---|---|
+| `runc` (default) | — | — |
+| `gvisor` | `gvisor` | `gvisor-enabled=true` |
+| `kata` | `kata-qemu` | `kata-enabled=true` |
+
+The bundled agent component types (`ai-agent-openclaw`, `ai-agent-claude`,
+`ai-agent-codex`, `ai-agent-gemini`) are **always** kata-isolated and expose no
+`isolationTier` parameter, so they require `kata-qemu` and `kata-enabled=true`
+nodes. They also tolerate the taint `sandbox=true:NoSchedule`, so you may
+optionally taint sandbox nodes to keep other workloads off them.
+
+Label a prepared node with:
+
+```bash
+kubectl label node <node> kata-enabled=true
+# optional: reserve the node for sandboxes
+kubectl taint node <node> sandbox=true:NoSchedule
+```
+
+Installing the runtimes themselves (gVisor/`runsc`, Kata Containers) and their
+`RuntimeClass` objects is out of scope for this module; follow the
+[gVisor](https://gvisor.dev/docs/user_guide/quick_start/kubernetes/) or
+[Kata](https://github.com/kata-containers/kata-containers/blob/main/docs/install/README.md)
+install guides for your distribution.
 
 ## Installation
 
-Install on each data plane cluster:
-
 ```bash
-helm repo add openchoreo-community https://openchoreo.github.io/community-modules
-helm repo update openchoreo-community
-
-# Point kubectl at your data plane cluster, then:
 helm upgrade --install agent-sandbox \
-  openchoreo-community/agent-sandbox \
-  --namespace openchoreo-data-plane \
+  oci://ghcr.io/openchoreo/helm-charts/agent-sandbox \
+  --version 0.0.0-latest-dev \
+  --namespace openchoreo-control-plane \
   --wait --timeout 10m
 ```
 
-For multi-cluster setups, repeat for each data plane cluster:
-```bash
-# Switch context to each data plane cluster
-kubectl config use-context <data-plane-cluster>
+### What lands where
 
+The chart targets a **single cluster** and installs three distinct groups of resources on it:
+
+| Resource | Scope | Lands in |
+|---|---|---|
+| Upstream controller + CRDs | Cluster + namespaced | `agent-sandbox-system` (created by the pre-install Job) |
+| `ClusterComponentType`s (`ai-agent`, …) | Cluster-scoped | The cluster's OpenChoreo **control plane** API |
+| `openchoreo-agent-sandbox-access` RBAC | Cluster-scoped | Bound to the **data plane** SA `cluster-agent-dataplane` |
+
+Everything except the pre-install Job and its ServiceAccount is cluster-scoped.
+The Job runs in the release namespace (the `--namespace` you pass), which must
+already exist on the target cluster.
+
+### Multi-cluster installs
+
+The command above assumes the default **single-cluster** OpenChoreo install, where
+both planes coexist and every resource lands correctly.
+
+On a **split control-plane/data-plane** topology the chart's resources belong to
+two different clusters: `ClusterComponentType`s are control-plane resources (as in
+the `ai-wso2-agent-manager` module, whose component types install against the
+control plane context), while the upstream sandbox controller must run wherever
+agent pods are scheduled, alongside the RBAC that grants the data plane
+cluster-agent access. Install the chart once per cluster, using the toggles to
+select each half:
+
+```bash
+# Control plane — register the component types only
 helm upgrade --install agent-sandbox \
-  openchoreo-community/agent-sandbox \
+  oci://ghcr.io/openchoreo/helm-charts/agent-sandbox \
+  --version 0.0.0-latest-dev \
+  --kube-context <control-plane-ctx> \
+  --namespace openchoreo-control-plane \
+  --set upstream.install=false \
+  --set rbac.create=false
+
+# Each data plane — install the sandbox controller and RBAC
+helm upgrade --install agent-sandbox \
+  oci://ghcr.io/openchoreo/helm-charts/agent-sandbox \
+  --version 0.0.0-latest-dev \
+  --kube-context <data-plane-ctx> \
   --namespace openchoreo-data-plane \
+  --set componentTypes.enabled=false \
   --wait --timeout 10m
 ```
+
+Repeat the data plane install for every cluster where agent workloads run.
 
 ## Verify
 
 ```bash
-# Upstream controller running on the data plane
+# Upstream controller running
 kubectl get pods -n agent-sandbox-system
 
 # CRDs registered
 kubectl get crd | grep agents.x-k8s.io
 
+# Component types registered with OpenChoreo
+kubectl get clustercomponenttype | grep ai-agent
+
 # RBAC applied
 kubectl get clusterrole openchoreo-agent-sandbox-access
+```
+
+If the pre-install Job failed, inspect it with (the Job runs in the release
+namespace — use the `--namespace` you installed with):
+
+```bash
+kubectl logs -n openchoreo-control-plane job/agent-sandbox-upstream-install
 ```
 
 ## Configuration
 
 | Value | Default | Description |
 |---|---|---|
-| `namespace` | `openchoreo-control-plane` | Namespace for the installer Job |
 | `dataPlaneNamespace` | `openchoreo-data-plane` | Data plane namespace (for RBAC binding) |
 | `dataPlaneServiceAccount` | `cluster-agent-dataplane` | Data plane SA for RBAC |
+| `componentTypes.enabled` | `true` | Register the `ClusterComponentType`s (control plane). Set to `false` on data-plane-only installs |
+| `rbac.create` | `true` | Create the `openchoreo-agent-sandbox-access` RBAC (data plane). Set to `false` on control-plane-only installs |
 | `upstream.install` | `true` | Install upstream controller via pre-install Job |
 | `upstream.version` | `v0.4.6` | Upstream release version |
 | `upstream.manifestURL` | `""` | Override core manifest URL (auto-built from version if empty) |
@@ -99,13 +180,40 @@ kubectl get clusterrole openchoreo-agent-sandbox-access
 ## Uninstall
 
 ```bash
-helm uninstall agent-sandbox -n openchoreo-data-plane
+helm uninstall agent-sandbox -n openchoreo-control-plane
 ```
 
-Note: Helm does not delete CRDs on uninstall. To fully remove:
+This removes only the resources Helm tracks: the `ClusterComponentType`s and the
+`openchoreo-agent-sandbox-access` RBAC. On a split topology there are two releases
+— also uninstall the data plane one (`helm uninstall agent-sandbox -n
+openchoreo-data-plane --kube-context <data-plane-ctx>`) on each data plane cluster.
+
+> **Important:** The upstream controller is applied by a pre-install Job using
+> `kubectl apply --server-side`, so **Helm does not track any of it**. The
+> controller, its namespace, and the CRDs all survive `helm uninstall` and must be
+> removed manually.
+
+Delete any remaining `Sandbox`/`SandboxClaim` resources first, then:
+
 ```bash
+# Upstream controller, its Deployments, Service, SA and namespace
+kubectl delete namespace agent-sandbox-system
+
+# Cluster-scoped RBAC created by the upstream manifests
+kubectl delete clusterrole agent-sandbox-controller agent-sandbox-controller-extensions
+kubectl delete clusterrolebinding agent-sandbox-controller agent-sandbox-controller-extensions
+
+# CRDs (deleting these deletes all remaining sandbox resources)
 kubectl delete crd sandboxes.agents.x-k8s.io
 kubectl delete crd sandboxclaims.extensions.agents.x-k8s.io
 kubectl delete crd sandboxtemplates.extensions.agents.x-k8s.io
 kubectl delete crd sandboxwarmpools.extensions.agents.x-k8s.io
 ```
+
+## Compatibility
+
+> **Note:** The Helm chart version specified in the installation command above is for the latest module version compatible with the development version of OpenChoreo. Refer to the compatibility table below to determine the appropriate module version for your OpenChoreo installation.
+
+| Module Version | OpenChoreo Version |
+| -------------- | ------------------ |
+| v0.1.x         | v1.x.x             |

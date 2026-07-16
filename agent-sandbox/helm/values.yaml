@@ -1,13 +1,30 @@
 # Default values for agent-sandbox.
-
-# Namespace where OpenChoreo control plane runs.
-namespace: openchoreo-control-plane
+#
+# The chart carries both control-plane and data-plane resources. On the default
+# single-cluster install everything applies to one cluster. On a split topology,
+# install it twice and use the toggles below to select each half:
+#   - Control plane: --set upstream.install=false --set rbac.create=false
+#   - Each data plane: --set componentTypes.enabled=false
+# The installer Job runs in the release namespace (helm --namespace), so no
+# separate namespace value is needed.
 
 # Namespace where the data plane cluster-agent runs.
 dataPlaneNamespace: openchoreo-data-plane
 
 # Data plane service account name (used for RBAC binding).
 dataPlaneServiceAccount: cluster-agent-dataplane
+
+# componentTypes controls registration of the ClusterComponentTypes this module
+# ships (ai-agent and the bundled agent-specific types). These are OpenChoreo
+# *control plane* resources; set to false on a data-plane-only install.
+componentTypes:
+  enabled: true
+
+# rbac controls the openchoreo-agent-sandbox-access ClusterRole/Binding that
+# grants the data plane cluster-agent access to sandbox resources. This is a
+# *data plane* concern; set create to false on a control-plane-only install.
+rbac:
+  create: true
 
 # upstream controls the installation of the kubernetes-sigs/agent-sandbox
 # controller, which manages Sandbox, SandboxTemplate, SandboxClaim, and

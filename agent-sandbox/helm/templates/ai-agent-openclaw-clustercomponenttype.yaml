@@ -1,3 +1,4 @@
+{{- if .Values.componentTypes.enabled }}
 apiVersion: openchoreo.dev/v1alpha1
 kind: ClusterComponentType
 metadata:
@@ -208,3 +209,4 @@ spec:
                 ?"property": secret.remoteRef.?property
               }
             })}
+{{- end }}

@@ -149,13 +149,15 @@ EOF
 
 ### AWS CloudWatch Logs
 
-Credentials come from the standard AWS chain (IRSA on EKS):
+Compatible with `observability-logs-aws-cloudwatch`. By default the adapter's
+setup job provisions the events log group with retention
+(`events.provisionLogGroup=true`).
 
 ```yaml
 exporters:
   awscloudwatchlogs:
     region: "us-east-1"
-    log_group_name: "/openchoreo/k8s-events"
+    log_group_name: "/aws/containerinsights/events"
     log_stream_name: "events"
 pipelineExporters:
   - awscloudwatchlogs

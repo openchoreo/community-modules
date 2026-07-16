@@ -21,7 +21,23 @@ AWS region sourced from the upstream subchart values block.
 Resolved application log group name for the adapter and setup Job.
 */}}
 {{- define "logs-aws-cloudwatch.logGroupName" -}}
+{{- if .Values.global.applicationLogGroupName -}}
+{{- .Values.global.applicationLogGroupName -}}
+{{- else -}}
 {{- printf "%s/application" (include "logs-aws-cloudwatch.logGroupPrefix" .) -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Log group where the observability-events-otel-collector ships enriched Kubernetes
+events. Mirrors the application log group under the shared prefix.
+*/}}
+{{- define "logs-aws-cloudwatch.eventsLogGroupName" -}}
+{{- if .Values.events.logGroupName -}}
+{{- .Values.events.logGroupName -}}
+{{- else -}}
+{{- printf "%s/events" (include "logs-aws-cloudwatch.logGroupPrefix" .) -}}
+{{- end -}}
 {{- end -}}
 
 {{/*

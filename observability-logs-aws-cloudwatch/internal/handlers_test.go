@@ -32,6 +32,12 @@ func (s *stubLogsClient) GetComponentLogs(context.Context, cloudwatch.ComponentL
 func (s *stubLogsClient) GetWorkflowLogs(context.Context, cloudwatch.WorkflowLogsParams) (*cloudwatch.WorkflowLogsResult, error) {
 	return nil, errors.New("unexpected GetWorkflowLogs call")
 }
+func (s *stubLogsClient) GetComponentEvents(context.Context, cloudwatch.ComponentEventsParams) (*cloudwatch.EventsResult, error) {
+	return nil, errors.New("unexpected GetComponentEvents call")
+}
+func (s *stubLogsClient) GetWorkflowEvents(context.Context, cloudwatch.WorkflowEventsParams) (*cloudwatch.EventsResult, error) {
+	return nil, errors.New("unexpected GetWorkflowEvents call")
+}
 func (s *stubLogsClient) CreateAlert(ctx context.Context, params cloudwatch.LogAlertParams) (string, error) {
 	if s.createAlertFn == nil {
 		return "", errors.New("unexpected CreateAlert call")
@@ -354,6 +360,13 @@ type queryStubClient struct {
 	componentErr    error
 	workflowResult  *cloudwatch.WorkflowLogsResult
 	workflowErr     error
+
+	componentEventsResult *cloudwatch.EventsResult
+	componentEventsErr    error
+	workflowEventsResult  *cloudwatch.EventsResult
+	workflowEventsErr     error
+	lastComponentEvents   *cloudwatch.ComponentEventsParams
+	lastWorkflowEvents    *cloudwatch.WorkflowEventsParams
 }
 
 func (c *queryStubClient) GetComponentLogs(_ context.Context, _ cloudwatch.ComponentLogsParams) (*cloudwatch.ComponentLogsResult, error) {
@@ -362,6 +375,16 @@ func (c *queryStubClient) GetComponentLogs(_ context.Context, _ cloudwatch.Compo
 
 func (c *queryStubClient) GetWorkflowLogs(_ context.Context, _ cloudwatch.WorkflowLogsParams) (*cloudwatch.WorkflowLogsResult, error) {
 	return c.workflowResult, c.workflowErr
+}
+
+func (c *queryStubClient) GetComponentEvents(_ context.Context, p cloudwatch.ComponentEventsParams) (*cloudwatch.EventsResult, error) {
+	c.lastComponentEvents = &p
+	return c.componentEventsResult, c.componentEventsErr
+}
+
+func (c *queryStubClient) GetWorkflowEvents(_ context.Context, p cloudwatch.WorkflowEventsParams) (*cloudwatch.EventsResult, error) {
+	c.lastWorkflowEvents = &p
+	return c.workflowEventsResult, c.workflowEventsErr
 }
 
 func TestHealthReturnsHealthy(t *testing.T) {

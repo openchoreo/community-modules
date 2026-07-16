@@ -25,6 +25,8 @@ type logsClient interface {
 	Ping(context.Context) error
 	GetComponentLogs(context.Context, cloudwatch.ComponentLogsParams) (*cloudwatch.ComponentLogsResult, error)
 	GetWorkflowLogs(context.Context, cloudwatch.WorkflowLogsParams) (*cloudwatch.WorkflowLogsResult, error)
+	GetComponentEvents(context.Context, cloudwatch.ComponentEventsParams) (*cloudwatch.EventsResult, error)
+	GetWorkflowEvents(context.Context, cloudwatch.WorkflowEventsParams) (*cloudwatch.EventsResult, error)
 	CreateAlert(context.Context, cloudwatch.LogAlertParams) (string, error)
 	GetAlert(context.Context, string, string) (*cloudwatch.AlertDetail, error)
 	UpdateAlert(context.Context, string, string, cloudwatch.LogAlertParams) (string, error)
@@ -159,6 +161,67 @@ func (h *LogsHandler) QueryLogs(ctx context.Context, request gen.QueryLogsReques
 	}
 
 	return gen.QueryLogs200JSONResponse(toComponentLogsQueryResponse(result)), nil
+}
+
+// QueryEvents implements POST /api/v1/events/query.
+func (h *LogsHandler) QueryEvents(ctx context.Context, request gen.QueryEventsRequestObject) (gen.QueryEventsResponseObject, error) {
+	if request.Body == nil {
+		return gen.QueryEvents400JSONResponse{
+			Title:   ptr(gen.BadRequest),
+			Message: ptr("request body is required"),
+		}, nil
+	}
+
+	// WorkflowSearchScope is identified by the presence of workflowRunName.
+	workflowScope, err := request.Body.SearchScope.AsWorkflowSearchScope()
+	if err == nil && workflowScope.WorkflowRunName != nil {
+		if strings.TrimSpace(workflowScope.Namespace) == "" || strings.TrimSpace(*workflowScope.WorkflowRunName) == "" {
+			return gen.QueryEvents400JSONResponse{
+				Title:   ptr(gen.BadRequest),
+				Message: ptr("searchScope with a valid namespace and workflowRunName is required"),
+			}, nil
+		}
+
+		params := toWorkflowEventsParams(request.Body, &workflowScope)
+		result, err := h.client.GetWorkflowEvents(ctx, params)
+		if err != nil {
+			h.logger.Error("Failed to query workflow events",
+				slog.String("function", "QueryEvents"),
+				slog.String("namespace", workflowScope.Namespace),
+				slog.Any("error", err),
+			)
+			return gen.QueryEvents500JSONResponse{
+				Title:   ptr(gen.InternalServerError),
+				Message: ptr("internal server error"),
+			}, nil
+		}
+
+		return gen.QueryEvents200JSONResponse(toEventsQueryResponse(result)), nil
+	}
+
+	scope, err := request.Body.SearchScope.AsComponentSearchScope()
+	if err != nil || strings.TrimSpace(scope.Namespace) == "" {
+		return gen.QueryEvents400JSONResponse{
+			Title:   ptr(gen.BadRequest),
+			Message: ptr("searchScope with a valid namespace is required"),
+		}, nil
+	}
+
+	params := toComponentEventsParams(request.Body, &scope)
+	result, err := h.client.GetComponentEvents(ctx, params)
+	if err != nil {
+		h.logger.Error("Failed to query component events",
+			slog.String("function", "QueryEvents"),
+			slog.String("namespace", scope.Namespace),
+			slog.Any("error", err),
+		)
+		return gen.QueryEvents500JSONResponse{
+			Title:   ptr(gen.InternalServerError),
+			Message: ptr("internal server error"),
+		}, nil
+	}
+
+	return gen.QueryEvents200JSONResponse(toEventsQueryResponse(result)), nil
 }
 
 // CreateAlertRule implements POST /api/v1alpha1/alerts/rules.
@@ -748,6 +811,111 @@ func toComponentLogEntry(l *cloudwatch.ComponentLogsEntry) gen.ComponentLogEntry
 	}
 	if l.EnvironmentUID != "" {
 		if uid, ok := parseUUID(l.EnvironmentUID); ok {
+			entry.Metadata.EnvironmentUid = &uid
+		}
+	}
+
+	return entry
+}
+
+func toComponentEventsParams(req *gen.EventsQueryRequest, scope *gen.ComponentSearchScope) cloudwatch.ComponentEventsParams {
+	params := cloudwatch.ComponentEventsParams{
+		Namespace: scope.Namespace,
+		StartTime: req.StartTime,
+		EndTime:   req.EndTime,
+	}
+	if scope.ProjectUid != nil {
+		params.ProjectID = *scope.ProjectUid
+	}
+	if scope.EnvironmentUid != nil {
+		params.EnvironmentID = *scope.EnvironmentUid
+	}
+	if scope.ComponentUid != nil {
+		params.ComponentID = *scope.ComponentUid
+	}
+	if req.Limit != nil {
+		params.Limit = *req.Limit
+	}
+	if req.SortOrder != nil {
+		params.SortOrder = string(*req.SortOrder)
+	}
+	return params
+}
+
+func toWorkflowEventsParams(req *gen.EventsQueryRequest, scope *gen.WorkflowSearchScope) cloudwatch.WorkflowEventsParams {
+	params := cloudwatch.WorkflowEventsParams{
+		Namespace: scope.Namespace,
+		StartTime: req.StartTime,
+		EndTime:   req.EndTime,
+	}
+	if scope.WorkflowRunName != nil {
+		params.WorkflowRunName = *scope.WorkflowRunName
+	}
+	if scope.TaskName != nil {
+		params.TaskName = *scope.TaskName
+	}
+	if req.Limit != nil {
+		params.Limit = *req.Limit
+	}
+	if req.SortOrder != nil {
+		params.SortOrder = string(*req.SortOrder)
+	}
+	return params
+}
+
+func toEventsQueryResponse(result *cloudwatch.EventsResult) gen.EventsQueryResponse {
+	entries := make([]gen.EventEntry, 0, len(result.Events))
+	for i := range result.Events {
+		entries = append(entries, toEventEntry(&result.Events[i]))
+	}
+	return gen.EventsQueryResponse{
+		Events: &entries,
+		Total:  &result.TotalCount,
+		TookMs: &result.Took,
+	}
+}
+
+func toEventEntry(e *cloudwatch.EventEntry) gen.EventEntry {
+	ts := e.Timestamp
+	entry := gen.EventEntry{
+		Timestamp: &ts,
+		Message:   strPtr(e.Message),
+		Type:      strPtr(e.Type),
+		Reason:    strPtr(e.Reason),
+		Metadata: &struct {
+			ComponentName   *string             `json:"componentName,omitempty"`
+			ComponentUid    *openapi_types.UUID `json:"componentUid,omitempty"`
+			EnvironmentName *string             `json:"environmentName,omitempty"`
+			EnvironmentUid  *openapi_types.UUID `json:"environmentUid,omitempty"`
+			NamespaceName   *string             `json:"namespaceName,omitempty"`
+			ObjectKind      *string             `json:"objectKind,omitempty"`
+			ObjectName      *string             `json:"objectName,omitempty"`
+			ObjectNamespace *string             `json:"objectNamespace,omitempty"`
+			ProjectName     *string             `json:"projectName,omitempty"`
+			ProjectUid      *openapi_types.UUID `json:"projectUid,omitempty"`
+		}{
+			ComponentName:   strPtr(e.ComponentName),
+			EnvironmentName: strPtr(e.EnvironmentName),
+			NamespaceName:   strPtr(e.NamespaceName),
+			ObjectKind:      strPtr(e.ObjectKind),
+			ObjectName:      strPtr(e.ObjectName),
+			ObjectNamespace: strPtr(e.ObjectNamespace),
+			ProjectName:     strPtr(e.ProjectName),
+		},
+	}
+
+	if e.ComponentUID != "" {
+		if uid, ok := parseUUID(e.ComponentUID); ok {
+			entry.Metadata.ComponentUid = &uid
+		}
+	}
+	if e.ProjectUID != "" {
+		if uid, ok := parseUUID(e.ProjectUID); ok {
+			entry.Metadata.ProjectUid = &uid
+		}
+	}
+	if e.EnvironmentUID != "" {
+		if uid, ok := parseUUID(e.EnvironmentUID); ok {
 			entry.Metadata.EnvironmentUid = &uid
 		}
 	}

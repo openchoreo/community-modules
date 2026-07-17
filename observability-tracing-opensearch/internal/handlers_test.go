@@ -285,7 +285,8 @@ func TestToSpansListResponse(t *testing.T) {
 			EndTime:             endTime,
 			DurationNanoseconds: 1000000000,
 			ParentSpanID:        "span-root",
-			Status:              "ok",
+			Status:              "error",
+			StatusMessage:       "connection refused",
 		},
 	}
 
@@ -316,6 +317,12 @@ func TestToSpansListResponse(t *testing.T) {
 	}
 	if span.DurationNs == nil || *span.DurationNs != 1000000000 {
 		t.Errorf("expected durationNs 1000000000, got %v", span.DurationNs)
+	}
+	if span.Status == nil || span.Status.Code == nil || *span.Status.Code != gen.Error {
+		t.Errorf("expected status code 'error', got %v", span.Status)
+	}
+	if span.Status == nil || span.Status.Message == nil || *span.Status.Message != "connection refused" {
+		t.Errorf("expected status message 'connection refused', got %v", span.Status)
 	}
 }
 
@@ -450,7 +457,8 @@ func TestToSpanDetailsResponse(t *testing.T) {
 		EndTime:             endTime,
 		DurationNanoseconds: 1000000000,
 		ParentSpanID:        "span-root",
-		Status:              "ok",
+		Status:              "error",
+		StatusMessage:       "connection refused",
 		Attributes: map[string]interface{}{
 			"http.method": "GET",
 		},
@@ -461,6 +469,12 @@ func TestToSpanDetailsResponse(t *testing.T) {
 
 	resp := toSpanDetailsResponse(span)
 
+	if resp.Status == nil || resp.Status.Code == nil || *resp.Status.Code != gen.Error {
+		t.Errorf("expected status code 'error', got %v", resp.Status)
+	}
+	if resp.Status == nil || resp.Status.Message == nil || *resp.Status.Message != "connection refused" {
+		t.Errorf("expected status message 'connection refused', got %v", resp.Status)
+	}
 	if resp.SpanId == nil || *resp.SpanId != "span-1" {
 		t.Errorf("expected spanId 'span-1', got %v", resp.SpanId)
 	}

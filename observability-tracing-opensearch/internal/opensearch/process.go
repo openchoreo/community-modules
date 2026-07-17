@@ -96,6 +96,7 @@ func ParseSpanEntry(hit Hit) Span {
 		SpanID:                 getString("spanId"),
 		SpanKind:               getString("kind"),
 		Status:                 DetermineSpanStatus(source),
+		StatusMessage:          DetermineSpanStatusMessage(source),
 		Attributes:             attributes,
 		ResourceAttributes:     resourceAttributes,
 	}
@@ -123,6 +124,20 @@ func DetermineSpanStatus(spanHit map[string]interface{}) string {
 	}
 
 	return SpanStatusUnset
+}
+
+// DetermineSpanStatusMessage extracts the OpenTelemetry status description
+// (status.message) from a span hit, if present. Returns "" when absent.
+func DetermineSpanStatusMessage(spanHit map[string]interface{}) string {
+	if spanHit == nil {
+		return ""
+	}
+	if statusMap, ok := spanHit["status"].(map[string]interface{}); ok {
+		if msg, ok := statusMap["message"].(string); ok {
+			return msg
+		}
+	}
+	return ""
 }
 
 // GetTraceID extracts the traceId from a span hit.

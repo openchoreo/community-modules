@@ -79,6 +79,7 @@ type Span struct {
 	SpanKind               string                 `json:"spanKind"`
 	StartTime              time.Time              `json:"startTime"`
 	Status                 string                 `json:"status,omitempty"`
+	StatusMessage          string                 `json:"statusMessage,omitempty"`
 	Attributes             map[string]interface{} `json:"attributes,omitempty"`
 	ResourceAttributes     map[string]interface{} `json:"resourceAttributes,omitempty"`
 }

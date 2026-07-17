@@ -3,12 +3,10 @@
 
 package cloudtrace
 
-// OpenChoreo pod labels propagated onto spans by the collector pipeline: the
-// k8s attributes processor copies them onto the resource, and the
-// transform/openchoreo_annotations processor promotes them to span
-// attributes because the googlecloud exporter does not write resource
-// attributes onto Cloud Trace spans. Cloud Trace surfaces span attributes as
-// v1 labels with the keys verbatim, so these are the keys the ListTraces
+// OpenChoreo pod labels promoted to span attributes by the collector's
+// transform processor (the googlecloud exporter does not write resource
+// attributes onto Cloud Trace spans). Cloud Trace surfaces them as v1 span
+// labels with the keys verbatim, so these are the keys the ListTraces
 // filters address.
 const (
 	LabelNamespace      = "openchoreo.dev/namespace"
@@ -29,10 +27,9 @@ func normalizeUID(uid string) string {
 }
 
 // resourceAttributePrefixes identifies label keys that originate from OTel
-// resource attributes (or Cloud Trace agent metadata) rather than span
-// attributes. Cloud Trace flattens everything into one labels map, so the
-// split is reconstructed by key prefix when building API responses.
-// Unmatched keys are treated as span attributes.
+// resource attributes rather than span attributes. Cloud Trace flattens both
+// into one labels map, so the split is reconstructed by key prefix when
+// building API responses.
 var resourceAttributePrefixes = []string{
 	"openchoreo.dev/",
 	"k8s.",

@@ -8,13 +8,6 @@ import (
 	"strings"
 )
 
-// The Cloud Trace v1 ListTraces filter is a whitespace-separated list of
-// terms; `+KEY:VALUE` is an exact, case-sensitive match on a span label. A
-// trace matches when any of its spans matches every term, which is the right
-// granularity here: the collector stamps the OpenChoreo labels on every span
-// it exports, so scoping on "any span" and "all spans" coincide for in-mesh
-// spans. See https://cloud.google.com/trace/docs/trace-filters.
-
 // idPattern matches W3C trace/span IDs as hex strings. Inputs that fail this
 // never reach a query.
 var idPattern = regexp.MustCompile(`^[a-fA-F0-9]{1,64}$`)
@@ -23,8 +16,9 @@ func ValidID(s string) bool {
 	return idPattern.MatchString(s)
 }
 
-// BuildScopeFilter renders the tenancy filter terms. Namespace is always
-// emitted; the handler guarantees it is non-empty.
+// BuildScopeFilter renders the tenancy filter as exact-match `+KEY:VALUE`
+// span-label terms. Namespace is always emitted; the handler guarantees it
+// is non-empty.
 func BuildScopeFilter(p TracesParams) string {
 	terms := make([]string, 0, 4)
 	terms = appendLabelTerm(terms, LabelNamespace, p.Namespace)
@@ -42,19 +36,16 @@ func appendLabelTerm(terms []string, key, value string) []string {
 	return append(terms, "+"+key+":"+value)
 }
 
-// filterValuePattern is the set of characters allowed in a filter value.
-// Kubernetes label values (the only values that reach this) are limited to
-// alphanumerics, '-', '_' and '.'; everything else is stripped so a value
-// can never introduce new filter terms (whitespace) or alter term semantics.
+// filterValueAllowed strips everything outside the Kubernetes label-value
+// alphabet so a value can never introduce or alter filter terms.
 var filterValueAllowed = regexp.MustCompile(`[^A-Za-z0-9._-]`)
 
 func sanitizeFilterValue(v string) string {
 	return filterValueAllowed.ReplaceAllString(strings.TrimSpace(v), "")
 }
 
-// matchesScope reports whether the labels of any span satisfy the scope, for
+// matchesScope reports whether a span's labels satisfy the scope, for
 // endpoints that fetch a trace by ID and cannot pass a filter expression.
-// The same any-span semantics as ListTraces keep the two paths consistent.
 func matchesScope(labels map[string]string, p TracesParams) bool {
 	if labels[LabelNamespace] != p.Namespace {
 		return false

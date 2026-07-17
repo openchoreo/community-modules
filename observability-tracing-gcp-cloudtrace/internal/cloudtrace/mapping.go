@@ -11,9 +11,8 @@ import (
 	"cloud.google.com/go/trace/apiv1/tracepb"
 )
 
-// Label keys the googlecloud exporter (and the Cloud Trace v2->v1
-// conversion) uses to carry span metadata that has no dedicated field in the
-// v1 TraceSpan message.
+// Label keys carrying span metadata that has no dedicated field in the v1
+// TraceSpan message.
 const (
 	labelStatusCode     = "g.co/status/code" // google.rpc.Code as decimal; 0 == OK
 	labelOtelStatusCode = "otel.status_code" // "OK" / "ERROR" / "UNSET"
@@ -28,9 +27,8 @@ func SpanIDHex(id uint64) string {
 }
 
 // ParseSpanID parses a 16-char (or shorter) hex span ID back to the v1
-// fixed64 form. The handler validates the input with ValidID first; the
-// length check here rejects overlong IDs whose leading zeros would let them
-// slip through ParseUint's 64-bit bound.
+// fixed64 form. The length check rejects overlong IDs whose leading zeros
+// would slip through ParseUint's 64-bit bound.
 func ParseSpanID(s string) (uint64, error) {
 	if len(s) > 16 {
 		return 0, fmt.Errorf("span id longer than 16 hex chars: %q", s)
@@ -39,8 +37,7 @@ func ParseSpanID(s string) (uint64, error) {
 }
 
 // mapSpan converts one v1 TraceSpan. includeAttributes controls whether the
-// labels map is split and attached, mirroring the query cost knob in the
-// adapter API.
+// labels map is split and attached.
 func mapSpan(s *tracepb.TraceSpan, includeAttributes bool) Span {
 	span := Span{
 		SpanID:   SpanIDHex(s.GetSpanId()),
@@ -67,9 +64,8 @@ func mapSpan(s *tracepb.TraceSpan, includeAttributes bool) Span {
 }
 
 // spanKind derives the span kind. The v1 enum only distinguishes RPC_SERVER
-// and RPC_CLIENT; other OTel kinds (INTERNAL, PRODUCER, CONSUMER) arrive as
-// SPAN_KIND_UNSPECIFIED, so fall back to the exporter's kind label before
-// giving up.
+// and RPC_CLIENT; other OTel kinds arrive unspecified, so fall back to the
+// exporter's kind label.
 func spanKind(s *tracepb.TraceSpan) string {
 	switch s.GetKind() {
 	case tracepb.TraceSpan_RPC_SERVER:
@@ -86,9 +82,8 @@ func spanKind(s *tracepb.TraceSpan) string {
 }
 
 // statusFromLabels maps Cloud Trace status labels onto the adapter's
-// ok/error/unset convention. The OTel status written via BatchWriteSpans
-// surfaces in v1 as the g.co/status/code label (google.rpc.Code, 0 == OK);
-// HTTP status is the fallback signal.
+// ok/error/unset convention, preferring the OTel status (surfaced in v1 as
+// g.co/status/code, a google.rpc.Code) over the HTTP status fallback.
 func statusFromLabels(labels map[string]string) string {
 	if v, ok := labels[labelStatusCode]; ok {
 		if v == "0" {
@@ -116,9 +111,8 @@ func statusFromLabels(labels map[string]string) string {
 	return "unset"
 }
 
-// splitAttributes reconstructs the span-vs-resource attribute split that the
-// exporter flattened into one labels map, using key prefixes. Unmatched keys
-// are treated as span attributes.
+// splitAttributes reconstructs the span-vs-resource attribute split by key
+// prefix. Unmatched keys are treated as span attributes.
 func splitAttributes(labels map[string]string) (attrs, resAttrs map[string]interface{}) {
 	attrs = make(map[string]interface{})
 	resAttrs = make(map[string]interface{})
@@ -142,9 +136,8 @@ func isResourceAttribute(key string) bool {
 }
 
 // summarizeTrace computes the per-trace summary from a COMPLETE-view trace.
-// The root span is the one without a parent; when it is sampled away or
-// outside the window the earliest span stands in, matching the sibling
-// adapters' fallback.
+// Root-span fields fall back to the earliest span when the root is sampled
+// away or outside the window.
 func summarizeTrace(t *tracepb.Trace) TraceEntry {
 	entry := TraceEntry{
 		TraceID:   t.GetTraceId(),

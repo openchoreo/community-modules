@@ -36,9 +36,9 @@ type Config struct {
 	QueryTimeout time.Duration
 }
 
-// Client queries Cloud Trace through the v1 read API using Application
-// Default Credentials (Workload Identity on GKE). The v1 API is the only
-// Cloud Trace read surface; v2 is write-only.
+// Client queries Cloud Trace through the v1 read API (the only read surface;
+// v2 is write-only) using Application Default Credentials (Workload Identity
+// on GKE).
 type Client struct {
 	projectID    string
 	queryTimeout time.Duration
@@ -126,10 +126,9 @@ func (c *Client) Ping(ctx context.Context) error {
 	return nil
 }
 
-// QueryTraces runs the traces-list query: ListTraces with the scope filter
-// and COMPLETE view, then per-trace summaries computed from the spans. The
-// COMPLETE view costs more per trace than ROOTSPAN but is the only view that
-// yields spanCount and hasErrors without a follow-up GetTrace per trace.
+// QueryTraces runs ListTraces with the scope filter and COMPLETE view — the
+// only view that yields spanCount and hasErrors without a follow-up GetTrace
+// per trace.
 func (c *Client) QueryTraces(ctx context.Context, p TracesParams) (*TracesResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.queryTimeout)
 	defer cancel()
@@ -161,8 +160,7 @@ func (c *Client) QueryTraces(ctx context.Context, p TracesParams) (*TracesResult
 
 // QuerySpans returns the spans of one trace. p.TraceID must be set. GetTrace
 // carries no filter expression, so the tenancy scope is enforced after the
-// fact: a trace whose spans never match the scope is reported as empty, the
-// same outcome ListTraces would produce.
+// fact: an out-of-scope trace is reported as empty.
 func (c *Client) QuerySpans(ctx context.Context, p TracesParams) (*SpansResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.queryTimeout)
 	defer cancel()

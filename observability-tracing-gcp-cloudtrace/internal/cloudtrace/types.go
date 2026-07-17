@@ -32,8 +32,8 @@ type TraceEntry struct {
 }
 
 // Span is one mapped Cloud Trace v1 span. IDs are formatted as 16-char hex
-// strings (the v1 API returns them as uint64) so consumers see the same OTLP
-// ID convention as the sibling adapters. ParentSpanID is "" for root spans.
+// strings (the v1 API returns them as uint64), following the OTLP ID
+// convention. ParentSpanID is "" for root spans.
 type Span struct {
 	SpanID              string
 	Name                string

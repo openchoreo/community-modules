@@ -102,7 +102,7 @@ service-account key and set `GOOGLE_APPLICATION_CREDENTIALS`.
 
 ### Deployment topologies
 
-Every OpenTelemetry Collector in this module exports directly to Cloud Trace through the `googlecloud` exporter. There is no inter-collector relay: a collector running in a data-plane cluster writes spans straight to the shared GCP project, the same way the X-Ray module writes directly to AWS X-Ray. Pick the topology by toggling which workloads the chart deploys.
+Every OpenTelemetry Collector in this module exports directly to Cloud Trace through the `googlecloud` exporter. There is no inter-collector relay: a collector running in a data-plane cluster writes spans straight to the shared GCP project. Pick the topology by toggling which workloads the chart deploys.
 
 | Topology | Install location | Deploys | Required Helm values |
 | --- | --- | --- | --- |

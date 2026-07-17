@@ -21,7 +21,7 @@ const (
 )
 
 // SpanIDHex formats a v1 span ID (fixed64) as the 16-char lowercase hex
-// string used by OTLP and the sibling adapters.
+// string used by OTLP.
 func SpanIDHex(id uint64) string {
 	return fmt.Sprintf("%016x", id)
 }

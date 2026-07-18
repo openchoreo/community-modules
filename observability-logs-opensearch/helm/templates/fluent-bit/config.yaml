@@ -79,8 +79,10 @@ data:
     # The go, java and python multiline parsers referenced by the multiline
     # filter above are built into Fluent Bit. .NET is not, so it is defined
     # here as a custom parser. A .NET stack trace starts with a line that
-    # ends in "Exception: <message>" and continues with "   at ..." frames and
-    # "--- End of ... stack trace ---" markers.
+    # ends in "Exception: <message>" and continues with "   at ..." frames,
+    # nested "---> <inner exception>" lines and "--- End of ... ---" markers.
+    # The "--- End of ..." and "--->" markers are emitted at column 0, so the
+    # continuation rule allows leading whitespace to be optional.
     #
     # To support another log format not covered by the built-ins, add a
     # [MULTILINE_PARSER] here (type regex) and append its name to
@@ -91,5 +93,5 @@ data:
         type          regex
         flush_timeout 2000
         rule          "start_state" "/^.*Exception[:,].*$/" "cont"
-        rule          "cont"        "/^\s+(at|--- End of).*$/" "cont"
+        rule          "cont"        "/^\s*(at |--- End of|---> ).*$/" "cont"
 {{- end }}

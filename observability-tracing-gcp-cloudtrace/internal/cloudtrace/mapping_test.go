@@ -124,23 +124,30 @@ func TestSpanKindFallback(t *testing.T) {
 
 func TestStatusFromLabels(t *testing.T) {
 	tests := []struct {
-		name   string
-		labels map[string]string
-		want   string
+		name        string
+		labels      map[string]string
+		want        string
+		wantMessage string
 	}{
-		{"status code ok", map[string]string{"g.co/status/code": "0"}, "ok"},
-		{"status code error", map[string]string{"g.co/status/code": "2"}, "error"},
-		{"otel status ok", map[string]string{"otel.status_code": "OK"}, "ok"},
-		{"otel status error", map[string]string{"otel.status_code": "ERROR"}, "error"},
-		{"error flag", map[string]string{"error": "true"}, "error"},
-		{"http 500", map[string]string{"/http/status_code": "503"}, "error"},
-		{"http 200", map[string]string{"/http/status_code": "200"}, "ok"},
-		{"no signal", map[string]string{}, "unset"},
+		{"status code ok", map[string]string{"g.co/status/code": "0"}, "ok", ""},
+		{"status code error", map[string]string{"g.co/status/code": "2"}, "error", ""},
+		{"error with description", map[string]string{"g.co/status/code": "2", "g.co/status/description": "deadline exceeded"}, "error", "deadline exceeded"},
+		{"ok drops description", map[string]string{"g.co/status/code": "0", "g.co/status/description": "ignored"}, "ok", ""},
+		{"otel status ok", map[string]string{"otel.status_code": "OK"}, "ok", ""},
+		{"otel status error", map[string]string{"otel.status_code": "ERROR", "otel.status_description": "boom"}, "error", "boom"},
+		{"error flag", map[string]string{"error": "true"}, "error", ""},
+		{"http 500", map[string]string{"/http/status_code": "503"}, "error", ""},
+		{"http 200", map[string]string{"/http/status_code": "200"}, "ok", ""},
+		{"no signal", map[string]string{}, "unset", ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := statusFromLabels(tt.labels); got != tt.want {
-				t.Errorf("statusFromLabels() = %q, want %q", got, tt.want)
+			got, gotMessage := statusFromLabels(tt.labels)
+			if got != tt.want {
+				t.Errorf("statusFromLabels() status = %q, want %q", got, tt.want)
+			}
+			if gotMessage != tt.wantMessage {
+				t.Errorf("statusFromLabels() message = %q, want %q", gotMessage, tt.wantMessage)
 			}
 		})
 	}

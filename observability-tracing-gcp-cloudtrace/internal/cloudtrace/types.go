@@ -42,7 +42,8 @@ type Span struct {
 	StartTime           time.Time
 	EndTime             time.Time
 	DurationNanoseconds int64
-	Status              string
+	Status              string // "ok", "error", or "unset"
+	StatusMessage       string // human-readable description, set only on error
 	Attributes          map[string]interface{}
 	ResourceAttributes  map[string]interface{}
 }

@@ -234,10 +234,11 @@ func TestQuerySpansForTraceRejectsBadTraceID(t *testing.T) {
 func TestGetSpanDetailsForTrace(t *testing.T) {
 	client := &fakeClient{
 		span: &cloudtrace.Span{
-			SpanID:   "0000000000000abc",
-			Name:     "target",
-			SpanKind: "CLIENT",
-			Status:   "error",
+			SpanID:        "0000000000000abc",
+			Name:          "target",
+			SpanKind:      "CLIENT",
+			Status:        "error",
+			StatusMessage: "deadline exceeded",
 		},
 	}
 	h := newHandler(client)
@@ -253,8 +254,14 @@ func TestGetSpanDetailsForTrace(t *testing.T) {
 	if !isOK {
 		t.Fatalf("resp = %T", resp)
 	}
-	if *ok.SpanId != "0000000000000abc" || *ok.Status != "error" {
-		t.Errorf("span = %+v", ok)
+	if ok.Status == nil || ok.Status.Code == nil || *ok.Status.Code != gen.Error {
+		t.Fatalf("status = %+v, want code error", ok.Status)
+	}
+	if *ok.SpanId != "0000000000000abc" {
+		t.Errorf("spanId = %q", *ok.SpanId)
+	}
+	if ok.Status.Message == nil || *ok.Status.Message != "deadline exceeded" {
+		t.Errorf("status message = %v, want %q", ok.Status.Message, "deadline exceeded")
 	}
 }
 

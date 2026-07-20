@@ -14,10 +14,12 @@ import (
 // Label keys carrying span metadata that has no dedicated field in the v1
 // TraceSpan message.
 const (
-	labelStatusCode     = "g.co/status/code" // google.rpc.Code as decimal; 0 == OK
-	labelOtelStatusCode = "otel.status_code" // "OK" / "ERROR" / "UNSET"
-	labelHTTPStatusCode = "/http/status_code"
-	labelErrorFlag      = "error"
+	labelStatusCode        = "g.co/status/code"        // google.rpc.Code as decimal; 0 == OK
+	labelStatusMessage     = "g.co/status/description" // human-readable status detail
+	labelOtelStatusCode    = "otel.status_code"        // "OK" / "ERROR" / "UNSET"
+	labelOtelStatusMessage = "otel.status_description"
+	labelHTTPStatusCode    = "/http/status_code"
+	labelErrorFlag         = "error"
 )
 
 // SpanIDHex formats a v1 span ID (fixed64) as the 16-char lowercase hex
@@ -43,8 +45,8 @@ func mapSpan(s *tracepb.TraceSpan, includeAttributes bool) Span {
 		SpanID:   SpanIDHex(s.GetSpanId()),
 		Name:     s.GetName(),
 		SpanKind: spanKind(s),
-		Status:   statusFromLabels(s.GetLabels()),
 	}
+	span.Status, span.StatusMessage = statusFromLabels(s.GetLabels())
 	if pid := s.GetParentSpanId(); pid != 0 {
 		span.ParentSpanID = SpanIDHex(pid)
 	}
@@ -83,32 +85,42 @@ func spanKind(s *tracepb.TraceSpan) string {
 
 // statusFromLabels maps Cloud Trace status labels onto the adapter's
 // ok/error/unset convention, preferring the OTel status (surfaced in v1 as
-// g.co/status/code, a google.rpc.Code) over the HTTP status fallback.
-func statusFromLabels(labels map[string]string) string {
+// g.co/status/code, a google.rpc.Code) over the HTTP status fallback. The
+// message is a human-readable description reported only for error statuses.
+func statusFromLabels(labels map[string]string) (status, message string) {
+	message = statusMessageFromLabels(labels)
 	if v, ok := labels[labelStatusCode]; ok {
 		if v == "0" {
-			return "ok"
+			return "ok", ""
 		}
-		return "error"
+		return "error", message
 	}
 	switch strings.ToUpper(labels[labelOtelStatusCode]) {
 	case "OK":
-		return "ok"
+		return "ok", ""
 	case "ERROR":
-		return "error"
+		return "error", message
 	}
 	if strings.EqualFold(labels[labelErrorFlag], "true") {
-		return "error"
+		return "error", message
 	}
 	if v, ok := labels[labelHTTPStatusCode]; ok {
 		if code, err := strconv.Atoi(v); err == nil {
 			if code >= 500 {
-				return "error"
+				return "error", message
 			}
-			return "ok"
+			return "ok", ""
 		}
 	}
-	return "unset"
+	return "unset", ""
+}
+
+// statusMessageFromLabels returns the first non-empty status-description label.
+func statusMessageFromLabels(labels map[string]string) string {
+	if m := labels[labelStatusMessage]; m != "" {
+		return m
+	}
+	return labels[labelOtelStatusMessage]
 }
 
 // splitAttributes reconstructs the span-vs-resource attribute split by key
@@ -161,7 +173,7 @@ func summarizeTrace(t *tracepb.Trace) TraceEntry {
 		if s.GetParentSpanId() == 0 && root == nil {
 			root = s
 		}
-		if !entry.HasErrors && statusFromLabels(s.GetLabels()) == "error" {
+		if status, _ := statusFromLabels(s.GetLabels()); !entry.HasErrors && status == "error" {
 			entry.HasErrors = true
 		}
 	}

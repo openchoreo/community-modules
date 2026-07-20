@@ -99,8 +99,6 @@ You need:
 - A GCP project (`gcp.projectId`).
 - A GKE cluster with **Cloud Monitoring / system metrics enabled** (the
   default), exporting container metrics to the project.
-- The OpenChoreo controllers stamping the `openchoreo.dev/*` labels onto
-  workload pods so the adapter can filter by component/project/environment UID.
 - **Workload Identity** enabled on the cluster and node pool, with a Google
   service account bound to the adapter's Kubernetes ServiceAccount.
 - For alerting: a **Cloud Monitoring notification channel** of type

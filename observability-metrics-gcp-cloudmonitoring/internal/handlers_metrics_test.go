@@ -82,7 +82,7 @@ func TestQueryMetricsResourceHappyPath(t *testing.T) {
 	h := newTestHandler(client)
 
 	req := validQueryRequest()
-	uid := "c-uid"
+	uid := "f3b8e2a4-6c1d-4e9f-9a2b-3d5c7e8f0a1c"
 	req.Body.SearchScope.ComponentUid = &uid
 	step := "1m"
 	req.Body.Step = &step
@@ -92,7 +92,7 @@ func TestQueryMetricsResourceHappyPath(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if client.params.ComponentUID != "c-uid" || client.params.Namespace != "default" {
+	if client.params.ComponentUID != uid || client.params.Namespace != "default" {
 		t.Errorf("scope not forwarded: %+v", client.params)
 	}
 	if client.params.Step != time.Minute {

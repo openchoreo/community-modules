@@ -11,6 +11,14 @@ import (
 	"cloud.google.com/go/monitoring/apiv3/v2/monitoringpb"
 )
 
+// Test UID fixtures use real UUIDs, matching what the Observer sends (the
+// generated API models the search-scope UIDs as UUID types).
+const (
+	testComponentUID   = "f3b8e2a4-6c1d-4e9f-9a2b-3d5c7e8f0a1c"
+	testProjectUID     = "9d4c2b1a-8e7f-4a3b-b6c5-2f1e0d9c8b7a"
+	testEnvironmentUID = "5e6f7a8b-9c0d-4e1f-a2b3-c4d5e6f7a8b9"
+)
+
 func specByKey(t *testing.T, key string) metricSpec {
 	t.Helper()
 	for _, s := range resourceMetricSpecs {
@@ -48,15 +56,15 @@ func TestBuildResourceMetricsFilterBaseNoScope(t *testing.T) {
 func TestBuildResourceMetricsFilterAllScopes(t *testing.T) {
 	f := BuildResourceMetricsFilter(specByKey(t, "cpuUsage"), MetricsQueryParams{
 		Namespace:      "default",
-		ComponentUID:   "c-uid",
-		ProjectUID:     "p-uid",
-		EnvironmentUID: "e-uid",
+		ComponentUID:   testComponentUID,
+		ProjectUID:     testProjectUID,
+		EnvironmentUID: testEnvironmentUID,
 	})
 
 	for _, want := range []string{
-		`metadata.user_labels."openchoreo.dev/component-uid" = "c-uid"`,
-		`metadata.user_labels."openchoreo.dev/project-uid" = "p-uid"`,
-		`metadata.user_labels."openchoreo.dev/environment-uid" = "e-uid"`,
+		`metadata.user_labels."openchoreo.dev/component-uid" = "` + testComponentUID + `"`,
+		`metadata.user_labels."openchoreo.dev/project-uid" = "` + testProjectUID + `"`,
+		`metadata.user_labels."openchoreo.dev/environment-uid" = "` + testEnvironmentUID + `"`,
 	} {
 		if !strings.Contains(f, want) {
 			t.Errorf("filter missing %q:\n%s", want, f)

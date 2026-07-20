@@ -23,12 +23,15 @@ func baseTranslatorCfg() TranslatorConfig {
 
 func validRuleInput() RuleInput {
 	return RuleInput{
-		Namespace: "default",
-		RuleName:  "high-cpu",
-		Metric:    "cpu_usage",
-		Operator:  "gt",
-		Threshold: 80, // percent of limit
-		Enabled:   true,
+		Namespace:      "default",
+		RuleName:       "high-cpu",
+		ComponentUID:   testComponentUID,
+		ProjectUID:     testProjectUID,
+		EnvironmentUID: testEnvironmentUID,
+		Metric:         "cpu_usage",
+		Operator:       "gt",
+		Threshold:      80, // percent of limit
+		Enabled:        true,
 	}
 }
 

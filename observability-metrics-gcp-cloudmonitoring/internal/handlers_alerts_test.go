@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/openchoreo/community-modules/observability-metrics-gcp-cloudmonitoring/internal/api/gen"
 	"github.com/openchoreo/community-modules/observability-metrics-gcp-cloudmonitoring/internal/cloudmonitoring"
 )
@@ -89,6 +91,9 @@ func validAlertRequestBody() *gen.AlertRuleRequest {
 	b := &gen.AlertRuleRequest{}
 	b.Metadata.Name = "high-cpu"
 	b.Metadata.Namespace = "default"
+	b.Metadata.ComponentUid = uuid.MustParse("f3b8e2a4-6c1d-4e9f-9a2b-3d5c7e8f0a1c")
+	b.Metadata.ProjectUid = uuid.MustParse("9d4c2b1a-8e7f-4a3b-b6c5-2f1e0d9c8b7a")
+	b.Metadata.EnvironmentUid = uuid.MustParse("5e6f7a8b-9c0d-4e1f-a2b3-c4d5e6f7a8b9")
 	b.Source.Metric = "cpu_usage"
 	b.Condition.Operator = "gt"
 	b.Condition.Threshold = 0.8

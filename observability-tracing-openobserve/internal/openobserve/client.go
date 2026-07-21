@@ -84,14 +84,15 @@ type TracesResult struct {
 
 // SpanEntry represents a span in the spans list response
 type SpanEntry struct {
-	SpanID       string    `json:"spanId"`
-	SpanName     string    `json:"spanName"`
-	SpanKind     string    `json:"spanKind"`
-	StartTime    time.Time `json:"startTime"`
-	EndTime      time.Time `json:"endTime"`
-	DurationNs   int64     `json:"durationNs"`
-	ParentSpanID string    `json:"parentSpanId"`
-	Status       string    `json:"status,omitempty"`
+	SpanID        string    `json:"spanId"`
+	SpanName      string    `json:"spanName"`
+	SpanKind      string    `json:"spanKind"`
+	StartTime     time.Time `json:"startTime"`
+	EndTime       time.Time `json:"endTime"`
+	DurationNs    int64     `json:"durationNs"`
+	ParentSpanID  string    `json:"parentSpanId"`
+	Status        string    `json:"status,omitempty"`
+	StatusMessage string    `json:"statusMessage,omitempty"`
 }
 
 // SpansResult represents the response when listing spans for a trace
@@ -111,6 +112,7 @@ type SpanDetail struct {
 	DurationNs         int64                  `json:"durationNs"`
 	ParentSpanID       string                 `json:"parentSpanId"`
 	Status             string                 `json:"status,omitempty"`
+	StatusMessage      string                 `json:"statusMessage,omitempty"`
 	Attributes         map[string]interface{} `json:"attributes"`
 	ResourceAttributes map[string]interface{} `json:"resourceAttributes"`
 }
@@ -425,6 +427,7 @@ func parseSpanEntry(hit map[string]interface{}) SpanEntry {
 		entry.ParentSpanID = v
 	}
 	entry.Status = determineSpanStatus(hit)
+	entry.StatusMessage = determineSpanStatusMessage(hit)
 
 	return entry
 }
@@ -444,6 +447,16 @@ func determineSpanStatus(hit map[string]interface{}) string {
 	return "unset"
 }
 
+// determineSpanStatusMessage extracts the OpenTelemetry status description
+// (status_message) from a raw OpenObserve hit, if present. Returns "" when absent.
+func determineSpanStatusMessage(hit map[string]interface{}) string {
+	if v, ok := hit["status_message"].(string); ok {
+		return v
+	}
+
+	return ""
+}
+
 // internalFields contains field keys that are mapped to SpanDetail struct fields
 // and should be excluded from the attributes list. Expand this slice to exclude
 // additional fields in the future.
@@ -459,6 +472,8 @@ var internalFields = []string{
 	"reference_parent_span_id",
 	"trace_id",
 	"span_status",
+	"status_code",
+	"status_message",
 }
 
 // parseSpanDetail converts a raw OpenObserve hit into a SpanDetail with attributes
@@ -489,6 +504,7 @@ func parseSpanDetail(hit map[string]interface{}) SpanDetail {
 		detail.ParentSpanID = v
 	}
 	detail.Status = determineSpanStatus(hit)
+	detail.StatusMessage = determineSpanStatusMessage(hit)
 
 	excludeFields := make(map[string]bool, len(internalFields))
 	for _, f := range internalFields {

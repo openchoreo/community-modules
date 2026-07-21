@@ -106,7 +106,7 @@ func generateSpansListQuery(params TracesQueryParams, stream string, logger *slo
 
 	sql := fmt.Sprintf(
 		"SELECT span_id, operation_name, span_kind, start_time, end_time, "+
-			"end_time - start_time as duration, reference_parent_span_id, span_status "+
+			"end_time - start_time as duration, reference_parent_span_id, span_status, status_message "+
 			"FROM %s WHERE %s",
 		safeStream, strings.Join(conditions, " AND "),
 	)

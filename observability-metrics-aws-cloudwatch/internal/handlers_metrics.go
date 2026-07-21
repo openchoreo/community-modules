@@ -29,6 +29,8 @@ const (
 type metricsClient interface {
 	Ping(context.Context) error
 	GetResourceMetrics(context.Context, cloudwatchmetrics.MetricsQueryParams) (*cloudwatchmetrics.ResourceMetricsResult, error)
+	GetHTTPMetrics(context.Context, cloudwatchmetrics.HTTPMetricsQueryParams) (*cloudwatchmetrics.HTTPMetricsResult, error)
+	GetRuntimeTopology(context.Context, cloudwatchmetrics.RuntimeTopologyQueryParams) (*cloudwatchmetrics.RuntimeTopologyResult, error)
 	CreateAlert(context.Context, cloudwatchmetrics.MetricAlertParams) (string, error)
 	UpdateAlert(context.Context, string, string, cloudwatchmetrics.MetricAlertParams) (string, error)
 	DeleteAlert(context.Context, string, string) (string, error)
@@ -125,10 +127,10 @@ func (h *MetricsHandler) QueryMetrics(ctx context.Context, request gen.QueryMetr
 	}
 
 	switch request.Body.Metric {
-	case gen.Resource:
+	case gen.MetricsQueryRequestMetricResource:
 		return h.queryResourceMetrics(ctx, request.Body, stepSec)
-	case gen.Http:
-		return h.queryHTTPMetrics(), nil
+	case gen.MetricsQueryRequestMetricHttp:
+		return h.queryHTTPMetrics(ctx, request.Body, stepSec)
 	default:
 		return badRequestMetrics(fmt.Sprintf("unknown metric type: %s", request.Body.Metric)), nil
 	}
@@ -147,9 +149,6 @@ func (h *MetricsHandler) queryResourceMetrics(ctx context.Context, req *gen.Metr
 	if h.scopeResolver != nil {
 		resolved, ok, err := h.scopeResolver.Resolve(ctx, ScopeResolutionParams{
 			Namespace:      req.SearchScope.Namespace,
-			Component:      derefString(req.SearchScope.Component),
-			Project:        derefString(req.SearchScope.Project),
-			Environment:    derefString(req.SearchScope.Environment),
 			ComponentUID:   params.ComponentUID,
 			ProjectUID:     params.ProjectUID,
 			EnvironmentUID: params.EnvironmentUID,
@@ -187,24 +186,47 @@ func (h *MetricsHandler) queryResourceMetrics(ctx context.Context, req *gen.Metr
 	return metricsQueryOKResponse{union}, nil
 }
 
-// queryHTTPMetrics returns an empty HttpMetricsTimeSeries. HTTP RED metrics
-// are not implemented in v0; the caller is informed via the response header.
-func (h *MetricsHandler) queryHTTPMetrics() gen.QueryMetricsResponseObject {
-	empty := []gen.MetricsTimeSeriesItem{}
+// queryHTTPMetrics answers metric: http from Cilium Hubble RED metrics that the
+// collector enriches with OpenChoreo component identity and writes to the EMF
+// log group. Request counts (total/successful/unsuccessful) and mean latency are
+// returned as per-step time series; latency percentiles are reconstructed per
+// step bucket from the collector's preserved `le`-bucket series (best-effort:
+// empty when the bucket series is unavailable).
+func (h *MetricsHandler) queryHTTPMetrics(ctx context.Context, req *gen.MetricsQueryRequest, stepSec int32) (gen.QueryMetricsResponseObject, error) {
+	params := cloudwatchmetrics.HTTPMetricsQueryParams{
+		Namespace:      req.SearchScope.Namespace,
+		ComponentUID:   derefString(req.SearchScope.ComponentUid),
+		ProjectUID:     derefString(req.SearchScope.ProjectUid),
+		EnvironmentUID: derefString(req.SearchScope.EnvironmentUid),
+		StartTime:      req.StartTime,
+		EndTime:        req.EndTime,
+		StepSeconds:    stepSec,
+	}
+	result, err := h.client.GetHTTPMetrics(ctx, params)
+	if err != nil {
+		h.logger.Error("Failed to query HTTP metrics",
+			slog.String("namespace", params.Namespace),
+			slog.Any("error", err),
+		)
+		return serverErrorMetrics(err.Error()), nil
+	}
+
 	resp := gen.HttpMetricsTimeSeries{
-		RequestCount:             &empty,
-		SuccessfulRequestCount:   &empty,
-		UnsuccessfulRequestCount: &empty,
-		MeanLatency:              &empty,
-		LatencyP50:               &empty,
-		LatencyP90:               &empty,
-		LatencyP99:               &empty,
+		RequestCount:             toItems(result.RequestCount),
+		SuccessfulRequestCount:   toItems(result.SuccessfulRequestCount),
+		UnsuccessfulRequestCount: toItems(result.UnsuccessfulRequestCount),
+		MeanLatency:              toItems(result.MeanLatency),
+		// Percentiles are reconstructed per step bucket from the preserved `le`
+		// buckets; empty only for buckets with no duration samples.
+		LatencyP50: toItems(result.LatencyP50),
+		LatencyP90: toItems(result.LatencyP90),
+		LatencyP99: toItems(result.LatencyP99),
 	}
 	var union gen.MetricsQueryResponse
 	if err := union.FromHttpMetricsTimeSeries(resp); err != nil {
-		return serverErrorMetrics(fmt.Sprintf("failed to build response: %v", err))
+		return serverErrorMetrics(fmt.Sprintf("failed to build response: %v", err)), nil
 	}
-	return httpMetricsQueryOKResponse{union}
+	return httpMetricsQueryOKResponse{union}, nil
 }
 
 // resolveAlertDimensionNamespace resolves the CloudWatch Namespace dimension
@@ -509,7 +531,6 @@ type httpMetricsQueryOKResponse struct {
 
 func (r httpMetricsQueryOKResponse) VisitQueryMetricsResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("X-OpenChoreo-Adapter-Notice", "http-metrics-not-implemented")
 	w.WriteHeader(http.StatusOK)
 	return json.NewEncoder(w).Encode(r.MetricsQueryResponse)
 }

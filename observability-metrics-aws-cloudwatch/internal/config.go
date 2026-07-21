@@ -9,12 +9,15 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Config struct {
 	ServerPort      string
 	AWSRegion       string
 	MetricNamespace string
+	MetricsLogGroup string
+	QueryTimeout    time.Duration
 	LogLevel        slog.Level
 
 	AlarmActionARNs            []string
@@ -31,6 +34,7 @@ func LoadConfig() (*Config, error) {
 	serverPort := getEnv("SERVER_PORT", "9099")
 	awsRegion := getEnv("AWS_REGION", "")
 	metricNamespace := getEnv("METRIC_NAMESPACE", "OpenChoreo/Metrics")
+	metricsLogGroup := getEnv("METRICS_LOG_GROUP", "/aws/openchoreo/metrics")
 
 	logLevel := slog.LevelInfo
 	if level := os.Getenv("LOG_LEVEL"); level != "" {
@@ -55,6 +59,17 @@ func LoadConfig() (*Config, error) {
 	}
 	if port < 1 || port > 65535 {
 		return nil, fmt.Errorf("invalid SERVER_PORT: %d out of range", port)
+	}
+	queryTimeout := 30 * time.Second
+	if raw := strings.TrimSpace(os.Getenv("QUERY_TIMEOUT_SECONDS")); raw != "" {
+		seconds, err := strconv.Atoi(raw)
+		if err != nil {
+			return nil, fmt.Errorf("invalid QUERY_TIMEOUT_SECONDS: %w", err)
+		}
+		if seconds <= 0 {
+			return nil, fmt.Errorf("invalid QUERY_TIMEOUT_SECONDS: must be greater than 0")
+		}
+		queryTimeout = time.Duration(seconds) * time.Second
 	}
 
 	alarmActionARNs, err := parseARNList("ALARM_ACTION_ARNS")
@@ -83,6 +98,8 @@ func LoadConfig() (*Config, error) {
 		ServerPort:                 serverPort,
 		AWSRegion:                  awsRegion,
 		MetricNamespace:            metricNamespace,
+		MetricsLogGroup:            metricsLogGroup,
+		QueryTimeout:               queryTimeout,
 		LogLevel:                   logLevel,
 		AlarmActionARNs:            alarmActionARNs,
 		OKActionARNs:               okActionARNs,

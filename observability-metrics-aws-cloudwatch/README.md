@@ -32,7 +32,7 @@ This module has two main responsibilities:
 
 In the default single-cluster topology, the chart deploys two workloads:
 
-1. An **OpenTelemetry collector** DaemonSet that scrapes pod CPU and memory usage from kubelet, scrapes pod requests and limits from `kube-state-metrics`, enriches series with OpenChoreo pod labels, and publishes metrics to CloudWatch through the AWS EMF exporter.
+1. An **OpenTelemetry collector** DaemonSet that collects resource and Cilium Hubble HTTP metrics, associates them with OpenChoreo components, and publishes them to CloudWatch.
 2. A Go **CloudWatch Metrics Adapter** Deployment that implements the OpenChoreo Metrics Adapter API.
 
 The OpenTelemetry collector writes Embedded Metric Format events to this CloudWatch Logs log group:
@@ -59,7 +59,8 @@ All participating clusters write to the same configured EMF log group and metric
 
 | Endpoint | Purpose |
 | --- | --- |
-| `POST /api/v1/metrics/query` | Runs a CloudWatch `GetMetricData` request for resource metrics. |
+| `POST /api/v1/metrics/query` | Returns resource metrics or per-component HTTP RED metrics. |
+| `POST /api/v1alpha1/metrics/runtime-topology` | Returns observed component-to-component HTTP traffic edges. |
 | `POST /api/v1alpha1/alerts/rules` | Creates a CloudWatch metric math alarm evaluating `(usage / limit) * 100` against the threshold percentage. |
 | `GET /api/v1alpha1/alerts/rules/{ruleName}` | Gets the alert rule identified by `{ruleName}`. |
 | `PUT /api/v1alpha1/alerts/rules/{ruleName}` | Updates the alert rule identified by `{ruleName}`. |
@@ -67,6 +68,49 @@ All participating clusters write to the same configured EMF log group and metric
 | `POST /api/v1alpha1/alerts/webhook` | Receives forwarded CloudWatch alarm events from EventBridge and forwards them to the Observer. |
 | `GET /healthz` | Readiness check. Returns `200` once the adapter is ready. |
 | `GET /livez` | Liveness check. Does not call AWS, so transient AWS or DNS issues do not crash-loop the pod. |
+
+### HTTP RED metrics (Cilium Hubble)
+
+`POST /api/v1/metrics/query` with `metric: http` returns per-component HTTP RED
+time series from Cilium Hubble traffic data:
+
+- `requestCount`, `successfulRequestCount` (1xx/2xx/3xx), and
+  `unsuccessfulRequestCount` (4xx/5xx) are returned as per-second rates.
+- `meanLatency` is returned in seconds.
+- `latencyP50`, `latencyP90`, and `latencyP99` are returned when Hubble latency
+  histogram data is available.
+- The minimum supported `step` is one minute. Sub-minute values are rounded up.
+
+### Runtime topology (Cilium Hubble)
+
+The `POST /api/v1alpha1/metrics/runtime-topology` endpoint returns the live HTTP
+traffic graph as component-to-component edges. It is powered by **Cilium Hubble**
+L7 metrics rather than the CloudWatch metric path:
+
+- The collector enriches Hubble traffic data with OpenChoreo component identity
+  and writes it to CloudWatch EMF logs.
+- The adapter queries those logs with CloudWatch Logs Insights to return
+  component-to-component edges and HTTP RED time series.
+
+Prerequisites:
+
+- Cilium installed with Hubble metrics enabled, including the **`httpV2`** metric
+  and source/destination namespace and IP labels.
+- The workloads whose traffic should appear must have **Layer-7 visibility**
+  (OpenChoreo components get this from their generated `CiliumNetworkPolicy`).
+  Traffic between pods without L7 visibility is not captured.
+
+Reported per edge: `requestCount`, `unsuccessfulRequestCount` (4xx/5xx),
+`meanLatency`, and latency `p50`/`p90`/`p99` when latency histogram data is
+available. The current scope is component-to-component edges. Gateway,
+external-service, and per-node aggregates are not included.
+
+#### Latency percentiles
+
+Latency percentiles are derived from Hubble HTTP latency histograms for both
+runtime topology and `metric: http`. Percentile accuracy is limited by Hubble's
+histogram bucket resolution, so very fast requests may appear rounded to the
+nearest available bucket.
 
 ## Choose a deployment topology
 
@@ -168,6 +212,21 @@ Create the following custom IAM policy and attach it to the adapter IAM principa
       "Resource": "*"
     },
     {
+      "Sid": "RuntimeTopologyStartQuery",
+      "Effect": "Allow",
+      "Action": "logs:StartQuery",
+      "Resource": "arn:aws:logs:<region>:<account-id>:log-group:/aws/openchoreo/metrics:*"
+    },
+    {
+      "Sid": "RuntimeTopologyQueryResults",
+      "Effect": "Allow",
+      "Action": [
+        "logs:GetQueryResults",
+        "logs:StopQuery"
+      ],
+      "Resource": "*"
+    },
+    {
       "Sid": "MetricAlarms",
       "Effect": "Allow",
       "Action": [
@@ -242,6 +301,21 @@ Replace:
         "cloudwatch:DeleteAlarms",
         "cloudwatch:TagResource",
         "cloudwatch:ListTagsForResource"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "RuntimeTopologyStartQuery",
+      "Effect": "Allow",
+      "Action": "logs:StartQuery",
+      "Resource": "arn:aws:logs:<region>:<account-id>:log-group:/aws/openchoreo/metrics:*"
+    },
+    {
+      "Sid": "RuntimeTopologyQueryResults",
+      "Effect": "Allow",
+      "Action": [
+        "logs:GetQueryResults",
+        "logs:StopQuery"
       ],
       "Resource": "*"
     },
@@ -375,6 +449,21 @@ aws iam create-policy \
       "Resource": "*"
     },
     {
+      "Sid": "RuntimeTopologyStartQuery",
+      "Effect": "Allow",
+      "Action": "logs:StartQuery",
+      "Resource": "arn:aws:logs:${AWS_REGION}:${AWS_ACCOUNT_ID}:log-group:/aws/openchoreo/metrics:*"
+    },
+    {
+      "Sid": "RuntimeTopologyQueryResults",
+      "Effect": "Allow",
+      "Action": [
+        "logs:GetQueryResults",
+        "logs:StopQuery"
+      ],
+      "Resource": "*"
+    },
+    {
       "Sid": "MetricAlarms",
       "Effect": "Allow",
       "Action": [
@@ -443,7 +532,7 @@ helm upgrade --install observability-metrics-aws-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-metrics-aws-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.2.3 \
+  --version 0.3.0 \
   --set region="$AWS_REGION" \
   --set adapter.alerting.webhookAuth.enabled=true \
   --set adapter.alerting.webhookAuth.sharedSecret="$WEBHOOK_SHARED_SECRET"
@@ -458,7 +547,7 @@ helm upgrade --install observability-metrics-aws-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-metrics-aws-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.2.3 \
+  --version 0.3.0 \
   --set region="$AWS_REGION" \
   --set opentelemetry-collector.enabled=false \
   --set kubeStateMetrics.enabled=false \
@@ -476,7 +565,7 @@ helm upgrade --install observability-metrics-aws-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-metrics-aws-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.2.3 \
+  --version 0.3.0 \
   --set region="$AWS_REGION" \
   --set adapter.enabled=false
 ```
@@ -612,7 +701,7 @@ kubectl -n "$NS" rollout restart deployment/metrics-adapter-aws-cloudwatch
 kubectl -n "$NS" delete job metrics-aws-cloudwatch-retention --ignore-not-found
 helm upgrade observability-metrics-aws-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-metrics-aws-cloudwatch \
-  --namespace "$NS" --version 0.2.3 --reuse-values
+  --namespace "$NS" --version 0.3.0 --reuse-values
 ```
 
 **Observability plane cluster** — restart only the adapter:
@@ -629,7 +718,7 @@ kubectl -n "$NS" rollout restart daemonset/metrics-opentelemetry-collector-agent
 kubectl -n "$NS" delete job metrics-aws-cloudwatch-retention --ignore-not-found
 helm upgrade observability-metrics-aws-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-metrics-aws-cloudwatch \
-  --namespace "$NS" --version 0.2.3 --reuse-values
+  --namespace "$NS" --version 0.3.0 --reuse-values
 ```
 
 #### Verify Pod Identity injection
@@ -717,6 +806,21 @@ aws iam create-policy \
       "Resource": "*"
     },
     {
+      "Sid": "RuntimeTopologyStartQuery",
+      "Effect": "Allow",
+      "Action": "logs:StartQuery",
+      "Resource": "arn:aws:logs:${AWS_REGION}:${AWS_ACCOUNT_ID}:log-group:/aws/openchoreo/metrics:*"
+    },
+    {
+      "Sid": "RuntimeTopologyQueryResults",
+      "Effect": "Allow",
+      "Action": [
+        "logs:GetQueryResults",
+        "logs:StopQuery"
+      ],
+      "Resource": "*"
+    },
+    {
       "Sid": "WriteEMFLogs",
       "Effect": "Allow",
       "Action": [
@@ -757,7 +861,7 @@ helm upgrade --install observability-metrics-aws-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-metrics-aws-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.2.3 \
+  --version 0.3.0 \
   --set region="$AWS_REGION" \
   --set awsCredentials.create=true \
   --set awsCredentials.name=metrics-aws-cloudwatch-aws-credentials \
@@ -786,7 +890,7 @@ helm upgrade --install observability-metrics-aws-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-metrics-aws-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.2.3 \
+  --version 0.3.0 \
   --set region="$AWS_REGION" \
   --set awsCredentials.create=true \
   --set awsCredentials.name=metrics-aws-cloudwatch-aws-credentials \
@@ -808,7 +912,7 @@ helm upgrade --install observability-metrics-aws-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-metrics-aws-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.2.3 \
+  --version 0.3.0 \
   --set region="$AWS_REGION" \
   --set awsCredentials.create=true \
   --set awsCredentials.name=metrics-aws-cloudwatch-aws-credentials \
@@ -1131,7 +1235,7 @@ kubectl -n "$NS" delete job metrics-aws-cloudwatch-retention --ignore-not-found
 # 2. Re-fire the post-upgrade hook.
 helm upgrade observability-metrics-aws-cloudwatch \
   oci://ghcr.io/openchoreo/helm-charts/observability-metrics-aws-cloudwatch \
-  --version 0.2.3 --namespace "$NS" --reuse-values
+  --version 0.3.0 --namespace "$NS" --reuse-values
 
 # 3. Watch the new Job complete.
 kubectl -n "$NS" get job metrics-aws-cloudwatch-retention -w
@@ -1165,7 +1269,7 @@ kubectl -n "$NS" logs -l job-name=metrics-aws-cloudwatch-retention --tail=100
 | `opentelemetry-collector.fullnameOverride` | `metrics-opentelemetry-collector` | Overrides the subchart resource name prefix. |
 | `opentelemetry-collector.enabled` | `true` | Enables the OpenTelemetry collector subchart. Set to `false` on an observability-plane-only install. |
 | `opentelemetry-collector.mode` | `daemonset` | Runs one collector per node. |
-| `opentelemetry-collector.image.repository` | `otel/opentelemetry-collector-contrib` | Collector image repository. The contrib image includes kubeletstats and awsemfexporter. |
+| `opentelemetry-collector.image.repository` | `otel/opentelemetry-collector-contrib` | Collector image repository. The contrib image includes the receivers and exporters required by this module. |
 | `opentelemetry-collector.image.tag` | `0.149.0` | Collector image tag. |
 | `opentelemetry-collector.serviceAccount.annotations` | `{}` | ServiceAccount annotations for IRSA or other identity integrations. |
 | `opentelemetry-collector.extraEnvsFrom` | `[{configMapRef: {name: metrics-aws-cloudwatch-cluster-env}}]` | Extra `envFrom` entries for the OpenTelemetry collector. The default ConfigMap supplies `AWS_REGION` and `EMF_LOG_GROUP_NAME`; append the static AWS credentials Secret at index `1` on non-EKS clusters. |
@@ -1176,7 +1280,7 @@ kubectl -n "$NS" logs -l job-name=metrics-aws-cloudwatch-retention --tail=100
 | `adapter.service.port` | `9099` | Adapter HTTP port. |
 | `adapter.serviceAccount.annotations` | `{}` | ServiceAccount annotations for IRSA or other identity integrations. |
 | `adapter.logLevel` | `INFO` | Adapter log level. Supported values include `DEBUG`, `INFO`, `WARN`, and `ERROR`. |
-| `adapter.queryTimeoutSeconds` | `30` | Reserved query timeout setting. |
+| `adapter.queryTimeoutSeconds` | `30` | CloudWatch Logs Insights query timeout used by runtime-topology queries. |
 | `adapter.alerting.enabled` | `true` | Enables alert rule CRUD and webhook forwarding configuration. |
 | `adapter.alerting.alarmActionArns` | `[]` | Optional alarm action ARNs. Leave empty when using EventBridge. |
 | `adapter.alerting.okActionArns` | `[]` | Optional OK-state action ARNs. |

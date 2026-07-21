@@ -442,7 +442,7 @@ func TestQueryTraces_Success(t *testing.T) {
 					"span_kind":                   "SERVER",
 					"start_time":                  json.Number(fmt.Sprintf("%d", startNs)),
 					"end_time":                    json.Number(fmt.Sprintf("%d", endNs)),
-					"reference_parent_span_id":    "",
+					"parent_span_id":    "",
 					"service_openchoreo_dev_namespace": "test-ns",
 				},
 				{
@@ -452,7 +452,7 @@ func TestQueryTraces_Success(t *testing.T) {
 					"span_kind":                "CLIENT",
 					"start_time":               json.Number(fmt.Sprintf("%d", startNs+1000)),
 					"end_time":                 json.Number(fmt.Sprintf("%d", endNs-1000)),
-					"reference_parent_span_id": "span-root",
+					"parent_span_id": "span-root",
 				},
 			},
 		}
@@ -500,7 +500,7 @@ func TestQuerySpansForTrace_Success(t *testing.T) {
 					"start_time":               json.Number(fmt.Sprintf("%d", startNs)),
 					"end_time":                 json.Number(fmt.Sprintf("%d", endNs)),
 					"duration":                 json.Number(fmt.Sprintf("%d", endNs-startNs)),
-					"reference_parent_span_id": "span-root",
+					"parent_span_id": "span-root",
 				},
 			},
 		}
@@ -548,7 +548,7 @@ func TestGetSpanDetailsForTrace_Success(t *testing.T) {
 					"start_time":               json.Number(fmt.Sprintf("%d", startNs)),
 					"end_time":                 json.Number(fmt.Sprintf("%d", endNs)),
 					"duration":                 json.Number(fmt.Sprintf("%d", endNs-startNs)),
-					"reference_parent_span_id": "span-root",
+					"parent_span_id": "span-root",
 					"http.method":              "GET",
 					"service.name":             "my-service",
 				},

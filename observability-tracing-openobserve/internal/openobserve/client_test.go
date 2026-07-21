@@ -115,7 +115,7 @@ func TestGetTraces(t *testing.T) {
 					"span_kind":                "SERVER",
 					"start_time":               json.Number(fmt.Sprintf("%d", startNs)),
 					"end_time":                 json.Number(fmt.Sprintf("%d", endNs)),
-					"reference_parent_span_id": "",
+					"parent_span_id": "",
 				},
 				{
 					"trace_id":                 "trace-1",
@@ -124,7 +124,7 @@ func TestGetTraces(t *testing.T) {
 					"span_kind":                "CLIENT",
 					"start_time":               json.Number(fmt.Sprintf("%d", startNs+1000)),
 					"end_time":                 json.Number(fmt.Sprintf("%d", endNs-1000)),
-					"reference_parent_span_id": "span-root",
+					"parent_span_id": "span-root",
 				},
 				{
 					"trace_id":                 "trace-2",
@@ -133,7 +133,7 @@ func TestGetTraces(t *testing.T) {
 					"span_kind":                "SERVER",
 					"start_time":               json.Number(fmt.Sprintf("%d", startNs+5000)),
 					"end_time":                 json.Number(fmt.Sprintf("%d", endNs+5000)),
-					"reference_parent_span_id": "",
+					"parent_span_id": "",
 				},
 			},
 		}
@@ -290,7 +290,7 @@ func TestGetSpans(t *testing.T) {
 					"start_time":               json.Number(fmt.Sprintf("%d", startNs)),
 					"end_time":                 json.Number(fmt.Sprintf("%d", endNs)),
 					"duration":                 json.Number(fmt.Sprintf("%d", endNs-startNs)),
-					"reference_parent_span_id": "",
+					"parent_span_id": "",
 				},
 				{
 					"span_id":                  "span-2",
@@ -299,7 +299,7 @@ func TestGetSpans(t *testing.T) {
 					"start_time":               json.Number(fmt.Sprintf("%d", startNs+100)),
 					"end_time":                 json.Number(fmt.Sprintf("%d", endNs-100)),
 					"duration":                 json.Number(fmt.Sprintf("%d", endNs-startNs-200)),
-					"reference_parent_span_id": "span-1",
+					"parent_span_id": "span-1",
 				},
 			},
 		}
@@ -383,7 +383,7 @@ func TestGetSpanDetail(t *testing.T) {
 					"start_time":               json.Number(fmt.Sprintf("%d", startNs)),
 					"end_time":                 json.Number(fmt.Sprintf("%d", endNs)),
 					"duration":                 json.Number(fmt.Sprintf("%d", endNs-startNs)),
-					"reference_parent_span_id": "span-root",
+					"parent_span_id": "span-root",
 					"http.method":              "GET",
 					"http.status_code":         "200",
 					"service.name":             "my-service",
@@ -470,7 +470,7 @@ func TestParseSpanEntry(t *testing.T) {
 		"start_time":               json.Number(fmt.Sprintf("%d", startNs)),
 		"end_time":                 json.Number(fmt.Sprintf("%d", endNs)),
 		"duration":                 json.Number(fmt.Sprintf("%d", endNs-startNs)),
-		"reference_parent_span_id": "span-root",
+		"parent_span_id": "span-root",
 	}
 
 	entry := parseSpanEntry(hit)
@@ -525,7 +525,7 @@ func TestParseSpanDetail(t *testing.T) {
 		"start_time":               json.Number(fmt.Sprintf("%d", startNs)),
 		"end_time":                 json.Number(fmt.Sprintf("%d", endNs)),
 		"duration":                 json.Number(fmt.Sprintf("%d", endNs-startNs)),
-		"reference_parent_span_id": "span-root",
+		"parent_span_id": "span-root",
 		"trace_id":                 "trace-1",
 		"_timestamp":               json.Number("1234567890"),
 		"http.method":              "GET",
@@ -749,7 +749,7 @@ func TestGetTraces_HasErrors(t *testing.T) {
 					"span_kind":                "SERVER",
 					"start_time":               json.Number(fmt.Sprintf("%d", startNs)),
 					"end_time":                 json.Number(fmt.Sprintf("%d", endNs)),
-					"reference_parent_span_id": "",
+					"parent_span_id": "",
 					"span_status":              "error",
 				},
 			},
@@ -932,7 +932,7 @@ func TestParseSpanDetail_NoExtraAttributes(t *testing.T) {
 		"start_time":               json.Number("1000"),
 		"end_time":                 json.Number("2000"),
 		"duration":                 json.Number("1000"),
-		"reference_parent_span_id": "",
+		"parent_span_id": "",
 		"trace_id":                 "trace-1",
 		"_timestamp":               json.Number("1234"),
 	}

@@ -133,6 +133,11 @@ func (c *Client) QueryTraces(ctx context.Context, p TracesParams) (*TracesResult
 	ctx, cancel := context.WithTimeout(ctx, c.queryTimeout)
 	defer cancel()
 
+	filter, err := BuildScopeFilter(p)
+	if err != nil {
+		return nil, fmt.Errorf("cloudtrace: QueryTraces: %w", err)
+	}
+
 	startedAt := time.Now()
 	traces, err := c.list(ctx, &tracepb.ListTracesRequest{
 		ProjectId: c.projectID,
@@ -140,7 +145,7 @@ func (c *Client) QueryTraces(ctx context.Context, p TracesParams) (*TracesResult
 		PageSize:  min(int32(p.Limit), pageSize),
 		StartTime: timestamppb.New(p.StartTime),
 		EndTime:   timestamppb.New(p.EndTime),
-		Filter:    BuildScopeFilter(p),
+		Filter:    filter,
 		OrderBy:   orderBy(p.SortOrder),
 	}, p.Limit)
 	if err != nil {

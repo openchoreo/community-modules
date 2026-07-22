@@ -1,0 +1,17 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+{{- if .Values.adapter.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tracing-adapter-gcp-cloudtrace
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: tracing-adapter-gcp-cloudtrace
+data:
+  SERVER_PORT: {{ .Values.adapter.service.port | quote }}
+  LOG_LEVEL: {{ .Values.adapter.logLevel | quote }}
+  QUERY_TIMEOUT_SECONDS: {{ .Values.adapter.queryTimeoutSeconds | quote }}
+  GCP_PROJECT_ID: {{ .Values.gcp.projectId | quote }}
+{{- end }}

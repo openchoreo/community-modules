@@ -21,14 +21,14 @@ func TestBuildScopeFilter(t *testing.T) {
 			name: "all scope fields",
 			p: TracesParams{
 				Namespace:      "default",
-				ComponentUID:   "c1a2",
-				ProjectUID:     "p3b4",
-				EnvironmentUID: "e5c6",
+				ComponentUID:   "a38a0603-bb5a-4b13-b326-3b831628c3fb",
+				ProjectUID:     "9ebd1695-3a3d-4917-a869-9f375d7cf361",
+				EnvironmentUID: "988c594d-a2f7-43ec-9a33-27b9c6e79b30",
 			},
 			want: "+openchoreo.dev/namespace:default " +
-				"+openchoreo.dev/component-uid:c1a2 " +
-				"+openchoreo.dev/project-uid:p3b4 " +
-				"+openchoreo.dev/environment-uid:e5c6",
+				"+openchoreo.dev/component-uid:a38a0603-bb5a-4b13-b326-3b831628c3fb " +
+				"+openchoreo.dev/project-uid:9ebd1695-3a3d-4917-a869-9f375d7cf361 " +
+				"+openchoreo.dev/environment-uid:988c594d-a2f7-43ec-9a33-27b9c6e79b30",
 		},
 		{
 			name: "zero uuid is not a term",
@@ -70,11 +70,17 @@ func TestBuildScopeFilter(t *testing.T) {
 }
 
 func TestMatchesScope(t *testing.T) {
+	const (
+		componentUID   = "a38a0603-bb5a-4b13-b326-3b831628c3fb"
+		projectUID     = "9ebd1695-3a3d-4917-a869-9f375d7cf361"
+		environmentUID = "988c594d-a2f7-43ec-9a33-27b9c6e79b30"
+		otherComponent = "11111111-2222-3333-4444-555555555555"
+	)
 	labels := map[string]string{
 		LabelNamespace:      "default",
-		LabelComponentUID:   "c1",
-		LabelProjectUID:     "p1",
-		LabelEnvironmentUID: "e1",
+		LabelComponentUID:   componentUID,
+		LabelProjectUID:     projectUID,
+		LabelEnvironmentUID: environmentUID,
 	}
 
 	tests := []struct {
@@ -84,8 +90,8 @@ func TestMatchesScope(t *testing.T) {
 	}{
 		{"namespace match", TracesParams{Namespace: "default"}, true},
 		{"namespace mismatch", TracesParams{Namespace: "other"}, false},
-		{"full scope match", TracesParams{Namespace: "default", ComponentUID: "c1", ProjectUID: "p1", EnvironmentUID: "e1"}, true},
-		{"component mismatch", TracesParams{Namespace: "default", ComponentUID: "c2"}, false},
+		{"full scope match", TracesParams{Namespace: "default", ComponentUID: componentUID, ProjectUID: projectUID, EnvironmentUID: environmentUID}, true},
+		{"component mismatch", TracesParams{Namespace: "default", ComponentUID: otherComponent}, false},
 		{"zero uuid ignored", TracesParams{Namespace: "default", ComponentUID: zeroUUID}, true},
 	}
 

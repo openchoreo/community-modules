@@ -119,8 +119,9 @@ func TestQueryTracesSuccess(t *testing.T) {
 	}
 	h := newHandler(client)
 
+	const componentUID = "a38a0603-bb5a-4b13-b326-3b831628c3fb"
 	body := validBody()
-	body.SearchScope.Component = ptr("comp-uid")
+	body.SearchScope.Component = ptr(componentUID)
 	limit := 7
 	body.Limit = &limit
 
@@ -132,7 +133,7 @@ func TestQueryTracesSuccess(t *testing.T) {
 	if !isOK {
 		t.Fatalf("resp = %T", resp)
 	}
-	if client.tracesParams.ComponentUID != "comp-uid" || client.tracesParams.Limit != 7 {
+	if client.tracesParams.ComponentUID != componentUID || client.tracesParams.Limit != 7 {
 		t.Errorf("params = %+v", client.tracesParams)
 	}
 	if *ok.Total != 1 || len(*ok.Traces) != 1 {

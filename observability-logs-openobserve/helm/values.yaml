@@ -5,6 +5,15 @@ common:
   openObserveOrg: "default"
   openObserveStream: "default"
   openObserveEventsStream: "k8s_events"
+  # Hostnames placed on the OpenObserve ingest HTTPRoute (gateway-default). Set this
+  # to the gateway hostname remote Fluent Bit instances target in a multi-cluster setup.
+  # Applies regardless of whether the standalone or HA OpenObserve chart is used.
+  httpRouteHostnames: []
+  # OpenObserve endpoint the Fluent Bit config ships logs to. Defaults to the in-cluster
+  # Service; override in a multi-cluster setup to point remote Fluent Bit at the gateway.
+  openObserveHost: "openobserve"
+  openObservePort: 5080
+  openObserveTls: "Off"
 
 fluent-bit:
   enabled: true
@@ -87,11 +96,6 @@ fluent-bit:
     - name: db
       mountPath: /var/lib/fluent-bit/db
 
-  # Values for fluent-bit config map
-  openObserveHost: "openobserve"
-  openObservePort: 5080
-  openObserveTls: "Off"
-
 openobserve-standalone:
   enabled: true
   fullnameOverride: "openobserve"
@@ -110,9 +114,6 @@ openobserve-standalone:
     requests:
       cpu: 20m
       memory: 500Mi
-
-  ## OpenChoreo specific values. These are not passed to the upstream chart
-  httpRouteHostnames: []
 
 openobserve:
   enabled: false

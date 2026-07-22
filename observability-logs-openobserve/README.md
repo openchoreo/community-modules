@@ -66,7 +66,7 @@ helm upgrade --install observability-logs-openobserve \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-openobserve \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.5.1
+  --version 0.0.0-latest-dev
 ```
 
 To switch to HA mode, disable the standalone chart and enable the distributed chart:
@@ -75,7 +75,7 @@ To switch to HA mode, disable the standalone chart and enable the distributed ch
 helm upgrade --install observability-logs-openobserve \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-openobserve \
   --namespace openchoreo-observability-plane \
-  --version 0.5.1 \
+  --version 0.0.0-latest-dev \
   --reuse-values \
   --set openobserve-standalone.enabled=false \
   --set openobserve.enabled=true
@@ -95,7 +95,7 @@ to start collecting logs from the cluster and publish them to OpenObserve:
 helm upgrade observability-logs-openobserve \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-openobserve \
   --namespace openchoreo-observability-plane \
-  --version 0.5.1 \
+  --version 0.0.0-latest-dev \
   --reuse-values \
   --set fluent-bit.enabled=true
 ```
@@ -103,26 +103,60 @@ helm upgrade observability-logs-openobserve \
 ### Multi-cluster topology
 
 In a **multi-cluster topology**, where the observability plane runs in a separate cluster
-from the data-plane / workflow-plane clusters, install the Helm chart in those clusters with Fluent Bit enabled and OpenObserve components disabled
-to start collecting logs from the cluster and publish them to the observability plane cluster's OpenObserve endpoint.
+from the data-plane / workflow-plane clusters, log data flows from the remote Fluent Bit
+instances, through the observability-plane gateway (`gateway-default`), into OpenObserve.
+You need two things:
+
+1. **On the observability plane cluster**: expose the OpenObserve ingest endpoint through the gateway so remote Fluent Bit instances can reach it.
+2. **On each remote cluster**: install this chart with only Fluent Bit enabled, pointed at the obs cluster's gateway endpoint.
+
+#### Observability plane cluster setup
+
+Install the chart normally, and set `common.httpRouteHostnames` to the gateway
+hostname that remote Fluent Bit instances will target. This creates an `HTTPRoute` on
+`gateway-default` that routes the OpenObserve ingest path (`/api/<org>/<stream>/_json`) to the
+in-cluster `openobserve` Service:
 
 ```bash
 helm upgrade --install observability-logs-openobserve \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-openobserve \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.5.1 \
+  --version 0.0.0-latest-dev \
+  --set-json common.httpRouteHostnames='["openobserve.<OBS_BASE_DOMAIN>"]'
+```
+
+> **Note:** The observability plane gateway needs an HTTP/HTTPS listener whose hostname matches
+> `openobserve.<OBS_BASE_DOMAIN>`.
+
+#### Remote cluster setup (data-plane / workflow-plane clusters)
+
+Install the chart with only Fluent Bit enabled and the OpenObserve components disabled, pointed at
+the gateway endpoint:
+
+```bash
+helm upgrade --install observability-logs-openobserve \
+  oci://ghcr.io/openchoreo/helm-charts/observability-logs-openobserve \
+  --create-namespace \
+  --namespace openchoreo-observability-plane \
+  --version 0.0.0-latest-dev \
   --set fluent-bit.enabled=true \
   --set openobserve-standalone.enabled=false \
+  --set openobserve.enabled=false \
   --set openObserveSetup.enabled=false \
-  --set adapter.enabled=false
+  --set adapter.enabled=false \
+  --set common.openObserveHost=openobserve.<OBS_BASE_DOMAIN> \
+  --set common.openObservePort=<gateway-port> \
+  --set common.openObserveTls=On
 ```
 
 > **Note:**
 >
-> Make sure the `openobserve-admin-credentials` secret is available in the data-plane / workflow-plane clusters as well,
-> and `fluent-bit.openObserveHost` and `fluent-bit.openObservePort` values are set to the OpenObserve endpoint exposed from the observability plane cluster,
-> while `common.openObserveOrg` and `common.openObserveStream` match the organization and stream configured in the observability plane cluster.
+> - The `openobserve-admin-credentials` secret must exist on the remote clusters as well, because Fluent Bit basic-authenticates directly to OpenObserve. If you don't have a shared secret backend, create it manually (see the [Multi-Cluster Connectivity](https://openchoreo.dev/docs/platform-engineer-guide/multi-cluster-connectivity/) guide).
+> - `common.openObserveHost` and `common.openObservePort` must point at the gateway endpoint exposed from the observability plane cluster, and `common.openObserveHost` should match the gateway hostname (`openobserve.<OBS_BASE_DOMAIN>`).
+> - Set `common.openObserveTls=On` if the obs gateway listener is HTTPS, or `Off` if it is plain HTTP.
+> - `common.openObserveOrg` and `common.openObserveStream` must match the organization and stream configured in the observability plane cluster.
+> - The adapter and setup job are disabled because they only need to run on the observability plane cluster.
 
 ## Dependencies
 

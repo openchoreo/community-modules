@@ -47,13 +47,13 @@ data:
     [OUTPUT]
         Name http
         Match *
-        Host {{ index .Values "fluent-bit" "openObserveHost" }}
-        Port {{ index .Values "fluent-bit" "openObservePort" }}
+        Host {{ .Values.common.openObserveHost }}
+        Port {{ .Values.common.openObservePort }}
         URI /api/{{ .Values.common.openObserveOrg }}/{{ .Values.common.openObserveStream }}/_json
         Format json
         http_user ${OPENOBSERVE_USERNAME}
         http_passwd ${OPENOBSERVE_PASSWORD}
-        tls {{ index .Values "fluent-bit" "openObserveTls" }}
+        tls {{ .Values.common.openObserveTls }}
 
   parsers.conf: |
     [PARSER]

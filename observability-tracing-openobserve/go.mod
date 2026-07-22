@@ -3,7 +3,7 @@ module github.com/openchoreo/community-modules/observability-tracing-openobserve
 go 1.25
 
 require (
-	github.com/getkin/kin-openapi v0.142.0
+	github.com/getkin/kin-openapi v0.143.0
 	github.com/oapi-codegen/runtime v1.5.0
 )
 

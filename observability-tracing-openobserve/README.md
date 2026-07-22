@@ -6,6 +6,8 @@
 
 This module collects distributed traces using [OpenTelemetry collector](https://opentelemetry.io) and stores them in [OpenObserve](https://openobserve.ai).
 
+> **Note:** The commands in this README install the latest module version. Refer to the [Compatibility](#compatibility) table below for the module version compatible with your OpenChoreo version.
+
 ## Prerequisites
 
 - [OpenChoreo](https://openchoreo.dev) must be installed with the **observability plane** enabled for this module to work. Deploy the `openchoreo-observability-plane` helm chart with the helm value `observer.tracingAdapter.enabled="true"` to enable the observer to fetch data from this tracing module.
@@ -66,7 +68,7 @@ helm upgrade --install observability-tracing-openobserve \
   oci://ghcr.io/openchoreo/helm-charts/observability-tracing-openobserve \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.2.4
+  --version 0.0.0-latest-dev
 ```
 
 To switch to HA mode, disable the standalone chart and enable the distributed chart:
@@ -75,7 +77,7 @@ To switch to HA mode, disable the standalone chart and enable the distributed ch
 helm upgrade --install observability-tracing-openobserve \
   oci://ghcr.io/openchoreo/helm-charts/observability-tracing-openobserve \
   --namespace openchoreo-observability-plane \
-  --version 0.2.4 \
+  --version 0.0.0-latest-dev \
   --reuse-values \
   --set openobserve-standalone.enabled=false \
   --set openobserve.enabled=true
@@ -90,10 +92,79 @@ Refer to the [openobserve Helm chart documentation](https://github.com/openobser
 >  oci://ghcr.io/openchoreo/helm-charts/observability-tracing-openobserve \
 >  --create-namespace \
 >  --namespace openchoreo-observability-plane \
->  --version 0.2.4 \
+>  --version 0.0.0-latest-dev \
 >  --set openobserve-standalone.enabled=false
 > ```
 
+## Enable trace collection
+
+### Installation modes
+
+This chart supports three `global.installationMode` values:
+
+- **`singleCluster`**: Deploy everything (OpenTelemetry Collector + OpenObserve) into a single cluster (used when the data plane and observability plane are in the same cluster).
+- **`multiClusterReceiver`**: Deploy the OpenTelemetry Collector as a central receiver into the observability plane cluster. It accepts OTLP from remote clusters and writes traces to OpenObserve.
+- **`multiClusterExporter`**: Deploy the OpenTelemetry Collector as an exporter into each data-plane cluster. It receives OTLP from in-cluster workloads and exports it to the receiver in the observability plane cluster over OTLP.
+
+#### Single-cluster topology
+
+In a **single-cluster topology**, where the observability plane runs in the same cluster
+as the data-plane / workflow-plane clusters, the default `singleCluster` install (above) already
+collects traces and writes them to the in-cluster OpenObserve.
+
+#### Multi-cluster topology
+
+In a **multi-cluster topology**, where the observability plane runs in a separate cluster
+from the data-plane / workflow-plane clusters, trace data flows from the exporter collectors on
+the remote clusters, through the observability-plane gateway (`gateway-default`), into the receiver
+collector, which writes to OpenObserve. You typically install:
+
+- **Receiver (observability plane cluster)**: `global.installationMode=multiClusterReceiver`
+- **Exporter (each data-plane cluster)**: `global.installationMode=multiClusterExporter`
+
+##### 1) Install the receiver (observability plane cluster)
+
+Install the chart in the observability plane cluster. Set `opentelemetryCollectorCustomizations.http.hostnames` to the gateway hostname that
+remote exporters will target, so the receiver's `HTTPRoute` is created on `gateway-default`:
+
+```bash
+helm upgrade --install observability-tracing-openobserve \
+  oci://ghcr.io/openchoreo/helm-charts/observability-tracing-openobserve \
+  --create-namespace \
+  --namespace openchoreo-observability-plane \
+  --version 0.0.0-latest-dev \
+  --set global.installationMode="multiClusterReceiver" \
+  --set-json opentelemetryCollectorCustomizations.http.hostnames='["opentelemetry.<OBS_BASE_DOMAIN>"]'
+```
+
+> **Note:** If OpenObserve is already installed by another module (e.g., `observability-logs-openobserve`), add `--set openobserve-standalone.enabled=false` to avoid conflicts.
+
+##### 2) Install an exporter (each data-plane cluster)
+
+Install the chart in each data-plane cluster. The exporter does **not** need OpenObserve, the adapter, or
+the `openobserve-admin-credentials` secret — those credentials live only on the receiver. It only needs to
+export OTLP to the receiver.
+
+Set `opentelemetryCollectorCustomizations.http.observabilityPlaneUrl` to the receiver endpoint exposed
+through the observability-plane gateway (for example: `http://opentelemetry.<OBS_BASE_DOMAIN>:<port>`).
+If the gateway is exposed over a TLS/HTTPS listener, use the `https://` scheme instead. Also set
+`opentelemetryCollectorCustomizations.http.observabilityPlaneVirtualHost` when `observabilityPlaneUrl`
+differs from the gateway hostname.
+
+```bash
+helm upgrade --install observability-tracing-openobserve \
+  oci://ghcr.io/openchoreo/helm-charts/observability-tracing-openobserve \
+  --create-namespace \
+  --namespace openchoreo-observability-plane \
+  --version 0.0.0-latest-dev \
+  --set global.installationMode="multiClusterExporter" \
+  --set openobserve-standalone.enabled=false \
+  --set openobserve.enabled=false \
+  --set adapter.enabled=false \
+  --set-json opentelemetry-collector.extraEnvs='[]' \
+  --set opentelemetryCollectorCustomizations.http.observabilityPlaneUrl="http://opentelemetry.<OBS_BASE_DOMAIN>:<port>" \
+  --set opentelemetryCollectorCustomizations.http.observabilityPlaneVirtualHost="opentelemetry.<OBS_BASE_DOMAIN>"
+```
 
 ## Dependencies
 

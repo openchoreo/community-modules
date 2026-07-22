@@ -30,6 +30,10 @@ func normalizeUID(uid string) string {
 // resource attributes rather than span attributes. Cloud Trace flattens both
 // into one labels map, so the split is reconstructed by key prefix when
 // building API responses.
+// The g.co/ prefix is deliberately excluded: Cloud Trace uses it for span
+// metadata (g.co/status/*, g.co/agent) as well as resource metadata, so it
+// cannot cleanly classify as either. Such keys fall through to span
+// attributes.
 var resourceAttributePrefixes = []string{
 	"openchoreo.dev/",
 	"k8s.",
@@ -38,5 +42,4 @@ var resourceAttributePrefixes = []string{
 	"cloud.",
 	"container.",
 	"telemetry.",
-	"g.co/",
 }

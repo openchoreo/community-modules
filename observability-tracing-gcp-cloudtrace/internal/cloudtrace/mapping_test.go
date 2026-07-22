@@ -76,10 +76,17 @@ func TestMapSpan(t *testing.T) {
 	if got.DurationNanoseconds != time.Second.Nanoseconds() {
 		t.Errorf("DurationNanoseconds = %d", got.DurationNanoseconds)
 	}
-	if _, ok := got.Attributes["http.method"]; !ok {
-		t.Error("http.method should be a span attribute")
+	// g.co/* is not classified as a resource attribute: the prefix carries
+	// span metadata (g.co/status/*, g.co/agent), so such keys stay span-level.
+	for _, key := range []string{"http.method", "g.co/agent", "g.co/status/code"} {
+		if _, ok := got.Attributes[key]; !ok {
+			t.Errorf("%s should be a span attribute", key)
+		}
+		if _, ok := got.ResourceAttributes[key]; ok {
+			t.Errorf("%s should not be a resource attribute", key)
+		}
 	}
-	for _, key := range []string{"openchoreo.dev/namespace", "k8s.pod.name", "g.co/agent"} {
+	for _, key := range []string{"openchoreo.dev/namespace", "k8s.pod.name"} {
 		if _, ok := got.ResourceAttributes[key]; !ok {
 			t.Errorf("%s should be a resource attribute", key)
 		}

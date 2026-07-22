@@ -9,7 +9,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs v1.79.0
 	github.com/aws/aws-sdk-go-v2/service/sts v1.44.1
 	github.com/aws/smithy-go v1.27.3
-	github.com/getkin/kin-openapi v0.142.0
+	github.com/getkin/kin-openapi v0.143.0
 	github.com/google/uuid v1.6.0
 	github.com/oapi-codegen/runtime v1.5.0
 )

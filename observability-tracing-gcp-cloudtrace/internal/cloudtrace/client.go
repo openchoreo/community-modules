@@ -142,7 +142,7 @@ func (c *Client) QueryTraces(ctx context.Context, p TracesParams) (*TracesResult
 	traces, err := c.list(ctx, &tracepb.ListTracesRequest{
 		ProjectId: c.projectID,
 		View:      tracepb.ListTracesRequest_COMPLETE,
-		PageSize:  min(int32(p.Limit), pageSize),
+		PageSize:  int32(min(p.Limit, pageSize)),
 		StartTime: timestamppb.New(p.StartTime),
 		EndTime:   timestamppb.New(p.EndTime),
 		Filter:    filter,

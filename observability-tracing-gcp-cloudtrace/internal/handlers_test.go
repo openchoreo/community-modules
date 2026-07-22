@@ -7,6 +7,8 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -268,14 +270,18 @@ func TestGetSpanDetailsForTrace(t *testing.T) {
 func TestGetSpanDetailsForTraceValidation(t *testing.T) {
 	h := newHandler(&fakeClient{})
 
+	const validTrace = "0123456789abcdef0123456789abcdef"
 	tests := []struct {
 		name    string
 		traceID string
 		spanID  string
 	}{
 		{"bad trace id", "zz", "0000000000000abc"},
-		{"bad span id", "0123456789abcdef", "not-hex"},
-		{"overlong span id", "0123456789abcdef", "0123456789abcdef0"},
+		{"short trace id", "0123456789abcdef", "0000000000000abc"},
+		{"all-zero trace id", "00000000000000000000000000000000", "0000000000000abc"},
+		{"bad span id", validTrace, "not-hex"},
+		{"overlong span id", validTrace, "0123456789abcdef0"},
+		{"all-zero span id", validTrace, "0000000000000000"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -290,5 +296,25 @@ func TestGetSpanDetailsForTraceValidation(t *testing.T) {
 				t.Errorf("resp = %T, want 400", resp)
 			}
 		})
+	}
+}
+
+func TestGetSpanDetailsForTraceNotFound(t *testing.T) {
+	// fakeClient with no span configured returns (nil, nil): a lookup miss.
+	h := newHandler(&fakeClient{})
+
+	resp, err := h.GetSpanDetailsForTrace(context.Background(), gen.GetSpanDetailsForTraceRequestObject{
+		TraceId: "0123456789abcdef0123456789abcdef",
+		SpanId:  "0000000000000abc",
+	})
+	if err != nil {
+		t.Fatalf("GetSpanDetailsForTrace: %v", err)
+	}
+	rec := httptest.NewRecorder()
+	if err := resp.VisitGetSpanDetailsForTraceResponse(rec); err != nil {
+		t.Fatalf("VisitGetSpanDetailsForTraceResponse: %v", err)
+	}
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusNotFound)
 	}
 }

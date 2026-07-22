@@ -5,7 +5,9 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
+	"net/http"
 	"strings"
 	"time"
 
@@ -100,10 +102,10 @@ func (h *TracingHandler) QuerySpansForTrace(ctx context.Context, request gen.Que
 			Detail: ptr("endTime must be >= startTime"),
 		}, nil
 	}
-	if !cloudtrace.ValidID(request.TraceId) {
+	if !cloudtrace.ValidTraceID(request.TraceId) {
 		return gen.QuerySpansForTrace400JSONResponse{
 			Title:  ptr(gen.BadRequest),
-			Detail: ptr("traceId must be a hex string"),
+			Detail: ptr("traceId must be a 32-character hex string"),
 		}, nil
 	}
 
@@ -124,13 +126,13 @@ func (h *TracingHandler) QuerySpansForTrace(ctx context.Context, request gen.Que
 
 // GetSpanDetailsForTrace implements GET /api/v1alpha1/traces/{traceId}/spans/{spanId}.
 func (h *TracingHandler) GetSpanDetailsForTrace(ctx context.Context, request gen.GetSpanDetailsForTraceRequestObject) (gen.GetSpanDetailsForTraceResponseObject, error) {
-	if !cloudtrace.ValidID(request.TraceId) || !cloudtrace.ValidID(request.SpanId) {
+	if !cloudtrace.ValidTraceID(request.TraceId) {
 		return gen.GetSpanDetailsForTrace400JSONResponse{
 			Title:  ptr(gen.BadRequest),
-			Detail: ptr("traceId and spanId must be hex strings"),
+			Detail: ptr("traceId must be a 32-character hex string"),
 		}, nil
 	}
-	if _, err := cloudtrace.ParseSpanID(request.SpanId); err != nil {
+	if !cloudtrace.ValidSpanID(request.SpanId) {
 		return gen.GetSpanDetailsForTrace400JSONResponse{
 			Title:  ptr(gen.BadRequest),
 			Detail: ptr("spanId must be a hex string of at most 16 characters"),
@@ -146,14 +148,27 @@ func (h *TracingHandler) GetSpanDetailsForTrace(ctx context.Context, request gen
 		}, nil
 	}
 	if span == nil {
-		detail := "span not found"
-		return gen.GetSpanDetailsForTrace500JSONResponse{
-			Title:  ptr(gen.InternalServerError),
-			Detail: &detail,
-		}, nil
+		// A missing (or scope-filtered) span is an expected lookup miss. The
+		// Observer maps 404 to its span-not-found sentinel, so return 404
+		// rather than 500. The spec does not model a 404 for this endpoint,
+		// so a custom response carries the status.
+		return spanNotFoundResponse{}, nil
 	}
 
 	return gen.GetSpanDetailsForTrace200JSONResponse(toSpanDetailsResponse(span)), nil
+}
+
+// spanNotFoundResponse renders a 404 for a missing span. The generated
+// server has no 404 type for this endpoint (the spec omits it), so this
+// implements the response interface directly.
+type spanNotFoundResponse struct{}
+
+func (spanNotFoundResponse) VisitGetSpanDetailsForTraceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusNotFound)
+	return json.NewEncoder(w).Encode(gen.ErrorResponse{
+		Detail: ptr("span not found"),
+	})
 }
 
 // toTracesParams converts the generated request body to internal query params.

@@ -20,7 +20,7 @@ data:
     exporters:
       {{- if or (eq .Values.global.installationMode "singleCluster") (eq .Values.global.installationMode "multiClusterReceiver") }}
       otlphttp:
-        traces_endpoint: http://openobserve:5080/api/{{ .Values.common.openObserveOrg }}/traces
+        traces_endpoint: http://{{ .Values.common.openObserveHost }}:{{ .Values.common.openObservePort }}/api/{{ .Values.common.openObserveOrg }}/traces
         auth:
           authenticator: basicauth/openobserve
       {{- end }}

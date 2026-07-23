@@ -8,6 +8,8 @@ global:
 common:
   openObserveOrg: "default"
   openObserveStream: "default"
+  openObserveHost: "openobserve"
+  openObservePort: 5080
 
 
 openobserve-standalone:
@@ -90,7 +92,6 @@ adapter:
   image:
     repository: "ghcr.io/openchoreo/observability-tracing-openobserve-adapter"
     tag: ""  # Defaults to Chart.AppVersion via the template
-  openObserveUrl: "http://openobserve:5080"
   resources:
     limits:
       cpu: 200m

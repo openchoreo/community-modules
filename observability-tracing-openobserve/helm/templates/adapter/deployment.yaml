@@ -16,6 +16,8 @@ spec:
       app: tracing-adapter-openobserve
   template:
     metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/adapter/configmap.yaml") . | sha256sum }}
       labels:
         app: tracing-adapter-openobserve
     spec:
@@ -29,15 +31,10 @@ spec:
         imagePullPolicy: {{ .Values.adapter.image.pullPolicy | default "IfNotPresent" }}
         ports:
         - containerPort: 9100
+        envFrom:
+        - configMapRef:
+            name: tracing-adapter-openobserve
         env:
-        - name: SERVER_PORT
-          value: {{ .Values.adapter.serverPort | quote }}
-        - name: OPENOBSERVE_URL
-          value: {{ .Values.adapter.openObserveUrl | quote }}
-        - name: OPENOBSERVE_ORG
-          value: {{ .Values.common.openObserveOrg | quote }}
-        - name: OPENOBSERVE_STREAM
-          value: {{ .Values.common.openObserveStream | quote }}
         - name: OPENOBSERVE_USER
           valueFrom:
             secretKeyRef:

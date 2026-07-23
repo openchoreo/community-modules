@@ -15,4 +15,8 @@ SPDX-License-Identifier: Apache-2.0
 {{- fail "opentelemetryCollectorCustomizations.http.observabilityPlaneUrl is required when global.installationMode is set to \"multiClusterExporter\"." -}}
 {{- end -}}
 {{- end -}}
+
+{{- if .Values.adapter.openObserveUrl -}}
+{{- fail "adapter.openObserveUrl is deprecated and no longer used. Set common.openObserveHost and common.openObservePort instead." -}}
+{{- end -}}
 {{- end -}}

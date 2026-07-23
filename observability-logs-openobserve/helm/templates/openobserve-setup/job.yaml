@@ -24,6 +24,9 @@ spec:
       - name: openobserve-setup-logs
         image: "{{ .Values.openObserveSetup.image.repository }}:{{ .Values.openObserveSetup.image.tag | default .Chart.AppVersion }}"
         imagePullPolicy: {{ .Values.openObserveSetup.image.pullPolicy | default "IfNotPresent" }}
+        envFrom:
+        - configMapRef:
+            name: openobserve-setup-logs
         env:
         - name: OPENOBSERVE_USERNAME
           valueFrom:
@@ -35,6 +38,4 @@ spec:
             secretKeyRef:
               name: openobserve-admin-credentials
               key: ZO_ROOT_USER_PASSWORD
-        - name: OPENOBSERVE_ORG
-          value: {{ .Values.common.openObserveOrg | quote }}
 {{- end }}

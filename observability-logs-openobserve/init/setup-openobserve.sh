@@ -8,8 +8,8 @@
 # Read configuration from environment variables
 OPENOBSERVE_PASSWORD="${OPENOBSERVE_PASSWORD}"
 OPENOBSERVE_USERNAME="${OPENOBSERVE_USERNAME}"
-
-OPENOBSERVE_URL="http://openobserve:5080"
+OPENOBSERVE_URL="${OPENOBSERVE_URL}"
+OPENOBSERVE_ORG="${OPENOBSERVE_ORG}"
 
 
 # 1. Check OpenObserve status and wait for it to become ready. Any API calls to configure
@@ -54,7 +54,6 @@ fi
 
 ## 2. Create an alert template in OpenObserve (required before creating a destination)
 
-OPENOBSERVE_ORG="default"
 TEMPLATE_NAME="openchoreo"
 
 echo "Configuring alert template..."

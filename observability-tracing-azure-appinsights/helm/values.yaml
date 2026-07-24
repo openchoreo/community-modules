@@ -73,9 +73,7 @@ opentelemetry-collector:
           name: appinsights-conn
           key: connection-string
 
-  # Unique fullname so the cluster-scoped RBAC objects don't collide with
-  # other tracing modules' collectors (they name a ClusterRole after this).
-  fullnameOverride: "otel-collector-azure"
+  fullnameOverride: "opentelemetry-collector"
 
   image:
     repository: otel/opentelemetry-collector-contrib

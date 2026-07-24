@@ -10,6 +10,6 @@ metadata:
   labels:
     app: openobserve-setup-logs
 data:
-  OPENOBSERVE_URL: "http://{{ .Values.common.openObserveHost }}:{{ .Values.common.openObservePort }}"
+  OPENOBSERVE_URL: "{{ if .Values.common.openObserveTlsEnabled }}https{{ else }}http{{ end }}://{{ .Values.common.openObserveHost }}:{{ .Values.common.openObservePort }}"
   OPENOBSERVE_ORG: {{ .Values.common.openObserveOrg | quote }}
 {{- end }}

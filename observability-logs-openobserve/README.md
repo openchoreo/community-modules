@@ -149,14 +149,14 @@ helm upgrade --install observability-logs-openobserve \
   --set adapter.enabled=false \
   --set common.openObserveHost=openobserve.<OBS_BASE_DOMAIN> \
   --set common.openObservePort=<gateway-port> \
-  --set common.openObserveTls=On
+  --set common.openObserveTlsEnabled=true
 ```
 
 > **Note:**
 >
 > - The `openobserve-admin-credentials` secret must exist on the remote clusters as well, because Fluent Bit basic-authenticates directly to OpenObserve. If you don't have a shared secret backend, create it manually (see the [Multi-Cluster Connectivity](https://openchoreo.dev/docs/platform-engineer-guide/multi-cluster-connectivity/) guide).
-> - `common.openObserveHost` and `common.openObservePort` must point at the gateway endpoint exposed from the observability plane cluster, and `common.openObserveHost` should match the gateway hostname (`openobserve.<OBS_BASE_DOMAIN>`).
-> - Set `common.openObserveTls=On` if the obs gateway listener is HTTPS, or `Off` if it is plain HTTP.
+> - `common.openObserveHost` and `common.openObservePort` must point at the gateway endpoint exposed from the observability plane cluster, and `common.openObserveHost` **must be the same hostname** listed in `common.httpRouteHostnames` on the observability plane release — Fluent Bit sends this value both as the connection address and as the HTTP `Host` header, so the two have to match for the `HTTPRoute` to select this module's route instead of another one on the same gateway (Fluent Bit's HTTP output has no option to send a different `Host` header than the one it connects to).
+> - Set `common.openObserveTlsEnabled=true` if the obs gateway listener is HTTPS, or `false` if it is plain HTTP.
 > - `common.openObserveOrg` and `common.openObserveStream` must match the organization and stream configured in the observability plane cluster.
 > - The adapter and setup job are disabled because they only need to run on the observability plane cluster.
 
@@ -176,5 +176,5 @@ Bundled upstream Helm charts:
 
 | Module Version | OpenChoreo Version |
 | -------------- | ------------------ |
-| >= v0.5.x      | >= v1.2.x          |
+| >= v0.6.x      | >= v1.2.x          |
 | >= v0.4.x      | >= v1.0.x          |

@@ -53,7 +53,7 @@ data:
         Format json
         http_user ${OPENOBSERVE_USERNAME}
         http_passwd ${OPENOBSERVE_PASSWORD}
-        tls {{ .Values.common.openObserveTls }}
+        tls {{ if .Values.common.openObserveTlsEnabled }}On{{ else }}Off{{ end }}
 
   parsers.conf: |
     [PARSER]

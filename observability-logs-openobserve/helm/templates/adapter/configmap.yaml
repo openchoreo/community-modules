@@ -11,7 +11,7 @@ metadata:
     app: logs-adapter-openobserve
 data:
   SERVER_PORT: "9098"
-  OPENOBSERVE_URL: "http://{{ .Values.common.openObserveHost }}:{{ .Values.common.openObservePort }}"
+  OPENOBSERVE_URL: "{{ if .Values.common.openObserveTlsEnabled }}https{{ else }}http{{ end }}://{{ .Values.common.openObserveHost }}:{{ .Values.common.openObservePort }}"
   OPENOBSERVE_ORG: {{ .Values.common.openObserveOrg | quote }}
   OPENOBSERVE_STREAM: {{ .Values.common.openObserveStream | quote }}
   OPENOBSERVE_EVENTS_STREAM: {{ .Values.common.openObserveEventsStream | quote }}

@@ -10,6 +10,7 @@ common:
   openObserveStream: "default"
   openObserveHost: "openobserve"
   openObservePort: 5080
+  openObserveTlsEnabled: false
 
 
 openobserve-standalone:

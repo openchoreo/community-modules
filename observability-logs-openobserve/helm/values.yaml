@@ -13,7 +13,7 @@ common:
   # Service; override in a multi-cluster setup to point remote Fluent Bit at the gateway.
   openObserveHost: "openobserve"
   openObservePort: 5080
-  openObserveTls: "Off"
+  openObserveTlsEnabled: false
 
 fluent-bit:
   enabled: true

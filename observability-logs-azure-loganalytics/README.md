@@ -174,7 +174,7 @@ data:
       containerlog_schema_version = "v2"
     [log_collection_settings.metadata_collection]
       enabled = true
-      include_fields = ["openchoreo.dev/namespace", "openchoreo.dev/component-uid", "openchoreo.dev/project-uid", "openchoreo.dev/environment-uid"]
+      include_fields = ["podLabels", "podAnnotations", "podUid", "image", "imageID", "imageRepo", "imageTag"]
 EOF
 ```
 
@@ -276,14 +276,14 @@ WEBHOOK_TOKEN="<your-webhook-shared-secret>"
 helm upgrade --install observability-logs-azure-loganalytics \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-azure-loganalytics \
   --namespace openchoreo-observability-plane --create-namespace \
-  --version 0.1.2 \
+  --version 0.1.3 \
   --set azure.subscriptionId="$AZURE_SUBSCRIPTION_ID" \
   --set azure.resourceGroup="$AZURE_RESOURCE_GROUP" \
   --set azure.region="$AZURE_REGION" \
   --set logAnalytics.workspaceId="$WORKSPACE_CUSTOMER_ID" \
   --set logAnalytics.workspaceResourceId="$WORKSPACE_ARM_ID" \
   --set actionGroup.id="$ACTION_GROUP_ARM_ID" \
-  --set adapter.observerUrl="http://observer.openchoreo-observability-plane.svc.cluster.local:8080" \
+  --set adapter.observerUrl="http://observer-internal.openchoreo-observability-plane.svc.cluster.local:8081" \
   --set adapter.webhookAuth.sharedSecret="$WEBHOOK_TOKEN" \
   --set adapter.serviceAccount.annotations."azure\.workload\.identity/client-id"="$UAMI_CLIENT_ID"
 ```
@@ -461,7 +461,7 @@ match either; re-check the `container-azm-ms-agentconfig` ConfigMap.
 | `adapter.image.repository` | `ghcr.io/openchoreo/observability-logs-azure-loganalytics-adapter` | Adapter container image. |
 | `adapter.image.tag` | Chart `appVersion` | Image tag. |
 | `adapter.service.port` | `8080` | HTTP listener port. |
-| `adapter.observerUrl` | `http://observer.openchoreo-observability-plane.svc.cluster.local:8080` | Observer base URL. Fired alerts are forwarded to `${observerUrl}/api/v1alpha1/alerts/webhook`. |
+| `adapter.observerUrl` | `http://observer-internal.openchoreo-observability-plane.svc.cluster.local:8081` | Observer base URL. Fired alerts are forwarded to `${observerUrl}/api/v1alpha1/alerts/webhook`. The alert-webhook endpoint lives on the Observer's internal service (`observer-internal:8081`), not the public `:8080`. |
 | `adapter.queryTimeoutSeconds` | `30` | Upper bound for a single Log Analytics query. |
 | `adapter.logLevel` | `INFO` | `DEBUG` \| `INFO` \| `WARN` \| `ERROR`. |
 | `adapter.alertRuleDefaults.evaluationFrequency` | `PT5M` | ISO 8601 duration used when an alert rule request omits one. |

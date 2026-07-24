@@ -15,6 +15,10 @@ common:
 
 openobserve-standalone:
   enabled: true
+
+  config:
+    ZO_COMPACT_DATA_RETENTION_DAYS: "30" # data retention in days
+
   fullnameOverride: "openobserve"
   auth:
     ZO_ROOT_USER_EMAIL: ""
@@ -34,6 +38,10 @@ openobserve-standalone:
 
 openobserve:
   enabled: false
+
+  config:
+    ZO_COMPACT_DATA_RETENTION_DAYS: "30" # data retention in days
+
   fullnameOverride: "openobserve"
 
 opentelemetry-collector:

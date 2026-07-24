@@ -98,6 +98,14 @@ fluent-bit:
 
 openobserve-standalone:
   enabled: true
+
+  extraEnv:
+  # Allow alert webhook destinations that point at private IPs. OpenObserve's SSRF guard blocks private IPs by
+  # default, which rejects in-cluster webhook destinations. In OpenChoreo, OpenObserve invokes the webhook endpoint
+  # of the logs adapter running in the cluster. Hence this must be allowed.
+  - name: ZO_SSRF_ALLOW_LOOPBACK
+    value: "true"
+
   fullnameOverride: "openobserve"
   auth:
     ZO_ROOT_USER_EMAIL: ""
@@ -117,6 +125,14 @@ openobserve-standalone:
 
 openobserve:
   enabled: false
+
+  extraEnv:
+  # Allow alert webhook destinations that point at private IPs. OpenObserve's SSRF guard blocks private IPs by
+  # default, which rejects in-cluster webhook destinations. In OpenChoreo, OpenObserve invokes the webhook endpoint
+  # of the logs adapter running in the cluster. Hence this must be allowed.
+  - name: ZO_SSRF_ALLOW_LOOPBACK
+    value: "true"
+
   fullnameOverride: "openobserve"
 
 ## -----------------------------------------------------------

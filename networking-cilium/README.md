@@ -24,7 +24,9 @@ This module enables advanced network security and observability in OpenChoreo us
 ## Prerequisites
 
 - [Cilium](https://cilium.io/) must be installed on the dataplane Kubernetes clusters and configured as the Container Network Interface (CNI) plugin.
-- [OpenChoreo](https://openchoreo.dev) must be installed with the **observability plane** enabled and with [observability-metrics-prometheus](https://github.com/openchoreo/community-modules/tree/main/observability-metrics-prometheus) community module installed if you want network observability.
+- [OpenChoreo](https://openchoreo.dev) must be installed with the **observability plane** enabled. If you want network observability, one of the following community modules must also be installed to serve the HTTP metrics and runtime cell diagram from the Hubble data this module produces:
+  - [observability-metrics-prometheus](https://github.com/openchoreo/community-modules/tree/main/observability-metrics-prometheus)
+  - [observability-metrics-aws-cloudwatch](https://github.com/openchoreo/community-modules/tree/main/observability-metrics-aws-cloudwatch)
 
 ## Configuration
 
@@ -112,10 +114,11 @@ kubectl get ciliumnetworkpolicies.cilium.io -A
 
 ## Compatibility
 
-This module integrates Cilium, OpenChoreo, and observability-metrics-prometheus (an OpenChoreo community module), and is compatible with the following versions.
+This module integrates Cilium, OpenChoreo, and an observability metrics module (an OpenChoreo community module), and is compatible with the following versions.
 
-| Component                            | Compatible Version | Notes                         |
-| :----------------------------------- | :----------------- | :---------------------------- |
-| **Cilium**                           | `1.19.x`           |                               |
-| **OpenChoreo**                       | `>=1.1.x`          | Requires `1.2.x` for Wirelogs |
-| **Observability-Metrics-Prometheus** | `0.6.x`            | OpenChoreo community module   |
+| Component                                | Compatible Version | Notes                                                   |
+| :--------------------------------------- | :----------------- | :------------------------------------------------------ |
+| **Cilium**                               | `1.19.x`           |                                                          |
+| **OpenChoreo**                           | `>=1.1.x`          | Requires `1.2.x` for Wirelogs                            |
+| **Observability-Metrics-Prometheus**     | `0.6.x`            | OpenChoreo community module                              |
+| **Observability-Metrics-AWS-CloudWatch** | `0.3.x`            | OpenChoreo community module  |

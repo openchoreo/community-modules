@@ -4,6 +4,9 @@
 package opensearch
 
 import (
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -28,25 +31,43 @@ type EventEntry struct {
 
 // EventsQueryParams holds query parameters for the component-scoped events query.
 type EventsQueryParams struct {
-	StartTime     string `json:"startTime"`
-	EndTime       string `json:"endTime"`
-	NamespaceName string `json:"namespaceName"`
-	ProjectID     string `json:"projectId,omitempty"`
-	ComponentID   string `json:"componentId,omitempty"`
-	EnvironmentID string `json:"environmentId,omitempty"`
-	Limit         int    `json:"limit"`
-	SortOrder     string `json:"sortOrder"`
+	StartTime     string   `json:"startTime"`
+	EndTime       string   `json:"endTime"`
+	NamespaceName string   `json:"namespaceName"`
+	ProjectID     string   `json:"projectId,omitempty"`
+	ComponentID   string   `json:"componentId,omitempty"`
+	EnvironmentID string   `json:"environmentId,omitempty"`
+	Limit         int      `json:"limit"`
+	SortOrder     string   `json:"sortOrder"`
+	Reasons       []string `json:"reasons,omitempty"`
+	SearchAfter   []any    `json:"searchAfter,omitempty"`
 }
 
 // WorkflowEventsQueryParams holds query parameters for the workflow-scoped events query.
 type WorkflowEventsQueryParams struct {
-	StartTime     string `json:"startTime"`
-	EndTime       string `json:"endTime"`
-	NamespaceName string `json:"namespaceName"`
-	WorkflowRunID string `json:"workflowRunId"`
-	TaskName      string `json:"taskName,omitempty"`
-	Limit         int    `json:"limit"`
-	SortOrder     string `json:"sortOrder"`
+	StartTime     string   `json:"startTime"`
+	EndTime       string   `json:"endTime"`
+	NamespaceName string   `json:"namespaceName"`
+	WorkflowRunID string   `json:"workflowRunId"`
+	TaskName      string   `json:"taskName,omitempty"`
+	Limit         int      `json:"limit"`
+	SortOrder     string   `json:"sortOrder"`
+	Reasons       []string `json:"reasons,omitempty"`
+	SearchAfter   []any    `json:"searchAfter,omitempty"`
+}
+
+// ReasonFilteredEventsQueryParams holds query parameters for an unscoped,
+// reason-filtered events sweep: no namespace/component/environment restriction,
+// used by machine consumers (e.g. the Delivery Insights aggregator) that read
+// controller-emitted events across every namespace rather than one component's
+// scope. Reasons is required since it is the only filter narrowing the sweep.
+type ReasonFilteredEventsQueryParams struct {
+	StartTime   string   `json:"startTime"`
+	EndTime     string   `json:"endTime"`
+	Reasons     []string `json:"reasons"`
+	Limit       int      `json:"limit"`
+	SortOrder   string   `json:"sortOrder"`
+	SearchAfter []any    `json:"searchAfter,omitempty"`
 }
 
 // ParseEventHit converts a search hit to an EventEntry struct.
@@ -91,4 +112,36 @@ func ParseEventHit(hit Hit) EventEntry {
 	}
 
 	return entry
+}
+
+// EncodeSearchAfterCursor turns a hit's OpenSearch sort values into the opaque
+// nextCursor string returned to events API clients. Returns "" for an empty
+// sort (nothing to page from).
+func EncodeSearchAfterCursor(sort []interface{}) (string, error) {
+	if len(sort) == 0 {
+		return "", nil
+	}
+	b, err := json.Marshal(sort)
+	if err != nil {
+		return "", fmt.Errorf("failed to encode searchAfter cursor: %w", err)
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
+// DecodeSearchAfterCursor reverses EncodeSearchAfterCursor, turning a client's
+// searchAfter cursor back into the sort values OpenSearch's search_after
+// expects. Returns (nil, nil) for an empty cursor.
+func DecodeSearchAfterCursor(cursor string) ([]interface{}, error) {
+	if cursor == "" {
+		return nil, nil
+	}
+	b, err := base64.RawURLEncoding.DecodeString(cursor)
+	if err != nil {
+		return nil, fmt.Errorf("invalid searchAfter cursor: %w", err)
+	}
+	var sort []interface{}
+	if err := json.Unmarshal(b, &sort); err != nil {
+		return nil, fmt.Errorf("invalid searchAfter cursor: %w", err)
+	}
+	return sort, nil
 }

@@ -120,6 +120,7 @@ func (c *Client) Search(ctx context.Context, indices []string, query map[string]
 		hit := Hit{
 			ID:     h.ID,
 			Source: source,
+			Sort:   h.Sort,
 		}
 		score := float64(h.Score)
 		hit.Score = &score

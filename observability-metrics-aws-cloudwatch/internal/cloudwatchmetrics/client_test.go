@@ -16,6 +16,22 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 )
 
+// OpenChoreo identities are UUIDs on the wire, so the fixtures use real UUIDs
+// rather than readable placeholders — the same values across every test in the
+// package.
+const (
+	testComponentUID   = "0f99ce77-4eb9-496d-b483-1d477faa96b3"
+	testProjectUID     = "caa09cff-1a1c-43b9-ad2e-bf2ba00d6bd6"
+	testEnvironmentUID = "b020be93-6614-4adc-8d15-1da3f81c87ac"
+
+	// Topology edge endpoints: a source/destination pair plus an unrelated pair
+	// used to prove filtering.
+	testSourceComponentUID      = "eacb463b-88c9-4cde-bdb2-b8f8ad5d30c8"
+	testDestinationComponentUID = "e02ff0f0-14e1-45f9-bb23-7ab8a9480198"
+	testOtherSourceUID          = "94ec38c2-e722-4902-bf83-4670dc2316a4"
+	testOtherDestinationUID     = "8f526b75-9dd4-4703-934c-9304e3536944"
+)
+
 // stubCloudWatchAPI is a hand-rolled fake of the cloudwatchAPI interface for
 // alarm and metric tests. The defaults are silent — pass slices via the public
 // fields to set canned responses.

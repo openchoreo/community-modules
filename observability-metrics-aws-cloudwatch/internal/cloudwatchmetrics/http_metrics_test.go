@@ -12,17 +12,17 @@ import (
 func TestBuildHTTPMetricsLogsInsightsQueryScopesToDestination(t *testing.T) {
 	query := BuildHTTPMetricsLogsInsightsQuery(HTTPMetricsQueryParams{
 		Namespace:      `pay"ments`,
-		ComponentUID:   "comp-1",
-		ProjectUID:     "proj-1",
-		EnvironmentUID: "env-1",
+		ComponentUID:   testComponentUID,
+		ProjectUID:     testProjectUID,
+		EnvironmentUID: testEnvironmentUID,
 		StepSeconds:    300,
 	})
 	for _, want := range []string{
 		`reporter = "server"`,
 		"ispresent(DestinationComponentUID)",
-		`DestinationComponentUID = "comp-1"`,
-		`DestinationProjectUID = "proj-1"`,
-		`DestinationEnvironmentUID = "env-1"`,
+		`DestinationComponentUID = "` + testComponentUID + `"`,
+		`DestinationProjectUID = "` + testProjectUID + `"`,
+		`DestinationEnvironmentUID = "` + testEnvironmentUID + `"`,
 		"by bin(5m) as ts, status",
 		"sum(hubble_http_requests_total) as request_total",
 	} {
@@ -44,13 +44,13 @@ func TestBuildHTTPMetricsLogsInsightsQueryScopesToDestination(t *testing.T) {
 
 func TestBuildHTTPMetricsBucketQueryScopesAndBinsByLe(t *testing.T) {
 	query := BuildHTTPMetricsBucketLogsInsightsQuery(HTTPMetricsQueryParams{
-		ComponentUID: "comp-1",
+		ComponentUID: testComponentUID,
 		StepSeconds:  300,
 	})
 	for _, want := range []string{
 		"hubble_http_request_duration_seconds_lebucket",
 		"ispresent(le)",
-		`DestinationComponentUID = "comp-1"`,
+		`DestinationComponentUID = "` + testComponentUID + `"`,
 		"by bin(5m) as ts, le",
 	} {
 		if !strings.Contains(query, want) {

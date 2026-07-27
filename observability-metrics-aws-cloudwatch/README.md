@@ -1321,4 +1321,5 @@ Bundled upstream Helm charts:
 
 | Module Version | OpenChoreo Version |
 |----------------|--------------------|
+| v0.3.x         | v1.2.x             |
 | v0.2.x         | v1.1.x             |

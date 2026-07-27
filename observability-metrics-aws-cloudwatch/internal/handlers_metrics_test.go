@@ -21,6 +21,18 @@ import (
 	"github.com/openchoreo/community-modules/observability-metrics-aws-cloudwatch/internal/cloudwatchmetrics"
 )
 
+// OpenChoreo identities are UUIDs on the wire, so the fixtures use real UUIDs
+// rather than readable placeholders. These mirror the values used by the
+// cloudwatchmetrics package tests.
+const (
+	testComponentUID   = "0f99ce77-4eb9-496d-b483-1d477faa96b3"
+	testProjectUID     = "caa09cff-1a1c-43b9-ad2e-bf2ba00d6bd6"
+	testEnvironmentUID = "b020be93-6614-4adc-8d15-1da3f81c87ac"
+
+	testSourceComponentUID      = "eacb463b-88c9-4cde-bdb2-b8f8ad5d30c8"
+	testDestinationComponentUID = "e02ff0f0-14e1-45f9-bb23-7ab8a9480198"
+)
+
 type stubMetricsClient struct {
 	pingErr                     error
 	getResourceFn               func(context.Context, cloudwatchmetrics.MetricsQueryParams) (*cloudwatchmetrics.ResourceMetricsResult, error)
@@ -210,7 +222,7 @@ func TestQueryMetricsResourceReturnsSeries(t *testing.T) {
 	now := time.Date(2026, 5, 4, 12, 0, 0, 0, time.UTC)
 	client := &stubMetricsClient{
 		getResourceFn: func(_ context.Context, p cloudwatchmetrics.MetricsQueryParams) (*cloudwatchmetrics.ResourceMetricsResult, error) {
-			if p.Namespace != "payments" || p.ComponentUID != "comp-1" {
+			if p.Namespace != "payments" || p.ComponentUID != testComponentUID {
 				t.Fatalf("unexpected scope: %#v", p)
 			}
 			if p.StepSeconds != 60 {
@@ -222,7 +234,7 @@ func TestQueryMetricsResourceReturnsSeries(t *testing.T) {
 		},
 	}
 	h := newTestHandler(client, nil)
-	componentUID := "comp-1"
+	componentUID := testComponentUID
 	step := "1m"
 	body := &gen.MetricsQueryRequest{
 		Metric:    gen.MetricsQueryRequestMetricResource,
@@ -293,7 +305,7 @@ func TestQueryMetricsHTTPReturnsSeriesWithPercentiles(t *testing.T) {
 		},
 	}
 	h := newTestHandler(client, nil)
-	componentUID := "comp-uid-1"
+	componentUID := testComponentUID
 	body := &gen.MetricsQueryRequest{
 		Metric:      gen.MetricsQueryRequestMetricHttp,
 		StartTime:   ts.Add(-time.Hour),
@@ -333,16 +345,16 @@ func TestQueryRuntimeTopologyReturnsEdges(t *testing.T) {
 	now := time.Date(2026, 5, 4, 12, 0, 0, 0, time.UTC)
 	client := &stubMetricsClient{
 		getRuntimeTopologyFn: func(_ context.Context, p cloudwatchmetrics.RuntimeTopologyQueryParams) (*cloudwatchmetrics.RuntimeTopologyResult, error) {
-			if p.Namespace != "payments" || p.ProjectUID != "proj-1" || p.EnvironmentUID != "env-1" {
+			if p.Namespace != "payments" || p.ProjectUID != testProjectUID || p.EnvironmentUID != testEnvironmentUID {
 				t.Fatalf("unexpected params: %#v", p)
 			}
 			mean := 0.12
 			return &cloudwatchmetrics.RuntimeTopologyResult{Edges: []cloudwatchmetrics.RuntimeTopologyEdgeResult{
 				{
-					SourceComponentUID:       "src-1",
+					SourceComponentUID:       testSourceComponentUID,
 					SourceComponentName:      "frontend",
 					SourceNamespace:          "payments",
-					DestinationComponentUID:  "dst-1",
+					DestinationComponentUID:  testDestinationComponentUID,
 					DestinationComponentName: "checkout",
 					DestinationNamespace:     "payments",
 					RequestCount:             12,
@@ -358,8 +370,8 @@ func TestQueryRuntimeTopologyReturnsEdges(t *testing.T) {
 		EndTime:   now,
 	}
 	body.SearchScope.Namespace = "payments"
-	body.SearchScope.ProjectUid = "proj-1"
-	body.SearchScope.EnvironmentUid = "env-1"
+	body.SearchScope.ProjectUid = testProjectUID
+	body.SearchScope.EnvironmentUid = testEnvironmentUID
 
 	resp, err := h.QueryRuntimeTopology(context.Background(), gen.QueryRuntimeTopologyRequestObject{Body: body})
 	if err != nil {
@@ -372,7 +384,7 @@ func TestQueryRuntimeTopologyReturnsEdges(t *testing.T) {
 	if ok.Edges == nil || len(*ok.Edges) != 1 {
 		t.Fatalf("expected one edge, got %#v", ok.Edges)
 	}
-	if (*ok.Edges)[0].Id != "src-1->dst-1" {
+	if (*ok.Edges)[0].Id != testSourceComponentUID+"->"+testDestinationComponentUID {
 		t.Fatalf("unexpected edge id: %s", (*ok.Edges)[0].Id)
 	}
 }
@@ -385,8 +397,8 @@ func TestQueryRuntimeTopologyOmitsMeanLatencyWhenNoDurationSamples(t *testing.T)
 		getRuntimeTopologyFn: func(_ context.Context, _ cloudwatchmetrics.RuntimeTopologyQueryParams) (*cloudwatchmetrics.RuntimeTopologyResult, error) {
 			return &cloudwatchmetrics.RuntimeTopologyResult{Edges: []cloudwatchmetrics.RuntimeTopologyEdgeResult{
 				{
-					SourceComponentUID:      "src-1",
-					DestinationComponentUID: "dst-1",
+					SourceComponentUID:      testSourceComponentUID,
+					DestinationComponentUID: testDestinationComponentUID,
 					RequestCount:            12,
 					ErrorCount:              2,
 					MeanLatency:             nil, // no duration samples
@@ -397,8 +409,8 @@ func TestQueryRuntimeTopologyOmitsMeanLatencyWhenNoDurationSamples(t *testing.T)
 	h := newTestHandler(client, nil)
 	body := &gen.RuntimeTopologyRequest{StartTime: now.Add(-time.Hour), EndTime: now}
 	body.SearchScope.Namespace = "payments"
-	body.SearchScope.ProjectUid = "proj-1"
-	body.SearchScope.EnvironmentUid = "env-1"
+	body.SearchScope.ProjectUid = testProjectUID
+	body.SearchScope.EnvironmentUid = testEnvironmentUID
 
 	resp, err := h.QueryRuntimeTopology(context.Background(), gen.QueryRuntimeTopologyRequestObject{Body: body})
 	if err != nil {
@@ -428,7 +440,7 @@ func TestQueryRuntimeTopologyRejectsMissingScope(t *testing.T) {
 		EndTime:   time.Now(),
 	}
 	body.SearchScope.Namespace = "payments"
-	body.SearchScope.ProjectUid = "proj-1"
+	body.SearchScope.ProjectUid = testProjectUID
 
 	resp, err := h.QueryRuntimeTopology(context.Background(), gen.QueryRuntimeTopologyRequestObject{Body: body})
 	if err != nil {

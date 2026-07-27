@@ -12,14 +12,14 @@ import (
 func TestBuildRuntimeTopologyLogsInsightsQueryUsesEnrichedFields(t *testing.T) {
 	query := BuildRuntimeTopologyLogsInsightsQuery(RuntimeTopologyQueryParams{
 		Namespace:      "default",
-		ProjectUID:     "proj-1",
-		EnvironmentUID: "env-1",
+		ProjectUID:     testProjectUID,
+		EnvironmentUID: testEnvironmentUID,
 	})
 	for _, want := range []string{
-		`SourceProjectUID = "proj-1"`,
-		`DestinationProjectUID = "proj-1"`,
-		`SourceEnvironmentUID = "env-1"`,
-		`DestinationEnvironmentUID = "env-1"`,
+		`SourceProjectUID = "` + testProjectUID + `"`,
+		`DestinationProjectUID = "` + testProjectUID + `"`,
+		`SourceEnvironmentUID = "` + testEnvironmentUID + `"`,
+		`DestinationEnvironmentUID = "` + testEnvironmentUID + `"`,
 		"SourceComponentUID",
 		"DestinationComponentUID",
 		"sum(hubble_http_requests_total) as request_total",
@@ -48,14 +48,14 @@ func TestBuildRuntimeTopologyLogsInsightsQueryUsesEnrichedFields(t *testing.T) {
 func TestBuildRuntimeTopologyBucketQueryUsesLeAndBucketField(t *testing.T) {
 	query := BuildRuntimeTopologyBucketLogsInsightsQuery(RuntimeTopologyQueryParams{
 		Namespace:      "default",
-		ProjectUID:     "proj-1",
-		EnvironmentUID: "env-1",
+		ProjectUID:     testProjectUID,
+		EnvironmentUID: testEnvironmentUID,
 	})
 	for _, want := range []string{
 		"hubble_http_request_duration_seconds_lebucket",
 		"ispresent(le)",
-		`SourceProjectUID = "proj-1"`,
-		`DestinationEnvironmentUID = "env-1"`,
+		`SourceProjectUID = "` + testProjectUID + `"`,
+		`DestinationEnvironmentUID = "` + testEnvironmentUID + `"`,
 		"sum(hubble_http_request_duration_seconds_lebucket) as bucket_count",
 		"by SourceComponentUID, DestinationComponentUID, le",
 	} {
@@ -67,13 +67,13 @@ func TestBuildRuntimeTopologyBucketQueryUsesLeAndBucketField(t *testing.T) {
 
 func TestApplyTopologyPercentilesAttachesToEdges(t *testing.T) {
 	result := &RuntimeTopologyResult{Edges: []RuntimeTopologyEdgeResult{
-		{SourceComponentUID: "s", DestinationComponentUID: "d", RequestCount: 10},
+		{SourceComponentUID: testSourceComponentUID, DestinationComponentUID: testDestinationComponentUID, RequestCount: 10},
 	}}
 	rows := []map[string]string{
-		{"SourceComponentUID": "s", "DestinationComponentUID": "d", "le": "0.1", "bucket_count": "5"},
-		{"SourceComponentUID": "s", "DestinationComponentUID": "d", "le": "0.2", "bucket_count": "8"},
-		{"SourceComponentUID": "s", "DestinationComponentUID": "d", "le": "0.5", "bucket_count": "10"},
-		{"SourceComponentUID": "s", "DestinationComponentUID": "d", "le": "+Inf", "bucket_count": "10"},
+		{"SourceComponentUID": testSourceComponentUID, "DestinationComponentUID": testDestinationComponentUID, "le": "0.1", "bucket_count": "5"},
+		{"SourceComponentUID": testSourceComponentUID, "DestinationComponentUID": testDestinationComponentUID, "le": "0.2", "bucket_count": "8"},
+		{"SourceComponentUID": testSourceComponentUID, "DestinationComponentUID": testDestinationComponentUID, "le": "0.5", "bucket_count": "10"},
+		{"SourceComponentUID": testSourceComponentUID, "DestinationComponentUID": testDestinationComponentUID, "le": "+Inf", "bucket_count": "10"},
 	}
 	applyTopologyPercentiles(result, rows, "")
 	e := result.Edges[0]
@@ -91,18 +91,18 @@ func TestRuntimeTopologyFromRowsAggregatesEdges(t *testing.T) {
 	// sums the per-interval delta values.
 	rows := []map[string]string{
 		{
-			"SourceComponentUID": "src-1", "SourceComponent": "frontend", "source_namespace": "payments",
-			"DestinationComponentUID": "dst-1", "DestinationComponent": "checkout", "destination_namespace": "payments",
+			"SourceComponentUID": testSourceComponentUID, "SourceComponent": "frontend", "source_namespace": "payments",
+			"DestinationComponentUID": testDestinationComponentUID, "DestinationComponent": "checkout", "destination_namespace": "payments",
 			"status": "200", "request_total": "60",
 		},
 		{
-			"SourceComponentUID": "src-1", "SourceComponent": "frontend", "source_namespace": "payments",
-			"DestinationComponentUID": "dst-1", "DestinationComponent": "checkout", "destination_namespace": "payments",
+			"SourceComponentUID": testSourceComponentUID, "SourceComponent": "frontend", "source_namespace": "payments",
+			"DestinationComponentUID": testDestinationComponentUID, "DestinationComponent": "checkout", "destination_namespace": "payments",
 			"status": "500", "request_total": "5",
 		},
 		{
-			"SourceComponentUID": "src-1", "SourceComponent": "frontend", "source_namespace": "payments",
-			"DestinationComponentUID": "dst-1", "DestinationComponent": "checkout", "destination_namespace": "payments",
+			"SourceComponentUID": testSourceComponentUID, "SourceComponent": "frontend", "source_namespace": "payments",
+			"DestinationComponentUID": testDestinationComponentUID, "DestinationComponent": "checkout", "destination_namespace": "payments",
 			"status": "", "request_total": "0", "duration_count": "65", "duration_sum": "13",
 		},
 	}
@@ -129,16 +129,16 @@ func TestRuntimeTopologyFromRowsAggregatesEdges(t *testing.T) {
 func TestRuntimeTopologyFromRowsComponentFilter(t *testing.T) {
 	rows := []map[string]string{
 		{
-			"SourceComponentUID": "src-1", "DestinationComponentUID": "dst-1",
+			"SourceComponentUID": testSourceComponentUID, "DestinationComponentUID": testDestinationComponentUID,
 			"status": "200", "request_total": "10",
 		},
 		{
-			"SourceComponentUID": "other", "DestinationComponentUID": "another",
+			"SourceComponentUID": testOtherSourceUID, "DestinationComponentUID": testOtherDestinationUID,
 			"status": "200", "request_total": "10",
 		},
 	}
-	got := runtimeTopologyFromRows(rows, "src-1")
-	if len(got.Edges) != 1 || got.Edges[0].SourceComponentUID != "src-1" {
+	got := runtimeTopologyFromRows(rows, testSourceComponentUID)
+	if len(got.Edges) != 1 || got.Edges[0].SourceComponentUID != testSourceComponentUID {
 		t.Fatalf("component filter not applied: %#v", got.Edges)
 	}
 }
@@ -148,8 +148,8 @@ func TestGetRuntimeTopologyRejectsInvalidWindow(t *testing.T) {
 	now := time.Now()
 	_, err := c.GetRuntimeTopology(nil, RuntimeTopologyQueryParams{
 		Namespace:      "payments",
-		ProjectUID:     "proj-1",
-		EnvironmentUID: "env-1",
+		ProjectUID:     testProjectUID,
+		EnvironmentUID: testEnvironmentUID,
 		StartTime:      now,
 		EndTime:        now,
 	})

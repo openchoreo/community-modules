@@ -321,8 +321,8 @@ func TestCreateAlertHappyPath(t *testing.T) {
 	}
 
 	wantDims := map[string]string{
-		DimensionComponentUID:   "comp-1",
-		DimensionEnvironmentUID: "env-1",
+		DimensionComponentUID:   testComponentUID,
+		DimensionEnvironmentUID: testEnvironmentUID,
 		DimensionNamespace:      "payments",
 	}
 	if got := dimensionsAsMap(m1.MetricStat.Metric.Dimensions); !mapEqual(got, wantDims) {
@@ -371,8 +371,8 @@ func TestCreateAlertUsesDimensionNamespaceForMetricDimensions(t *testing.T) {
 	}
 	// Metric dimensions should use DimensionNamespace ("default").
 	wantDims := map[string]string{
-		DimensionComponentUID:   "comp-1",
-		DimensionEnvironmentUID: "env-1",
+		DimensionComponentUID:   testComponentUID,
+		DimensionEnvironmentUID: testEnvironmentUID,
 		DimensionNamespace:      "default",
 	}
 	if gotDims := dimensionsAsMap(got.Metrics[0].MetricStat.Metric.Dimensions); !mapEqual(gotDims, wantDims) {
@@ -398,8 +398,8 @@ func TestCreateAlertFallsBackToNamespaceWhenDimensionNamespaceEmpty(t *testing.T
 	}
 	got := alarms.putMetricAlarmInput
 	wantDims := map[string]string{
-		DimensionComponentUID:   "comp-1",
-		DimensionEnvironmentUID: "env-1",
+		DimensionComponentUID:   testComponentUID,
+		DimensionEnvironmentUID: testEnvironmentUID,
 		DimensionNamespace:      "payments",
 	}
 	if gotDims := dimensionsAsMap(got.Metrics[0].MetricStat.Metric.Dimensions); !mapEqual(gotDims, wantDims) {
@@ -529,7 +529,7 @@ func TestGetAlertReconstructsDetailFromAlarmAndTags(t *testing.T) {
 				{Key: aws.String(TagOperator), Value: aws.String("gt")},
 				{Key: aws.String(TagWindow), Value: aws.String("5m0s")},
 				{Key: aws.String(TagInterval), Value: aws.String("1m0s")},
-				{Key: aws.String(TagComponentUID), Value: aws.String("comp-1")},
+				{Key: aws.String(TagComponentUID), Value: aws.String(testComponentUID)},
 			},
 		},
 	}
@@ -548,7 +548,7 @@ func TestGetAlertReconstructsDetailFromAlarmAndTags(t *testing.T) {
 	if got.Window != 5*time.Minute || got.Interval != time.Minute {
 		t.Fatalf("unexpected durations: %s/%s", got.Window, got.Interval)
 	}
-	if got.ComponentUID != "comp-1" {
+	if got.ComponentUID != testComponentUID {
 		t.Fatalf("unexpected component uid: %q", got.ComponentUID)
 	}
 }
@@ -794,9 +794,9 @@ func validAlertParams() MetricAlertParams {
 	return MetricAlertParams{
 		Name:           "high-cpu",
 		Namespace:      "payments",
-		ProjectUID:     "proj-1",
-		EnvironmentUID: "env-1",
-		ComponentUID:   "comp-1",
+		ProjectUID:     testProjectUID,
+		EnvironmentUID: testEnvironmentUID,
+		ComponentUID:   testComponentUID,
 		Metric:         "cpu_usage",
 		Operator:       "gt",
 		Threshold:      0.5,

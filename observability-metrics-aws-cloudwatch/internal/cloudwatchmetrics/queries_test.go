@@ -28,10 +28,10 @@ func TestBuildScopeDimensionsAlwaysIncludesNamespace(t *testing.T) {
 
 func TestBuildScopeDimensionsIncludesPublishedUIDDimensions(t *testing.T) {
 	c := newTestClient(&stubCloudWatchAPI{})
-	got := c.buildScopeDimensions("payments", "comp-1", "proj-1", "env-1")
+	got := c.buildScopeDimensions("payments", testComponentUID, testProjectUID, testEnvironmentUID)
 	want := map[string]string{
-		DimensionComponentUID:   "comp-1",
-		DimensionEnvironmentUID: "env-1",
+		DimensionComponentUID:   testComponentUID,
+		DimensionEnvironmentUID: testEnvironmentUID,
 		DimensionNamespace:      "payments",
 	}
 	if !mapEqual(dimensionsAsMap(got), want) {
@@ -44,10 +44,10 @@ func TestBuildScopeDimensionsIncludesPublishedUIDDimensions(t *testing.T) {
 
 func TestBuildScopeDimensionsOmitsEmptyUIDs(t *testing.T) {
 	c := newTestClient(&stubCloudWatchAPI{})
-	got := c.buildScopeDimensions("payments", "comp-1", "", "env-1")
+	got := c.buildScopeDimensions("payments", testComponentUID, "", testEnvironmentUID)
 	want := map[string]string{
-		DimensionComponentUID:   "comp-1",
-		DimensionEnvironmentUID: "env-1",
+		DimensionComponentUID:   testComponentUID,
+		DimensionEnvironmentUID: testEnvironmentUID,
 		DimensionNamespace:      "payments",
 	}
 	if !mapEqual(dimensionsAsMap(got), want) {
@@ -85,7 +85,7 @@ func TestGetResourceMetricsHappyPath(t *testing.T) {
 
 	res, err := c.GetResourceMetrics(context.Background(), MetricsQueryParams{
 		Namespace:    "payments",
-		ComponentUID: "comp-1",
+		ComponentUID: testComponentUID,
 		StartTime:    now.Add(-time.Hour),
 		EndTime:      now,
 		StepSeconds:  60,
@@ -358,15 +358,15 @@ func TestResolveNamespaceDimensionReturnsValueFromListMetrics(t *testing.T) {
 		listMetricsOut: &cloudwatch.ListMetricsOutput{
 			Metrics: []cwtypes.Metric{{
 				Dimensions: []cwtypes.Dimension{
-					{Name: aws.String(DimensionComponentUID), Value: aws.String("comp-1")},
-					{Name: aws.String(DimensionEnvironmentUID), Value: aws.String("env-1")},
+					{Name: aws.String(DimensionComponentUID), Value: aws.String(testComponentUID)},
+					{Name: aws.String(DimensionEnvironmentUID), Value: aws.String(testEnvironmentUID)},
 					{Name: aws.String(DimensionNamespace), Value: aws.String("default")},
 				},
 			}},
 		},
 	}
 	c := newTestClient(api)
-	got, err := c.ResolveNamespaceDimension(context.Background(), "comp-1", "env-1")
+	got, err := c.ResolveNamespaceDimension(context.Background(), testComponentUID, testEnvironmentUID)
 	if err != nil {
 		t.Fatalf("ResolveNamespaceDimension() error = %v", err)
 	}
@@ -377,7 +377,7 @@ func TestResolveNamespaceDimensionReturnsValueFromListMetrics(t *testing.T) {
 
 func TestResolveNamespaceDimensionReturnsEmptyWhenNoMetrics(t *testing.T) {
 	c := newTestClient(&stubCloudWatchAPI{})
-	got, err := c.ResolveNamespaceDimension(context.Background(), "comp-1", "env-1")
+	got, err := c.ResolveNamespaceDimension(context.Background(), testComponentUID, testEnvironmentUID)
 	if err != nil {
 		t.Fatalf("ResolveNamespaceDimension() error = %v", err)
 	}
@@ -400,7 +400,7 @@ func TestResolveNamespaceDimensionReturnsEmptyWhenNoUIDs(t *testing.T) {
 func TestResolveNamespaceDimensionPropagatesError(t *testing.T) {
 	api := &stubCloudWatchAPI{listMetricsErr: errors.New("aws boom")}
 	c := newTestClient(api)
-	_, err := c.ResolveNamespaceDimension(context.Background(), "comp-1", "env-1")
+	_, err := c.ResolveNamespaceDimension(context.Background(), testComponentUID, testEnvironmentUID)
 	if err == nil {
 		t.Fatal("expected error to propagate")
 	}
@@ -420,9 +420,9 @@ func TestGetResourceMetricsScopeDimensionsMatchEMFOrder(t *testing.T) {
 	c := newTestClient(api)
 	if _, err := c.GetResourceMetrics(context.Background(), MetricsQueryParams{
 		Namespace:      "payments",
-		ComponentUID:   "comp-1",
-		EnvironmentUID: "env-1",
-		ProjectUID:     "proj-1",
+		ComponentUID:   testComponentUID,
+		EnvironmentUID: testEnvironmentUID,
+		ProjectUID:     testProjectUID,
 		StartTime:      now.Add(-time.Hour),
 		EndTime:        now,
 	}); err != nil {
@@ -433,8 +433,8 @@ func TestGetResourceMetricsScopeDimensionsMatchEMFOrder(t *testing.T) {
 	}
 	got := captured.MetricDataQueries[0].MetricStat.Metric.Dimensions
 	want := []cwtypes.Dimension{
-		{Name: aws.String(DimensionComponentUID), Value: aws.String("comp-1")},
-		{Name: aws.String(DimensionEnvironmentUID), Value: aws.String("env-1")},
+		{Name: aws.String(DimensionComponentUID), Value: aws.String(testComponentUID)},
+		{Name: aws.String(DimensionEnvironmentUID), Value: aws.String(testEnvironmentUID)},
 		{Name: aws.String(DimensionNamespace), Value: aws.String("payments")},
 	}
 	if !reflect.DeepEqual(got, want) {

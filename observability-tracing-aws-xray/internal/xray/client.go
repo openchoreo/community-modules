@@ -79,11 +79,6 @@ type SpansResult struct {
 	TookMs int
 }
 
-type SpanAttribute struct {
-	Key   string
-	Value string
-}
-
 type SpanDetail struct {
 	SpanID             string
 	SpanName           string
@@ -93,8 +88,8 @@ type SpanDetail struct {
 	DurationNs         int64
 	ParentSpanID       string
 	Status             string
-	Attributes         []SpanAttribute
-	ResourceAttributes []SpanAttribute
+	Attributes         map[string]interface{}
+	ResourceAttributes map[string]interface{}
 }
 
 type SpanDetailResult struct {

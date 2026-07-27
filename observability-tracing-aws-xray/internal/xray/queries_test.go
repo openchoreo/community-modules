@@ -203,6 +203,42 @@ func TestFlattenMap(t *testing.T) {
 	}
 }
 
+// Regression for #3886: segment annotations keep their native types in the
+// span detail instead of being stringified.
+func TestSegmentToSpanDetail_PreservesNativeTypes(t *testing.T) {
+	seg := &xraySegment{
+		ID:        "1a2b3c",
+		Name:      "checkout",
+		StartTime: json.Number("1.0"),
+		EndTime:   json.Number("2.0"),
+		Annotations: map[string]interface{}{
+			"retry_count": 3,
+			"ratio":       0.5,
+			"cache_hit":   true,
+			"region":      "us-east-1",
+		},
+	}
+
+	detail := segmentToSpanDetail(seg, "")
+
+	if v, ok := detail.Attributes["annotation.retry_count"].(int); !ok || v != 3 {
+		t.Errorf("retry_count: expected int(3), got %T(%v)",
+			detail.Attributes["annotation.retry_count"], detail.Attributes["annotation.retry_count"])
+	}
+	if v, ok := detail.Attributes["annotation.ratio"].(float64); !ok || v != 0.5 {
+		t.Errorf("ratio: expected float64(0.5), got %T(%v)",
+			detail.Attributes["annotation.ratio"], detail.Attributes["annotation.ratio"])
+	}
+	if v, ok := detail.Attributes["annotation.cache_hit"].(bool); !ok || !v {
+		t.Errorf("cache_hit: expected bool(true), got %T(%v)",
+			detail.Attributes["annotation.cache_hit"], detail.Attributes["annotation.cache_hit"])
+	}
+	if v, ok := detail.Attributes["annotation.region"].(string); !ok || v != "us-east-1" {
+		t.Errorf("region: expected string(us-east-1), got %T(%v)",
+			detail.Attributes["annotation.region"], detail.Attributes["annotation.region"])
+	}
+}
+
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && searchSubstring(s, substr)
 }

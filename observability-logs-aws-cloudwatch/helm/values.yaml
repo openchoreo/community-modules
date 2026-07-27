@@ -4,6 +4,9 @@
 # Job. The application log group resolves to `<global.logGroupPrefix>/application`.
 global:
   logGroupPrefix: "/aws/containerinsights"
+  # Optional exact application log group name. When empty, the chart uses
+  # `<global.logGroupPrefix>/application`.
+  applicationLogGroupName: ""
 
 # AWS authentication mode. Defaults to **EKS Pod Identity / IRSA / EC2
 # instance-profile** — the AWS SDK default credentials chain picks them up
@@ -25,6 +28,20 @@ awsCredentials:
 # 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653.
 containerLogs:
   retentionDays: 7
+
+# Kubernetes event support. Events are an optional, opt-in capability: they are
+# ingested by the separate `observability-events-otel-collector` chart (deployed
+# with its `awscloudwatchlogs` exporter pointed at the events log group below).
+# The adapter always serves `POST /api/v1/events/query`. This flag only governs
+# whether the setup Job provisions the events log group + retention.
+events:
+  provisionLogGroup: true
+  # Optional exact events log group name. When empty, the chart uses
+  # `<global.logGroupPrefix>/events`.
+  logGroupName: ""
+  # Retention for the events log group. Sparser and longer-lived than container
+  # logs; must be one of CloudWatch's allowed values (see containerLogs above).
+  retentionDays: 30
 
 # ---------------------------------------------------------------------------
 # amazon-cloudwatch-observability dependency
@@ -148,7 +165,7 @@ amazon-cloudwatch-observability:
               Name                cloudwatch_logs
               Match               application.*
               region              ${AWS_REGION}
-              log_group_name      {{ .Values.global.logGroupPrefix | default "/aws/containerinsights" | trimSuffix "/" }}/application
+              log_group_name      {{ if .Values.global.applicationLogGroupName }}{{ .Values.global.applicationLogGroupName }}{{ else }}{{ .Values.global.logGroupPrefix | default "/aws/containerinsights" | trimSuffix "/" }}/application{{ end }}
               log_stream_prefix   ${HOST_NAME}-
               auto_create_group   true
               extra_user_agent    container-insights
@@ -216,7 +233,7 @@ amazon-cloudwatch-observability:
               Name                cloudwatch_logs
               Match               application.*
               region              ${AWS_REGION}
-              log_group_name      {{ .Values.global.logGroupPrefix | default "/aws/containerinsights" | trimSuffix "/" }}/application
+              log_group_name      {{ if .Values.global.applicationLogGroupName }}{{ .Values.global.applicationLogGroupName }}{{ else }}{{ .Values.global.logGroupPrefix | default "/aws/containerinsights" | trimSuffix "/" }}/application{{ end }}
               log_stream_prefix   ${HOST_NAME}-
               auto_create_group   true
               extra_user_agent    container-insights

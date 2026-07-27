@@ -81,6 +81,7 @@ func resetCoreEnv(t *testing.T) {
 	t.Setenv("LOG_LEVEL", "")
 	t.Setenv("LOG_GROUP_NAME", "")
 	t.Setenv("LOG_GROUP_PREFIX", "")
+	t.Setenv("EVENTS_LOG_GROUP_NAME", "")
 	t.Setenv("ALARM_ACTION_ARNS", "")
 	t.Setenv("OK_ACTION_ARNS", "")
 	t.Setenv("INSUFFICIENT_DATA_ACTION_ARNS", "")
@@ -123,6 +124,34 @@ func TestLoadConfigDefaultsAreApplied(t *testing.T) {
 	}
 	if cfg.LogGroupName != "/aws/containerinsights/application" {
 		t.Fatalf("LogGroupName = %q", cfg.LogGroupName)
+	}
+	if cfg.EventsLogGroupName != "/aws/containerinsights/events" {
+		t.Fatalf("EventsLogGroupName = %q", cfg.EventsLogGroupName)
+	}
+}
+
+func TestLoadConfigEventsLogGroupOverrides(t *testing.T) {
+	resetCoreEnv(t)
+	t.Setenv("AWS_REGION", "eu-north-1")
+
+	// A custom prefix flows through to the derived events log group name.
+	t.Setenv("LOG_GROUP_PREFIX", "/openchoreo/logs/")
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+	if cfg.EventsLogGroupName != "/openchoreo/logs/events" {
+		t.Fatalf("derived EventsLogGroupName = %q", cfg.EventsLogGroupName)
+	}
+
+	// An explicit override wins over the derived default.
+	t.Setenv("EVENTS_LOG_GROUP_NAME", "/custom/events-group")
+	cfg, err = LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+	if cfg.EventsLogGroupName != "/custom/events-group" {
+		t.Fatalf("override EventsLogGroupName = %q", cfg.EventsLogGroupName)
 	}
 }
 

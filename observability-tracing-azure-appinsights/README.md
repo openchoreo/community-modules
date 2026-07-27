@@ -149,7 +149,7 @@ helm upgrade --install observability-tracing-azure-appinsights \
   oci://ghcr.io/openchoreo/helm-charts/observability-tracing-azure-appinsights \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.1.0 \
+  --version 0.1.2 \
   --set logAnalytics.workspaceId="<workspace customerId GUID>" \
   --set adapter.serviceAccount.annotations."azure\.workload\.identity/client-id"="<uami-client-id>"
 ```
@@ -171,7 +171,7 @@ helm upgrade --install observability-tracing-azure-appinsights \
   oci://ghcr.io/openchoreo/helm-charts/observability-tracing-azure-appinsights \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.1.0 \
+  --version 0.1.2 \
   --set opentelemetry-collector.enabled=false \
   --set logAnalytics.workspaceId="<workspace customerId GUID>" \
   --set adapter.serviceAccount.annotations."azure\.workload\.identity/client-id"="<uami-client-id>"
@@ -186,7 +186,7 @@ helm upgrade --install observability-tracing-azure-appinsights \
   oci://ghcr.io/openchoreo/helm-charts/observability-tracing-azure-appinsights \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.1.0 \
+  --version 0.1.2 \
   --set adapter.enabled=false
 ```
 

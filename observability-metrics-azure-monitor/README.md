@@ -178,7 +178,7 @@ data:
       enabled = true
     [log_collection_settings.metadata_collection]
       enabled = true
-      include_fields = ["openchoreo.dev/namespace", "openchoreo.dev/component-uid", "openchoreo.dev/project-uid", "openchoreo.dev/environment-uid"]
+      include_fields = ["podLabels", "podAnnotations", "podUid", "image", "imageID", "imageRepo", "imageTag"]
 EOF
 ```
 
@@ -252,7 +252,7 @@ webhook through the observability-plane gateway.
 helm upgrade --install metrics-adapter-azure-monitor \
   oci://ghcr.io/openchoreo/helm-charts/observability-metrics-azure-monitor \
   --namespace openchoreo-observability-plane --create-namespace \
-  --version 0.1.0 \
+  --version 0.1.1 \
   --set region=eastus2 \
   --set workspace.id=<workspace customerId GUID> \
   --set workspace.resourceId=<workspace ARM resource ID> \

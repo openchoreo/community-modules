@@ -1,0 +1,98 @@
+// Copyright 2026 The OpenChoreo Authors
+// SPDX-License-Identifier: Apache-2.0
+
+package main
+
+import (
+	"context"
+	"log/slog"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	app "github.com/openchoreo/community-modules/observability-tracing-gcp-cloudtrace/internal"
+	"github.com/openchoreo/community-modules/observability-tracing-gcp-cloudtrace/internal/cloudtrace"
+)
+
+func main() {
+	cfg, err := app.LoadConfig()
+	if err != nil {
+		logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+			Level: slog.LevelInfo,
+		}))
+		logger.Error("Failed to load configuration", slog.Any("error", err))
+		os.Exit(1)
+	}
+
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: cfg.LogLevel,
+	}))
+
+	logger.Info("Configurations loaded from environment variables successfully",
+		slog.String("Log Level", cfg.LogLevel.String()),
+		slog.String("GCP Project ID", cfg.ProjectID),
+		slog.Duration("Query Timeout", cfg.QueryTimeout),
+		slog.String("Server Port", cfg.ServerPort),
+	)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// The client authenticates with Application Default Credentials, which
+	// resolve to Workload Identity in-cluster and to gcloud credentials for
+	// local development.
+	client, err := cloudtrace.NewClient(ctx, cloudtrace.Config{
+		ProjectID:    cfg.ProjectID,
+		QueryTimeout: cfg.QueryTimeout,
+	}, logger)
+	if err != nil {
+		logger.Error("Failed to create Cloud Trace client", slog.Any("error", err))
+		os.Exit(1)
+	}
+	defer client.Close()
+
+	// Check API reachability and credentials when starting the adapter.
+	logger.Info("Checking Cloud Trace API connectivity")
+	if err := client.Ping(ctx); err != nil {
+		logger.Error("Failed to query the Cloud Trace API. Cannot continue without it. Hence shutting down", slog.Any("error", err))
+		os.Exit(1)
+	}
+
+	logger.Info("Successfully connected to the Cloud Trace API")
+
+	// Create handlers and server
+	tracingHandler := app.NewTracingHandler(client, logger)
+	srv := app.NewServer(cfg.ServerPort, tracingHandler, logger)
+
+	serverErr := make(chan error, 1)
+	go func() {
+		serverErr <- srv.Start()
+	}()
+
+	// Shutdown logic
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+	select {
+	case <-quit:
+	case err := <-serverErr:
+		if err != nil {
+			logger.Error("Server error", slog.Any("error", err))
+			os.Exit(1)
+		}
+		return
+	}
+
+	logger.Info("Shutting down gracefully")
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		logger.Error("Error during shutdown", slog.Any("error", err))
+		os.Exit(1)
+	}
+
+	logger.Info("Server stopped")
+}

@@ -348,13 +348,15 @@ func TestToSpanDetailsResponse(t *testing.T) {
 	endTime := time.Date(2025, 1, 1, 12, 0, 1, 0, time.UTC)
 
 	span := &openobserve.SpanDetail{
-		SpanID:       "span-1",
-		SpanName:     "db.query",
-		SpanKind:     "CLIENT",
-		StartTime:    startTime,
-		EndTime:      endTime,
-		DurationNs:   1000000000,
-		ParentSpanID: "span-root",
+		SpanID:        "span-1",
+		SpanName:      "db.query",
+		SpanKind:      "CLIENT",
+		StartTime:     startTime,
+		EndTime:       endTime,
+		DurationNs:    1000000000,
+		ParentSpanID:  "span-root",
+		Status:        "error",
+		StatusMessage: "connection refused",
 		Attributes: map[string]interface{}{
 			"http.method":      "GET",
 			"http.status_code": 200,
@@ -380,6 +382,12 @@ func TestToSpanDetailsResponse(t *testing.T) {
 	}
 	if resp.DurationNs == nil || *resp.DurationNs != 1000000000 {
 		t.Errorf("expected durationNs 1000000000, got %v", resp.DurationNs)
+	}
+	if resp.Status == nil || resp.Status.Code == nil || *resp.Status.Code != gen.SpanStatusCode("error") {
+		t.Errorf("expected status code 'error', got %+v", resp.Status)
+	}
+	if resp.Status == nil || resp.Status.Message == nil || *resp.Status.Message != "connection refused" {
+		t.Errorf("expected status message 'connection refused', got %+v", resp.Status)
 	}
 	if resp.Attributes == nil {
 		t.Fatal("expected attributes to be populated")
@@ -436,13 +444,13 @@ func TestQueryTraces_Success(t *testing.T) {
 			Total: 2,
 			Hits: []map[string]interface{}{
 				{
-					"trace_id":                    "trace-1",
-					"span_id":                     "span-root",
-					"operation_name":              "GET /api/v1/users",
-					"span_kind":                   "SERVER",
-					"start_time":                  json.Number(fmt.Sprintf("%d", startNs)),
-					"end_time":                    json.Number(fmt.Sprintf("%d", endNs)),
-					"reference_parent_span_id":    "",
+					"trace_id":                         "trace-1",
+					"span_id":                          "span-root",
+					"operation_name":                   "GET /api/v1/users",
+					"span_kind":                        "SERVER",
+					"start_time":                       json.Number(fmt.Sprintf("%d", startNs)),
+					"end_time":                         json.Number(fmt.Sprintf("%d", endNs)),
+					"reference_parent_span_id":         "",
 					"service_openchoreo_dev_namespace": "test-ns",
 				},
 				{

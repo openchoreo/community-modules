@@ -11,6 +11,7 @@ data:
   AWS_REGION: {{ include "logs-aws-cloudwatch.region" . | quote }}
   LOG_GROUP_PREFIX: {{ include "logs-aws-cloudwatch.logGroupPrefix" . | quote }}
   LOG_GROUP_NAME: {{ include "logs-aws-cloudwatch.logGroupName" . | quote }}
+  EVENTS_LOG_GROUP_NAME: {{ include "logs-aws-cloudwatch.eventsLogGroupName" . | quote }}
   QUERY_TIMEOUT_SECONDS: {{ .Values.adapter.queryTimeoutSeconds | quote }}
   QUERY_POLL_MILLISECONDS: {{ .Values.adapter.queryPollMilliseconds | quote }}
   LOG_LEVEL: {{ .Values.adapter.logLevel | quote }}

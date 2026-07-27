@@ -64,6 +64,7 @@ type Client struct {
 	alarms                     alarmsAPI
 	sts                        stsAPI
 	logGroupName               string
+	eventsLogGroupName         string
 	queryTimeout               time.Duration
 	pollEvery                  time.Duration
 	alertMetricNamespace       string
@@ -77,6 +78,7 @@ type Client struct {
 type Config struct {
 	Region                     string
 	LogGroupName               string
+	EventsLogGroupName         string
 	QueryTimeout               time.Duration
 	PollEvery                  time.Duration
 	AlertMetricNamespace       string
@@ -98,6 +100,7 @@ func NewClient(ctx context.Context, cfg Config, logger *slog.Logger) (*Client, e
 		alarms:                     cloudwatch.NewFromConfig(awsCfg),
 		sts:                        sts.NewFromConfig(awsCfg),
 		logGroupName:               cfg.LogGroupName,
+		eventsLogGroupName:         cfg.EventsLogGroupName,
 		queryTimeout:               cfg.QueryTimeout,
 		pollEvery:                  cfg.PollEvery,
 		alertMetricNamespace:       cfg.AlertMetricNamespace,
@@ -116,6 +119,7 @@ func NewClientWithAWS(logs logsAPI, alarms alarmsAPI, stsClient stsAPI, cfg Conf
 		alarms:                     alarms,
 		sts:                        stsClient,
 		logGroupName:               cfg.LogGroupName,
+		eventsLogGroupName:         cfg.EventsLogGroupName,
 		queryTimeout:               cfg.QueryTimeout,
 		pollEvery:                  cfg.PollEvery,
 		alertMetricNamespace:       cfg.AlertMetricNamespace,

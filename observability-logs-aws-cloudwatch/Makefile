@@ -1,7 +1,5 @@
 CFG_DIR := internal/api
 OAPI_CODEGEN_VERSION ?= v2.5.1
-# Pinned to an immutable commit SHA so `make openapi-codegen` is reproducible.
-# Bump the SHA when the upstream spec changes.
 SPEC := https://raw.githubusercontent.com/openchoreo/openchoreo/main/openapi/observability-logs-adapter-api.yaml
 
 .PHONY: oapi-codegen-install openapi-codegen unit-test

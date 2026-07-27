@@ -30,8 +30,16 @@ spec:
               value: {{ include "logs-aws-cloudwatch.region" . | quote }}
             - name: LOG_GROUP_PREFIX
               value: {{ include "logs-aws-cloudwatch.logGroupPrefix" . | quote }}
+            - name: LOG_GROUP_NAME
+              value: {{ include "logs-aws-cloudwatch.logGroupName" . | quote }}
             - name: RETENTION_DAYS
               value: {{ .Values.containerLogs.retentionDays | quote }}
+            - name: EVENTS_PROVISION_LOG_GROUP
+              value: {{ .Values.events.provisionLogGroup | quote }}
+            - name: EVENTS_LOG_GROUP_NAME
+              value: {{ include "logs-aws-cloudwatch.eventsLogGroupName" . | quote }}
+            - name: EVENTS_RETENTION_DAYS
+              value: {{ .Values.events.retentionDays | quote }}
           {{- if .Values.awsCredentials.name }}
           envFrom:
             - secretRef:

@@ -47,7 +47,9 @@ adapter:
   logLevel: INFO
 
   # URL of the OpenChoreo Observer; webhook payloads are forwarded here.
-  observerUrl: "http://observer.openchoreo-observability-plane.svc.cluster.local:8080"
+  # The alert-webhook endpoint is served on the Observer's internal service
+  # (observer-internal:8081), not the public gateway-facing service (:8080).
+  observerUrl: "http://observer-internal.openchoreo-observability-plane.svc.cluster.local:8081"
 
   # Default evaluation frequency + window applied when an alert rule request
   # omits one. ISO 8601 durations.

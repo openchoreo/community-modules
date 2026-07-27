@@ -5,6 +5,15 @@ common:
   openObserveOrg: "default"
   openObserveStream: "default"
   openObserveEventsStream: "k8s_events"
+  # Hostnames placed on the OpenObserve ingest HTTPRoute (gateway-default). Set this
+  # to the gateway hostname remote Fluent Bit instances target in a multi-cluster setup.
+  # Applies regardless of whether the standalone or HA OpenObserve chart is used.
+  httpRouteHostnames: []
+  # OpenObserve endpoint the Fluent Bit config ships logs to. Defaults to the in-cluster
+  # Service; override in a multi-cluster setup to point remote Fluent Bit at the gateway.
+  openObserveHost: "openobserve"
+  openObservePort: 5080
+  openObserveTlsEnabled: false
 
 fluent-bit:
   enabled: true
@@ -87,13 +96,16 @@ fluent-bit:
     - name: db
       mountPath: /var/lib/fluent-bit/db
 
-  # Values for fluent-bit config map
-  openObserveHost: "openobserve"
-  openObservePort: 5080
-  openObserveTls: "Off"
-
 openobserve-standalone:
   enabled: true
+
+  extraEnv:
+  # Allow alert webhook destinations that point at private IPs. OpenObserve's SSRF guard blocks private IPs by
+  # default, which rejects in-cluster webhook destinations. In OpenChoreo, OpenObserve invokes the webhook endpoint
+  # of the logs adapter running in the cluster. Hence this must be allowed.
+  - name: ZO_SSRF_ALLOW_LOOPBACK
+    value: "true"
+
   fullnameOverride: "openobserve"
   auth:
     ZO_ROOT_USER_EMAIL: ""
@@ -111,11 +123,16 @@ openobserve-standalone:
       cpu: 20m
       memory: 500Mi
 
-  ## OpenChoreo specific values. These are not passed to the upstream chart
-  httpRouteHostnames: []
-
 openobserve:
   enabled: false
+
+  extraEnv:
+  # Allow alert webhook destinations that point at private IPs. OpenObserve's SSRF guard blocks private IPs by
+  # default, which rejects in-cluster webhook destinations. In OpenChoreo, OpenObserve invokes the webhook endpoint
+  # of the logs adapter running in the cluster. Hence this must be allowed.
+  - name: ZO_SSRF_ALLOW_LOOPBACK
+    value: "true"
+
   fullnameOverride: "openobserve"
 
 ## -----------------------------------------------------------

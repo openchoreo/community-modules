@@ -174,6 +174,55 @@ func TestDetermineSpanStatus(t *testing.T) {
 	}
 }
 
+func TestDetermineSpanStatusMessage(t *testing.T) {
+	tests := []struct {
+		name     string
+		spanHit  map[string]interface{}
+		expected string
+	}{
+		{
+			name:     "nil input",
+			spanHit:  nil,
+			expected: "",
+		},
+		{
+			name:     "no status field",
+			spanHit:  map[string]interface{}{"spanId": "span-1"},
+			expected: "",
+		},
+		{
+			name: "status without message",
+			spanHit: map[string]interface{}{
+				"status": map[string]interface{}{"code": "error"},
+			},
+			expected: "",
+		},
+		{
+			name: "status with message",
+			spanHit: map[string]interface{}{
+				"status": map[string]interface{}{"code": "error", "message": "connection refused"},
+			},
+			expected: "connection refused",
+		},
+		{
+			name: "message not a string",
+			spanHit: map[string]interface{}{
+				"status": map[string]interface{}{"message": 42},
+			},
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := DetermineSpanStatusMessage(tt.spanHit)
+			if result != tt.expected {
+				t.Errorf("expected %q, got %q", tt.expected, result)
+			}
+		})
+	}
+}
+
 func TestParseSpanEntry_InvalidTimestamps(t *testing.T) {
 	hit := Hit{
 		Source: map[string]interface{}{

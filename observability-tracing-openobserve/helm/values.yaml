@@ -1,9 +1,16 @@
 # Copyright 2026 The OpenChoreo Authors
 # SPDX-License-Identifier: Apache-2.0
 
+global:
+  # Supports "singleCluster", "multiClusterExporter", "multiClusterReceiver"
+  installationMode: "singleCluster"
+
 common:
   openObserveOrg: "default"
   openObserveStream: "default"
+  openObserveHost: "openobserve"
+  openObservePort: 5080
+  openObserveTlsEnabled: false
 
 
 openobserve-standalone:
@@ -74,18 +81,18 @@ opentelemetry-collector:
       memory: 100Mi
 
   service:
-    type: LoadBalancer
-      
+    type: ClusterIP
+
 
 ## -----------------------------------------------------------
 ## Values for OpenChoreo specific customizations and workloads
 ## -----------------------------------------------------------
 
 adapter:
+  enabled: true
   image:
     repository: "ghcr.io/openchoreo/observability-tracing-openobserve-adapter"
     tag: ""  # Defaults to Chart.AppVersion via the template
-  openObserveUrl: "http://openobserve:5080"
   resources:
     limits:
       cpu: 200m
@@ -97,11 +104,18 @@ adapter:
 
 
 opentelemetryCollectorCustomizations:
-  installationMode: "singleCluster"
   openSearchQueue:
     numConsumers: 5
     queueSize: 1000
     sizer: items
+
+  # Used when global.installationMode is "multiClusterExporter" (dataplane) or
+  # "multiClusterReceiver" (observability plane). The exporter relays OTLP to the
+  # receiver collector through the observability-plane gateway.
+  http:
+    observabilityPlaneUrl: ""          # OTLP endpoint of the receiver, via the gateway
+    observabilityPlaneVirtualHost: ""  # Host header / gateway vhost
+    hostnames: []                      # hostnames placed on the receiver HTTPRoute
 
   tailSampling:
     enabled: true

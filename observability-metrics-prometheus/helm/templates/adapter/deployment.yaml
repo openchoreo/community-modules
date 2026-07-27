@@ -22,13 +22,17 @@ spec:
         app: metrics-adapter-prometheus
     spec:
       serviceAccountName: metrics-adapter-prometheus
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       securityContext:
         runAsUser: 10500
         runAsGroup: 10500
         runAsNonRoot: true
       containers:
       - name: metrics-adapter-prometheus
-        image: "{{ .Values.adapter.image.repository }}:{{ .Values.adapter.image.tag | default .Chart.AppVersion }}"
+        image: {{ include "observability-metrics-prometheus.image" (dict "image" .Values.adapter.image "context" .) | quote }}
         imagePullPolicy: {{ .Values.adapter.image.pullPolicy | default "IfNotPresent" }}
         ports:
         - containerPort: 9099

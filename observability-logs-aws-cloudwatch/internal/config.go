@@ -13,13 +13,14 @@ import (
 )
 
 type Config struct {
-	ServerPort     string
-	AWSRegion      string
-	LogGroupPrefix string
-	LogGroupName   string
-	QueryTimeout   time.Duration
-	QueryPollEvery time.Duration
-	LogLevel       slog.Level
+	ServerPort         string
+	AWSRegion          string
+	LogGroupPrefix     string
+	LogGroupName       string
+	EventsLogGroupName string
+	QueryTimeout       time.Duration
+	QueryPollEvery     time.Duration
+	LogLevel           slog.Level
 
 	// Alerting configuration
 	AlertMetricNamespace       string
@@ -39,6 +40,7 @@ func LoadConfig() (*Config, error) {
 	awsRegion := getEnv("AWS_REGION", "")
 	logGroupPrefix := getEnv("LOG_GROUP_PREFIX", "/aws/containerinsights")
 	logGroupName := getEnv("LOG_GROUP_NAME", "")
+	eventsLogGroupName := getEnv("EVENTS_LOG_GROUP_NAME", "")
 	queryTimeoutStr := getEnv("QUERY_TIMEOUT_SECONDS", "30")
 	queryPollStr := getEnv("QUERY_POLL_MILLISECONDS", "500")
 
@@ -63,6 +65,9 @@ func LoadConfig() (*Config, error) {
 	logGroupPrefix = strings.TrimRight(logGroupPrefix, "/")
 	if logGroupName == "" {
 		logGroupName = logGroupPrefix + "/application"
+	}
+	if eventsLogGroupName == "" {
+		eventsLogGroupName = logGroupPrefix + "/events"
 	}
 
 	queryTimeoutSec, err := strconv.Atoi(queryTimeoutStr)
@@ -110,6 +115,7 @@ func LoadConfig() (*Config, error) {
 		AWSRegion:                  awsRegion,
 		LogGroupPrefix:             logGroupPrefix,
 		LogGroupName:               logGroupName,
+		EventsLogGroupName:         eventsLogGroupName,
 		QueryTimeout:               time.Duration(queryTimeoutSec) * time.Second,
 		QueryPollEvery:             time.Duration(queryPollMs) * time.Millisecond,
 		LogLevel:                   logLevel,

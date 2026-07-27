@@ -1,0 +1,17 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+{{- if .Values.adapter.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tracing-adapter-openobserve
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: tracing-adapter-openobserve
+data:
+  SERVER_PORT: {{ .Values.adapter.serverPort | quote }}
+  OPENOBSERVE_URL: "{{ if .Values.common.openObserveTlsEnabled }}https{{ else }}http{{ end }}://{{ .Values.common.openObserveHost }}:{{ .Values.common.openObservePort }}"
+  OPENOBSERVE_ORG: {{ .Values.common.openObserveOrg | quote }}
+  OPENOBSERVE_STREAM: {{ .Values.common.openObserveStream | quote }}
+{{- end }}

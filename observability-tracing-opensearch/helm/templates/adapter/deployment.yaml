@@ -23,9 +23,13 @@ spec:
         runAsUser: 10500
         runAsGroup: 10500
         runAsNonRoot: true
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
       - name: tracing-adapter-opensearch
-        image: "{{ .Values.adapter.image.repository }}:{{ .Values.adapter.image.tag | default .Chart.AppVersion }}"
+        image: {{ include "observability-tracing-opensearch.image" (dict "image" .Values.adapter.image "context" .) | quote }}
         imagePullPolicy: {{ .Values.adapter.image.pullPolicy | default "IfNotPresent" }}
         ports:
         - name: http

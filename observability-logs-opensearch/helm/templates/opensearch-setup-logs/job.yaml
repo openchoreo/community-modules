@@ -17,6 +17,10 @@ spec:
   template:
     spec:
       automountServiceAccountToken: false
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
       - name: opensearch-setup
         env:
@@ -38,7 +42,7 @@ spec:
           value: "{{ .Values.openSearchSetup.dataRetentionTime.containerLogs }}"
         - name: K8S_EVENTS_MIN_INDEX_AGE
           value: "{{ .Values.openSearchSetup.dataRetentionTime.k8sEvents }}"
-        image: "{{ .Values.openSearchSetup.image.repository }}:{{ .Values.openSearchSetup.image.tag | default .Chart.AppVersion }}"
+        image: {{ include "observability-logs-opensearch.image" (dict "image" .Values.openSearchSetup.image "context" .) | quote }}
         imagePullPolicy: {{ .Values.openSearchSetup.image.pullPolicy | default "IfNotPresent" }}
         resources:
           requests:

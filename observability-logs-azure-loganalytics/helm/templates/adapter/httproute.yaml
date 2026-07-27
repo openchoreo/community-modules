@@ -27,6 +27,6 @@ spec:
             type: Exact
             value: /api/v1alpha1/alerts/webhook
       backendRefs:
-        - name: logs-adapter-azure-loganalytics
+        - name: logs-adapter
           port: {{ .Values.adapter.service.port }}
 {{- end }}

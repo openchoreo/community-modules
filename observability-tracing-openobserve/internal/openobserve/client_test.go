@@ -924,6 +924,39 @@ func TestDetermineSpanStatus(t *testing.T) {
 	}
 }
 
+func TestDetermineSpanStatusMessage(t *testing.T) {
+	tests := []struct {
+		name     string
+		hit      map[string]interface{}
+		expected string
+	}{
+		{
+			name:     "message present",
+			hit:      map[string]interface{}{"status_message": "connection refused"},
+			expected: "connection refused",
+		},
+		{
+			name:     "empty when missing",
+			hit:      map[string]interface{}{},
+			expected: "",
+		},
+		{
+			name:     "empty when not a string",
+			hit:      map[string]interface{}{"status_message": 42},
+			expected: "",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := determineSpanStatusMessage(tc.hit)
+			if got != tc.expected {
+				t.Errorf("expected %q, got %q", tc.expected, got)
+			}
+		})
+	}
+}
+
 func TestParseSpanDetail_NoExtraAttributes(t *testing.T) {
 	hit := map[string]interface{}{
 		"span_id":                  "span-1",

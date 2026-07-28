@@ -93,6 +93,13 @@ adapter:
   image:
     repository: "ghcr.io/openchoreo/observability-tracing-openobserve-adapter"
     tag: ""  # Defaults to Chart.AppVersion via the template
+  
+  # Credentials to connect to OpenObserve
+  openObserveCredentialsSecret:
+    name: "openobserve-admin-credentials"
+    userKey: "ZO_ROOT_USER_EMAIL"
+    passwordKey: "ZO_ROOT_USER_PASSWORD"
+
   resources:
     limits:
       cpu: 200m

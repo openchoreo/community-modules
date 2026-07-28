@@ -38,13 +38,13 @@ spec:
         - name: OPENOBSERVE_USER
           valueFrom:
             secretKeyRef:
-              name: openobserve-admin-credentials
-              key: ZO_ROOT_USER_EMAIL
+              name: {{ .Values.adapter.openObserveCredentialsSecret.name | quote }}
+              key: {{ .Values.adapter.openObserveCredentialsSecret.userKey | quote }}
         - name: OPENOBSERVE_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: openobserve-admin-credentials
-              key: ZO_ROOT_USER_PASSWORD
+              name: {{ .Values.adapter.openObserveCredentialsSecret.name | quote }}
+              key: {{ .Values.adapter.openObserveCredentialsSecret.passwordKey | quote }}
         resources:
           limits:
             cpu: {{ .Values.adapter.resources.limits.cpu }}

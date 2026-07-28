@@ -31,11 +31,11 @@ spec:
         - name: OPENOBSERVE_USERNAME
           valueFrom:
             secretKeyRef:
-              name: openobserve-admin-credentials
-              key: ZO_ROOT_USER_EMAIL
+              name: {{ .Values.openObserveSetup.openObserveCredentialsSecret.name | quote }}
+              key: {{ .Values.openObserveSetup.openObserveCredentialsSecret.userKey | quote }}
         - name: OPENOBSERVE_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: openobserve-admin-credentials
-              key: ZO_ROOT_USER_PASSWORD
+              name: {{ .Values.openObserveSetup.openObserveCredentialsSecret.name | quote }}
+              key: {{ .Values.openObserveSetup.openObserveCredentialsSecret.passwordKey | quote }}
 {{- end }}

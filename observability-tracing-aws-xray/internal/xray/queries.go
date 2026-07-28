@@ -471,6 +471,19 @@ type xraySegment struct {
 	AWS         map[string]interface{} `json:"aws"`
 	Subsegments []xraySegment          `json:"subsegments"`
 	Namespace   string                 `json:"namespace"`
+	// Cause is either a cause object or a plain string holding the ID of the
+	// segment that carries the cause, so it is kept raw and decoded lazily.
+	Cause json.RawMessage `json:"cause"`
+}
+
+// xrayCause is the object form of an X-Ray segment `cause` field. The AWS X-Ray
+// exporter in the OpenTelemetry Collector writes the OTel span status message
+// (or the exception recorded on the span) into the first exception entry.
+type xrayCause struct {
+	Exceptions []struct {
+		Message string `json:"message"`
+		Type    string `json:"type"`
+	} `json:"exceptions"`
 }
 
 // flattenTrace extracts all segments and subsegments from an X-Ray trace into a flat list of SpanEntry.
@@ -492,20 +505,22 @@ func flattenTrace(trace xraytypes.Trace, includeAttributes bool) []SpanEntry {
 			continue
 		}
 
-		flattenSegment(&seg, "", traceID, includeAttributes, &spans)
+		flattenSegment(&seg, "", traceID, includeAttributes, false, &spans)
 	}
 
 	return spans
 }
 
 // flattenSegment recursively flattens a segment and its subsegments.
-func flattenSegment(seg *xraySegment, parentID string, traceID string, includeAttributes bool, spans *[]SpanEntry) {
+// isSubsegment is false only for the top-level segment documents of a trace.
+func flattenSegment(seg *xraySegment, parentID string, traceID string, includeAttributes bool, isSubsegment bool, spans *[]SpanEntry) {
 	entry := SpanEntry{
-		SpanID:       seg.ID,
-		SpanName:     seg.Name,
-		ParentSpanID: parentID,
-		Status:       segmentStatus(seg),
-		SpanKind:     segmentKind(seg),
+		SpanID:        seg.ID,
+		SpanName:      seg.Name,
+		ParentSpanID:  parentID,
+		Status:        segmentStatus(seg),
+		StatusMessage: segmentStatusMessage(seg),
+		SpanKind:      segmentKind(seg, isSubsegment),
 	}
 
 	if seg.ParentID != "" {
@@ -526,7 +541,7 @@ func flattenSegment(seg *xraySegment, parentID string, traceID string, includeAt
 	*spans = append(*spans, entry)
 
 	for i := range seg.Subsegments {
-		flattenSegment(&seg.Subsegments[i], seg.ID, traceID, includeAttributes, spans)
+		flattenSegment(&seg.Subsegments[i], seg.ID, traceID, includeAttributes, true, spans)
 	}
 }
 
@@ -541,8 +556,41 @@ func segmentStatus(seg *xraySegment) string {
 	return "unset"
 }
 
+// segmentStatusMessage derives the human-readable status description from the
+// X-Ray segment `cause`. The AWS X-Ray exporter stores the OTel span status
+// message there as the first exception message, so that message is preferred and
+// the exception type is used only when no message was recorded. Returns "" when
+// the segment carries no cause object, which is the case for successful spans
+// and for errors that were flagged without a description.
+func segmentStatusMessage(seg *xraySegment) string {
+	if len(seg.Cause) == 0 {
+		return ""
+	}
+
+	var cause xrayCause
+	if err := json.Unmarshal(seg.Cause, &cause); err != nil {
+		// `cause` is a string referencing another segment's cause; no message here.
+		return ""
+	}
+
+	for _, ex := range cause.Exceptions {
+		if ex.Message != "" {
+			return ex.Message
+		}
+		if ex.Type != "" {
+			return ex.Type
+		}
+	}
+
+	return ""
+}
+
 // segmentKind derives span kind from X-Ray segment origin or type.
-func segmentKind(seg *xraySegment) string {
+// isSubsegment tells the caller's structural position apart from the document's
+// own `type` field: subsegments nested inside a parent segment document — which
+// is what BatchGetTraces returns — carry no `type`, so relying on that field
+// alone would classify every span as SERVER.
+func segmentKind(seg *xraySegment, isSubsegment bool) string {
 	if seg.Origin != "" {
 		switch {
 		case strings.Contains(seg.Origin, "EC2") || strings.Contains(seg.Origin, "ECS") || strings.Contains(seg.Origin, "EKS") || strings.Contains(seg.Origin, "ElasticBeanstalk"):
@@ -551,7 +599,7 @@ func segmentKind(seg *xraySegment) string {
 			return "SERVER"
 		}
 	}
-	if seg.Type == "subsegment" {
+	if isSubsegment || seg.Type == "subsegment" {
 		if seg.Namespace == "remote" || seg.Namespace == "aws" {
 			return "CLIENT"
 		}
@@ -631,7 +679,7 @@ func findSpanDetail(trace xraytypes.Trace, spanID string) (*SpanDetail, error) {
 			continue
 		}
 
-		if detail := findInSegment(&seg, "", traceID, spanID); detail != nil {
+		if detail := findInSegment(&seg, "", traceID, spanID, false); detail != nil {
 			return detail, nil
 		}
 	}
@@ -640,18 +688,19 @@ func findSpanDetail(trace xraytypes.Trace, spanID string) (*SpanDetail, error) {
 }
 
 // findInSegment recursively searches for a span by ID in a segment tree.
-func findInSegment(seg *xraySegment, parentID string, traceID string, spanID string) *SpanDetail {
+// isSubsegment is false only for the top-level segment documents of a trace.
+func findInSegment(seg *xraySegment, parentID string, traceID string, spanID string, isSubsegment bool) *SpanDetail {
 	effectiveParentID := parentID
 	if seg.ParentID != "" {
 		effectiveParentID = seg.ParentID
 	}
 
 	if seg.ID == spanID {
-		return segmentToSpanDetail(seg, effectiveParentID)
+		return segmentToSpanDetail(seg, effectiveParentID, isSubsegment)
 	}
 
 	for i := range seg.Subsegments {
-		if detail := findInSegment(&seg.Subsegments[i], seg.ID, traceID, spanID); detail != nil {
+		if detail := findInSegment(&seg.Subsegments[i], seg.ID, traceID, spanID, true); detail != nil {
 			return detail
 		}
 	}
@@ -660,55 +709,29 @@ func findInSegment(seg *xraySegment, parentID string, traceID string, spanID str
 }
 
 // segmentToSpanDetail converts an X-Ray segment to a full SpanDetail with all attributes.
-func segmentToSpanDetail(seg *xraySegment, parentID string) *SpanDetail {
+func segmentToSpanDetail(seg *xraySegment, parentID string, isSubsegment bool) *SpanDetail {
 	startNs := jsonNumberToNanos(seg.StartTime)
 	endNs := jsonNumberToNanos(seg.EndTime)
 
 	detail := &SpanDetail{
-		SpanID:       seg.ID,
-		SpanName:     seg.Name,
-		SpanKind:     segmentKind(seg),
-		StartTime:    time.Unix(0, startNs),
-		EndTime:      time.Unix(0, endNs),
-		DurationNs:   endNs - startNs,
-		ParentSpanID: parentID,
-		Status:       segmentStatus(seg),
+		SpanID:        seg.ID,
+		SpanName:      seg.Name,
+		SpanKind:      segmentKind(seg, isSubsegment),
+		StartTime:     time.Unix(0, startNs),
+		EndTime:       time.Unix(0, endNs),
+		DurationNs:    endNs - startNs,
+		ParentSpanID:  parentID,
+		Status:        segmentStatus(seg),
+		StatusMessage: segmentStatusMessage(seg),
 	}
 
-	attrs := make([]SpanAttribute, 0)
-	for k, v := range seg.Annotations {
-		attrs = append(attrs, SpanAttribute{Key: "annotation." + k, Value: fmt.Sprintf("%v", v)})
-	}
-	for k, v := range flattenMap("http", seg.HTTP) {
-		attrs = append(attrs, SpanAttribute{Key: k, Value: fmt.Sprintf("%v", v)})
-	}
-	for k, v := range flattenMap("sql", seg.SQL) {
-		attrs = append(attrs, SpanAttribute{Key: k, Value: fmt.Sprintf("%v", v)})
-	}
-	if seg.Namespace != "" {
-		attrs = append(attrs, SpanAttribute{Key: "xray.namespace", Value: seg.Namespace})
-	}
-	if seg.Origin != "" {
-		attrs = append(attrs, SpanAttribute{Key: "xray.origin", Value: seg.Origin})
-	}
-	detail.Attributes = attrs
+	detail.Attributes = buildSpanAttributes(seg)
 
-	resAttrs := make([]SpanAttribute, 0)
-	for k, v := range flattenMap("aws", seg.AWS) {
-		resAttrs = append(resAttrs, SpanAttribute{Key: k, Value: fmt.Sprintf("%v", v)})
-	}
-	if seg.Origin != "" {
-		resAttrs = append(resAttrs, SpanAttribute{Key: "cloud.platform", Value: seg.Origin})
-	}
-
-	if seg.Metadata != nil {
-		for ns, v := range seg.Metadata {
-			if nsMap, ok := v.(map[string]interface{}); ok {
-				for k, mv := range nsMap {
-					resAttrs = append(resAttrs, SpanAttribute{Key: fmt.Sprintf("metadata.%s.%s", ns, k), Value: fmt.Sprintf("%v", mv)})
-				}
-			}
-		}
+	// Span details carry the segment metadata in addition to the resource
+	// attributes returned by the spans-list endpoint.
+	resAttrs := buildResourceAttributes(seg)
+	for k, v := range flattenMap("metadata", seg.Metadata) {
+		resAttrs[k] = v
 	}
 	detail.ResourceAttributes = resAttrs
 

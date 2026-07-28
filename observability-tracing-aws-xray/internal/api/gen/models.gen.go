@@ -15,18 +15,11 @@ const (
 	Unauthorized        ErrorResponseTitle = "unauthorized"
 )
 
-// Defines values for TraceSpanDetailsResponseStatus.
+// Defines values for SpanStatusCode.
 const (
-	TraceSpanDetailsResponseStatusError TraceSpanDetailsResponseStatus = "error"
-	TraceSpanDetailsResponseStatusOk    TraceSpanDetailsResponseStatus = "ok"
-	TraceSpanDetailsResponseStatusUnset TraceSpanDetailsResponseStatus = "unset"
-)
-
-// Defines values for TraceSpansListResponseSpansStatus.
-const (
-	TraceSpansListResponseSpansStatusError TraceSpansListResponseSpansStatus = "error"
-	TraceSpansListResponseSpansStatusOk    TraceSpansListResponseSpansStatus = "ok"
-	TraceSpansListResponseSpansStatusUnset TraceSpansListResponseSpansStatus = "unset"
+	Error SpanStatusCode = "error"
+	Ok    SpanStatusCode = "ok"
+	Unset SpanStatusCode = "unset"
 )
 
 // Defines values for TracesQueryRequestSortOrder.
@@ -58,15 +51,22 @@ type ErrorResponse struct {
 // ErrorResponseTitle The error message
 type ErrorResponseTitle string
 
+// SpanStatus Execution status of the span, following the OpenTelemetry span Status model.
+type SpanStatus struct {
+	// Code The status code of the span. One of "ok", "error", or "unset".
+	Code *SpanStatusCode `json:"code,omitempty"`
+
+	// Message Developer-facing human-readable status description. Typically set only when code is "error".
+	Message *string `json:"message,omitempty"`
+}
+
+// SpanStatusCode The status code of the span. One of "ok", "error", or "unset".
+type SpanStatusCode string
+
 // TraceSpanDetailsResponse defines model for TraceSpanDetailsResponse.
 type TraceSpanDetailsResponse struct {
-	Attributes *[]struct {
-		// Key The key of the attribute
-		Key *string `json:"key,omitempty"`
-
-		// Value The value of the attribute
-		Value *string `json:"value,omitempty"`
-	} `json:"attributes,omitempty"`
+	// Attributes The span attributes as a key/value map
+	Attributes *map[string]interface{} `json:"attributes,omitempty"`
 
 	// DurationNs The duration of the span in nanoseconds
 	DurationNs *int64 `json:"durationNs,omitempty"`
@@ -75,14 +75,10 @@ type TraceSpanDetailsResponse struct {
 	EndTime *time.Time `json:"endTime,omitempty"`
 
 	// ParentSpanId The parent span ID
-	ParentSpanId       *string `json:"parentSpanId,omitempty"`
-	ResourceAttributes *[]struct {
-		// Key The key of the attribute
-		Key *string `json:"key,omitempty"`
+	ParentSpanId *string `json:"parentSpanId,omitempty"`
 
-		// Value The value of the attribute
-		Value *string `json:"value,omitempty"`
-	} `json:"resourceAttributes,omitempty"`
+	// ResourceAttributes The resource attributes as a key/value map
+	ResourceAttributes *map[string]interface{} `json:"resourceAttributes,omitempty"`
 
 	// SpanId The span ID
 	SpanId *string `json:"spanId,omitempty"`
@@ -96,18 +92,15 @@ type TraceSpanDetailsResponse struct {
 	// StartTime The start time of the span
 	StartTime *time.Time `json:"startTime,omitempty"`
 
-	// Status The execution status of the span. One of "ok", "error", or "unset".
-	Status *TraceSpanDetailsResponseStatus `json:"status,omitempty"`
+	// Status Execution status of the span, following the OpenTelemetry span Status model.
+	Status *SpanStatus `json:"status,omitempty"`
 }
-
-// TraceSpanDetailsResponseStatus The execution status of the span. One of "ok", "error", or "unset".
-type TraceSpanDetailsResponseStatus string
 
 // TraceSpansListResponse defines model for TraceSpansListResponse.
 type TraceSpansListResponse struct {
 	// Spans The list of spans
 	Spans *[]struct {
-		// Attributes The span attributes
+		// Attributes The span attributes as a key/value map
 		Attributes *map[string]interface{} `json:"attributes,omitempty"`
 
 		// DurationNs The duration of the span in nanoseconds
@@ -119,13 +112,13 @@ type TraceSpansListResponse struct {
 		// ParentSpanId The parent span ID
 		ParentSpanId *string `json:"parentSpanId,omitempty"`
 
-		// ResourceAttributes The resource attributes
+		// ResourceAttributes The resource attributes as a key/value map
 		ResourceAttributes *map[string]interface{} `json:"resourceAttributes,omitempty"`
 
 		// SpanId The span ID
 		SpanId *string `json:"spanId,omitempty"`
 
-		// SpanKind The name of the span
+		// SpanKind The kind of the span
 		SpanKind *string `json:"spanKind,omitempty"`
 
 		// SpanName The name of the span
@@ -134,8 +127,8 @@ type TraceSpansListResponse struct {
 		// StartTime The start time of the span
 		StartTime *time.Time `json:"startTime,omitempty"`
 
-		// Status The execution status of the span. One of "ok", "error", or "unset".
-		Status *TraceSpansListResponseSpansStatus `json:"status,omitempty"`
+		// Status Execution status of the span, following the OpenTelemetry span Status model.
+		Status *SpanStatus `json:"status,omitempty"`
 	} `json:"spans,omitempty"`
 
 	// TookMs The time taken to query the spans in milliseconds
@@ -144,9 +137,6 @@ type TraceSpansListResponse struct {
 	// Total The total number of matching spans, capped at 1000
 	Total *int `json:"total,omitempty"`
 }
-
-// TraceSpansListResponseSpansStatus The execution status of the span. One of "ok", "error", or "unset".
-type TraceSpansListResponseSpansStatus string
 
 // TracesListResponse defines model for TracesListResponse.
 type TracesListResponse struct {

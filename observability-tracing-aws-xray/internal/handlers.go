@@ -212,16 +212,16 @@ func toTracesListResponse(result *xray.TracesResult) gen.TracesListResponse {
 
 func toSpansListResponse(result *xray.SpansResult) gen.TraceSpansListResponse {
 	spans := make([]struct {
-		Attributes         *map[string]interface{}                 `json:"attributes,omitempty"`
-		DurationNs         *int64                                  `json:"durationNs,omitempty"`
-		EndTime            *time.Time                              `json:"endTime,omitempty"`
-		ParentSpanId       *string                                 `json:"parentSpanId,omitempty"`
-		ResourceAttributes *map[string]interface{}                 `json:"resourceAttributes,omitempty"`
-		SpanId             *string                                 `json:"spanId,omitempty"`
-		SpanKind           *string                                 `json:"spanKind,omitempty"`
-		SpanName           *string                                 `json:"spanName,omitempty"`
-		StartTime          *time.Time                              `json:"startTime,omitempty"`
-		Status             *gen.TraceSpansListResponseSpansStatus  `json:"status,omitempty"`
+		Attributes         *map[string]interface{} `json:"attributes,omitempty"`
+		DurationNs         *int64                  `json:"durationNs,omitempty"`
+		EndTime            *time.Time              `json:"endTime,omitempty"`
+		ParentSpanId       *string                 `json:"parentSpanId,omitempty"`
+		ResourceAttributes *map[string]interface{} `json:"resourceAttributes,omitempty"`
+		SpanId             *string                 `json:"spanId,omitempty"`
+		SpanKind           *string                 `json:"spanKind,omitempty"`
+		SpanName           *string                 `json:"spanName,omitempty"`
+		StartTime          *time.Time              `json:"startTime,omitempty"`
+		Status             *gen.SpanStatus         `json:"status,omitempty"`
 	}, 0, len(result.Spans))
 
 	for _, s := range result.Spans {
@@ -232,19 +232,18 @@ func toSpansListResponse(result *xray.SpansResult) gen.TraceSpansListResponse {
 		spanName := s.SpanName
 		spanKind := s.SpanKind
 		parentSpanId := s.ParentSpanID
-		status := gen.TraceSpansListResponseSpansStatus(s.Status)
 
 		entry := struct {
-			Attributes         *map[string]interface{}                 `json:"attributes,omitempty"`
-			DurationNs         *int64                                  `json:"durationNs,omitempty"`
-			EndTime            *time.Time                              `json:"endTime,omitempty"`
-			ParentSpanId       *string                                 `json:"parentSpanId,omitempty"`
-			ResourceAttributes *map[string]interface{}                 `json:"resourceAttributes,omitempty"`
-			SpanId             *string                                 `json:"spanId,omitempty"`
-			SpanKind           *string                                 `json:"spanKind,omitempty"`
-			SpanName           *string                                 `json:"spanName,omitempty"`
-			StartTime          *time.Time                              `json:"startTime,omitempty"`
-			Status             *gen.TraceSpansListResponseSpansStatus  `json:"status,omitempty"`
+			Attributes         *map[string]interface{} `json:"attributes,omitempty"`
+			DurationNs         *int64                  `json:"durationNs,omitempty"`
+			EndTime            *time.Time              `json:"endTime,omitempty"`
+			ParentSpanId       *string                 `json:"parentSpanId,omitempty"`
+			ResourceAttributes *map[string]interface{} `json:"resourceAttributes,omitempty"`
+			SpanId             *string                 `json:"spanId,omitempty"`
+			SpanKind           *string                 `json:"spanKind,omitempty"`
+			SpanName           *string                 `json:"spanName,omitempty"`
+			StartTime          *time.Time              `json:"startTime,omitempty"`
+			Status             *gen.SpanStatus         `json:"status,omitempty"`
 		}{
 			DurationNs:   &dur,
 			StartTime:    &startTime,
@@ -253,13 +252,13 @@ func toSpansListResponse(result *xray.SpansResult) gen.TraceSpansListResponse {
 			SpanName:     &spanName,
 			SpanKind:     &spanKind,
 			ParentSpanId: &parentSpanId,
-			Status:       &status,
+			Status:       toSpanStatus(s.Status, s.StatusMessage),
 		}
 
-		if s.Attributes != nil && len(s.Attributes) > 0 {
+		if len(s.Attributes) > 0 {
 			entry.Attributes = &s.Attributes
 		}
-		if s.ResourceAttributes != nil && len(s.ResourceAttributes) > 0 {
+		if len(s.ResourceAttributes) > 0 {
 			entry.ResourceAttributes = &s.ResourceAttributes
 		}
 
@@ -280,47 +279,37 @@ func toSpanDetailsResponse(span *xray.SpanDetail) gen.TraceSpanDetailsResponse {
 	startTime := span.StartTime
 	endTime := span.EndTime
 
-	attrs := make([]struct {
-		Key   *string `json:"key,omitempty"`
-		Value *string `json:"value,omitempty"`
-	}, 0, len(span.Attributes))
-	for _, a := range span.Attributes {
-		key := a.Key
-		value := a.Value
-		attrs = append(attrs, struct {
-			Key   *string `json:"key,omitempty"`
-			Value *string `json:"value,omitempty"`
-		}{Key: &key, Value: &value})
+	resp := gen.TraceSpanDetailsResponse{
+		SpanId:       &span.SpanID,
+		SpanName:     &span.SpanName,
+		SpanKind:     &span.SpanKind,
+		StartTime:    &startTime,
+		EndTime:      &endTime,
+		DurationNs:   &dur,
+		ParentSpanId: &span.ParentSpanID,
+		Status:       toSpanStatus(span.Status, span.StatusMessage),
 	}
+	if span.Attributes != nil {
+		resp.Attributes = &span.Attributes
+	}
+	if span.ResourceAttributes != nil {
+		resp.ResourceAttributes = &span.ResourceAttributes
+	}
+	return resp
+}
 
-	resAttrs := make([]struct {
-		Key   *string `json:"key,omitempty"`
-		Value *string `json:"value,omitempty"`
-	}, 0, len(span.ResourceAttributes))
-	for _, a := range span.ResourceAttributes {
-		key := a.Key
-		value := a.Value
-		resAttrs = append(resAttrs, struct {
-			Key   *string `json:"key,omitempty"`
-			Value *string `json:"value,omitempty"`
-		}{Key: &key, Value: &value})
+// toSpanStatus builds the OTel span status object from the derived code and
+// optional message. The message is omitted when empty.
+func toSpanStatus(code, message string) *gen.SpanStatus {
+	status := &gen.SpanStatus{
+		Code: ptr(gen.SpanStatusCode(code)),
 	}
-
-	return gen.TraceSpanDetailsResponse{
-		SpanId:             &span.SpanID,
-		SpanName:           &span.SpanName,
-		SpanKind:           &span.SpanKind,
-		StartTime:          &startTime,
-		EndTime:            &endTime,
-		DurationNs:         &dur,
-		ParentSpanId:       &span.ParentSpanID,
-		Status:             ptr(gen.TraceSpanDetailsResponseStatus(span.Status)),
-		Attributes:         &attrs,
-		ResourceAttributes: &resAttrs,
+	if message != "" {
+		status.Message = &message
 	}
+	return status
 }
 
 func ptr[T any](v T) *T {
 	return &v
 }
-

@@ -109,22 +109,120 @@ func TestSegmentStatus(t *testing.T) {
 	}
 }
 
-func TestSegmentKind(t *testing.T) {
+func TestSegmentStatusMessage(t *testing.T) {
 	tests := []struct {
 		name     string
 		seg      xraySegment
 		expected string
 	}{
-		{"server with origin", xraySegment{Origin: "AWS::EKS::Container"}, "SERVER"},
-		{"client subsegment", xraySegment{Type: "subsegment", Namespace: "remote"}, "CLIENT"},
-		{"aws subsegment", xraySegment{Type: "subsegment", Namespace: "aws"}, "CLIENT"},
-		{"internal subsegment", xraySegment{Type: "subsegment"}, "INTERNAL"},
-		{"default server", xraySegment{}, "SERVER"},
+		{
+			name:     "no cause",
+			seg:      xraySegment{},
+			expected: "",
+		},
+		{
+			name:     "cause is a segment reference string",
+			seg:      xraySegment{Cause: json.RawMessage(`"3f8a1c9e2b7d4a60"`)},
+			expected: "",
+		},
+		{
+			name:     "exception message",
+			seg:      xraySegment{Cause: json.RawMessage(`{"exceptions":[{"id":"a1","message":"connection refused","type":"ConnectionError"}]}`)},
+			expected: "connection refused",
+		},
+		{
+			name:     "falls back to exception type",
+			seg:      xraySegment{Cause: json.RawMessage(`{"exceptions":[{"id":"a1","type":"java.lang.RuntimeException"}]}`)},
+			expected: "java.lang.RuntimeException",
+		},
+		{
+			name:     "first populated exception wins",
+			seg:      xraySegment{Cause: json.RawMessage(`{"exceptions":[{"id":"a1"},{"id":"a2","message":"downstream 503"}]}`)},
+			expected: "downstream 503",
+		},
+		{
+			name:     "cause object without exceptions",
+			seg:      xraySegment{Cause: json.RawMessage(`{"working_directory":"/app"}`)},
+			expected: "",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := segmentKind(&tt.seg)
+			got := segmentStatusMessage(&tt.seg)
+			if got != tt.expected {
+				t.Errorf("segmentStatusMessage() = %q, want %q", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestSegmentToSpanDetail_AttributeMaps(t *testing.T) {
+	seg := xraySegment{
+		ID:          "sub1",
+		Name:        "example.com",
+		Type:        "subsegment",
+		Namespace:   "remote",
+		StartTime:   json.Number("1465510988.1"),
+		EndTime:     json.Number("1465510988.3"),
+		Error:       true,
+		Cause:       json.RawMessage(`{"exceptions":[{"id":"a1","message":"404 Not Found"}]}`),
+		Annotations: map[string]interface{}{"openchoreo.dev_namespace": "default"},
+		HTTP:        map[string]interface{}{"response": map[string]interface{}{"status": 404}},
+		AWS:         map[string]interface{}{"xray": map[string]interface{}{"sdk": "opentelemetry"}},
+		Metadata: map[string]interface{}{
+			"default": map[string]interface{}{"otel.resource.service.name": "frontend"},
+		},
+	}
+
+	detail := segmentToSpanDetail(&seg, "seg1", true)
+
+	if detail.Status != "error" {
+		t.Errorf("expected status error, got %q", detail.Status)
+	}
+	if detail.StatusMessage != "404 Not Found" {
+		t.Errorf("expected status message %q, got %q", "404 Not Found", detail.StatusMessage)
+	}
+	if v, ok := detail.Attributes["annotation.openchoreo.dev_namespace"]; !ok || v != "default" {
+		t.Errorf("expected annotation attribute, got %v", detail.Attributes)
+	}
+	// Native types are preserved rather than stringified.
+	if v, ok := detail.Attributes["http.response.status"]; !ok || v != 404 {
+		t.Errorf("expected http.response.status=404 (int), got %#v", v)
+	}
+	if v, ok := detail.Attributes["xray.namespace"]; !ok || v != "remote" {
+		t.Errorf("expected xray.namespace=remote, got %v", v)
+	}
+	if v, ok := detail.ResourceAttributes["aws.xray.sdk"]; !ok || v != "opentelemetry" {
+		t.Errorf("expected aws.xray.sdk resource attribute, got %v", detail.ResourceAttributes)
+	}
+	if v, ok := detail.ResourceAttributes["metadata.default.otel.resource.service.name"]; !ok || v != "frontend" {
+		t.Errorf("expected flattened metadata resource attribute, got %v", detail.ResourceAttributes)
+	}
+}
+
+func TestSegmentKind(t *testing.T) {
+	tests := []struct {
+		name         string
+		seg          xraySegment
+		isSubsegment bool
+		expected     string
+	}{
+		{"server with origin", xraySegment{Origin: "AWS::EKS::Container"}, false, "SERVER"},
+		{"client subsegment", xraySegment{Type: "subsegment", Namespace: "remote"}, false, "CLIENT"},
+		{"aws subsegment", xraySegment{Type: "subsegment", Namespace: "aws"}, false, "CLIENT"},
+		{"internal subsegment", xraySegment{Type: "subsegment"}, false, "INTERNAL"},
+		{"default server", xraySegment{}, false, "SERVER"},
+		// Subsegments nested in a parent segment document carry no `type` field,
+		// so the structural position is the only signal.
+		{"nested remote subsegment without type", xraySegment{Namespace: "remote"}, true, "CLIENT"},
+		{"nested aws subsegment without type", xraySegment{Namespace: "aws"}, true, "CLIENT"},
+		{"nested subsegment without type or namespace", xraySegment{}, true, "INTERNAL"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := segmentKind(&tt.seg, tt.isSubsegment)
 			if got != tt.expected {
 				t.Errorf("segmentKind() = %q, want %q", got, tt.expected)
 			}

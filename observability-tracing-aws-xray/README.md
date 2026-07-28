@@ -43,13 +43,16 @@ OpenChoreo labels are stored as filterable X-Ray annotations:
 
 | OpenChoreo label | X-Ray annotation key |
 | --- | --- |
-| `openchoreo.dev/namespace` | `openchoreo_dev_namespace` |
-| `openchoreo.dev/component-uid` | `openchoreo_dev_component_uid` |
-| `openchoreo.dev/project-uid` | `openchoreo_dev_project_uid` |
-| `openchoreo.dev/environment-uid` | `openchoreo_dev_environment_uid` |
+| `openchoreo.dev/namespace` | `openchoreo.dev_namespace` |
+| `openchoreo.dev/component-uid` | `openchoreo.dev_component_uid` |
+| `openchoreo.dev/project-uid` | `openchoreo.dev_project_uid` |
+| `openchoreo.dev/environment-uid` | `openchoreo.dev_environment_uid` |
 
-The adapter queries X-Ray using these annotations as filter expressions,
-enabling scope-based trace retrieval.
+X-Ray preserves dots in annotation keys and converts `/` and `-` to `_`.
+Because the keys contain dots, the adapter builds filter expressions with
+the bracket syntax AWS requires, for example
+`annotation[openchoreo.dev_namespace] = "default"`, enabling scope-based
+trace retrieval.
 
 | Endpoint | Purpose |
 | --- | --- |
@@ -57,6 +60,35 @@ enabling scope-based trace retrieval.
 | `POST /api/v1alpha1/traces/{traceId}/spans/query` | Fetches all spans (segments + subsegments) for a trace via `BatchGetTraces` and flattens the segment tree. |
 | `GET /api/v1alpha1/traces/{traceId}/spans/{spanId}` | Returns full detail for a specific span within a trace, including attributes and resource attributes. |
 | `GET /healthz` | Readiness and liveness check. Returns `200` once the adapter is ready. |
+
+### Span status
+
+Both span endpoints return `status` as an object that follows the
+OpenTelemetry span status model:
+
+```json
+"status": {
+  "code": "error",
+  "message": "404 Not Found"
+}
+```
+
+`code` is derived from the X-Ray segment flags:
+
+| X-Ray segment | `code` |
+| --- | --- |
+| `fault`, `error`, or `throttle` is `true` | `error` |
+| `end_time` is set and no error flag is set | `ok` |
+| Segment is still in progress (no `end_time`) | `unset` |
+
+`message` carries the human-readable status description and is omitted when
+X-Ray has none. The AWS X-Ray exporter in the OpenTelemetry Collector writes
+the OTel span status message — or the exception recorded on the span — into
+the segment `cause`, so the adapter reads the first `cause.exceptions[]`
+entry and returns its `message` (falling back to its `type` when the message
+is empty). Spans that are flagged as errors without a recorded cause, and
+segments whose `cause` is a string reference to another segment, return
+`code` only.
 
 ## Choose a deployment topology
 
@@ -396,7 +428,7 @@ helm upgrade --install observability-tracing-aws-xray \
   oci://ghcr.io/openchoreo/helm-charts/observability-tracing-aws-xray \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.2.0 \
+  --version 0.3.0 \
   --set region="$AWS_REGION"
 ```
 
@@ -409,7 +441,7 @@ helm upgrade --install observability-tracing-aws-xray \
   oci://ghcr.io/openchoreo/helm-charts/observability-tracing-aws-xray \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.2.0 \
+  --version 0.3.0 \
   --set region="$AWS_REGION" \
   --set opentelemetry-collector.enabled=false
 ```
@@ -423,7 +455,7 @@ helm upgrade --install observability-tracing-aws-xray \
   oci://ghcr.io/openchoreo/helm-charts/observability-tracing-aws-xray \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.2.0 \
+  --version 0.3.0 \
   --set region="$AWS_REGION" \
   --set adapter.enabled=false
 ```
@@ -669,7 +701,7 @@ helm upgrade --install observability-tracing-aws-xray \
   oci://ghcr.io/openchoreo/helm-charts/observability-tracing-aws-xray \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.2.0 \
+  --version 0.3.0 \
   --set region="$AWS_REGION" \
   --set awsCredentials.create=true \
   --set awsCredentials.name=tracing-aws-xray-aws-credentials \
@@ -688,7 +720,7 @@ helm upgrade --install observability-tracing-aws-xray \
   oci://ghcr.io/openchoreo/helm-charts/observability-tracing-aws-xray \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.2.0 \
+  --version 0.3.0 \
   --set region="$AWS_REGION" \
   --set awsCredentials.create=true \
   --set awsCredentials.name=tracing-aws-xray-aws-credentials \
@@ -706,7 +738,7 @@ helm upgrade --install observability-tracing-aws-xray \
   oci://ghcr.io/openchoreo/helm-charts/observability-tracing-aws-xray \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.2.0 \
+  --version 0.3.0 \
   --set region="$AWS_REGION" \
   --set awsCredentials.create=true \
   --set awsCredentials.name=tracing-aws-xray-aws-credentials \
@@ -800,4 +832,5 @@ Bundled upstream Helm charts:
 
 | Module Version | OpenChoreo Version |
 |----------------|--------------------|
+| v0.3.x         | v1.2.x             |
 | v0.2.x         | v1.1.x             |

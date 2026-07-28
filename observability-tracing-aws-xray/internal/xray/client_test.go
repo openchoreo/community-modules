@@ -368,6 +368,71 @@ func TestGetSpans_WithScientificNotationTimestamps(t *testing.T) {
 	}
 }
 
+func TestGetSpans_StatusMessage(t *testing.T) {
+	segDoc := `{
+		"id": "seg1",
+		"name": "frontend",
+		"trace_id": "1-6a19017d-ca1791cb19542f1806dc624c",
+		"start_time": 1.778478205e+09,
+		"end_time": 1.778478205001e+09,
+		"subsegments": [
+			{
+				"id": "sub1",
+				"name": "example.com",
+				"namespace": "remote",
+				"start_time": 1.778478205e+09,
+				"end_time": 1.778478205001e+09,
+				"error": true,
+				"cause": {"exceptions": [{"id": "a1", "message": "404 Not Found"}]}
+			}
+		]
+	}`
+
+	mock := &mockXRayClient{
+		batchGetTracesFn: func(ctx context.Context, input *xray.BatchGetTracesInput, opts ...func(*xray.Options)) (*xray.BatchGetTracesOutput, error) {
+			return &xray.BatchGetTracesOutput{
+				Traces: []xraytypes.Trace{
+					{
+						Id: aws.String("1-6a19017d-ca1791cb19542f1806dc624c"),
+						Segments: []xraytypes.Segment{
+							{Document: aws.String(segDoc)},
+						},
+					},
+				},
+			}, nil
+		},
+	}
+
+	client := NewClientWithAWS(mock, &mockSTSClient{}, testLogger())
+	result, err := client.GetSpans(context.Background(), TracesQueryParams{
+		TraceID: "6a19017dca1791cb19542f1806dc624c",
+		Limit:   100,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result.Spans) != 2 {
+		t.Fatalf("expected 2 spans, got %d", len(result.Spans))
+	}
+	if result.Spans[0].Status != "ok" || result.Spans[0].StatusMessage != "" {
+		t.Errorf("expected root span ok with no message, got %q/%q", result.Spans[0].Status, result.Spans[0].StatusMessage)
+	}
+	if result.Spans[0].SpanKind != "SERVER" {
+		t.Errorf("expected root span kind SERVER, got %q", result.Spans[0].SpanKind)
+	}
+	// The nested subsegment has no `type` field, so its kind comes from its
+	// structural position plus the remote namespace.
+	if result.Spans[1].SpanKind != "CLIENT" {
+		t.Errorf("expected subsegment kind CLIENT, got %q", result.Spans[1].SpanKind)
+	}
+	if result.Spans[1].Status != "error" {
+		t.Errorf("expected subsegment status error, got %q", result.Spans[1].Status)
+	}
+	if result.Spans[1].StatusMessage != "404 Not Found" {
+		t.Errorf("expected subsegment status message '404 Not Found', got %q", result.Spans[1].StatusMessage)
+	}
+}
+
 func TestGetSpanDetail_Found(t *testing.T) {
 	segDoc := `{
 		"id": "seg1",

@@ -177,3 +177,102 @@ func TestToTracesListResponse(t *testing.T) {
 		t.Errorf("expected traceName GET /api, got %s", *trace.TraceName)
 	}
 }
+
+func TestToSpansListResponse_Status(t *testing.T) {
+	result := &xray.SpansResult{
+		Spans: []xray.SpanEntry{
+			{
+				SpanID:        "span-1",
+				SpanName:      "example.com",
+				SpanKind:      "CLIENT",
+				Status:        "error",
+				StatusMessage: "404 Not Found",
+				Attributes:    map[string]interface{}{"http.response.status": 404},
+			},
+			{
+				SpanID:   "span-2",
+				SpanName: "frontend",
+				SpanKind: "SERVER",
+				Status:   "ok",
+			},
+		},
+		Total:  2,
+		TookMs: 7,
+	}
+
+	resp := toSpansListResponse(result)
+
+	if resp.Spans == nil || len(*resp.Spans) != 2 {
+		t.Fatalf("expected 2 spans, got %v", resp.Spans)
+	}
+
+	failed := (*resp.Spans)[0]
+	if failed.Status == nil || failed.Status.Code == nil || *failed.Status.Code != gen.Error {
+		t.Errorf("expected status code error, got %+v", failed.Status)
+	}
+	if failed.Status.Message == nil || *failed.Status.Message != "404 Not Found" {
+		t.Errorf("expected status message '404 Not Found', got %+v", failed.Status.Message)
+	}
+	if failed.Attributes == nil {
+		t.Error("expected attributes to be populated")
+	}
+
+	succeeded := (*resp.Spans)[1]
+	if succeeded.Status == nil || succeeded.Status.Code == nil || *succeeded.Status.Code != gen.Ok {
+		t.Errorf("expected status code ok, got %+v", succeeded.Status)
+	}
+	if succeeded.Status.Message != nil {
+		t.Errorf("expected no status message, got %q", *succeeded.Status.Message)
+	}
+	if succeeded.Attributes != nil {
+		t.Errorf("expected attributes to be omitted, got %v", *succeeded.Attributes)
+	}
+}
+
+func TestToSpanDetailsResponse(t *testing.T) {
+	startTime := time.Date(2026, 7, 28, 12, 0, 0, 0, time.UTC)
+	endTime := startTime.Add(time.Second)
+
+	span := &xray.SpanDetail{
+		SpanID:        "span-1",
+		SpanName:      "example.com",
+		SpanKind:      "CLIENT",
+		StartTime:     startTime,
+		EndTime:       endTime,
+		DurationNs:    int64(time.Second),
+		ParentSpanID:  "seg-1",
+		Status:        "error",
+		StatusMessage: "connection refused",
+		Attributes: map[string]interface{}{
+			"http.response.status": 404,
+			"xray.namespace":       "remote",
+		},
+		ResourceAttributes: map[string]interface{}{
+			"cloud.platform": "AWS::EKS::Container",
+		},
+	}
+
+	resp := toSpanDetailsResponse(span)
+
+	if resp.Status == nil || resp.Status.Code == nil || *resp.Status.Code != gen.Error {
+		t.Errorf("expected status code error, got %+v", resp.Status)
+	}
+	if resp.Status.Message == nil || *resp.Status.Message != "connection refused" {
+		t.Errorf("expected status message 'connection refused', got %+v", resp.Status.Message)
+	}
+	if resp.Attributes == nil {
+		t.Fatal("expected attributes to be populated")
+	}
+	if v := (*resp.Attributes)["http.response.status"]; v != 404 {
+		t.Errorf("expected native int attribute value 404, got %#v", v)
+	}
+	if resp.ResourceAttributes == nil {
+		t.Fatal("expected resource attributes to be populated")
+	}
+	if v := (*resp.ResourceAttributes)["cloud.platform"]; v != "AWS::EKS::Container" {
+		t.Errorf("expected cloud.platform resource attribute, got %#v", v)
+	}
+	if *resp.DurationNs != int64(time.Second) {
+		t.Errorf("expected durationNs 1s, got %d", *resp.DurationNs)
+	}
+}

@@ -69,6 +69,7 @@ type SpanEntry struct {
 	DurationNs         int64
 	ParentSpanID       string
 	Status             string
+	StatusMessage      string
 	Attributes         map[string]interface{}
 	ResourceAttributes map[string]interface{}
 }
@@ -77,11 +78,6 @@ type SpansResult struct {
 	Spans  []SpanEntry
 	Total  int
 	TookMs int
-}
-
-type SpanAttribute struct {
-	Key   string
-	Value string
 }
 
 type SpanDetail struct {
@@ -93,8 +89,9 @@ type SpanDetail struct {
 	DurationNs         int64
 	ParentSpanID       string
 	Status             string
-	Attributes         []SpanAttribute
-	ResourceAttributes []SpanAttribute
+	StatusMessage      string
+	Attributes         map[string]interface{}
+	ResourceAttributes map[string]interface{}
 }
 
 type SpanDetailResult struct {

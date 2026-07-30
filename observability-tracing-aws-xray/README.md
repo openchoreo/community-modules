@@ -84,11 +84,11 @@ OpenTelemetry span status model:
 `message` carries the human-readable status description and is omitted when
 X-Ray has none. The AWS X-Ray exporter in the OpenTelemetry Collector writes
 the OTel span status message — or the exception recorded on the span — into
-the segment `cause`, so the adapter reads the first `cause.exceptions[]`
-entry and returns its `message` (falling back to its `type` when the message
-is empty). Spans that are flagged as errors without a recorded cause, and
-segments whose `cause` is a string reference to another segment, return
-`code` only.
+the segment `cause`, so the adapter reads the first usable
+`cause.exceptions[]` entry and returns its `message` (falling back to its
+`type` when the message is empty). Spans that are flagged as errors without a
+recorded cause, and segments whose `cause` is a string reference to another
+segment, return `code` only.
 
 ## Choose a deployment topology
 

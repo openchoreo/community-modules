@@ -208,7 +208,7 @@ func TestToSpansListResponse_Status(t *testing.T) {
 
 	failed := (*resp.Spans)[0]
 	if failed.Status == nil || failed.Status.Code == nil || *failed.Status.Code != gen.Error {
-		t.Errorf("expected status code error, got %+v", failed.Status)
+		t.Fatalf("expected status code error, got %+v", failed.Status)
 	}
 	if failed.Status.Message == nil || *failed.Status.Message != "404 Not Found" {
 		t.Errorf("expected status message '404 Not Found', got %+v", failed.Status.Message)
@@ -255,7 +255,7 @@ func TestToSpanDetailsResponse(t *testing.T) {
 	resp := toSpanDetailsResponse(span)
 
 	if resp.Status == nil || resp.Status.Code == nil || *resp.Status.Code != gen.Error {
-		t.Errorf("expected status code error, got %+v", resp.Status)
+		t.Fatalf("expected status code error, got %+v", resp.Status)
 	}
 	if resp.Status.Message == nil || *resp.Status.Message != "connection refused" {
 		t.Errorf("expected status message 'connection refused', got %+v", resp.Status.Message)

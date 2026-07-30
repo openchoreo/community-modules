@@ -3,7 +3,7 @@ module github.com/openchoreo/community-modules/observability-metrics-aws-cloudwa
 go 1.26.2
 
 require (
-	github.com/aws/aws-sdk-go-v2 v1.43.0
+	github.com/aws/aws-sdk-go-v2 v1.43.2
 	github.com/aws/aws-sdk-go-v2/config v1.32.25
 	github.com/aws/aws-sdk-go-v2/service/cloudwatch v1.61.1
 	github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs v1.79.0

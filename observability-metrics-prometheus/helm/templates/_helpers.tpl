@@ -10,6 +10,12 @@ SPDX-License-Identifier: Apache-2.0
 {{- fail (printf "global.installationMode must be one of [%s] (got %q)" (join ", " $allowed) $mode) -}}
 {{- end -}}
 
+{{- $agentPersist := false -}}
+{{- with .Values.prometheusCustomizations }}{{ with .agent }}{{ with .persistence }}{{ $agentPersist = .enabled }}{{ end }}{{ end }}{{ end -}}
+{{- if and $agentPersist (ne $mode "multiClusterExporter") -}}
+{{- fail (printf "prometheusCustomizations.agent.persistence.enabled only applies when global.installationMode is \"multiClusterExporter\" (got %q). The central Prometheus TSDB is persisted via kube-prometheus-stack.prometheus.prometheusSpec.storageSpec." $mode) -}}
+{{- end -}}
+
 {{- if eq $mode "multiClusterExporter" -}}
 {{- $obsPlaneUrl := "" -}}
 {{- with .Values.prometheusCustomizations }}{{ with .http }}{{ $obsPlaneUrl = .observabilityPlaneUrl }}{{ end }}{{ end -}}

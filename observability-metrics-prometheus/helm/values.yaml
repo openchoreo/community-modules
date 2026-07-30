@@ -49,6 +49,25 @@ kube-prometheus-stack:
       ruleNamespaceSelector: {}
       ruleSelector: {}
       ruleSelectorNilUsesHelmValues: false
+      storageSpec:
+        volumeClaimTemplate:
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: 10Gi
+            # storageClassName: ""
+            # storageClassName is deliberately commented out:
+            # omitting the key means "use the cluster's default StorageClass",
+            # whereas storageClassName: "" means "disable dynamic provisioning".
+            # On a cluster with no default StorageClass, pass one explicitly:
+
+      # Retention is bounded by time and by size; whichever trips first evicts
+      # the oldest data. retentionSize must stay below the volume size.
+      # Keep retentionSize at ~80% of storage; change both together.
+      retention: 10d
+      retentionSize: 8GiB
     service:
       port: 9091
       reloaderWebPort: 8081
@@ -61,30 +80,43 @@ kube-prometheus-stack:
         name: alertmanager
       resources:
         requests:
-          memory: '100Mi'
-          cpu: '50m'
+          memory: "100Mi"
+          cpu: "50m"
         limits:
-          memory: '200Mi'
-          cpu: '100m'
+          memory: "200Mi"
+          cpu: "100m"
+      # Persist silences and the notification log (dedup state) so a restart
+      # doesn't drop silences or re-notify for alerts already sent.
+      # storageClassName is omitted on purpose — same as
+      # prometheus.prometheusSpec.storageSpec above. To opt out:
+      #   --set-json 'kube-prometheus-stack.alertmanager.alertmanagerSpec.storage.emptyDir={}'
+      storage:
+        volumeClaimTemplate:
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: 1Gi
     config:
       global:
         resolve_timeout: 5m
       route:
-        group_by: ['alertname']
+        group_by: ["alertname"]
         group_wait: 30s
         group_interval: 5m
         repeat_interval: 12h
-        receiver: 'null'
+        receiver: "null"
         routes:
-          - receiver: 'openchoreo-alerts'
+          - receiver: "openchoreo-alerts"
             matchers:
               - openchoreo_alert = true
       receivers:
-        - name: 'openchoreo-alerts'
+        - name: "openchoreo-alerts"
           webhook_configs:
-            - url: 'http://metrics-adapter:9099/api/v1alpha1/alerts/webhook'
+            - url: "http://metrics-adapter:9099/api/v1alpha1/alerts/webhook"
               send_resolved: false
-        - name: 'null'
+        - name: "null"
 
   grafana:
     enabled: false
@@ -183,7 +215,19 @@ adapter:
 
 prometheusCustomizations:
   http:
-    observabilityPlaneUrl: ""         # multiClusterExporter: remote write receiver URL (e.g., http://prometheus.<gateway-domain>:9091/api/v1/write)
-    hostnames: []                     # multiClusterReceiver: hostnames for the gateway HTTPRoute
+    observabilityPlaneUrl: "" # multiClusterExporter: remote write receiver URL (e.g., http://prometheus.<gateway-domain>:9091/api/v1/write)
+    hostnames: [] # multiClusterReceiver: hostnames for the gateway HTTPRoute
   remoteWrite:
-    tlsInsecureSkipVerify: false      # multiClusterExporter: skip TLS verification for self-signed certs on the receiver
+    tlsInsecureSkipVerify: false # multiClusterExporter: skip TLS verification for self-signed certs on the receiver
+  agent:
+    # multiClusterExporter only. The PrometheusAgent buffers samples the receiver
+    # has not yet acked in a WAL; on an emptyDir those are lost if the pod
+    # restarts while the receiver is unreachable. Off by default so exporter
+    # clusters install with no storage dependency. If storageClassName is empty
+    # the cluster's default StorageClass is used; with no default the PVC stays
+    # Pending and the agent never starts.
+    persistence:
+      enabled: false
+      size: 2Gi
+      storageClassName: ""
+      accessMode: ReadWriteOnce

@@ -71,7 +71,7 @@ helm upgrade --install observability-metrics-prometheus \
 
 ## Storage and retention
 
-In `singleCluster` and `multiClusterReceiver` modes, the Prometheus server stores its TimeSeries DataBase (TSDB) on a ersistentVolumeClaim by default, so metrics survive the pod being replaced by a restart, an eviction, a node drain or a chart upgrade. Alertmanager likewise persists its silences and notification log.
+In `singleCluster` and `multiClusterReceiver` modes, the Prometheus server stores its TimeSeries DataBase (TSDB) on a PersistentVolumeClaim by default, so metrics survive the pod being replaced by a restart, an eviction, a node drain or a chart upgrade. Alertmanager likewise persists its silences and notification log.
 
 | Option                                                                                                            | Default   | Description                                                                             |
 | ----------------------------------------------------------------------------------------------------------------- | --------- | --------------------------------------------------------------------------------------- |
@@ -128,7 +128,7 @@ helm upgrade --install observability-metrics-prometheus \
 
 ### Running without persistence
 
-To use to ephemeral storage — metrics are then lost on every pod restart — hand the operator an `emptyDir`:
+To use ephemeral storage — metrics are then lost on every pod restart — hand the operator an `emptyDir`:
 
 ```bash
 helm upgrade --install observability-metrics-prometheus \
@@ -143,8 +143,11 @@ helm upgrade --install observability-metrics-prometheus \
 `helm uninstall` does **not** delete the PVCs — they are owned by the StatefulSets rather than by Helm, and the retention policy is `Retain`. A later reinstall reuses them along with their existing metrics. Note also that a retained PVC keeps its original size, so a reinstall with a larger `storage` value will not grow it. To discard the data explicitly:
 
 ```bash
+kubectl get pvc -n openchoreo-observability-plane \
+  -l 'app.kubernetes.io/instance=openchoreo-observability,app.kubernetes.io/name in (prometheus,alertmanager)'
+
 kubectl delete pvc -n openchoreo-observability-plane \
-  -l 'app.kubernetes.io/name in (prometheus,alertmanager)'
+  -l 'app.kubernetes.io/instance=openchoreo-observability,app.kubernetes.io/name in (prometheus,alertmanager)'
 ```
 
 ## Verification

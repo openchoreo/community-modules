@@ -24,16 +24,27 @@ kubectl create secret generic moesif-tracing-secret \
   --namespace openchoreo-observability-plane
 ```
 
+### (Optional) Create a Search API Secret for Built-in Dashboards
+
+> **Note:** This step is **optional** and only required if you want to populate the built-in dashboards with trace data from Moesif.
+> The Management API key generation is a **paid feature** of Moesif. Configure this only if your Moesif plan supports it.
+
+To generate an API key in Moesif:
+
+1. Go to your Moesif dashboard and navigate to the **Management API Keys** section.
+2. Create a new API key and select scopes under the **Analytics** section with **read** permission.
+3. Create one key per environment, or use a single organization-level key.
+
+Create the search secret with a bearer token per environment:
+
+```bash
+kubectl create secret generic moesif-trace-search-secret \
+  --from-literal=development="YOUR_DEV_MANAGEMENT_API_BEARER_TOKEN" \
+  --from-literal=production="YOUR_PROD_MANAGEMENT_API_BEARER_TOKEN" \
+  --namespace openchoreo-observability-plane
+```
+
 ### Install the Helm Chart
-
-#### Installation modes
-
-This chart supports two `global.installationMode` values:
-
-- **`singleCluster`** *(default)*: Deploy the OpenTelemetry Collector into a single cluster where both the dataplane and the observability plane reside.
-- **`multiClusterReceiver`**: Deploy the OpenTelemetry Collector as a central receiver in the observability plane cluster. It accepts OTLP traces from remote dataplane clusters and forwards them to Moesif.
-
-#### Single-cluster topology
 
 ```bash
 helm upgrade --install observability-tracing-moesif \
@@ -43,29 +54,13 @@ helm upgrade --install observability-tracing-moesif \
   --version 0.1.0
 ```
 
-#### Multi-cluster topology (receiver)
-
-Install in the observability plane cluster. An HTTPRoute will be created so that dataplane clusters can push OTLP traces over HTTP/gRPC.
-
-```bash
-helm upgrade --install observability-tracing-moesif \
-  oci://ghcr.io/openchoreo/helm-charts/observability-tracing-moesif \
-  --create-namespace \
-  --namespace openchoreo-observability-plane \
-  --version 0.1.0 \
-  --set global.installationMode="multiClusterReceiver"
-```
 
 ### Configuration Options
 
-For easier configuration management, create a `moesif-tracing-values.yaml` file:
+For easier configuration management, create a `values.yaml` file:
 
 ```yaml
-# moesif-tracing-values.yaml
-
-global:
-  # installationMode: "singleCluster"   # default
-  # installationMode: "multiClusterReceiver"
+# values.yaml
 
 moesif:
   # List of environment names to collect traces from.
@@ -74,12 +69,23 @@ moesif:
     - development
     - production
 
-  # (Optional) Moesif API endpoint. Defaults to https://api.moesif.net
-  # endpoint: "https://api.moesif.net"
+  # Moesif adapter configuration
+  adapter:
+    enabled: true
 
 opentelemetryCollectorCustomizations:
+  debug:
+    enabled: false  # Enable debug exporter for troubleshooting
+
   tailSampling:
-    enabled: false  # Enable tail-based sampling if needed
+    enabled: true  # Enable tail-based sampling
+    decisionWait: 10s
+    numTraces: 100
+    expectedNewTracesPerSec: 10
+    decisionCache:
+      sampledCacheSize: 10000
+      nonSampledCacheSize: 1000
+    spansPerSecond: 10
 ```
 
 Then install with:
@@ -97,17 +103,26 @@ helm upgrade --install observability-tracing-moesif \
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `global.installationMode` | Installation mode: `singleCluster` or `multiClusterReceiver` | `singleCluster` |
 | `moesif.environments` | List of environment names to collect traces from | `[development, production]` |
 | `moesif.endpoint` | (Optional) Moesif API endpoint URL | `https://api.moesif.net` |
-| `opentelemetryCollectorCustomizations.tailSampling.enabled` | Enable tail-based sampling | `false` |
+| `moesif.adapter.enabled` | Enable the Moesif adapter for trace search | `true` |
+| `moesif.adapter.searchEndpoint` | Moesif search API endpoint | `https://api.moesif.com` |
+| `moesif.adapter.searchSecretName` | Secret name for Moesif search credentials | `moesif-search-credentials` |
+| `opentelemetryCollectorCustomizations.debug.enabled` | Enable debug exporter for troubleshooting | `false` |
+| `opentelemetryCollectorCustomizations.tailSampling.enabled` | Enable tail-based sampling | `true` |
+| `opentelemetryCollectorCustomizations.tailSampling.decisionWait` | Wait time before making a sampling decision | `10s` |
+| `opentelemetryCollectorCustomizations.tailSampling.numTraces` | Number of traces kept in memory | `100` |
+| `opentelemetryCollectorCustomizations.tailSampling.expectedNewTracesPerSec` | Expected number of new traces per second | `10` |
+| `opentelemetryCollectorCustomizations.tailSampling.decisionCache.sampledCacheSize` | Size of sampled decision cache | `10000` |
+| `opentelemetryCollectorCustomizations.tailSampling.decisionCache.nonSampledCacheSize` | Size of non-sampled decision cache | `1000` |
+| `opentelemetryCollectorCustomizations.tailSampling.spansPerSecond` | Rate limit for spans per second | `10` |
 
 ## How It Works
 
 This module deploys an **OpenTelemetry Collector** that:
 
 1. Receives OTLP traces (gRPC on port `4317`, HTTP on port `4318`) from instrumented workloads.
-2. Enriches spans with Kubernetes metadata (pod name, deployment, namespace, etc.) using the `k8sattributes` processor (in `singleCluster` mode).
+2. Enriches spans with Kubernetes metadata (pod name, deployment, namespace, etc.) using the `k8sattributes` processor.
 3. Routes traces to the correct Moesif application based on the `openchoreo.dev/environment` resource attribute.
 4. Exports traces to Moesif using the Moesif Collector Application ID stored in the `moesif-tracing-secret` Kubernetes secret.
 

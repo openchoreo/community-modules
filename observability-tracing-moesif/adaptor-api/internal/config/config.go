@@ -35,9 +35,8 @@ func (c *Config) AuthMode() string {
 // LoadConfig loads and validates configuration from environment variables.
 func LoadConfig() (*Config, error) {
 	serverPort := getEnv("SERVER_PORT", "9100")
-	//searchEndpoint := getEnv("SEARCH_ENDPOINT", "https://api-dev.moesif.com")
-	searchEndpoint := getEnv("SEARCH_ENDPOINT", "https://search-dev.internal.moesif.com")
-	searchAuthMode := getEnv("SEARCH_AUTH_MODE", AuthModeAPIKey)
+	searchEndpoint := getEnv("SEARCH_ENDPOINT", "https://api.moesif.com")
+	searchAuthMode := getEnv("SEARCH_AUTH_MODE", AuthModeBearer)
 	envAPIBaseURL := getEnv("ENV_API_BASE_URL", "http://openchoreo-api.openchoreo-control-plane:8080")
 	oauthTokenURL := getEnv("OAUTH_TOKEN_URL", "http://thunder.openchoreo.localhost:8080/oauth2/token")
 	oauthClientID := getEnv("OAUTH_CLIENT_ID", "openchoreo-observer-resource-reader-client")
@@ -71,8 +70,7 @@ func LoadConfig() (*Config, error) {
 // Each file name is the environment name and its content is the token.
 // e.g. /etc/moesif/env/development contains "dev.token" → {"development": "dev.token"}
 func loadEnvTokens() map[string]string {
-	//const tokenDir = "/etc/moesif/env"
-	const tokenDir = "/Users/rukshan/Documents/OC/community-modules/observability-tracing-moesif-cloud/volume"
+	const tokenDir = "/etc/moesif/env"
 	tokens := make(map[string]string)
 	entries, err := os.ReadDir(tokenDir)
 	if err != nil {

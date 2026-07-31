@@ -1,0 +1,21 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+{{- if .Values.moesif.adapter.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: tracing-adapter
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: tracing-adapter-moesif
+spec:
+  type: ClusterIP
+  ports:
+  - port: 9100
+    targetPort: 9100
+    protocol: TCP
+    name: http
+  selector:
+    app: tracing-adapter-moesif
+{{- end }}

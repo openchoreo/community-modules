@@ -1,0 +1,65 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+{{- if .Values.moesif.adapter.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: logs-adapter-moesif
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: logs-adapter-moesif
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: logs-adapter-moesif
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/adapter/configmap.yaml") . | sha256sum }}
+      labels:
+        app: logs-adapter-moesif
+    spec:
+      securityContext:
+        runAsUser: 10500
+        runAsGroup: 10500
+        runAsNonRoot: true
+      containers:
+      - name: logs-adapter-moesif
+        image: "{{ .Values.moesif.adapter.image.repository }}:{{ .Values.moesif.adapter.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.moesif.adapter.image.pullPolicy | default "IfNotPresent" }}
+        ports:
+        - containerPort: 9098
+        envFrom:
+        - configMapRef:
+            name: logs-adapter-moesif
+        env:
+        - name: SEARCH_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.moesif.adapter.searchSecretName }}
+              key: SEARCH_API_KEY
+              optional: true
+        - name: SEARCH_BEARER_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.moesif.adapter.searchSecretName }}
+              key: SEARCH_BEARER_TOKEN
+              optional: true
+        volumeMounts:
+        - name: moesif-search-secret
+          mountPath: /etc/moesif/env
+          readOnly: true
+        resources:
+          limits:
+            cpu: {{ .Values.moesif.adapter.resources.limits.cpu }}
+            memory: {{ .Values.moesif.adapter.resources.limits.memory }}
+          requests:
+            cpu: {{ .Values.moesif.adapter.resources.requests.cpu }}
+            memory: {{ .Values.moesif.adapter.resources.requests.memory }}
+      volumes:
+      - name: moesif-search-secret
+        secret:
+          secretName: moesif-logs-search-secret
+{{- end }}

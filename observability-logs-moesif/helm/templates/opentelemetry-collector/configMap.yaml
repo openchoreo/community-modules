@@ -4,13 +4,21 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: opentelemetry-collector-config
+  name: moesif-logs-collector-config
   namespace: {{ .Release.Namespace }}
 data:
   relay: |
     extensions:
       health_check:
         endpoint: ${env:MY_POD_IP}:13133
+      headers_setter:
+        headers:
+          - action: upsert
+            key: X-Moesif-Org-Id
+            from_context: X-Moesif-Org-Id
+          - action: upsert
+            key: X-Moesif-App-Id
+            from_context: X-Moesif-App-Id
 
     receivers:
       otlp:
@@ -19,17 +27,24 @@ data:
             endpoint: 0.0.0.0:4317
           http:
             endpoint: 0.0.0.0:4318
+            include_metadata: true
 
     exporters:
+      {{- if .Values.opentelemetryCollectorCustomizations.debug.enabled }}
+      debug:
+        verbosity: detailed
+      {{- end }}
       {{- range .Values.moesif.environments }}
       otlphttp/{{ . }}:
         endpoint: {{ $.Values.moesif.endpoint | default "https://api.moesif.net" | quote }}
         headers:
-          {{- if eq $.Values.moesif.auth_mode "api-key" }}
+          {{- if eq $.Values.moesif.auth_mode "api_key" }}
           X-Api-Token: ${env:api_key}
           {{- else }}
           X-Moesif-Application-Id: ${env:{{ . | replace "-" "_" }}}
           {{- end }}
+        auth:
+          authenticator: headers_setter
       {{- end }}
 
     connectors:
@@ -47,9 +62,16 @@ data:
           - context: resource
             statements:
               - set(attributes["service.name"], attributes["openchoreo.dev/component"])
+      batch:
+        metadata_keys:
+          - X-Moesif-Org-Id
+          - X-Moesif-App-Id
+        metadata_cardinality_limit: 1000
+        timeout: 10s
+        send_batch_size: 1024
 
     service:
-      extensions: [health_check]
+      extensions: [health_check, headers_setter]
       pipelines:
         logs/in:
           receivers: [ otlp ]
@@ -59,5 +81,6 @@ data:
         {{- range .Values.moesif.environments }}
         logs/{{ . }}:
           receivers: [ routing ]
-          exporters: [ otlphttp/{{ . }} ]
+          processors: [ batch ]
+          exporters: [ otlphttp/{{ . }}{{- if $.Values.opentelemetryCollectorCustomizations.debug.enabled }}, debug{{- end }} ]
         {{- end }}

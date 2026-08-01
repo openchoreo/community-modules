@@ -4,9 +4,9 @@ dependencies:
   version: 0.56.0
 - name: openobserve-standalone
   repository: https://charts.openobserve.ai
-  version: 0.91.1
+  version: 0.91.2
 - name: openobserve
   repository: https://charts.openobserve.ai
   version: 0.91.1
-digest: sha256:22e172413fdcb6658939ac8f8f10548b6a87c00c1d905346b235b85160be312d
-generated: "2026-07-22T17:10:53.021309+05:30"
+digest: sha256:b4faaa71dd794382a632aff0c6b641ab61772c931de5dee409fa487ee4e0904a
+generated: "2026-08-01T08:36:33.889542222Z"

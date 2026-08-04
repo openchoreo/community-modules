@@ -200,7 +200,6 @@ func (h *CostHandler) GetRecommendations(ctx context.Context, request gen.GetRec
 	}
 
 	components := collectComponents(sets)
-	windowHours := params.EndTime.Sub(params.StartTime).Hours()
 
 	results := make([]*gen.ComponentRecommendation, len(components))
 	jobs := make(chan int)
@@ -210,7 +209,7 @@ func (h *CostHandler) GetRecommendations(ctx context.Context, request gen.GetRec
 		go func() {
 			defer wg.Done()
 			for i := range jobs {
-				results[i] = h.recommendComponent(ctx, token, request, params, components[i], windowHours)
+				results[i] = h.recommendComponent(ctx, token, request, params, components[i])
 			}
 		}()
 	}
@@ -239,7 +238,6 @@ func (h *CostHandler) recommendComponent(
 	request gen.GetRecommendationsRequestObject,
 	params gen.GetRecommendationsParams,
 	comp componentPricing,
-	windowHours float64,
 ) *gen.ComponentRecommendation {
 	metrics, err := h.observer.QueryResourceMetrics(ctx, token, observer.ComponentSearchScope{
 		Namespace:   request.Namespace,
@@ -265,7 +263,6 @@ func (h *CostHandler) recommendComponent(
 	}
 	recommended := recommend.Compute(usage, current, h.recommendCfg)
 
-	cpuPrice, ramPrice := comp.unitPrices()
 	return &gen.ComponentRecommendation{
 		ComponentUid:   parseUUID(comp.componentUID),
 		Component:      comp.component,
@@ -274,12 +271,18 @@ func (h *CostHandler) recommendComponent(
 		ProjectUid:     parseUUID(comp.projectUID),
 		Project:        comp.project,
 		Namespace:      request.Namespace,
-		// Current cost is the actual spend reported by OpenCost. The
-		// recommendation cost is projected from the recommended request at
-		// the same unit price, since no actual spend exists for it yet.
 		Current:        buildProfile(current, comp.cpuCost, comp.ramCost),
-		Recommendation: buildProfile(recommended, recommended.CPURequest*windowHours*cpuPrice, recommended.MemRequest*windowHours*ramPrice),
+		Recommendation: buildProfile(recommended,
+			scaleCost(comp.cpuCost, quantizeCores(recommended.CPURequest), quantizeCores(current.CPURequest)),
+			scaleCost(comp.ramCost, quantizeBytes(recommended.MemRequest), quantizeBytes(current.MemRequest))),
 	}
+}
+
+func scaleCost(currentCost, recRequest, curRequest float64) float64 {
+	if curRequest <= 0 {
+		return currentCost
+	}
+	return currentCost * recRequest / curRequest
 }
 
 type componentPricing struct {
@@ -288,19 +291,7 @@ type componentPricing struct {
 	project      string
 	projectUID   string
 	cpuCost      float64
-	cpuCoreHours float64
 	ramCost      float64
-	ramByteHours float64
-}
-
-func (c componentPricing) unitPrices() (cpuPerCoreHour, ramPerByteHour float64) {
-	if c.cpuCoreHours > 0 {
-		cpuPerCoreHour = c.cpuCost / c.cpuCoreHours
-	}
-	if c.ramByteHours > 0 {
-		ramPerByteHour = c.ramCost / c.ramByteHours
-	}
-	return cpuPerCoreHour, ramPerByteHour
 }
 
 func collectComponents(sets []map[string]opencost.Allocation) []componentPricing {
@@ -324,9 +315,7 @@ func collectComponents(sets []map[string]opencost.Allocation) []componentPricing
 				order = append(order, uid)
 			}
 			c.cpuCost += alloc.CPUCost
-			c.cpuCoreHours += alloc.CPUCoreHours
 			c.ramCost += alloc.RAMCost
-			c.ramByteHours += alloc.RAMByteHours
 		}
 	}
 	result := make([]componentPricing, 0, len(order))
@@ -389,14 +378,20 @@ func values(items []observer.TimeSeriesItem) []float64 {
 	return out
 }
 
+func millicores(cores float64) int64 { return int64(cores*1000 + 0.5) }
+
+func mebibytes(bytes float64) int64 { return int64(bytes/(1024*1024) + 0.5) }
+
+func quantizeCores(cores float64) float64 { return float64(millicores(cores)) / 1000 }
+
+func quantizeBytes(bytes float64) float64 { return float64(mebibytes(bytes)) * 1024 * 1024 }
+
 func coresToQuantity(cores float64) string {
-	millicores := int64(cores*1000 + 0.5)
-	return fmt.Sprintf("%dm", millicores)
+	return fmt.Sprintf("%dm", millicores(cores))
 }
 
 func bytesToQuantity(bytes float64) string {
-	mib := int64(bytes/(1024*1024) + 0.5)
-	return fmt.Sprintf("%dMi", mib)
+	return fmt.Sprintf("%dMi", mebibytes(bytes))
 }
 
 func parseUUID(s string) openapi_types.UUID {

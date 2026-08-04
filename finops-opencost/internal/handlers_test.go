@@ -197,6 +197,61 @@ func TestGetRecommendationsHappyPath(t *testing.T) {
 	}
 }
 
+func TestGetRecommendationsScalesCostByRequestRatio(t *testing.T) {
+	openCostSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"code":200,"data":[{
+		  "pod-a": {"properties":{"labels":{
+		      "openchoreo_dev_component_uid":"`+componentUID+`",
+		      "openchoreo_dev_component":"checkout",
+		      "openchoreo_dev_project_uid":"`+projectUID+`",
+		      "openchoreo_dev_project":"gcp"}},
+		    "cpuCost":10.0,"ramCost":10.0}
+		}]}`)
+	}))
+	defer openCostSrv.Close()
+
+	observerSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{
+		  "cpuUsage":[{"value":0.1},{"value":0.12},{"value":0.15}],
+		  "cpuRequests":[{"value":1.0}],
+		  "cpuLimits":[{"value":2.0}],
+		  "memoryUsage":[{"value":900000000},{"value":950000000}],
+		  "memoryRequests":[{"value":100000000}],
+		  "memoryLimits":[{"value":100000000}]
+		}`)
+	}))
+	defer observerSrv.Close()
+
+	h := newTestHandler(openCostSrv.URL, observerSrv.URL)
+	ctx := context.WithValue(context.Background(), bearerTokenKey, "test-token")
+	resp, err := h.GetRecommendations(ctx, gen.GetRecommendationsRequestObject{
+		Namespace:      "default",
+		EnvironmentUid: openapi_types.UUID(mustUUID(environmentUID)),
+		Params: gen.GetRecommendationsParams{
+			StartTime:   time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
+			EndTime:     time.Date(2026, 7, 2, 0, 0, 0, 0, time.UTC),
+			Environment: "development",
+		},
+	})
+	if err != nil {
+		t.Fatalf("GetRecommendations error: %v", err)
+	}
+	ok := resp.(gen.GetRecommendations200JSONResponse)
+	rec := ok.Items[0]
+
+	if rec.Recommendation.MemoryRequest != rec.Current.MemoryRequest {
+		t.Fatalf("memory request changed: cur=%q rec=%q", rec.Current.MemoryRequest, rec.Recommendation.MemoryRequest)
+	}
+	if rec.Recommendation.MemoryCost != rec.Current.MemoryCost {
+		t.Errorf("memory request unchanged but cost differs: cur=%v rec=%v", rec.Current.MemoryCost, rec.Recommendation.MemoryCost)
+	}
+
+	// cpu cost = 10 * (P95(0.1,0.12,0.15)*1.2) / 1.0 = 10 * 0.18 = 1.8
+	if got := rec.Recommendation.CpuCost; got < 1.79 || got > 1.81 {
+		t.Errorf("recommended cpu cost = %v, want ~1.8", got)
+	}
+}
+
 func TestGetComponentCostsRejectsComponentWithoutProject(t *testing.T) {
 	h := newTestHandler("http://unused", "http://unused")
 	cuid := openapi_types.UUID(mustUUID(componentUID))

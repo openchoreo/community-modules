@@ -83,18 +83,14 @@ fluent-bit:
       [OUTPUT]
           Name                           opentelemetry
           Match                          kube.*
-          Host                           moesif-logs-collector.openchoreo-observability-plane.svc.cluster.local
+          Host                           moesif-logs-collector
           Port                           4318
           TLS                            Off
           TLS.Verify                     Off
           logs_uri                       /v1/logs
           Log_response_payload           True
           logs_severity_text_message_key loglevel
-          logs_resource_metadata_key     resource
-      
-      [OUTPUT]
-          Name                           stdout
-          Match                          kube.*                
+          logs_resource_metadata_key     resource             
 
   dnsPolicy: ClusterFirstWithHostNet
   fullnameOverride: "fluent-bit"
@@ -205,7 +201,7 @@ moesif:
     oauthTokenURL: "http://thunder.openchoreo.localhost:8080/oauth2/token"
     oauthClientID: "openchoreo-observer-resource-reader-client"
     searchEndpoint: "https://api.moesif.com"
-    searchSecretName: "moesif-search-credentials"
+    searchSecretName: "moesif-logs-search-secret"
     image:
       repository: "ghcr.io/openchoreo/observability-logs-moesif-adapter"
       tag: "1.0.0"

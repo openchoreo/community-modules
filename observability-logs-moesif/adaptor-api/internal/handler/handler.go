@@ -77,7 +77,10 @@ func (h *Handler) QueryLogs(c *gin.Context) {
 
 	// Determine scope type and populate scope filters.
 	var compScope gen.ComponentSearchScope
-	if cs, err := req.SearchScope.AsComponentSearchScope(); err == nil && cs.Namespace != "" {
+	if wf, err := req.SearchScope.AsWorkflowSearchScope(); err == nil && wf.Namespace != "" && wf.WorkflowRunName != nil && *wf.WorkflowRunName != "" {
+		params.Namespace = wf.Namespace
+		params.WorkflowRun = *wf.WorkflowRunName
+	} else if cs, err := req.SearchScope.AsComponentSearchScope(); err == nil && cs.Namespace != "" {
 		compScope = cs
 		params.Namespace = cs.Namespace
 		if cs.ProjectUid != nil {
@@ -89,11 +92,13 @@ func (h *Handler) QueryLogs(c *gin.Context) {
 		if cs.EnvironmentUid != nil {
 			params.EnvironmentUID = *cs.EnvironmentUid
 		}
-	} else if wf, err := req.SearchScope.AsWorkflowSearchScope(); err == nil {
-		params.Namespace = wf.Namespace
-		if wf.WorkflowRunName != nil {
-			params.WorkflowRun = *wf.WorkflowRunName
-		}
+	} else {
+		title := gen.BadRequest
+		c.JSON(http.StatusBadRequest, gen.ErrorResponse{
+			Title:   &title,
+			Message: strPtr("searchScope must be a valid component or workflow scope with a namespace"),
+		})
+		return
 	}
 
 	result, err := h.searchClient.SearchEvents(c.Request.Context(), params)
@@ -143,20 +148,19 @@ func (h *Handler) CreateAlertRule(c *gin.Context) {
 	}
 
 	// TODO: implement alert rule creation in Moesif backend
-	action := gen.Created
-	status := gen.Synced
-	c.JSON(http.StatusCreated, gen.AlertingRuleSyncResponse{
-		Action: &action,
-		Status: &status,
+	title := gen.InternalServerError
+	c.JSON(http.StatusNotImplemented, gen.ErrorResponse{
+		Title:   &title,
+		Message: strPtr("alert rule creation is not implemented"),
 	})
 }
 
 func (h *Handler) GetAlertRule(c *gin.Context, ruleName string) {
 	// TODO: implement alert rule retrieval from Moesif backend
-	title := gen.NotFound
-	c.JSON(http.StatusNotFound, gen.ErrorResponse{
+	title := gen.InternalServerError
+	c.JSON(http.StatusNotImplemented, gen.ErrorResponse{
 		Title:   &title,
-		Message: strPtr("not implemented"),
+		Message: strPtr("alert rule retrieval is not implemented"),
 	})
 }
 
@@ -172,21 +176,19 @@ func (h *Handler) UpdateAlertRule(c *gin.Context, ruleName string) {
 	}
 
 	// TODO: implement alert rule update in Moesif backend
-	action := gen.Updated
-	status := gen.Synced
-	c.JSON(http.StatusOK, gen.AlertingRuleSyncResponse{
-		Action: &action,
-		Status: &status,
+	title := gen.InternalServerError
+	c.JSON(http.StatusNotImplemented, gen.ErrorResponse{
+		Title:   &title,
+		Message: strPtr("alert rule update is not implemented"),
 	})
 }
 
 func (h *Handler) DeleteAlertRule(c *gin.Context, ruleName string) {
 	// TODO: implement alert rule deletion in Moesif backend
-	action := gen.Deleted
-	status := gen.Synced
-	c.JSON(http.StatusOK, gen.AlertingRuleSyncResponse{
-		Action: &action,
-		Status: &status,
+	title := gen.InternalServerError
+	c.JSON(http.StatusNotImplemented, gen.ErrorResponse{
+		Title:   &title,
+		Message: strPtr("alert rule deletion is not implemented"),
 	})
 }
 
@@ -202,10 +204,10 @@ func (h *Handler) HandleAlertWebhook(c *gin.Context) {
 	}
 
 	// TODO: implement webhook handling
-	ws := gen.Success
-	c.JSON(http.StatusOK, gen.AlertWebhookResponse{
-		Status:  &ws,
-		Message: strPtr("webhook received"),
+	title := gen.InternalServerError
+	c.JSON(http.StatusNotImplemented, gen.ErrorResponse{
+		Title:   &title,
+		Message: strPtr("alert webhook handling is not implemented"),
 	})
 }
 

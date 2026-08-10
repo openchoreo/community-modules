@@ -70,8 +70,6 @@ func (c *Client) ResolveEnvUID(uid string) string {
 }
 
 // ResolveEnvToken resolves an environment UID to the corresponding token.
-// For AuthModeAPIKey, it looks up "api_key" from the envTokens map.
-// For AuthModeBearer, it resolves the environment name and returns the matching token.
 // Returns the token and an error if not found.
 func (c *Client) ResolveEnvToken(envUID string) (string, error) {
 	if c.authMode == config.AuthModeAPIKey {
@@ -157,11 +155,11 @@ func (c *Client) SearchEvents(ctx context.Context, params SearchEventsParams) (*
 	var path string
 	q := url.Values{}
 	switch c.authMode {
-	case config.AuthModeBearer:
-		path = "/v1/search/~/search/events"
-	default:
+	case config.AuthModeAPIKey:
 		path = fmt.Sprintf("/admin/%s/search/events", params.MoesifOrgID)
 		q.Set("app_id", params.MoesifAppID)
+	default:
+		path = "/v1/search/~/search/events"
 	}
 	q.Set("from", params.StartTime.UTC().Format(time.RFC3339))
 	q.Set("to", params.EndTime.UTC().Format(time.RFC3339))
@@ -182,7 +180,7 @@ func (c *Client) SearchEvents(ctx context.Context, params SearchEventsParams) (*
 		c.logger.Error("search events API returned error",
 			slog.Int("statusCode", statusCode),
 			slog.String("body", string(respBody)))
-		return nil, fmt.Errorf("search API returned status %d: %s", statusCode, string(respBody))
+		return nil, fmt.Errorf("search API returned an error, status code: %d", statusCode)
 	}
 
 	var result SearchEventsResponse
@@ -208,7 +206,7 @@ func (c *Client) HealthProbe(ctx context.Context) (*HealthProbeResponse, error) 
 		return nil, err
 	}
 	if statusCode < 200 || statusCode >= 300 {
-		return nil, fmt.Errorf("health probe returned status %d: %s", statusCode, string(respBody))
+		return nil, fmt.Errorf("health probe returned an error, status code: %d", statusCode)
 	}
 
 	var result HealthProbeResponse

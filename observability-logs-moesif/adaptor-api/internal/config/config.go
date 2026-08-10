@@ -49,6 +49,10 @@ func LoadConfig() (*Config, error) {
 	if searchEndpoint == "" {
 		return nil, fmt.Errorf("environment variable SEARCH_ENDPOINT is required")
 	}
+	if searchAuthMode != AuthModeAPIKey && searchAuthMode != AuthModeBearer {
+		return nil, fmt.Errorf("invalid SEARCH_AUTH_MODE %q: must be %q or %q",
+			searchAuthMode, AuthModeAPIKey, AuthModeBearer)
+	}
 	parsed, err := url.Parse(searchEndpoint)
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
 		return nil, fmt.Errorf("SEARCH_ENDPOINT must be a valid URL with scheme and host, got: %q", searchEndpoint)

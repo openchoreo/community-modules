@@ -18,7 +18,7 @@ Create a Kubernetes secret containing your Moesif Collector Application IDs, wit
 > - For environment names that contain hyphens (e.g., `my-env`), replace hyphens with underscores in the secret key (e.g., `my_env`).
 
 ```bash
-kubectl create secret generic moesif-logs-secret \
+kubectl create secret generic moesif-logs-collector-secret \
   --from-literal=development="YOUR_DEV_COLLECTOR_APP_ID" \
   --from-literal=production="YOUR_PROD_COLLECTOR_APP_ID" \
   --namespace openchoreo-observability-plane
@@ -144,7 +144,10 @@ helm uninstall observability-logs-moesif \
 To also remove the secret:
 
 ```bash
-kubectl delete secret moesif-logs-secret \
+kubectl delete secret moesif-logs-collector-secret \
   --namespace openchoreo-observability-plane
+kubectl delete secret moesif-logs-search-secret \
+  --namespace openchoreo-observability-plane  
+  
 ```
 

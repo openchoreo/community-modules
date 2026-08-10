@@ -34,19 +34,6 @@ spec:
         envFrom:
         - configMapRef:
             name: logs-adapter-moesif
-        env:
-        - name: SEARCH_API_KEY
-          valueFrom:
-            secretKeyRef:
-              name: {{ .Values.moesif.adapter.searchSecretName }}
-              key: SEARCH_API_KEY
-              optional: true
-        - name: SEARCH_BEARER_TOKEN
-          valueFrom:
-            secretKeyRef:
-              name: {{ .Values.moesif.adapter.searchSecretName }}
-              key: SEARCH_BEARER_TOKEN
-              optional: true
         volumeMounts:
         - name: moesif-search-secret
           mountPath: /etc/moesif/env
@@ -61,5 +48,5 @@ spec:
       volumes:
       - name: moesif-search-secret
         secret:
-          secretName: moesif-logs-search-secret
+          secretName: {{ .Values.moesif.adapter.searchSecretName }}
 {{- end }}

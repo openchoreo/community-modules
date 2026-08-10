@@ -19,11 +19,11 @@ opencost:
       replicas: 1
       resources:
         requests:
-          cpu: "10m"
-          memory: "60Mi"
-        limits:
           cpu: "50m"
-          memory: "80Mi"
+          memory: "90Mi"
+        limits:
+          cpu: "200m"
+          memory: "200Mi"
       persistence:
         enabled: false
 
@@ -31,9 +31,9 @@ opencost:
       enabled: true
       costModel:
         description: Modified prices based on your internal pricing
-        CPU: 0.03
-        RAM: 0.004
-        storage: 0.00005
+        CPU: 1.25
+        RAM: 0.5
+        storage: 0.25
 
     metrics:
       kubeStateMetrics:

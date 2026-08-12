@@ -3,7 +3,7 @@ module github.com/openchoreo/community-modules/observability-logs-gcp-cloudloggi
 go 1.26.2
 
 require (
-	cloud.google.com/go/logging v1.13.2
+	cloud.google.com/go/logging v1.19.1
 	cloud.google.com/go/monitoring v1.29.0
 	github.com/getkin/kin-openapi v0.145.0
 	github.com/oapi-codegen/runtime v1.6.0
@@ -18,8 +18,8 @@ require (
 	cloud.google.com/go/auth v0.22.0 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
-	cloud.google.com/go/iam v1.5.3 // indirect
-	cloud.google.com/go/longrunning v0.9.0 // indirect
+	cloud.google.com/go/iam v1.11.0 // indirect
+	cloud.google.com/go/longrunning v1.2.0 // indirect
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect

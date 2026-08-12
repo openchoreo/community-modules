@@ -25,9 +25,9 @@
 # A namespaced AdmissionPolicy only evaluates resources in its own namespace, so no
 # namespaceSelector is needed.
 #
-# Changing a ProjectType cuts a new ProjectRelease. Existing ProjectReleaseBindings
-# stay pinned to their current release until you point them at the new one, so the
-# policy rolls out per environment on your schedule.
+# Adding this resource produces a new ProjectRelease. Existing ProjectReleaseBindings
+# stay pinned to their current release until you point them at it, so the policy rolls
+# out per environment on your schedule.
 apiVersion: openchoreo.dev/v1alpha1
 kind: ClusterProjectType
 metadata:

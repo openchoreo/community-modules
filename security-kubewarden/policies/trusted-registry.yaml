@@ -14,6 +14,9 @@ apiVersion: policies.kubewarden.io/v1
 kind: ClusterAdmissionPolicy
 metadata:
   name: openchoreo-trusted-registry
+  labels:
+    app.kubernetes.io/name: security-kubewarden
+    app.kubernetes.io/part-of: openchoreo
 spec:
   policyServer: default
   module: ghcr.io/kubewarden/policies/trusted-repos:v2.1.3

@@ -162,7 +162,7 @@ and scoped to OpenChoreo cell namespaces. Edit the settings to match your own ru
 | [`production-only.yaml`](policies/production-only.yaml) | Same tag rule, scoped to the `production` environment only |
 
 Each starts in `monitor` mode, where the policy evaluates every matching resource but never blocks
-it. Violations are written to the policy server log on the data plane:
+it.
 
 ```bash
 kubectl apply -f policies/no-latest-tag.yaml
@@ -170,12 +170,19 @@ kubectl apply -f policies/no-latest-tag.yaml
 # A policy takes up to about a minute to become active while its module is pulled.
 # It evaluates nothing during that window.
 kubectl get clusteradmissionpolicy openchoreo-no-latest-tag -o wide
-
-kubectl logs -n kubewarden -l kubewarden/policy-server=default | grep "policy evaluation"
 ```
 
-Deploy the components you expect to pass and the ones you expect to fail, then read that log. Switch
-to enforcement once it reports violations only for the workloads you intend to block:
+A policy only sees a workload when something is applied, so a component that is already running
+produces nothing until its next deployment. To check what a new policy would do to workloads
+already on the cluster, run the audit scanner instead of waiting for its hourly schedule:
+
+```bash
+kubectl create job -n kubewarden audit-now --from=cronjob/audit-scanner
+kubectl wait --for=condition=complete job/audit-now -n kubewarden --timeout=5m
+```
+
+Read the results as described in [Where policy results appear](#where-policy-results-appear), then
+switch to enforcement once only the workloads you intend to block are reported:
 
 ```bash
 kubectl patch clusteradmissionpolicy openchoreo-no-latest-tag \
@@ -252,8 +259,7 @@ To use the ProjectType approach:
    a complete ProjectType that provisions the cell namespace and this policy, then set
    `spec.type` on new Projects to reference it.
 
-   Either way, the Project controller cuts a new `ProjectRelease` once the referenced ProjectType
-   changes.
+   Either way, the Project controller produces a `ProjectRelease` for the updated ProjectType.
 
 3. Point each `ProjectReleaseBinding` at the new `ProjectRelease` when you are ready for that
    environment to pick up the policy.
@@ -289,12 +295,13 @@ not allowed, reported errors: tags not allowed: latest
 ```
 
 In the OpenChoreo portal the environment shows a failed state on the component's **Deploy** tab,
-and **View details** shows the full message including the policy that rejected it.
+and **View details** shows the full message including the policy that rejected it. The **Runtime
+Health** card stays green, because the previous version is still serving.
 
 Two things to know about the resulting state:
 
 - The rejected resource keeps its previous version, so a running workload continues to serve while
-  a new deployment is blocked. Runtime health stays healthy even though the deployment failed.
+  a new deployment is blocked.
 - Resources are applied in order and the apply stops at the first rejection, so resources earlier in
   the release may already be updated. Correct the violation and the next reconcile applies the
   release in full.
@@ -315,12 +322,14 @@ Deployment/echo-websocket-service-development-a43512ee
     openchoreo-trusted-registry: not allowed, reported errors: registries not allowed: docker.io
 ```
 
-Each report carries one result per policy that evaluated the resource, passes included, so the
-filter above is what limits the output to violations. A resource with no failures prints its name
-with nothing under it.
+The scanner rewrites these on each run, hourly by default, so reports lag a change by up to that
+interval and there are none at all until the first run. Trigger a scan when you do not want to wait:
 
-The scanner rewrites these on each run, hourly by default, so a report lags a change by up to that
-interval. For immediate feedback while testing a policy, read the policy server log instead:
+```bash
+kubectl create job -n kubewarden audit-now --from=cronjob/audit-scanner
+```
+
+The policy server log has the individual admission decisions:
 
 ```bash
 kubectl logs -n kubewarden -l kubewarden/policy-server=default
@@ -365,11 +374,14 @@ first. The agent needs its RBAC grant to delete the policies it created, so remo
 early strands them.
 
 ```bash
-# 1. If used: revert the ProjectType, re-pin bindings, and confirm the policies are gone
+# 1. If used: remove the policy from your ProjectType and re-pin each binding to the
+#    ProjectRelease that matches the updated type. An existing release is reused when the
+#    content matches, so a new one does not always appear. Confirm the policies are gone:
+kubectl get projectreleases -n <namespace>
 kubectl get admissionpolicies.policies.kubewarden.io -A
 
-# 2. Remove cluster-wide policies
-kubectl delete clusteradmissionpolicies --all
+# 2. Remove this integration's policies
+kubectl delete clusteradmissionpolicies -l app.kubernetes.io/name=security-kubewarden
 
 # 3. Remove the agent RBAC grant, if it was applied
 kubectl delete -f cluster-agent-kubewarden-rbac.yaml --ignore-not-found
@@ -378,6 +390,8 @@ kubectl delete -f cluster-agent-kubewarden-rbac.yaml --ignore-not-found
 helm uninstall kubewarden -n kubewarden
 kubectl delete namespace kubewarden
 ```
+
+`helm uninstall` keeps the Kubewarden CRDs, so a later reinstall finds them already in place.
 
 ## Compatibility
 

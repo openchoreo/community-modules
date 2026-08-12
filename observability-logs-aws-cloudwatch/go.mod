@@ -3,7 +3,7 @@ module github.com/openchoreo/community-modules/observability-logs-aws-cloudwatch
 go 1.26.2
 
 require (
-	github.com/aws/aws-sdk-go-v2 v1.43.3
+	github.com/aws/aws-sdk-go-v2 v1.43.4
 	github.com/aws/aws-sdk-go-v2/config v1.32.33
 	github.com/aws/aws-sdk-go-v2/service/cloudwatch v1.66.1
 	github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs v1.81.0

@@ -1,0 +1,37 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# Rejects container images that use the mutable `latest` tag, across every
+# OpenChoreo cell namespace.
+#
+# Starts in `monitor` mode: violations are recorded, nothing is blocked. Switch to
+# `protect` once the reported violations look right. Note that `protect` cannot be
+# changed back to `monitor`; relaxing the policy means deleting and recreating it.
+#
+# `rules` below covers Deployments only. Add the kinds your ComponentTypes render,
+# or the policy passes them without checking. The built-in `scheduled-task` renders
+# a `batch/v1 CronJob`, and `statefulset/*` and `job/*` ComponentTypes render
+# StatefulSets and Jobs.
+apiVersion: policies.kubewarden.io/v1
+kind: ClusterAdmissionPolicy
+metadata:
+  name: openchoreo-no-latest-tag
+spec:
+  policyServer: default
+  module: ghcr.io/kubewarden/policies/trusted-repos:v2.1.3
+  mode: monitor
+  mutating: false
+  namespaceSelector:
+    matchExpressions:
+      - key: openchoreo.dev/managed-by
+        operator: In
+        values: ["renderedrelease-controller"]
+  rules:
+    - apiGroups: ["apps"]
+      apiVersions: ["v1"]
+      resources: ["deployments"]
+      operations: ["CREATE", "UPDATE"]
+  settings:
+    tags:
+      reject:
+        - latest

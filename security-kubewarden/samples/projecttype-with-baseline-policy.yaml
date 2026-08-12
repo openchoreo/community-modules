@@ -1,0 +1,89 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# A ClusterProjectType that provisions the cell namespace and a baseline Kubewarden
+# policy inside it. Every project using this type gets the policy in each of its
+# cell namespaces, and the policy is promoted between environments the same way any
+# other release is.
+#
+# This is the `default` ClusterProjectType with one extra resource,
+# `cell-baseline-policy`.
+#
+# NOTE: applying this file only affects projects created against it afterwards.
+# `Project.spec.type` is immutable, so an existing project cannot be switched to
+# this type. To add the policy to projects that already exist, copy the
+# `cell-baseline-policy` resource below into the ProjectType they already
+# reference; the Project controller then cuts a new ProjectRelease.
+#
+# Prerequisites:
+#
+#   1. Kubewarden installed on the data plane.
+#   2. cluster-agent-kubewarden-rbac.yaml applied, otherwise the agent cannot
+#      create the AdmissionPolicy and the ProjectReleaseBinding will report an
+#      apply failure.
+#
+# A namespaced AdmissionPolicy only evaluates resources in its own namespace, so no
+# namespaceSelector is needed.
+#
+# Changing a ProjectType cuts a new ProjectRelease. Existing ProjectReleaseBindings
+# stay pinned to their current release until you point them at the new one, so the
+# policy rolls out per environment on your schedule.
+apiVersion: openchoreo.dev/v1alpha1
+kind: ClusterProjectType
+metadata:
+  name: governed
+  annotations:
+    openchoreo.dev/display-name: Governed Project Type
+    openchoreo.dev/description: >-
+      Provisions the cell namespace and a baseline Kubewarden admission policy per
+      environment. Use as a starting point for projects that must enforce a
+      security baseline as part of the project definition rather than through a
+      cluster-wide policy.
+  labels:
+    openchoreo.dev/name: governed
+spec:
+  environmentConfigs:
+    openAPIV3Schema:
+      type: object
+      properties:
+        namespaceLabels:
+          type: object
+          additionalProperties:
+            type: string
+          default: {}
+        namespaceAnnotations:
+          type: object
+          additionalProperties:
+            type: string
+          default: {}
+  resources:
+    - id: cell-namespace
+      template:
+        apiVersion: v1
+        kind: Namespace
+        metadata:
+          name: ${metadata.namespace}
+          labels: ${oc_merge(metadata.labels, environmentConfigs.namespaceLabels)}
+          annotations: ${environmentConfigs.namespaceAnnotations}
+
+    - id: cell-baseline-policy
+      template:
+        apiVersion: policies.kubewarden.io/v1
+        kind: AdmissionPolicy
+        metadata:
+          name: cell-trusted-registry
+          namespace: ${metadata.namespace}
+        spec:
+          policyServer: default
+          module: ghcr.io/kubewarden/policies/trusted-repos:v2.1.3
+          mode: monitor
+          mutating: false
+          rules:
+            - apiGroups: ["apps"]
+              apiVersions: ["v1"]
+              resources: ["deployments"]
+              operations: ["CREATE", "UPDATE"]
+          settings:
+            registries:
+              allow:
+                - ghcr.io

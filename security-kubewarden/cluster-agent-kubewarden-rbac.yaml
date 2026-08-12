@@ -1,0 +1,49 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# Only required for the ProjectType-delivered policy approach (see the README).
+# Cluster-wide policies applied directly by a platform engineer do not need this.
+#
+# Lets the OpenChoreo data-plane agent manage Kubewarden policy resources, so a
+# ProjectType can carry an AdmissionPolicy into each cell namespace it creates.
+#
+# The subject below is the standard data-plane agent ServiceAccount
+# (`cluster-agent-dataplane` in `openchoreo-data-plane`). If your data plane uses a
+# different ServiceAccount name or namespace, edit the ClusterRoleBinding subject.
+# Apply this on the cluster running the OpenChoreo data plane.
+#
+# Note on removal: keep this grant in place until the policies have been cleaned
+# up. If the agent loses `delete` while policies still exist, stale-resource
+# cleanup fails silently and leaves an enforcing policy that OpenChoreo can no
+# longer remove.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: openchoreo-cluster-agent-kubewarden
+  labels:
+    app.kubernetes.io/name: security-kubewarden
+    app.kubernetes.io/part-of: openchoreo
+    app.kubernetes.io/component: cluster-agent
+rules:
+  - apiGroups: ["policies.kubewarden.io"]
+    resources:
+      - admissionpolicies
+      - admissionpolicygroups
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: openchoreo-cluster-agent-kubewarden
+  labels:
+    app.kubernetes.io/name: security-kubewarden
+    app.kubernetes.io/part-of: openchoreo
+    app.kubernetes.io/component: cluster-agent
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: openchoreo-cluster-agent-kubewarden
+subjects:
+  - kind: ServiceAccount
+    name: cluster-agent-dataplane
+    namespace: openchoreo-data-plane

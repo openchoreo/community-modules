@@ -5,7 +5,7 @@ go 1.26.2
 require (
 	cloud.google.com/go/logging v1.19.1
 	cloud.google.com/go/monitoring v1.30.0
-	github.com/getkin/kin-openapi v0.145.0
+	github.com/getkin/kin-openapi v0.146.0
 	github.com/oapi-codegen/runtime v1.6.0
 	google.golang.org/api v0.291.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20260630182238-925bb5da69e7

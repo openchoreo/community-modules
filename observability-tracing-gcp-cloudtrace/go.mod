@@ -4,7 +4,7 @@ go 1.26.1
 
 require (
 	cloud.google.com/go/trace v1.16.0
-	github.com/getkin/kin-openapi v0.145.0
+	github.com/getkin/kin-openapi v0.146.0
 	github.com/oapi-codegen/runtime v1.4.2
 	google.golang.org/api v0.292.0
 	google.golang.org/grpc v1.83.0

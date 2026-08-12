@@ -7,7 +7,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.32.35
 	github.com/aws/aws-sdk-go-v2/service/sts v1.45.4
 	github.com/aws/aws-sdk-go-v2/service/xray v1.36.23
-	github.com/getkin/kin-openapi v0.145.0
+	github.com/getkin/kin-openapi v0.146.0
 	github.com/oapi-codegen/runtime v1.6.0
 )
 

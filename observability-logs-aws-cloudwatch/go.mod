@@ -6,7 +6,7 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.43.4
 	github.com/aws/aws-sdk-go-v2/config v1.32.35
 	github.com/aws/aws-sdk-go-v2/service/cloudwatch v1.66.3
-	github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs v1.81.0
+	github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs v1.82.0
 	github.com/aws/aws-sdk-go-v2/service/sts v1.45.4
 	github.com/aws/smithy-go v1.27.7
 	github.com/getkin/kin-openapi v0.145.0

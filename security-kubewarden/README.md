@@ -177,6 +177,7 @@ produces nothing until its next deployment. To check what a new policy would do 
 already on the cluster, run the audit scanner instead of waiting for its hourly schedule:
 
 ```bash
+kubectl delete job -n kubewarden audit-now --ignore-not-found
 kubectl create job -n kubewarden audit-now --from=cronjob/audit-scanner
 kubectl wait --for=condition=complete job/audit-now -n kubewarden --timeout=5m
 ```
@@ -326,6 +327,7 @@ The scanner rewrites these on each run, hourly by default, so reports lag a chan
 interval and there are none at all until the first run. Trigger a scan when you do not want to wait:
 
 ```bash
+kubectl delete job -n kubewarden audit-now --ignore-not-found
 kubectl create job -n kubewarden audit-now --from=cronjob/audit-scanner
 ```
 

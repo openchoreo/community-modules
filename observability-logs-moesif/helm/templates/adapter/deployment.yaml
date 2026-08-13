@@ -5,35 +5,35 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: logs-adapter-moesif
+  name: moesif-logs-adapter
   namespace: {{ .Release.Namespace }}
   labels:
-    app: logs-adapter-moesif
+    app: moesif-logs-adapter
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: logs-adapter-moesif
+      app: moesif-logs-adapter
   template:
     metadata:
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/adapter/configmap.yaml") . | sha256sum }}
       labels:
-        app: logs-adapter-moesif
+        app: moesif-logs-adapter
     spec:
       securityContext:
         runAsUser: 10500
         runAsGroup: 10500
         runAsNonRoot: true
       containers:
-      - name: logs-adapter-moesif
+      - name: moesif-logs-adapter
         image: "{{ .Values.moesif.adapter.image.repository }}:{{ .Values.moesif.adapter.image.tag | default .Chart.AppVersion }}"
         imagePullPolicy: {{ .Values.moesif.adapter.image.pullPolicy | default "IfNotPresent" }}
         ports:
         - containerPort: 9098
         envFrom:
         - configMapRef:
-            name: logs-adapter-moesif
+            name: moesif-logs-adapter
         volumeMounts:
         - name: moesif-search-secret
           mountPath: /etc/moesif/env

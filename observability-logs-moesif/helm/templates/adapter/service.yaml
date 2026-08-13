@@ -8,7 +8,7 @@ metadata:
   name: logs-adapter
   namespace: {{ .Release.Namespace }}
   labels:
-    app: logs-adapter-moesif
+    app: moesif-logs-adapter
 spec:
   type: ClusterIP
   ports:
@@ -17,5 +17,5 @@ spec:
     protocol: TCP
     name: http
   selector:
-    app: logs-adapter-moesif
+    app: moesif-logs-adapter
 {{- end }}

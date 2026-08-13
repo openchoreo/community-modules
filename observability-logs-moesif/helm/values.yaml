@@ -93,7 +93,7 @@ fluent-bit:
           logs_resource_metadata_key     resource             
 
   dnsPolicy: ClusterFirstWithHostNet
-  fullnameOverride: "fluent-bit"
+  fullnameOverride: "moesif-fluent-bit"
   hostNetwork: true
 
   extraVolumeMounts:

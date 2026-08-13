@@ -1,0 +1,14 @@
+# oapi-codegen configuration
+# Run `make generate` to regenerate after editing the OAS file.
+
+package: gen
+output-options:
+  skip-prune: false
+
+generate:
+  gin-server: true
+  models: true
+  embedded-spec: false
+
+input-spec: api/observability-logs-adapter-api.yaml
+output: gen/

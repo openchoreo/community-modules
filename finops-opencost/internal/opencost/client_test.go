@@ -72,8 +72,11 @@ func TestQueryAllocations(t *testing.T) {
 	if alloc.Label(LabelComponentUID) != "14e6fe2a-820a-481e-9a96-018e86a241fa" {
 		t.Errorf("unexpected component uid label: %q", alloc.Label(LabelComponentUID))
 	}
-	if !contains(gotQuery, "accumulate=true") {
-		t.Errorf("expected accumulate=true in query, got %q", gotQuery)
+	if !contains(gotQuery, "accumulate=false") {
+		t.Errorf("expected accumulate=false in query, got %q", gotQuery)
+	}
+	if contains(gotQuery, "step=") {
+		t.Errorf("expected no step in query when Step is empty, got %q", gotQuery)
 	}
 }
 

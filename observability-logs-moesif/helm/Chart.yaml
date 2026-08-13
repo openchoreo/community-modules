@@ -5,8 +5,9 @@ apiVersion: v2
 name: observability-logs-moesif
 description: A Helm chart for OpenChoreo Moesif Logs module
 type: application
-version: 0.1.0
-appVersion: "0.1.0"
+# Version strategy: latest-dev for development, replaced by CI for releases
+version: 0.0.0-latest-dev
+appVersion: "latest-dev"
 keywords:
   - moesif
   - observability
@@ -17,7 +18,7 @@ maintainers:
 dependencies:
   - name: opentelemetry-collector
     repository: https://open-telemetry.github.io/opentelemetry-helm-charts
-    version: 0.140.0
+    version: 0.165.0
     condition: opentelemetry-collector.enabled
   - name: fluent-bit
     repository: https://fluent.github.io/helm-charts

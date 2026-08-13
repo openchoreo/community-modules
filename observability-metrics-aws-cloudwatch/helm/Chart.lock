@@ -1,9 +1,9 @@
 dependencies:
 - name: opentelemetry-collector
   repository: https://open-telemetry.github.io/opentelemetry-helm-charts
-  version: 0.158.2
+  version: 0.169.0
 - name: kube-state-metrics
   repository: https://prometheus-community.github.io/helm-charts
   version: 5.33.2
-digest: sha256:0feee093828aa8f4f9671d34814d66a2aadc9c1d53f3d379b0db6310a344cf6d
-generated: "2026-06-22T05:20:21.048706166Z"
+digest: sha256:9a48d0d80fadfb58b959f6d90c42f3dafc0ce4f89d62edd82fc4e55991e84080
+generated: "2026-08-12T05:33:08.36106897Z"

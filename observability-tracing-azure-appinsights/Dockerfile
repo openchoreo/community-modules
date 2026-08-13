@@ -1,7 +1,7 @@
 # Copyright 2026 The OpenChoreo Authors
 # SPDX-License-Identifier: Apache-2.0
 
-FROM golang:1.26.2-alpine3.23 AS builder
+FROM golang:1.26.5-alpine3.23 AS builder
 
 WORKDIR /app
 COPY go.mod go.sum* ./
@@ -10,7 +10,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
 
 
-FROM alpine:3.23
+FROM alpine:3.24
 
 RUN apk --no-cache add ca-certificates && \
     addgroup -g 10500 appuser && \

@@ -8,7 +8,7 @@ metadata:
   name: tracing-adapter
   namespace: {{ .Release.Namespace }}
   labels:
-    app: tracing-adapter-moesif
+    app: moesif-tracing-adapter
 spec:
   type: ClusterIP
   ports:
@@ -17,5 +17,5 @@ spec:
     protocol: TCP
     name: http
   selector:
-    app: tracing-adapter-moesif
+    app: moesif-tracing-adapter
 {{- end }}

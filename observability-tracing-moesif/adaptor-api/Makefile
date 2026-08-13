@@ -1,5 +1,5 @@
 OAPI_CODEGEN_VERSION ?= v2.7.0
-OAS := api/observability-tracing-adapter-api.yaml
+OAS := https://raw.githubusercontent.com/openchoreo/openchoreo/main/openapi/observability-tracing-adapter-api.yaml
 MODULE_NAME := $(notdir $(CURDIR))
 
 .PHONY: oapi-codegen-install generate build run tidy unit-test

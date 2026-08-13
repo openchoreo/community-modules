@@ -337,7 +337,7 @@ func toSpanItem(rec spanRecord, includeAttributes bool) traceSpanItem {
 		item.DurationNs = int64Ptr(rec.DurationNs)
 	}
 	if rec.StatusCode != "" {
-		code := gen.SpanStatusCode(rec.StatusCode)
+		code := mapSpanStatusCode(rec.StatusCode)
 		item.Status = &gen.SpanStatus{Code: &code, Message: strPtrOrNil(rec.StatusMessage)}
 	}
 	if includeAttributes {
@@ -349,6 +349,17 @@ func toSpanItem(rec spanRecord, includeAttributes bool) traceSpanItem {
 		item.ResourceAttributes = &rec.Resource
 	}
 	return item
+}
+
+func mapSpanStatusCode(raw string) gen.SpanStatusCode {
+	switch strings.ToLower(raw) {
+	case "ok", "status_code_ok":
+		return gen.Ok
+	case "error", "status_code_error":
+		return gen.Error
+	default:
+		return gen.Unset
+	}
 }
 
 // mapAggregationBucketsToTraces converts aggregation buckets from the search

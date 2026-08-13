@@ -27,9 +27,15 @@ opentelemetry-collector:
 
   mode: deployment
 
-  extraEnvsFrom:
-    - secretRef:
-        name: moesif-tracing-secret
+  extraVolumes:
+    - name: moesif-env-tokens
+      secret:
+        secretName: moesif-tracing-collector-secret
+
+  extraVolumeMounts:
+    - name: moesif-env-tokens
+      mountPath: /etc/moesif/env
+      readOnly: true
 
   resources:
     limits:
@@ -63,11 +69,8 @@ opentelemetryCollectorCustomizations:
 moesif:
   adapter:
     enabled: true
-    envAPIBaseURL: "http://openchoreo-api.openchoreo-control-plane:8080"
-    oauthTokenURL: "http://thunder.openchoreo.localhost:8080/oauth2/token"
-    oauthClientID: "openchoreo-observer-resource-reader-client"
     searchEndpoint: "https://api.moesif.com"
-    searchSecretName: "moesif-search-credentials"
+    searchSecretName: "moesif-trace-search-secret"
     image:
       repository: "ghcr.io/openchoreo/observability-tracing-moesif-adapter"
       tag: "1.0.0"

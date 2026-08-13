@@ -5,15 +5,12 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: tracing-adapter-moesif
+  name: moesif-tracing-adapter
   namespace: {{ .Release.Namespace }}
   labels:
-    app: tracing-adapter-moesif
+    app: moesif-tracing-adapter
 data:
   SERVER_PORT: "9100"
-  ENV_API_BASE_URL: {{ .Values.moesif.adapter.envAPIBaseURL | quote }}
-  OAUTH_TOKEN_URL: {{ .Values.moesif.adapter.oauthTokenURL | quote }}
-  OAUTH_CLIENT_ID: {{ .Values.moesif.adapter.oauthClientID | quote }}
   SEARCH_ENDPOINT: {{ .Values.moesif.adapter.searchEndpoint | quote }}
   SEARCH_AUTH_MODE: {{ .Values.moesif.auth_mode | quote }}
 {{- end }}

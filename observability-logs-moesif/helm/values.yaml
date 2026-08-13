@@ -175,6 +175,16 @@ opentelemetry-collector:
     - secretRef:
         name: moesif-logs-collector-secret
 
+  extraVolumes:
+    - name: moesif-env-tokens
+      secret:
+        secretName: moesif-logs-collector-secret
+
+  extraVolumeMounts:
+    - name: moesif-env-tokens
+      mountPath: /etc/moesif/env
+      readOnly: true
+
   resources:
     limits:
       cpu: 100m
@@ -197,9 +207,6 @@ opentelemetryCollectorCustomizations:
 moesif:
   adapter:
     enabled: true
-    envAPIBaseURL: "http://openchoreo-api.openchoreo-control-plane:8080"
-    oauthTokenURL: "http://thunder.openchoreo.localhost:8080/oauth2/token"
-    oauthClientID: "openchoreo-observer-resource-reader-client"
     searchEndpoint: "https://api.moesif.com"
     searchSecretName: "moesif-logs-search-secret"
     image:

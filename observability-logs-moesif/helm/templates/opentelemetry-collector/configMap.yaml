@@ -35,13 +35,13 @@ data:
         verbosity: detailed
       {{- end }}
       {{- range .Values.moesif.environments }}
-      otlphttp/{{ . }}:
+      otlphttp/{{ .name }}:
         endpoint: {{ $.Values.moesif.endpoint | default "https://api.moesif.net" | quote }}
         headers:
           {{- if eq $.Values.moesif.auth_mode "api_key" }}
-          X-Api-Token: ${env:api_key}
+          X-Api-Token: ${file:/etc/moesif/env/api_key}
           {{- else }}
-          X-Moesif-Application-Id: ${env:{{ . | replace "-" "_" }}}
+          X-Moesif-Application-Id: ${file:/etc/moesif/env/{{ .id }}}
           {{- end }}
         auth:
           authenticator: headers_setter
@@ -52,8 +52,8 @@ data:
         table:
           {{- range .Values.moesif.environments }}
           - context: resource
-            statement: route() where resource.attributes["openchoreo.dev/environment"] == {{ . | quote }}
-            pipelines: [ logs/{{ . }} ]
+            statement: route() where resource.attributes["openchoreo.dev/environment"] == {{ .name | quote }}
+            pipelines: [ logs/{{ .name }} ]
           {{- end }}
 
     processors:
@@ -79,8 +79,8 @@ data:
           exporters: [ routing ]
 
         {{- range .Values.moesif.environments }}
-        logs/{{ . }}:
+        logs/{{ .name }}:
           receivers: [ routing ]
           processors: [ batch ]
-          exporters: [ otlphttp/{{ . }}{{- if $.Values.opentelemetryCollectorCustomizations.debug.enabled }}, debug{{- end }} ]
+          exporters: [ otlphttp/{{ .name }}{{- if $.Values.opentelemetryCollectorCustomizations.debug.enabled }}, debug{{- end }} ]
         {{- end }}

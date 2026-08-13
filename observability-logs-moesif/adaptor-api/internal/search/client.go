@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/openchoreo/observability-logs-moesif-cloud/adaptor-api/internal/config"
-	"github.com/openchoreo/observability-logs-moesif-cloud/adaptor-api/internal/envresolver"
 )
 
 // eventsSource is the fixed set of fields requested from the Moesif search API.
@@ -38,12 +37,11 @@ var eventsSource = []string{
 
 // Client is an HTTP client for the Moesif search API.
 type Client struct {
-	baseURL     string
-	authMode    string
-	httpClient  *http.Client
-	logger      *slog.Logger
-	envResolver *envresolver.Resolver
-	envTokens   map[string]string // environment name -> bearer token
+	baseURL    string
+	authMode   string
+	httpClient *http.Client
+	logger     *slog.Logger
+	envTokens  map[string]string // environment name -> bearer token
 }
 
 func NewClient(cfg *config.Config, logger *slog.Logger) *Client {
@@ -54,19 +52,6 @@ func NewClient(cfg *config.Config, logger *slog.Logger) *Client {
 		logger:     logger,
 		envTokens:  cfg.EnvTokens,
 	}
-}
-
-// SetEnvResolver sets the environment resolver for UID-to-name lookups.
-func (c *Client) SetEnvResolver(r *envresolver.Resolver) {
-	c.envResolver = r
-}
-
-// ResolveEnvUID returns the environment name for a given UID, or the UID itself if not found.
-func (c *Client) ResolveEnvUID(uid string) string {
-	if c.envResolver != nil {
-		return c.envResolver.ResolveUID(uid)
-	}
-	return uid
 }
 
 // ResolveEnvToken resolves an environment UID to the corresponding token.
@@ -80,14 +65,12 @@ func (c *Client) ResolveEnvToken(envUID string) (string, error) {
 		return "", fmt.Errorf("environment is not supported")
 	}
 
-	envName := c.ResolveEnvUID(envUID)
-	if token, ok := c.envTokens[envName]; ok {
+	if token, ok := c.envTokens[envUID]; ok {
 		return token, nil
 	}
 	c.logger.Error("no token found for environment",
-		slog.String("envUID", envUID),
-		slog.String("envName", envName))
-	return "", fmt.Errorf("environment %q is not supported", envName)
+		slog.String("envUID", envUID))
+	return "", fmt.Errorf("environment %q is not supported", envUID)
 }
 
 // AuthMode returns the configured authentication mode.

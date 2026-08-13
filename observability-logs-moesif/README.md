@@ -13,14 +13,28 @@ This module collects container logs using [Fluent Bit](https://fluentbit.io) and
 
 Create a Kubernetes secret containing your Moesif Collector Application IDs, with one key per environment.
 
-> **Note:**
-> - Use the environment name as the key (e.g., `development`, `production`).
-> - For environment names that contain hyphens (e.g., `my-env`), replace hyphens with underscores in the secret key (e.g., `my_env`).
+First, get the environment names and their UIDs:
+
+```bash
+kubectl get environments -o custom-columns="NAME:.metadata.name,UID:.metadata.uid"
+```
+
+Use the environment **UID** as the secret key and the Moesif **Collector Application ID** as the value.
+
+For example, if the output is:
+
+```
+NAME          UID
+development   a1b2c3d4-e5f6-7890-abcd-ef1234567890
+production    f9e8d7c6-b5a4-3210-fedc-ba0987654321
+```
+
+Create the secret using the UIDs as keys:
 
 ```bash
 kubectl create secret generic moesif-logs-collector-secret \
-  --from-literal=development="YOUR_DEV_COLLECTOR_APP_ID" \
-  --from-literal=production="YOUR_PROD_COLLECTOR_APP_ID" \
+  --from-literal=a1b2c3d4-e5f6-7890-abcd-ef1234567890="YOUR_DEV_COLLECTOR_APP_ID" \
+  --from-literal=f9e8d7c6-b5a4-3210-fedc-ba0987654321="YOUR_PROD_COLLECTOR_APP_ID" \
   --namespace openchoreo-observability-plane
 ```
 
@@ -35,12 +49,12 @@ To generate an API key in Moesif:
 2. Create a new API key and select scopes under the **Analytics** section with **read** permission.
 3. Create one key per environment, or use a single organization-level key.
 
-Create the search secret with a bearer token per environment:
+Create the search secret using the environment **UID** as the key and the bearer token as the value:
 
 ```bash
 kubectl create secret generic moesif-logs-search-secret \
-  --from-literal=development="YOUR_DEV_MANAGEMENT_API_BEARER_TOKEN" \
-  --from-literal=production="YOUR_PROD_MANAGEMENT_API_BEARER_TOKEN" \
+  --from-literal=a1b2c3d4-e5f6-7890-abcd-ef1234567890="YOUR_DEV_MANAGEMENT_API_BEARER_TOKEN" \
+  --from-literal=f9e8d7c6-b5a4-3210-fedc-ba0987654321="YOUR_PROD_MANAGEMENT_API_BEARER_TOKEN" \
   --namespace openchoreo-observability-plane
 ```
 
@@ -62,11 +76,13 @@ For easier configuration management, create a `values.yaml` file:
 # values.yaml
 
 moesif:
-  # List of environment names to collect logs from.
-  # These must match the openchoreo.dev/environment label on your resources.
+  # List of environments to collect logs from.
+  # Get name and id by running: kubectl get environments -o custom-columns="NAME:.metadata.name,UID:.metadata.uid"
   environments:
-    - development
-    - production
+    - name: development
+      id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+    - name: production
+      id: f9e8d7c6-b5a4-3210-fedc-ba0987654321
 
   # Moesif adapter configuration
   adapter:
@@ -92,7 +108,7 @@ helm upgrade --install observability-logs-moesif \
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `moesif.environments` | List of environment names to collect logs from | `[development, production]` |
+| `moesif.environments` | List of environments with `name` and `id` (UID) to collect logs from | `[]` |
 | `moesif.endpoint` | (Optional) Moesif API endpoint URL | `https://api.moesif.net` |
 | `moesif.adapter.enabled` | Enable the Moesif adapter for log search | `true` |
 | `moesif.adapter.searchEndpoint` | Moesif search API endpoint | `https://api.moesif.com` |
@@ -104,9 +120,9 @@ helm upgrade --install observability-logs-moesif \
 This module deploys two main components:
 
 1. **Fluent Bit**: Collects logs from all containers in the cluster and forwards them to the OpenTelemetry Collector.
-2. **OpenTelemetry Collector**: Receives logs from Fluent Bit, processes them, and routes them to the correct Moesif application based on the `openchoreo.dev/environment` resource attribute.
+2. **OpenTelemetry Collector**: Receives logs from Fluent Bit, processes them, and routes them to the correct Moesif application based on the environment UID.
 
-The module uses the Moesif Collector Application ID stored in the `moesif-logs-secret` Kubernetes secret to authenticate with the Moesif API.
+The module uses the Moesif Collector Application ID stored in the `moesif-logs-collector-secret` Kubernetes secret to authenticate with the Moesif API.
 
 ## Troubleshooting
 
@@ -125,7 +141,7 @@ kubectl -n openchoreo-observability-plane logs -f ds/fluent-bit
 ### Verify the secret exists
 
 ```bash
-kubectl -n openchoreo-observability-plane get secret moesif-logs-secret
+kubectl -n openchoreo-observability-plane get secret moesif-logs-collector-secret
 ```
 
 ### Check pod health

@@ -32,6 +32,15 @@ data:
         Tag kube.*
 
     [FILTER]
+        Name multiline
+        Match kube.*
+        multiline.key_content log
+        mode parser
+        multiline.parser go, java, python{{ range (index .Values "fluent-bit" "multilineParsers") }}, {{ .name }}{{ end }}
+        buffer On
+        flush_ms 2000
+
+    [FILTER]
         Name kubernetes
         Buffer_Size 15MB
         K8S-Logging.Parser On
@@ -66,4 +75,19 @@ data:
         Time_Keep Off
         Time_Key time
         Time_Format %Y-%m-%dT%H:%M:%S.%L
+
+    # The go, java and python multiline parsers referenced by the multiline
+    # filter above are built into Fluent Bit. Anything else, such as .NET
+    # stack traces, is supplied through fluent-bit.multilineParsers in
+    # values.yaml and rendered below as a [MULTILINE_PARSER] block. See
+    # https://docs.fluentbit.io/manual/data-pipeline/filters/multiline-stacktrace
+    {{- range (index .Values "fluent-bit" "multilineParsers") }}
+    [MULTILINE_PARSER]
+        name          {{ .name }}
+        type          regex
+        flush_timeout 2000
+        {{- range .rules }}
+        rule          "{{ .state }}" "{{ .regex }}" "{{ .nextState }}"
+        {{- end }}
+    {{- end }}
 {{- end }}

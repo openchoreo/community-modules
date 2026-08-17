@@ -3,6 +3,12 @@
 The collector is now watching Kubernetes events cluster-wide and enriching them
 with the involved object's labels, annotations, and owner reference.
 
+{{ if .Values.configOverride -}}
+Pipeline: defined by `configOverride` — the structured values are not in effect.
+{{- else -}}
+Pipeline: k8s_events -> {{ join " -> " .Values.pipelineProcessors }} -> {{ join ", " .Values.pipelineExporters }}
+{{- end }}
+
 Watch it work:
   kubectl -n {{ .Release.Namespace }} rollout status deploy/{{ include "events-collector.fullname" . }}
   kubectl -n {{ .Release.Namespace }} logs -f deploy/{{ include "events-collector.fullname" . }}

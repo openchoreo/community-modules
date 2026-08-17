@@ -13,10 +13,42 @@ data:
     {{- if .Values.configOverride }}
     {{- toYaml .Values.configOverride | nindent 4 }}
     {{- else }}
+    {{- /*
+      Helm's coalesce drops keys the user set to null (e.g. a commented-out body), so
+      these maps/lists can arrive as an untyped nil. `hasKey`, `len` and `uniq` all
+      error on that, while `range`, `has` and `join` tolerate it — normalise up front
+      so every guard below reports its own message instead of a reflection error.
+    */}}
+    {{- $exporters := .Values.exporters | default dict }}
+    {{- $extraProcessors := .Values.extraProcessors | default dict }}
+    {{- $pipelineProcessors := .Values.pipelineProcessors | default list }}
+    {{- $builtinProcessors := list "k8seventenrich" "batch" }}
     {{- range $e := .Values.pipelineExporters }}
-    {{- if not (hasKey $.Values.exporters $e) }}
+    {{- if not (hasKey $exporters $e) }}
     {{- fail (printf "pipelineExporters references %q, which is not defined under .Values.exporters" $e) }}
     {{- end }}
+    {{- end }}
+    {{- if not $pipelineProcessors }}
+    {{- fail "pipelineProcessors must not be empty: it is a full replacement list, so list the processors you want, e.g. [k8seventenrich, batch]" }}
+    {{- end }}
+    {{- range $p := $pipelineProcessors }}
+    {{- if and (not (has $p $builtinProcessors)) (not (hasKey $extraProcessors $p)) }}
+    {{- fail (printf "pipelineProcessors references %q, which is neither a built-in processor (k8seventenrich, batch) nor defined under .Values.extraProcessors" $p) }}
+    {{- end }}
+    {{- end }}
+    {{- range $name, $cfg := $extraProcessors }}
+    {{- if has $name $builtinProcessors }}
+    {{- fail (printf "extraProcessors defines %q, which is a reserved built-in processor name; the rendered config would carry the key twice and fail to parse" $name) }}
+    {{- end }}
+    {{- end }}
+    {{- if not (has "k8seventenrich" $pipelineProcessors) }}
+    {{- fail "pipelineProcessors must include \"k8seventenrich\": without it events are not enriched, which is this module's whole purpose. Use configOverride if you need a fully custom pipeline" }}
+    {{- end }}
+    {{- if ne (len $pipelineProcessors) (len (uniq $pipelineProcessors)) }}
+    {{- fail "pipelineProcessors contains duplicate entries: the collector rejects a processor referenced more than once in a pipeline" }}
+    {{- end }}
+    {{- if and (has "batch" $pipelineProcessors) (ne (last $pipelineProcessors | toString) "batch") }}
+    {{- fail "pipelineProcessors: \"batch\" must be the last processor in the chain, so batching happens after all other processing" }}
     {{- end }}
     extensions:
       health_check:
@@ -41,9 +73,15 @@ data:
       k8seventenrich:
         {{- toYaml .Values.enrichment | nindent 8 }}
       batch: {}
+      {{- range $name, $cfg := $extraProcessors }}
+      {{- if has $name $pipelineProcessors }}
+      {{ $name }}:
+        {{- toYaml $cfg | nindent 8 }}
+      {{- end }}
+      {{- end }}
 
     exporters:
-      {{- range $name, $cfg := .Values.exporters }}
+      {{- range $name, $cfg := $exporters }}
       {{- if has $name $.Values.pipelineExporters }}
       {{ $name }}:
         {{- toYaml $cfg | nindent 8 }}
@@ -58,6 +96,6 @@ data:
       pipelines:
         logs:
           receivers: [k8s_events]
-          processors: [k8seventenrich, batch]
+          processors: [{{ join ", " $pipelineProcessors }}]
           exporters: [{{ join ", " .Values.pipelineExporters }}]
     {{- end }}

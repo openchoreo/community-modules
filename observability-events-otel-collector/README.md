@@ -26,9 +26,10 @@ Enriched keys land on the event's resource attributes:
 | Annotations | `k8s.object.annotation.<key>`      |
 | Owner ref   | `k8s.object.owner.{kind,name,uid}` |
 
-The pipeline is `k8s_events → k8seventenrich → batch → exporter`. See
-[`k8seventenrichprocessor/README.md`](k8seventenrichprocessor/README.md) for the
-full processor reference.
+The default pipeline is `k8s_events → k8seventenrich → batch → exporter`; extra
+processors can be inserted into it — see
+[Customizing the pipeline](#customizing-the-pipeline). For the full event enrichment processor
+reference, see [`k8seventenrichprocessor/README.md`](k8seventenrichprocessor/README.md).
 
 ## Prerequisites
 
@@ -47,7 +48,7 @@ helm upgrade --install observability-events-otel-collector \
   oci://ghcr.io/openchoreo/helm-charts/observability-events-otel-collector \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.1.1
+  --version 0.2.0
 ```
 
 Out of the box the collector enriches events and prints them to its pod log via
@@ -72,7 +73,7 @@ Compatible with `observability-logs-opensearch` community module (>= version 0.6
 ```bash
 helm upgrade --install observability-events-otel-collector \
   oci://ghcr.io/openchoreo/helm-charts/observability-events-otel-collector \
-  --namespace openchoreo-observability-plane --version 0.1.1 \
+  --namespace openchoreo-observability-plane --version 0.2.0 \
   -f - <<'EOF'
 collector:
   extraEnv:
@@ -113,7 +114,7 @@ Compatible with `observability-logs-openobserve` community module (>= version 0.
 ```bash
 helm upgrade --install observability-events-otel-collector \
   oci://ghcr.io/openchoreo/helm-charts/observability-events-otel-collector \
-  --namespace openchoreo-observability-plane --create-namespace --version 0.1.1 \
+  --namespace openchoreo-observability-plane --create-namespace --version 0.2.0 \
   -f - <<'EOF'
 collector:
   extraEnv:
@@ -166,6 +167,101 @@ pipelineExporters:
 > If you need a pipeline the structured values don't cover, set `configOverride` to a
 > raw collector config and it replaces the rendered one entirely.
 
+## Customizing the pipeline
+
+Extra processors go in `extraProcessors` (the definitions) and are ordered by
+`pipelineProcessors` (the chain), mirroring `exporters` / `pipelineExporters`.
+
+The distribution is a curated build with the following upstream processor types.
+They can be used alongside the built-in `k8seventenrich` and `batch`:
+
+| Type       | Use                                                                                                                       |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `resource` | Add/rewrite **resource** attributes — stamp origin metadata on every event.                                               |
+| `filter`   | Drop events matching an [OTTL](https://opentelemetry.io/docs/collector/transforming-telemetry/) condition, before export. |
+
+Order matters. **`batch` must be last** (if included) so batching happens
+after all other processing — the chart fails the render if it isn't.
+**`k8seventenrich` is required** — the render fails without it — and must come
+**before** anything that reads its output (`k8s.object.label.*`,
+`k8s.object.annotation.*`, `k8s.object.owner.*`).
+
+> `pipelineProcessors` is a full **replacement** list, not a merge. To add one
+> processor you must re-list `k8seventenrich` (mandatory) and `batch` (if needed).
+
+### Stamping origin attributes (e.g. multi-cluster / multi-plane)
+
+When several collectors fan into one backend, events need an origin attribute to
+stay distinguishable at query time. Env values come from `collector.extraEnv` —
+no separate mechanism is needed for `${env:...}`:
+
+```bash
+helm upgrade --install observability-events-otel-collector \
+  oci://ghcr.io/openchoreo/helm-charts/observability-events-otel-collector \
+  --namespace openchoreo-observability-plane --version 0.2.0 \
+  -f - <<'EOF'
+collector:
+  extraEnv:
+    - name: REGION
+      value: us-east-1
+    - name: PLANE_KIND
+      value: dataplane
+    - name: PLANE_NAME
+      value: prod
+
+extraProcessors:
+  resource/cluster_identity:
+    attributes:
+      - { key: cloud.region, value: "${env:REGION}", action: upsert }
+      - { key: openchoreo.plane_kind, value: "${env:PLANE_KIND}", action: upsert }
+      - { key: openchoreo.plane_name, value: "${env:PLANE_NAME}", action: upsert }
+
+pipelineProcessors:
+  - k8seventenrich
+  - resource/cluster_identity
+  - batch
+EOF
+```
+
+### Dropping noisy events
+
+Events are high-volume; `filter` trims them before they cost anything downstream.
+Conditions are OTTL and drop a record when they evaluate **true**:
+
+```yaml
+extraProcessors:
+  filter/drop_kube_system:
+    error_mode: ignore
+    logs:
+      log_record:
+        - 'attributes["k8s.namespace.name"] == "kube-system"'
+
+pipelineProcessors:
+  - k8seventenrich
+  - filter/drop_kube_system
+  - batch
+```
+
+Filter on the event's own fields with `k8s.event.reason` /
+`k8s.event.reporting_controller`, or on the enriched resource attributes that
+`k8seventenrich` adds. Note the receiver emits no event-type _attribute_ — the
+event's `Normal` / `Warning` type is carried as the log record's severity. To keep
+only warnings and above:
+
+```yaml
+extraProcessors:
+  filter/warnings_only:
+    error_mode: ignore
+    logs:
+      log_record:
+        - 'severity_text == "Normal"'
+
+pipelineProcessors:
+  - k8seventenrich
+  - filter/warnings_only
+  - batch
+```
+
 ## Tuning enrichment
 
 The `enrichment` value maps 1:1 to the `k8seventenrich` processor config.
@@ -213,7 +309,7 @@ persistence:
 ```bash
 helm upgrade --install observability-events-otel-collector \
   oci://ghcr.io/openchoreo/helm-charts/observability-events-otel-collector \
-  --namespace openchoreo-observability-plane --version 0.1.1 --reuse-values \
+  --namespace openchoreo-observability-plane --version 0.2.0 --reuse-values \
   --set persistence.enabled=true \
   --set persistence.storageClassName=<your-storage-class>
 ```

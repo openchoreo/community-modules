@@ -16,6 +16,11 @@ receivers:
 
 processors:
   - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.153.0
+  # Resource-attribute edits (insert/update/upsert/delete). Lets operators stamp origin
+  # attributes (region, plane, cluster) onto every event via `extraProcessors`.
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourceprocessor v0.153.0
+  # Drops noisy events (by namespace, reason, severity) before they reach the exporter.
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/filterprocessor v0.153.0
   # The custom processor that adds Kubernetes metadata to events emitted by the k8seventsreceiver.
   - gomod: github.com/openchoreo/community-modules/observability-events-otel-collector/k8seventenrichprocessor v0.1.0
     path: ./k8seventenrichprocessor

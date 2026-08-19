@@ -5,7 +5,7 @@ go 1.26
 require (
 	github.com/getkin/kin-openapi v0.146.0
 	github.com/google/uuid v1.6.0
-	github.com/oapi-codegen/runtime v1.6.0
+	github.com/oapi-codegen/runtime v1.7.0
 	github.com/opensearch-project/opensearch-go/v4 v4.7.3
 )
 

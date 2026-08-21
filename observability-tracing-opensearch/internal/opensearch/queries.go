@@ -259,8 +259,9 @@ func BuildTracesAggregationQuery(params TracesRequestParams) map[string]interfac
 	return query
 }
 
-// BuildSpanDetailsQuery builds a query for retrieving a specific span by traceId and spanId.
-func BuildSpanDetailsQuery(traceID string, spanID string) map[string]interface{} {
+// BuildScopedSpanDetailsQuery builds a query for a specific span by traceId and spanId,
+// scoped to the namespace and project UID from the request's searchScope.
+func BuildScopedSpanDetailsQuery(traceID string, spanID string, namespace string, projectUID string) map[string]interface{} {
 	filterConditions := []map[string]interface{}{
 		{
 			"term": map[string]interface{}{
@@ -272,6 +273,19 @@ func BuildSpanDetailsQuery(traceID string, spanID string) map[string]interface{}
 				"spanId": spanID,
 			},
 		},
+		{
+			"term": map[string]interface{}{
+				"resource.openchoreo.dev/namespace": namespace,
+			},
+		},
+	}
+
+	if projectUID != "" {
+		filterConditions = append(filterConditions, map[string]interface{}{
+			"term": map[string]interface{}{
+				"resource.openchoreo.dev/project-uid": projectUID,
+			},
+		})
 	}
 
 	query := map[string]interface{}{

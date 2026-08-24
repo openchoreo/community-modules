@@ -22,7 +22,7 @@ spec:
   allowedTraits:
     - kind: ClusterTrait
       name: observability-alert-rule
-    {{- with (index .Values.componentTypes.extraAllowedTraits "ai-agent") }}
+    {{- with (index .Values.componentTypes "ai-agent" "extraAllowedTraits") }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
 

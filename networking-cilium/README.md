@@ -55,6 +55,7 @@ This module enables advanced network security and observability in OpenChoreo us
 
    envoy:
      enabled: true
+     httpRetryCount: 0 # Cilium defaults to 3; set to 0 to avoid retry storms. Override cautiously if needed.
    EOF
    ```
 
@@ -69,7 +70,8 @@ This module enables advanced network security and observability in OpenChoreo us
    --helm-set hubble.metrics.enabled="{httpV2:exemplars=true;labelsContext=source_ip\,source_namespace\,source_workload\,destination_ip\,destination_namespace\,destination_workload\,traffic_direction\,source_pod\,destination_pod,dns,drop,tcp}" \
    --helm-set hubble.metrics.serviceMonitor.enabled=true \
    --helm-set hubble.relay.enabled=true \
-   --helm-set envoy.enabled=true
+   --helm-set envoy.enabled=true \
+   --helm-set envoy.httpRetryCount=0
    ```
 
 2. Add the annotation `openchoreo.dev/networkpolicyprovider: cilium` to the `DataPlane` or `ClusterDataPlane` resources which points to the kubernetes cluster with Cilium configured.
@@ -116,9 +118,9 @@ kubectl get ciliumnetworkpolicies.cilium.io -A
 
 This module integrates Cilium, OpenChoreo, and an observability metrics module (an OpenChoreo community module), and is compatible with the following versions.
 
-| Component                                | Compatible Version | Notes                                                   |
-| :--------------------------------------- | :----------------- | :------------------------------------------------------ |
-| **Cilium**                               | `1.19.x`           |                                                          |
-| **OpenChoreo**                           | `>=1.1.x`          | Requires `1.2.x` for Wirelogs                            |
-| **Observability-Metrics-Prometheus**     | `0.6.x`            | OpenChoreo community module                              |
-| **Observability-Metrics-AWS-CloudWatch** | `0.3.x`            | OpenChoreo community module  |
+| Component                                | Compatible Version | Notes                         |
+| :--------------------------------------- | :----------------- | :---------------------------- |
+| **Cilium**                               | `1.19.x`           |                               |
+| **OpenChoreo**                           | `>=1.1.x`          | Requires `1.2.x` for Wirelogs |
+| **Observability-Metrics-Prometheus**     | `0.6.x`            | OpenChoreo community module   |
+| **Observability-Metrics-AWS-CloudWatch** | `0.3.x`            | OpenChoreo community module   |

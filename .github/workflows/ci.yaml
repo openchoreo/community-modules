@@ -5,7 +5,9 @@ name: Build Images and Release Charts
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - 'release-*'
     paths:
       - "*/**"
   workflow_dispatch:
@@ -130,6 +132,8 @@ jobs:
         run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io --username "${{ github.actor }}" --password-stdin
 
       - name: Build images and release charts
+        env:
+          REF_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
 
@@ -139,13 +143,19 @@ jobs:
 
           BEFORE_SHA="${{ github.event.before }}"
 
+          # release-* branches publish only formal releases, no dev artifacts
+          IS_RELEASE_BRANCH=false
+          case "$REF_NAME" in
+            release-*) IS_RELEASE_BRANCH=true ;;
+          esac
+
           # Determine changed files
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             CHANGED_FILES=$(git ls-files)
           elif [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ]; then
             CHANGED_FILES=$(git diff --name-only "$BEFORE_SHA" HEAD)
           else
-            CHANGED_FILES=$(git ls-files)
+            CHANGED_FILES=""
           fi
 
           echo "Changed files:"
@@ -166,41 +176,46 @@ jobs:
             MODULE_FILES=$(echo "$CHANGED_FILES" | grep "^${module}/" || true)
 
             MODULE_CHANGED=false #Any file under the module changed
-            VERSION_BUMPED=false #The module's VERSION file was changed
+            SHOULD_RELEASE=false #A new (untagged) version should be released
 
             if [ -n "$MODULE_FILES" ]; then
               MODULE_CHANGED=true
             fi
 
-            # Detect a VERSION-file bump for this module
+            # Release when the VERSION file changed and its tag doesn't exist yet
+            # (tag-existence keeps this idempotent and safe to re-run)
             VERSION_FILE="${module}/VERSION"
             RELEASE_VERSION=""
             if [ -f "$VERSION_FILE" ]; then
               RELEASE_VERSION=$(tr -d '[:space:]' < "$VERSION_FILE")
-              OLD_VERSION=""
-              if [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ]; then
-                OLD_VERSION=$(git show "${BEFORE_SHA}:${VERSION_FILE}" 2>/dev/null | tr -d '[:space:]' || echo "")
-              fi
-              if [ -n "$RELEASE_VERSION" ] && [ -n "$OLD_VERSION" ] && [ "$RELEASE_VERSION" != "$OLD_VERSION" ]; then
-                VERSION_BUMPED=true
+              if [ -n "$RELEASE_VERSION" ] \
+                 && echo "$CHANGED_FILES" | grep -q "^${VERSION_FILE}$" \
+                 && ! git rev-parse "refs/tags/${module}-${RELEASE_VERSION}" >/dev/null 2>&1; then
+                SHOULD_RELEASE=true
               fi
             fi
 
-            # workflow_dispatch: force dev publish only, never formal
+            # workflow_dispatch: force dev publish only, never a formal release
             if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
               MODULE_CHANGED=true
-              VERSION_BUMPED=false
+              SHOULD_RELEASE=false
             fi
 
-            if [ "$MODULE_CHANGED" = "false" ] && [ "$VERSION_BUMPED" = "false" ]; then
+            # Dev artifacts track main only, not release-* branches
+            DEV_PUBLISH=false
+            if [ "$MODULE_CHANGED" = "true" ] && [ "$IS_RELEASE_BRANCH" = "false" ]; then
+              DEV_PUBLISH=true
+            fi
+
+            if [ "$DEV_PUBLISH" = "false" ] && [ "$SHOULD_RELEASE" = "false" ]; then
               echo "Skipping ${module}: no changes"
               continue
             fi
 
-            echo "::group::${module} (changed=${MODULE_CHANGED} version_bumped=${VERSION_BUMPED} release_version=${RELEASE_VERSION:-none})"
+            echo "::group::${module} (dev_publish=${DEV_PUBLISH} should_release=${SHOULD_RELEASE} release_version=${RELEASE_VERSION:-none})"
 
             # ── Build container images ──
-            if [ "$MODULE_CHANGED" = "true" ] || [ "$VERSION_BUMPED" = "true" ]; then
+            if [ "$DEV_PUBLISH" = "true" ] || [ "$SHOULD_RELEASE" = "true" ]; then
               if [ -f "${module}/module.yaml" ]; then
                 image_count=$(yq '.images | length' "${module}/module.yaml")
                 if [ "$image_count" != "0" ] && [ "$image_count" != "null" ]; then
@@ -212,11 +227,11 @@ jobs:
                     FULL_IMAGE="ghcr.io/${REPO_OWNER}/${image_name}"
 
                     TAG_ARGS=()
-                    if [ "$MODULE_CHANGED" = "true" ]; then
+                    if [ "$DEV_PUBLISH" = "true" ]; then
                       TAG_ARGS+=(-t "${FULL_IMAGE}:latest-dev")
                       TAG_ARGS+=(-t "${FULL_IMAGE}:${GIT_SHA_SHORT}")
                     fi
-                    if [ "$VERSION_BUMPED" = "true" ]; then
+                    if [ "$SHOULD_RELEASE" = "true" ]; then
                       TAG_ARGS+=(-t "${FULL_IMAGE}:${RELEASE_VERSION}")
                     fi
 
@@ -233,7 +248,7 @@ jobs:
             fi
 
             # ── Package and publish the Helm chart ──
-            if [ "$MODULE_CHANGED" = "true" ] || [ "$VERSION_BUMPED" = "true" ]; then
+            if [ "$DEV_PUBLISH" = "true" ] || [ "$SHOULD_RELEASE" = "true" ]; then
               chart_name=$(yq '.name' "${chart_dir}/Chart.yaml")
 
               # Add dependency repos and build (once per module)
@@ -262,17 +277,17 @@ jobs:
                 helm push ".packages/${chart_name}-${target_version}.tgz" "oci://ghcr.io/${REPO_OWNER}/helm-charts"
               }
 
-              if [ "$MODULE_CHANGED" = "true" ]; then
+              if [ "$DEV_PUBLISH" = "true" ]; then
                 package_and_push "0.0.0-latest-dev" "latest-dev"
                 package_and_push "0.0.0-${GIT_SHA_SHORT}" "${GIT_SHA_SHORT}"
               fi
-              if [ "$VERSION_BUMPED" = "true" ]; then
+              if [ "$SHOULD_RELEASE" = "true" ]; then
                 package_and_push "${RELEASE_VERSION}" "${RELEASE_VERSION}"
               fi
             fi
 
             # ── Create and push git tag for the release ──
-            if [ "$VERSION_BUMPED" = "true" ]; then
+            if [ "$SHOULD_RELEASE" = "true" ]; then
               TAG="${module}-${RELEASE_VERSION}"
               if git rev-parse "refs/tags/${TAG}" >/dev/null 2>&1; then
                 echo "Tag ${TAG} already exists; skipping"

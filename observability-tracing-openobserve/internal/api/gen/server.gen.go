@@ -31,8 +31,8 @@ type ServerInterface interface {
 	// (POST /api/v1alpha1/traces/{traceId}/spans/query)
 	QuerySpansForTrace(w http.ResponseWriter, r *http.Request, traceId string)
 	// Get details of a span for a trace
-	// (GET /api/v1alpha1/traces/{traceId}/spans/{spanId})
-	GetSpanDetailsForTrace(w http.ResponseWriter, r *http.Request, traceId string, spanId string)
+	// (POST /api/v1alpha1/traces/{traceId}/spans/{spanId})
+	QuerySpanDetailsForTrace(w http.ResponseWriter, r *http.Request, traceId string, spanId string)
 	// Health check
 	// (GET /healthz)
 	Health(w http.ResponseWriter, r *http.Request)
@@ -86,8 +86,8 @@ func (siw *ServerInterfaceWrapper) QuerySpansForTrace(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
-// GetSpanDetailsForTrace operation middleware
-func (siw *ServerInterfaceWrapper) GetSpanDetailsForTrace(w http.ResponseWriter, r *http.Request) {
+// QuerySpanDetailsForTrace operation middleware
+func (siw *ServerInterfaceWrapper) QuerySpanDetailsForTrace(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 
@@ -110,7 +110,7 @@ func (siw *ServerInterfaceWrapper) GetSpanDetailsForTrace(w http.ResponseWriter,
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetSpanDetailsForTrace(w, r, traceId, spanId)
+		siw.Handler.QuerySpanDetailsForTrace(w, r, traceId, spanId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -256,7 +256,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 
 	m.HandleFunc("POST "+options.BaseURL+"/api/v1alpha1/traces/query", wrapper.QueryTraces)
 	m.HandleFunc("POST "+options.BaseURL+"/api/v1alpha1/traces/{traceId}/spans/query", wrapper.QuerySpansForTrace)
-	m.HandleFunc("GET "+options.BaseURL+"/api/v1alpha1/traces/{traceId}/spans/{spanId}", wrapper.GetSpanDetailsForTrace)
+	m.HandleFunc("POST "+options.BaseURL+"/api/v1alpha1/traces/{traceId}/spans/{spanId}", wrapper.QuerySpanDetailsForTrace)
 	m.HandleFunc("GET "+options.BaseURL+"/healthz", wrapper.Health)
 
 	return m
@@ -369,54 +369,55 @@ func (response QuerySpansForTrace500JSONResponse) VisitQuerySpansForTraceRespons
 	return json.NewEncoder(w).Encode(response)
 }
 
-type GetSpanDetailsForTraceRequestObject struct {
+type QuerySpanDetailsForTraceRequestObject struct {
 	TraceId string `json:"traceId"`
 	SpanId  string `json:"spanId"`
+	Body    *QuerySpanDetailsForTraceJSONRequestBody
 }
 
-type GetSpanDetailsForTraceResponseObject interface {
-	VisitGetSpanDetailsForTraceResponse(w http.ResponseWriter) error
+type QuerySpanDetailsForTraceResponseObject interface {
+	VisitQuerySpanDetailsForTraceResponse(w http.ResponseWriter) error
 }
 
-type GetSpanDetailsForTrace200JSONResponse TraceSpanDetailsResponse
+type QuerySpanDetailsForTrace200JSONResponse TraceSpanDetailsResponse
 
-func (response GetSpanDetailsForTrace200JSONResponse) VisitGetSpanDetailsForTraceResponse(w http.ResponseWriter) error {
+func (response QuerySpanDetailsForTrace200JSONResponse) VisitQuerySpanDetailsForTraceResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type GetSpanDetailsForTrace400JSONResponse ErrorResponse
+type QuerySpanDetailsForTrace400JSONResponse ErrorResponse
 
-func (response GetSpanDetailsForTrace400JSONResponse) VisitGetSpanDetailsForTraceResponse(w http.ResponseWriter) error {
+func (response QuerySpanDetailsForTrace400JSONResponse) VisitQuerySpanDetailsForTraceResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(400)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type GetSpanDetailsForTrace401JSONResponse ErrorResponse
+type QuerySpanDetailsForTrace401JSONResponse ErrorResponse
 
-func (response GetSpanDetailsForTrace401JSONResponse) VisitGetSpanDetailsForTraceResponse(w http.ResponseWriter) error {
+func (response QuerySpanDetailsForTrace401JSONResponse) VisitQuerySpanDetailsForTraceResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(401)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type GetSpanDetailsForTrace403JSONResponse ErrorResponse
+type QuerySpanDetailsForTrace403JSONResponse ErrorResponse
 
-func (response GetSpanDetailsForTrace403JSONResponse) VisitGetSpanDetailsForTraceResponse(w http.ResponseWriter) error {
+func (response QuerySpanDetailsForTrace403JSONResponse) VisitQuerySpanDetailsForTraceResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(403)
 
 	return json.NewEncoder(w).Encode(response)
 }
 
-type GetSpanDetailsForTrace500JSONResponse ErrorResponse
+type QuerySpanDetailsForTrace500JSONResponse ErrorResponse
 
-func (response GetSpanDetailsForTrace500JSONResponse) VisitGetSpanDetailsForTraceResponse(w http.ResponseWriter) error {
+func (response QuerySpanDetailsForTrace500JSONResponse) VisitQuerySpanDetailsForTraceResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
 
@@ -462,8 +463,8 @@ type StrictServerInterface interface {
 	// (POST /api/v1alpha1/traces/{traceId}/spans/query)
 	QuerySpansForTrace(ctx context.Context, request QuerySpansForTraceRequestObject) (QuerySpansForTraceResponseObject, error)
 	// Get details of a span for a trace
-	// (GET /api/v1alpha1/traces/{traceId}/spans/{spanId})
-	GetSpanDetailsForTrace(ctx context.Context, request GetSpanDetailsForTraceRequestObject) (GetSpanDetailsForTraceResponseObject, error)
+	// (POST /api/v1alpha1/traces/{traceId}/spans/{spanId})
+	QuerySpanDetailsForTrace(ctx context.Context, request QuerySpanDetailsForTraceRequestObject) (QuerySpanDetailsForTraceResponseObject, error)
 	// Health check
 	// (GET /healthz)
 	Health(ctx context.Context, request HealthRequestObject) (HealthResponseObject, error)
@@ -562,26 +563,33 @@ func (sh *strictHandler) QuerySpansForTrace(w http.ResponseWriter, r *http.Reque
 	}
 }
 
-// GetSpanDetailsForTrace operation middleware
-func (sh *strictHandler) GetSpanDetailsForTrace(w http.ResponseWriter, r *http.Request, traceId string, spanId string) {
-	var request GetSpanDetailsForTraceRequestObject
+// QuerySpanDetailsForTrace operation middleware
+func (sh *strictHandler) QuerySpanDetailsForTrace(w http.ResponseWriter, r *http.Request, traceId string, spanId string) {
+	var request QuerySpanDetailsForTraceRequestObject
 
 	request.TraceId = traceId
 	request.SpanId = spanId
 
+	var body QuerySpanDetailsForTraceJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.GetSpanDetailsForTrace(ctx, request.(GetSpanDetailsForTraceRequestObject))
+		return sh.ssi.QuerySpanDetailsForTrace(ctx, request.(QuerySpanDetailsForTraceRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetSpanDetailsForTrace")
+		handler = middleware(handler, "QuerySpanDetailsForTrace")
 	}
 
 	response, err := handler(r.Context(), w, r, request)
 
 	if err != nil {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(GetSpanDetailsForTraceResponseObject); ok {
-		if err := validResponse.VisitGetSpanDetailsForTraceResponse(w); err != nil {
+	} else if validResponse, ok := response.(QuerySpanDetailsForTraceResponseObject); ok {
+		if err := validResponse.VisitQuerySpanDetailsForTraceResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -616,36 +624,37 @@ func (sh *strictHandler) Health(w http.ResponseWriter, r *http.Request) {
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"H4sIAAAAAAAC/+xaX3PjthH/Khi0M/dCU7Iv7YPeHN+l9TQ5X2J1+hD7YUWuTMQgwAOW9ikeffcO/lCi",
+	"JFAnxedrJ+Mni8Risdjd3w+LpZ94oetGK1Rk+eSJ26LCGvzPi27gGsEU1XWhG3TvG6MbNCTQS62muwda",
+	"OBFuyQh1x5cZR/UgjFb10LiCGm0DBSZHG6N/wyI1c5lxg59aYbDkk197am6zTlTP/Nxlxt8bo80vaBut",
+	"bGIHJRIIGX7ZwoiGhFZ8wqcVMnRTWY3Wwh3yjONnqBvp1P8krBXqjnVmsLlAWVr2xhIYmooa3zBQJXuD",
+	"qvRPPEu4x6m/0CXuW73QJbK50TXTM4vmAQ1zf0SxadDV99cn05Ozs9Q6JEjigTtUbe1cOoPyF/zUoiWe",
+	"8VZBS5U24ncsecbn2sxEWaLiGReK0CiQ194y7+peEHrx2gnLdQPqmoBau2vZ+89YtO43s16C6TmjCplt",
+	"QGVsrqXUj8777t1Vg2qKEmsks/ASLKhltS5R5jzbSdkhh8fFvMd7K+bsSvkXN1zf3/CM3YTIuZ/asBve",
+	"Kot0w/Oe//Q9j/H1/rNICbdkvHP8jjnv8AGls/pkDoXbatXWoE4MQgkzuTK1Nyln00UjCpBywSwS00ou",
+	"2GOFKuxH2LXZOT8oQlMDBbowvfMQsV1C7EDIbjLEXw3O+YT/ZbTmllEkllGSVbbx3Nd3e5BhQ+AGIiNm",
+	"LcWnshTOVSA/9qTItJilssGl0loBA8uA3eNi9ACyRVZDwxO2la0Bp+SDTedYN95PMCYUU6C0xUKr0gaI",
+	"1UB84vD19+/W6zi43aEJ3OqJZQDWqmQk6o007qstgfDECaToogHjAtSAuizT6oNEsP3yXUqHQatbU+D5",
+	"MwLQ6Tg+CHaP7XuMdkP/Empg4r1Q5ZY/kxo+wFBU3Dn1RQ3d+TFIUYb+eGjtinD3gbRHzfuJwf4oLA2j",
+	"z5k2AAMpLLkdBJGMC8LavuL3Fb+v+H15/MYXYAws/LPW9z8N5Ls3leAeFSPNPrVoFiuzrUv8Wkgp1pm/",
+	"m+ikCQbqaz/EVFvP0Dh/1EBF5aodrz1jBTQNlgyInY7H44T2QXb6AjP9kR2T1/tiWw7qD9hzxoPofmKN",
+	"MoPMeizPeX0vT3R+mYPhUIH1V47EHv5TIVVoGKjFiqPX+6gcD6l4+wmg6hXFM60lgvI8qHWPSXdpMg53",
+	"rDMo0JFKknEudBsuyAnKWSXKCnB9N+16+2j+Oc7jXnqImoNv09zsxw6j1q3N7buibDLZMBv87FA8eH85",
+	"KkM9IRzsL6EK2ZZbx2iJc2gl8ckcpN05OrvMJc3i7J1SJmaBifyWs3dBo3WTvNJ0NktRC9qw4HQ8Th3d",
+	"NXwWdVv30s/TiFNvkFrjTqwo43WMM14LFR+TafncK2LGrTZ0ZUo0GxvwxvNk/acNMe0mbIeuu6TDamby",
+	"cn40lI5Jje0r72qtNWFmX7gIL31+zXVoaiiC0CtTHmT8qkF1UWmDmk0Ral/bbu1BWHb+8ZLZBgsxF0Xg",
+	"+xLnQqH1G3JaDRTEqAJi4JHpzioooSE0rG4tMVE3EmtUdKN8yhLeGSBkj4KqVYcmWnIVW1j5jcsgKQqM",
+	"x3M0+ryBokJ2lruDrzWST3hF1NjJaPT4+JiDH861uRvFuXb04+XF+w/X70/O8nFeUS17DS++szLMhBS0",
+	"YNO4kfO4kfOPlzzjD2hs8M1pPs7HTpNuUEEj+IS/zcf5W+6qa6o8ikfQiNHDKcimgtNROG9HIQUcw2ib",
+	"oPSfQzURKgnf1HMOSjT2HD35eDiuDdOm3YluAo99r8tFF/rYYIWmkTGOo9+sW7Fr6X4JdAmaXG7mqKvy",
+	"w8XAc453wdl4/JUt2CjbvAVbSRtc59wssGS2LQq0dt5K6SvZ776iQZt944Qtl+oBpCiZ6Rzm1j/9duv/",
+	"u9+W9Yu//XaL/7BqAi8z/rdv6/bQcmah58xC09nJ2bauwcFvA2eOe+HOOpaNELp1wkn4PsX6Zjny5dZh",
+	"cA6V2VybyJB4LLJ9K+UHbaax8GnAQI2Erq799YkLt5SjHZ51PNmVYdsAzXpO3j5wbv/UzLHbjkqkjhd6",
+	"JY9X8jiAPHZQ/RweeQodreUwlfwDiYVPkf5rF4Saf3P5AeqIX0FenECypKbYq/t/YaLE96r/FR1tf50a",
+	"IKRV2F956ZWX9vHSIRSRZKgKQVL1uzPyDhPcc1Fhce/rlSC59dV9+9Y3VMv800/mz4TW1iekVcN7/a8O",
+	"wcjFIR2iBOKC8UxY1unxsX77DCPDd/4NGzufzaC4R1VO3FVaYeFv2HMQ0v8jxZ72/lpTq77WfteaNvMq",
+	"xI0VLgt6KRTDeeuVxpdPqesYM0hG4ANIhqpstFBk1+dDzER3emzO7S+bmhjXX94u/xsAAP//84FXa6Yk",
+	"AAA=",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

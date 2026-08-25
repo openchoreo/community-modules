@@ -152,6 +152,7 @@ func generateSpanDetailQuery(params TracesQueryParams, stream string, logger *sl
 		"trace_id = '" + escapeSQLString(params.TraceID) + "'",
 		"span_id = '" + escapeSQLString(params.SpanID) + "'",
 	}
+	conditions = append(conditions, buildFilterConditions(params)...)
 
 	safeStream, err := validateSQLIdentifier(stream)
 	if err != nil {

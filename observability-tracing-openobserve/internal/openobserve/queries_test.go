@@ -384,6 +384,12 @@ func TestGenerateSpanDetailQuery(t *testing.T) {
 		params := TracesQueryParams{
 			TraceID: "trace-1",
 			SpanID:  "span-1",
+			Scope: Scope{
+				Namespace:     "my-ns",
+				ProjectID:     "proj-1",
+				ComponentID:   "comp-1",
+				EnvironmentID: "env-1",
+			},
 		}
 
 		result, err := generateSpanDetailQuery(params, "mystream", testLogger())
@@ -403,6 +409,18 @@ func TestGenerateSpanDetailQuery(t *testing.T) {
 		}
 		if !strings.Contains(sql, "span_id = 'span-1'") {
 			t.Errorf("expected span_id filter in SQL: %s", sql)
+		}
+		if !strings.Contains(sql, "service_openchoreo_dev_namespace = 'my-ns'") {
+			t.Errorf("expected namespace filter in SQL: %s", sql)
+		}
+		if !strings.Contains(sql, "service_openchoreo_dev_project_uid = 'proj-1'") {
+			t.Errorf("expected project filter in SQL: %s", sql)
+		}
+		if !strings.Contains(sql, "service_openchoreo_dev_component_uid = 'comp-1'") {
+			t.Errorf("expected component filter in SQL: %s", sql)
+		}
+		if !strings.Contains(sql, "service_openchoreo_dev_environment_uid = 'env-1'") {
+			t.Errorf("expected environment filter in SQL: %s", sql)
 		}
 		if !strings.Contains(sql, "SELECT * FROM mystream") {
 			t.Errorf("expected SELECT * FROM in SQL: %s", sql)

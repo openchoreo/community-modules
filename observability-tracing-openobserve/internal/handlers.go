@@ -106,24 +106,38 @@ func (h *TracingHandler) QuerySpansForTrace(ctx context.Context, request gen.Que
 	return gen.QuerySpansForTrace200JSONResponse(toSpansListResponse(result)), nil
 }
 
-// GetSpanDetailsForTrace implements GET /api/v1alpha1/traces/{traceId}/spans/{spanId}.
-func (h *TracingHandler) GetSpanDetailsForTrace(ctx context.Context, request gen.GetSpanDetailsForTraceRequestObject) (gen.GetSpanDetailsForTraceResponseObject, error) {
+// QuerySpanDetailsForTrace implements POST /api/v1alpha1/traces/{traceId}/spans/{spanId}.
+func (h *TracingHandler) QuerySpanDetailsForTrace(ctx context.Context, request gen.QuerySpanDetailsForTraceRequestObject) (gen.QuerySpanDetailsForTraceResponseObject, error) {
+	if request.Body == nil {
+		return gen.QuerySpanDetailsForTrace400JSONResponse{
+			Title:  ptr(gen.BadRequest),
+			Detail: ptr("request body is required"),
+		}, nil
+	}
+	if strings.TrimSpace(request.Body.SearchScope.Namespace) == "" {
+		return gen.QuerySpanDetailsForTrace400JSONResponse{
+			Title:  ptr(gen.BadRequest),
+			Detail: ptr("namespace is required"),
+		}, nil
+	}
+
 	params := openobserve.TracesQueryParams{
 		TraceID: request.TraceId,
 		SpanID:  request.SpanId,
+		Scope:   toScope(request.Body.SearchScope),
 	}
 
 	result, err := h.client.GetSpanDetail(ctx, params)
 	if err != nil {
 		h.logger.Error("Failed to query span detail", slog.Any("error", err))
 		detail := err.Error()
-		return gen.GetSpanDetailsForTrace500JSONResponse{
+		return gen.QuerySpanDetailsForTrace500JSONResponse{
 			Title:  ptr(gen.InternalServerError),
 			Detail: &detail,
 		}, nil
 	}
 
-	return gen.GetSpanDetailsForTrace200JSONResponse(toSpanDetailsResponse(&result.Span)), nil
+	return gen.QuerySpanDetailsForTrace200JSONResponse(toSpanDetailsResponse(&result.Span)), nil
 }
 
 // toTracesQueryParams converts the generated request body to internal query params.
@@ -131,9 +145,7 @@ func toTracesQueryParams(req *gen.TracesQueryRequest) openobserve.TracesQueryPar
 	params := openobserve.TracesQueryParams{
 		StartTime: req.StartTime,
 		EndTime:   req.EndTime,
-		Scope: openobserve.Scope{
-			Namespace: req.SearchScope.Namespace,
-		},
+		Scope:     toScope(req.SearchScope),
 	}
 	if req.Limit != nil {
 		params.Limit = *req.Limit
@@ -141,16 +153,22 @@ func toTracesQueryParams(req *gen.TracesQueryRequest) openobserve.TracesQueryPar
 	if req.SortOrder != nil {
 		params.SortOrder = string(*req.SortOrder)
 	}
-	if req.SearchScope.Project != nil {
-		params.Scope.ProjectID = *req.SearchScope.Project
-	}
-	if req.SearchScope.Component != nil {
-		params.Scope.ComponentID = *req.SearchScope.Component
-	}
-	if req.SearchScope.Environment != nil {
-		params.Scope.EnvironmentID = *req.SearchScope.Environment
-	}
 	return params
+}
+
+// toScope converts the generated search scope to internal openobserve scope filters.
+func toScope(s gen.ComponentSearchScope) openobserve.Scope {
+	scope := openobserve.Scope{Namespace: s.Namespace}
+	if s.Project != nil {
+		scope.ProjectID = *s.Project
+	}
+	if s.Component != nil {
+		scope.ComponentID = *s.Component
+	}
+	if s.Environment != nil {
+		scope.EnvironmentID = *s.Environment
+	}
+	return scope
 }
 
 // toTracesListResponse converts the internal result to the generated response model.

@@ -540,7 +540,7 @@ func TestQuerySpansForTrace_Success(t *testing.T) {
 	}
 }
 
-func TestGetSpanDetailsForTrace_Success(t *testing.T) {
+func TestQuerySpanDetailsForTrace_Success(t *testing.T) {
 	startNs := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC).UnixNano()
 	endNs := time.Date(2025, 1, 1, 12, 0, 1, 0, time.UTC).UnixNano()
 
@@ -571,15 +571,18 @@ func TestGetSpanDetailsForTrace_Success(t *testing.T) {
 	client := openobserve.NewClient(ooServer.URL, "default", "default", "admin", "pass", testLogger())
 	handler := NewTracingHandler(client, testLogger())
 
-	resp, err := handler.GetSpanDetailsForTrace(context.Background(), gen.GetSpanDetailsForTraceRequestObject{
+	resp, err := handler.QuerySpanDetailsForTrace(context.Background(), gen.QuerySpanDetailsForTraceRequestObject{
 		TraceId: "trace-1",
 		SpanId:  "span-1",
+		Body: &gen.TraceSpanDetailsRequest{
+			SearchScope: gen.ComponentSearchScope{Namespace: "default"},
+		},
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	detailResp, ok := resp.(gen.GetSpanDetailsForTrace200JSONResponse)
+	detailResp, ok := resp.(gen.QuerySpanDetailsForTrace200JSONResponse)
 	if !ok {
 		t.Fatalf("expected 200 response, got %T", resp)
 	}
@@ -591,7 +594,7 @@ func TestGetSpanDetailsForTrace_Success(t *testing.T) {
 	}
 }
 
-func TestGetSpanDetailsForTrace_NotFound(t *testing.T) {
+func TestQuerySpanDetailsForTrace_NotFound(t *testing.T) {
 	ooServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp := openobserve.OpenObserveResponse{
 			Took:  1,
@@ -607,17 +610,54 @@ func TestGetSpanDetailsForTrace_NotFound(t *testing.T) {
 	client := openobserve.NewClient(ooServer.URL, "default", "default", "admin", "pass", testLogger())
 	handler := NewTracingHandler(client, testLogger())
 
-	resp, err := handler.GetSpanDetailsForTrace(context.Background(), gen.GetSpanDetailsForTraceRequestObject{
+	resp, err := handler.QuerySpanDetailsForTrace(context.Background(), gen.QuerySpanDetailsForTraceRequestObject{
 		TraceId: "trace-1",
 		SpanId:  "nonexistent",
+		Body: &gen.TraceSpanDetailsRequest{
+			SearchScope: gen.ComponentSearchScope{Namespace: "default"},
+		},
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if _, ok := resp.(gen.GetSpanDetailsForTrace500JSONResponse); !ok {
+	if _, ok := resp.(gen.QuerySpanDetailsForTrace500JSONResponse); !ok {
 		t.Fatalf("expected 500 response, got %T", resp)
 	}
+}
+
+func TestQuerySpanDetailsForTrace_MissingNamespace(t *testing.T) {
+	client := openobserve.NewClient("http://unused", "default", "default", "admin", "pass", testLogger())
+	handler := NewTracingHandler(client, testLogger())
+
+	t.Run("nil body", func(t *testing.T) {
+		resp, err := handler.QuerySpanDetailsForTrace(context.Background(), gen.QuerySpanDetailsForTraceRequestObject{
+			TraceId: "trace-1",
+			SpanId:  "span-1",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if _, ok := resp.(gen.QuerySpanDetailsForTrace400JSONResponse); !ok {
+			t.Fatalf("expected 400 response, got %T", resp)
+		}
+	})
+
+	t.Run("empty namespace", func(t *testing.T) {
+		resp, err := handler.QuerySpanDetailsForTrace(context.Background(), gen.QuerySpanDetailsForTraceRequestObject{
+			TraceId: "trace-1",
+			SpanId:  "span-1",
+			Body: &gen.TraceSpanDetailsRequest{
+				SearchScope: gen.ComponentSearchScope{Namespace: "  "},
+			},
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if _, ok := resp.(gen.QuerySpanDetailsForTrace400JSONResponse); !ok {
+			t.Fatalf("expected 400 response, got %T", resp)
+		}
+	})
 }
 
 func TestQuerySpansForTrace_ServerError(t *testing.T) {

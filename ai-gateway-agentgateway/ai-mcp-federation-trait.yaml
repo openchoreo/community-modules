@@ -199,7 +199,15 @@ spec:
                   unit: Minutes
 
   # ------------------------------------------------------------------
-  #  Patches — inject MCP gateway env vars into the component Deployment
+  #  Patches — inject MCP gateway env vars into the component workload.
+  #
+  #  Two target kinds are patched because not every workload renders as an
+  #  apps/v1 Deployment — e.g. kubernetes-sigs/agent-sandbox's own ai-agent
+  #  ClusterComponentType renders as an
+  #  extensions.agents.x-k8s.io/v1alpha1 SandboxTemplate, wrapping its pod
+  #  spec at spec.podTemplate.spec instead of spec.template.spec. A
+  #  Deployment-only patch silently no-ops (dropped, not rejected) for any
+  #  such workload.
   # ------------------------------------------------------------------
   patches:
     - target:
@@ -210,6 +218,16 @@ spec:
         # MCP_GATEWAY_URL — the federated MCP endpoint
         - op: add
           path: /spec/template/spec/containers/0/env/-
+          value:
+            name: MCP_GATEWAY_URL
+            value: "http://${parameters.gatewayName}.${parameters.gatewayNamespace}:3000"
+    - target:
+        group: extensions.agents.x-k8s.io
+        kind: SandboxTemplate
+        version: v1alpha1
+      operations:
+        - op: add
+          path: /spec/podTemplate/spec/containers/0/env/-
           value:
             name: MCP_GATEWAY_URL
             value: "http://${parameters.gatewayName}.${parameters.gatewayNamespace}:3000"

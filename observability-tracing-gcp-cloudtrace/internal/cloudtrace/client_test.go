@@ -175,13 +175,17 @@ func TestGetSpanDetails(t *testing.T) {
 	c := newClientWithAPI(Config{ProjectID: "p"}, testLogger(), nil,
 		func(ctx context.Context, req *tracepb.GetTraceRequest) (*tracepb.Trace, error) {
 			return &tracepb.Trace{Spans: []*tracepb.TraceSpan{
-				{SpanId: 0xabc, Name: "target", Labels: map[string]string{"http.method": "GET"}},
-				{SpanId: 0xdef, Name: "other"},
+				{SpanId: 0xabc, Name: "target", Labels: map[string]string{
+					LabelNamespace: "default",
+					"http.method":  "GET",
+				}},
+				{SpanId: 0xdef, Name: "other", Labels: scopedLabels()},
 			}}, nil
 		},
 	)
+	params := TracesParams{Namespace: "default", TraceID: "ff"}
 
-	span, err := c.GetSpanDetails(context.Background(), "ff", "0000000000000abc")
+	span, err := c.GetSpanDetails(context.Background(), params, "0000000000000abc")
 	if err != nil {
 		t.Fatalf("GetSpanDetails: %v", err)
 	}
@@ -192,11 +196,52 @@ func TestGetSpanDetails(t *testing.T) {
 		t.Error("details lookup should always include attributes")
 	}
 
-	missing, err := c.GetSpanDetails(context.Background(), "ff", "0000000000000aaa")
+	missing, err := c.GetSpanDetails(context.Background(), params, "0000000000000aaa")
 	if err != nil {
 		t.Fatalf("GetSpanDetails(missing): %v", err)
 	}
 	if missing != nil {
 		t.Errorf("missing span = %+v, want nil", missing)
+	}
+}
+
+func TestGetSpanDetailsEnforcesScope(t *testing.T) {
+	c := newClientWithAPI(Config{ProjectID: "p"}, testLogger(), nil,
+		func(ctx context.Context, req *tracepb.GetTraceRequest) (*tracepb.Trace, error) {
+			return &tracepb.Trace{Spans: []*tracepb.TraceSpan{
+				{SpanId: 0xabc, Name: "target", Labels: map[string]string{LabelNamespace: "other-tenant"}},
+			}}, nil
+		},
+	)
+
+	span, err := c.GetSpanDetails(context.Background(),
+		TracesParams{Namespace: "default", TraceID: "ff"}, "0000000000000abc")
+	if err != nil {
+		t.Fatalf("GetSpanDetails: %v", err)
+	}
+	if span != nil {
+		t.Errorf("out-of-scope span leaked: %+v", span)
+	}
+}
+
+func TestGetSpanDetailsEnforcesProjectScope(t *testing.T) {
+	c := newClientWithAPI(Config{ProjectID: "p"}, testLogger(), nil,
+		func(ctx context.Context, req *tracepb.GetTraceRequest) (*tracepb.Trace, error) {
+			return &tracepb.Trace{Spans: []*tracepb.TraceSpan{
+				{SpanId: 0xabc, Name: "target", Labels: map[string]string{
+					LabelNamespace:  "default",
+					LabelProjectUID: "proj-uid-1",
+				}},
+			}}, nil
+		},
+	)
+
+	span, err := c.GetSpanDetails(context.Background(),
+		TracesParams{Namespace: "default", ProjectUID: "proj-uid-2", TraceID: "ff"}, "0000000000000abc")
+	if err != nil {
+		t.Fatalf("GetSpanDetails: %v", err)
+	}
+	if span != nil {
+		t.Errorf("span from another project leaked: %+v", span)
 	}
 }

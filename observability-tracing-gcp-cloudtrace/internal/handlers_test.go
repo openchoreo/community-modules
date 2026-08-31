@@ -21,6 +21,7 @@ type fakeClient struct {
 	tracesResult *cloudtrace.TracesResult
 	spansParams  cloudtrace.TracesParams
 	spansResult  *cloudtrace.SpansResult
+	detailParams cloudtrace.TracesParams
 	span         *cloudtrace.Span
 	err          error
 }
@@ -35,7 +36,8 @@ func (f *fakeClient) QuerySpans(_ context.Context, p cloudtrace.TracesParams) (*
 	return f.spansResult, f.err
 }
 
-func (f *fakeClient) GetSpanDetails(_ context.Context, traceID, spanID string) (*cloudtrace.Span, error) {
+func (f *fakeClient) GetSpanDetails(_ context.Context, p cloudtrace.TracesParams, spanID string) (*cloudtrace.Span, error) {
+	f.detailParams = p
 	return f.span, f.err
 }
 
@@ -234,7 +236,15 @@ func TestQuerySpansForTraceRejectsBadTraceID(t *testing.T) {
 	}
 }
 
-func TestGetSpanDetailsForTrace(t *testing.T) {
+func validSpanDetailsBody() *gen.TraceSpanDetailsRequest {
+	return &gen.TraceSpanDetailsRequest{
+		SearchScope: gen.ComponentSearchScope{
+			Namespace: "default",
+		},
+	}
+}
+
+func TestQuerySpanDetailsForTrace(t *testing.T) {
 	client := &fakeClient{
 		span: &cloudtrace.Span{
 			SpanID:        "0000000000000abc",
@@ -246,14 +256,15 @@ func TestGetSpanDetailsForTrace(t *testing.T) {
 	}
 	h := newHandler(client)
 
-	resp, err := h.GetSpanDetailsForTrace(context.Background(), gen.GetSpanDetailsForTraceRequestObject{
+	resp, err := h.QuerySpanDetailsForTrace(context.Background(), gen.QuerySpanDetailsForTraceRequestObject{
 		TraceId: "0123456789abcdef0123456789abcdef",
 		SpanId:  "0000000000000abc",
+		Body:    validSpanDetailsBody(),
 	})
 	if err != nil {
-		t.Fatalf("GetSpanDetailsForTrace: %v", err)
+		t.Fatalf("QuerySpanDetailsForTrace: %v", err)
 	}
-	ok, isOK := resp.(gen.GetSpanDetailsForTrace200JSONResponse)
+	ok, isOK := resp.(gen.QuerySpanDetailsForTrace200JSONResponse)
 	if !isOK {
 		t.Fatalf("resp = %T", resp)
 	}
@@ -268,7 +279,75 @@ func TestGetSpanDetailsForTrace(t *testing.T) {
 	}
 }
 
-func TestGetSpanDetailsForTraceValidation(t *testing.T) {
+// The scope from the request body must reach the client, otherwise the span
+// lookup would not be constrained to the caller's tenancy.
+func TestQuerySpanDetailsForTracePassesScope(t *testing.T) {
+	client := &fakeClient{span: &cloudtrace.Span{SpanID: "0000000000000abc"}}
+	h := newHandler(client)
+
+	body := validSpanDetailsBody()
+	body.SearchScope.Project = ptr("proj-uid-1")
+	body.SearchScope.Component = ptr("comp-uid-1")
+	body.SearchScope.Environment = ptr("env-uid-1")
+
+	if _, err := h.QuerySpanDetailsForTrace(context.Background(), gen.QuerySpanDetailsForTraceRequestObject{
+		TraceId: "0123456789abcdef0123456789abcdef",
+		SpanId:  "0000000000000abc",
+		Body:    body,
+	}); err != nil {
+		t.Fatalf("QuerySpanDetailsForTrace: %v", err)
+	}
+
+	got := client.detailParams
+	if got.Namespace != "default" {
+		t.Errorf("namespace = %q, want default", got.Namespace)
+	}
+	if got.ProjectUID != "proj-uid-1" {
+		t.Errorf("projectUID = %q, want proj-uid-1", got.ProjectUID)
+	}
+	if got.ComponentUID != "comp-uid-1" {
+		t.Errorf("componentUID = %q, want comp-uid-1", got.ComponentUID)
+	}
+	if got.EnvironmentUID != "env-uid-1" {
+		t.Errorf("environmentUID = %q, want env-uid-1", got.EnvironmentUID)
+	}
+	if got.TraceID != "0123456789abcdef0123456789abcdef" {
+		t.Errorf("traceID = %q", got.TraceID)
+	}
+}
+
+func TestQuerySpanDetailsForTraceRequiresBody(t *testing.T) {
+	h := newHandler(&fakeClient{})
+
+	resp, err := h.QuerySpanDetailsForTrace(context.Background(), gen.QuerySpanDetailsForTraceRequestObject{
+		TraceId: "0123456789abcdef0123456789abcdef",
+		SpanId:  "0000000000000abc",
+	})
+	if err != nil {
+		t.Fatalf("QuerySpanDetailsForTrace: %v", err)
+	}
+	if _, ok := resp.(gen.QuerySpanDetailsForTrace400JSONResponse); !ok {
+		t.Errorf("resp = %T, want 400", resp)
+	}
+}
+
+func TestQuerySpanDetailsForTraceRequiresNamespace(t *testing.T) {
+	h := newHandler(&fakeClient{})
+
+	resp, err := h.QuerySpanDetailsForTrace(context.Background(), gen.QuerySpanDetailsForTraceRequestObject{
+		TraceId: "0123456789abcdef0123456789abcdef",
+		SpanId:  "0000000000000abc",
+		Body:    &gen.TraceSpanDetailsRequest{SearchScope: gen.ComponentSearchScope{Namespace: "  "}},
+	})
+	if err != nil {
+		t.Fatalf("QuerySpanDetailsForTrace: %v", err)
+	}
+	if _, ok := resp.(gen.QuerySpanDetailsForTrace400JSONResponse); !ok {
+		t.Errorf("resp = %T, want 400", resp)
+	}
+}
+
+func TestQuerySpanDetailsForTraceValidation(t *testing.T) {
 	h := newHandler(&fakeClient{})
 
 	const validTrace = "0123456789abcdef0123456789abcdef"
@@ -286,34 +365,36 @@ func TestGetSpanDetailsForTraceValidation(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			resp, err := h.GetSpanDetailsForTrace(context.Background(), gen.GetSpanDetailsForTraceRequestObject{
+			resp, err := h.QuerySpanDetailsForTrace(context.Background(), gen.QuerySpanDetailsForTraceRequestObject{
 				TraceId: tt.traceID,
 				SpanId:  tt.spanID,
+				Body:    validSpanDetailsBody(),
 			})
 			if err != nil {
-				t.Fatalf("GetSpanDetailsForTrace: %v", err)
+				t.Fatalf("QuerySpanDetailsForTrace: %v", err)
 			}
-			if _, ok := resp.(gen.GetSpanDetailsForTrace400JSONResponse); !ok {
+			if _, ok := resp.(gen.QuerySpanDetailsForTrace400JSONResponse); !ok {
 				t.Errorf("resp = %T, want 400", resp)
 			}
 		})
 	}
 }
 
-func TestGetSpanDetailsForTraceNotFound(t *testing.T) {
+func TestQuerySpanDetailsForTraceNotFound(t *testing.T) {
 	// fakeClient with no span configured returns (nil, nil): a lookup miss.
 	h := newHandler(&fakeClient{})
 
-	resp, err := h.GetSpanDetailsForTrace(context.Background(), gen.GetSpanDetailsForTraceRequestObject{
+	resp, err := h.QuerySpanDetailsForTrace(context.Background(), gen.QuerySpanDetailsForTraceRequestObject{
 		TraceId: "0123456789abcdef0123456789abcdef",
 		SpanId:  "0000000000000abc",
+		Body:    validSpanDetailsBody(),
 	})
 	if err != nil {
-		t.Fatalf("GetSpanDetailsForTrace: %v", err)
+		t.Fatalf("QuerySpanDetailsForTrace: %v", err)
 	}
 	rec := httptest.NewRecorder()
-	if err := resp.VisitGetSpanDetailsForTraceResponse(rec); err != nil {
-		t.Fatalf("VisitGetSpanDetailsForTraceResponse: %v", err)
+	if err := resp.VisitQuerySpanDetailsForTraceResponse(rec); err != nil {
+		t.Fatalf("VisitQuerySpanDetailsForTraceResponse: %v", err)
 	}
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusNotFound)

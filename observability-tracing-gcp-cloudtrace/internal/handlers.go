@@ -23,7 +23,7 @@ const (
 type tracesClient interface {
 	QueryTraces(ctx context.Context, p cloudtrace.TracesParams) (*cloudtrace.TracesResult, error)
 	QuerySpans(ctx context.Context, p cloudtrace.TracesParams) (*cloudtrace.SpansResult, error)
-	GetSpanDetails(ctx context.Context, traceID, spanID string) (*cloudtrace.Span, error)
+	GetSpanDetails(ctx context.Context, p cloudtrace.TracesParams, spanID string) (*cloudtrace.Span, error)
 }
 
 type TracingHandler struct {
@@ -124,25 +124,41 @@ func (h *TracingHandler) QuerySpansForTrace(ctx context.Context, request gen.Que
 	return gen.QuerySpansForTrace200JSONResponse(toSpansListResponse(result, params.IncludeAttributes)), nil
 }
 
-// GetSpanDetailsForTrace implements GET /api/v1alpha1/traces/{traceId}/spans/{spanId}.
-func (h *TracingHandler) GetSpanDetailsForTrace(ctx context.Context, request gen.GetSpanDetailsForTraceRequestObject) (gen.GetSpanDetailsForTraceResponseObject, error) {
+// QuerySpanDetailsForTrace implements POST /api/v1alpha1/traces/{traceId}/spans/{spanId},
+// scoping the lookup to the search scope in the request body.
+func (h *TracingHandler) QuerySpanDetailsForTrace(ctx context.Context, request gen.QuerySpanDetailsForTraceRequestObject) (gen.QuerySpanDetailsForTraceResponseObject, error) {
+	if request.Body == nil {
+		return gen.QuerySpanDetailsForTrace400JSONResponse{
+			Title:  ptr(gen.BadRequest),
+			Detail: ptr("request body is required"),
+		}, nil
+	}
+	if strings.TrimSpace(request.Body.SearchScope.Namespace) == "" {
+		return gen.QuerySpanDetailsForTrace400JSONResponse{
+			Title:  ptr(gen.BadRequest),
+			Detail: ptr("namespace is required"),
+		}, nil
+	}
 	if !cloudtrace.ValidTraceID(request.TraceId) {
-		return gen.GetSpanDetailsForTrace400JSONResponse{
+		return gen.QuerySpanDetailsForTrace400JSONResponse{
 			Title:  ptr(gen.BadRequest),
 			Detail: ptr("traceId must be a 32-character hex string"),
 		}, nil
 	}
 	if !cloudtrace.ValidSpanID(request.SpanId) {
-		return gen.GetSpanDetailsForTrace400JSONResponse{
+		return gen.QuerySpanDetailsForTrace400JSONResponse{
 			Title:  ptr(gen.BadRequest),
 			Detail: ptr("spanId must be a hex string of at most 16 characters"),
 		}, nil
 	}
 
-	span, err := h.client.GetSpanDetails(ctx, request.TraceId, request.SpanId)
+	params := toSpanDetailsParams(&request.Body.SearchScope)
+	params.TraceID = request.TraceId
+
+	span, err := h.client.GetSpanDetails(ctx, params, request.SpanId)
 	if err != nil {
 		h.logger.Error("Failed to query span detail", slog.Any("error", err))
-		return gen.GetSpanDetailsForTrace500JSONResponse{
+		return gen.QuerySpanDetailsForTrace500JSONResponse{
 			Title:  ptr(gen.InternalServerError),
 			Detail: ptr("internal server error"),
 		}, nil
@@ -155,7 +171,7 @@ func (h *TracingHandler) GetSpanDetailsForTrace(ctx context.Context, request gen
 		return spanNotFoundResponse{}, nil
 	}
 
-	return gen.GetSpanDetailsForTrace200JSONResponse(toSpanDetailsResponse(span)), nil
+	return gen.QuerySpanDetailsForTrace200JSONResponse(toSpanDetailsResponse(span)), nil
 }
 
 // spanNotFoundResponse renders a 404 for a missing span. The generated
@@ -163,7 +179,7 @@ func (h *TracingHandler) GetSpanDetailsForTrace(ctx context.Context, request gen
 // implements the response interface directly.
 type spanNotFoundResponse struct{}
 
-func (spanNotFoundResponse) VisitGetSpanDetailsForTraceResponse(w http.ResponseWriter) error {
+func (spanNotFoundResponse) VisitQuerySpanDetailsForTraceResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusNotFound)
 	return json.NewEncoder(w).Encode(gen.ErrorResponse{
@@ -171,13 +187,36 @@ func (spanNotFoundResponse) VisitGetSpanDetailsForTraceResponse(w http.ResponseW
 	})
 }
 
+// toSpanDetailsParams converts a search scope to internal query params. The
+// span details body carries only the scope, so no time range, limit, or sort
+// order is set: the lookup is by trace and span ID.
+func toSpanDetailsParams(scope *gen.ComponentSearchScope) cloudtrace.TracesParams {
+	var params cloudtrace.TracesParams
+	applySearchScope(&params, scope)
+	return params
+}
+
+// applySearchScope copies the tenancy fields of a search scope onto params.
+func applySearchScope(params *cloudtrace.TracesParams, scope *gen.ComponentSearchScope) {
+	params.Namespace = strings.TrimSpace(scope.Namespace)
+	if scope.Project != nil {
+		params.ProjectUID = strings.TrimSpace(*scope.Project)
+	}
+	if scope.Component != nil {
+		params.ComponentUID = strings.TrimSpace(*scope.Component)
+	}
+	if scope.Environment != nil {
+		params.EnvironmentUID = strings.TrimSpace(*scope.Environment)
+	}
+}
+
 // toTracesParams converts the generated request body to internal query params.
 func toTracesParams(req *gen.TracesQueryRequest) cloudtrace.TracesParams {
 	params := cloudtrace.TracesParams{
 		StartTime: req.StartTime,
 		EndTime:   req.EndTime,
-		Namespace: strings.TrimSpace(req.SearchScope.Namespace),
 	}
+	applySearchScope(&params, &req.SearchScope)
 	if req.Limit != nil {
 		params.Limit = *req.Limit
 	}
@@ -192,15 +231,6 @@ func toTracesParams(req *gen.TracesQueryRequest) cloudtrace.TracesParams {
 	}
 	if params.SortOrder == "" {
 		params.SortOrder = "desc"
-	}
-	if req.SearchScope.Project != nil {
-		params.ProjectUID = strings.TrimSpace(*req.SearchScope.Project)
-	}
-	if req.SearchScope.Component != nil {
-		params.ComponentUID = strings.TrimSpace(*req.SearchScope.Component)
-	}
-	if req.SearchScope.Environment != nil {
-		params.EnvironmentUID = strings.TrimSpace(*req.SearchScope.Environment)
 	}
 	if req.IncludeAttributes != nil {
 		params.IncludeAttributes = *req.IncludeAttributes

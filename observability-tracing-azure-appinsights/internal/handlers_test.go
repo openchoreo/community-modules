@@ -18,7 +18,7 @@ import (
 type mockClient struct {
 	queryTracesFn    func(ctx context.Context, p appinsights.TracesParams) (*appinsights.TracesResult, error)
 	querySpansFn     func(ctx context.Context, p appinsights.TracesParams) (*appinsights.SpansResult, error)
-	getSpanDetailsFn func(ctx context.Context, traceID, spanID string) (*appinsights.Span, error)
+	getSpanDetailsFn func(ctx context.Context, traceID, spanID, namespace, projectUID string) (*appinsights.Span, error)
 }
 
 func (m *mockClient) QueryTraces(ctx context.Context, p appinsights.TracesParams) (*appinsights.TracesResult, error) {
@@ -35,9 +35,9 @@ func (m *mockClient) QuerySpans(ctx context.Context, p appinsights.TracesParams)
 	return &appinsights.SpansResult{}, nil
 }
 
-func (m *mockClient) GetSpanDetails(ctx context.Context, traceID, spanID string) (*appinsights.Span, error) {
+func (m *mockClient) GetSpanDetails(ctx context.Context, traceID, spanID, namespace, projectUID string) (*appinsights.Span, error) {
 	if m.getSpanDetailsFn != nil {
-		return m.getSpanDetailsFn(ctx, traceID, spanID)
+		return m.getSpanDetailsFn(ctx, traceID, spanID, namespace, projectUID)
 	}
 	return nil, nil
 }
@@ -235,37 +235,126 @@ func TestQuerySpansForTrace_Success(t *testing.T) {
 	}
 }
 
-func TestGetSpanDetailsForTrace_RejectsBadIDs(t *testing.T) {
-	h := testHandler(&mockClient{})
-	resp, err := h.GetSpanDetailsForTrace(context.Background(), gen.GetSpanDetailsForTraceRequestObject{
-		TraceId: `" | take 1`,
-		SpanId:  "2419e7552dfbe055",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, ok := resp.(gen.GetSpanDetailsForTrace400JSONResponse); !ok {
-		t.Errorf("got %T, want 400", resp)
+func validSpanDetailsBody() *gen.TraceSpanDetailsRequest {
+	return &gen.TraceSpanDetailsRequest{
+		SearchScope: gen.ComponentSearchScope{
+			Namespace: "spike-ns",
+		},
 	}
 }
 
-func TestGetSpanDetailsForTrace_NotFound(t *testing.T) {
+func TestQuerySpanDetailsForTrace_RequiresBody(t *testing.T) {
 	h := testHandler(&mockClient{})
-	resp, err := h.GetSpanDetailsForTrace(context.Background(), gen.GetSpanDetailsForTraceRequestObject{
+	resp, err := h.QuerySpanDetailsForTrace(context.Background(), gen.QuerySpanDetailsForTraceRequestObject{
 		TraceId: "4372fc01295900a9",
 		SpanId:  "2419e7552dfbe055",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := resp.(gen.GetSpanDetailsForTrace500JSONResponse); !ok {
+	if _, ok := resp.(gen.QuerySpanDetailsForTrace400JSONResponse); !ok {
+		t.Errorf("got %T, want 400", resp)
+	}
+}
+
+func TestQuerySpanDetailsForTrace_RequiresNamespace(t *testing.T) {
+	h := testHandler(&mockClient{})
+	resp, err := h.QuerySpanDetailsForTrace(context.Background(), gen.QuerySpanDetailsForTraceRequestObject{
+		TraceId: "4372fc01295900a9",
+		SpanId:  "2419e7552dfbe055",
+		Body:    &gen.TraceSpanDetailsRequest{SearchScope: gen.ComponentSearchScope{Namespace: "  "}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := resp.(gen.QuerySpanDetailsForTrace400JSONResponse); !ok {
+		t.Errorf("got %T, want 400", resp)
+	}
+}
+
+func TestQuerySpanDetailsForTrace_RejectsBadIDs(t *testing.T) {
+	h := testHandler(&mockClient{})
+	resp, err := h.QuerySpanDetailsForTrace(context.Background(), gen.QuerySpanDetailsForTraceRequestObject{
+		TraceId: `" | take 1`,
+		SpanId:  "2419e7552dfbe055",
+		Body:    validSpanDetailsBody(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := resp.(gen.QuerySpanDetailsForTrace400JSONResponse); !ok {
+		t.Errorf("got %T, want 400", resp)
+	}
+}
+
+func TestQuerySpanDetailsForTrace_NotFound(t *testing.T) {
+	h := testHandler(&mockClient{})
+	resp, err := h.QuerySpanDetailsForTrace(context.Background(), gen.QuerySpanDetailsForTraceRequestObject{
+		TraceId: "4372fc01295900a9",
+		SpanId:  "2419e7552dfbe055",
+		Body:    validSpanDetailsBody(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := resp.(gen.QuerySpanDetailsForTrace500JSONResponse); !ok {
 		t.Errorf("got %T, want 500 (not found)", resp)
 	}
 }
 
-func TestGetSpanDetailsForTrace_Success(t *testing.T) {
+// The scope from the request body must reach the client, otherwise the span
+// lookup would not be constrained to the caller's tenancy.
+func TestQuerySpanDetailsForTrace_PassesScopeToClient(t *testing.T) {
+	var gotNamespace, gotProjectUID string
 	h := testHandler(&mockClient{
-		getSpanDetailsFn: func(_ context.Context, traceID, spanID string) (*appinsights.Span, error) {
+		getSpanDetailsFn: func(_ context.Context, _, spanID, namespace, projectUID string) (*appinsights.Span, error) {
+			gotNamespace = namespace
+			gotProjectUID = projectUID
+			return &appinsights.Span{SpanID: spanID}, nil
+		},
+	})
+	body := validSpanDetailsBody()
+	body.SearchScope.Project = ptr("proj-uid-1")
+
+	if _, err := h.QuerySpanDetailsForTrace(context.Background(), gen.QuerySpanDetailsForTraceRequestObject{
+		TraceId: "4372fc01295900a9",
+		SpanId:  "2419e7552dfbe055",
+		Body:    body,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if gotNamespace != "spike-ns" {
+		t.Errorf("namespace = %q, want spike-ns", gotNamespace)
+	}
+	if gotProjectUID != "proj-uid-1" {
+		t.Errorf("projectUID = %q, want proj-uid-1", gotProjectUID)
+	}
+}
+
+func TestQuerySpanDetailsForTrace_OmittedProjectIsEmpty(t *testing.T) {
+	gotProjectUID := "sentinel"
+	h := testHandler(&mockClient{
+		getSpanDetailsFn: func(_ context.Context, _, spanID, _, projectUID string) (*appinsights.Span, error) {
+			gotProjectUID = projectUID
+			return &appinsights.Span{SpanID: spanID}, nil
+		},
+	})
+
+	if _, err := h.QuerySpanDetailsForTrace(context.Background(), gen.QuerySpanDetailsForTraceRequestObject{
+		TraceId: "4372fc01295900a9",
+		SpanId:  "2419e7552dfbe055",
+		Body:    validSpanDetailsBody(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if gotProjectUID != "" {
+		t.Errorf("projectUID = %q, want empty", gotProjectUID)
+	}
+}
+
+func TestQuerySpanDetailsForTrace_Success(t *testing.T) {
+	h := testHandler(&mockClient{
+		getSpanDetailsFn: func(_ context.Context, traceID, spanID, namespace, projectUID string) (*appinsights.Span, error) {
 			return &appinsights.Span{
 				SpanID:        spanID,
 				Name:          "lets-go",
@@ -278,14 +367,15 @@ func TestGetSpanDetailsForTrace_Success(t *testing.T) {
 			}, nil
 		},
 	})
-	resp, err := h.GetSpanDetailsForTrace(context.Background(), gen.GetSpanDetailsForTraceRequestObject{
+	resp, err := h.QuerySpanDetailsForTrace(context.Background(), gen.QuerySpanDetailsForTraceRequestObject{
 		TraceId: "4372fc01295900a9",
 		SpanId:  "2419e7552dfbe055",
+		Body:    validSpanDetailsBody(),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	ok, isOK := resp.(gen.GetSpanDetailsForTrace200JSONResponse)
+	ok, isOK := resp.(gen.QuerySpanDetailsForTrace200JSONResponse)
 	if !isOK {
 		t.Fatalf("got %T, want 200", resp)
 	}

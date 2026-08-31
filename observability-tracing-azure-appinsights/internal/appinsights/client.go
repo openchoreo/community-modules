@@ -122,7 +122,7 @@ func (c *Client) QuerySpans(ctx context.Context, p TracesParams) (*SpansResult, 
 }
 
 // GetSpanDetails looks up one span by trace and span ID.
-func (c *Client) GetSpanDetails(ctx context.Context, traceID, spanID string) (*Span, error) {
+func (c *Client) GetSpanDetails(ctx context.Context, traceID, spanID, namespace, projectUID string) (*Span, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.queryTimeout)
 	defer cancel()
 
@@ -130,7 +130,7 @@ func (c *Client) GetSpanDetails(ctx context.Context, traceID, spanID string) (*S
 	start := end.Add(-spanDetailsLookback)
 
 	resp, err := c.api.QueryWorkspace(ctx, c.workspaceID, azlogs.QueryBody{
-		Query:    to.Ptr(BuildSpanDetailsKQL(traceID, spanID)),
+		Query:    to.Ptr(BuildScopedSpanDetailsKQL(traceID, spanID, namespace, projectUID)),
 		Timespan: to.Ptr(azlogs.NewTimeInterval(start, end)),
 	}, nil)
 	if err != nil {

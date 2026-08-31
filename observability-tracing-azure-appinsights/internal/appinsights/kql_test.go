@@ -106,19 +106,32 @@ func TestBuildSpansKQL_IncludeAttributes(t *testing.T) {
 	}
 }
 
-func TestBuildSpanDetailsKQL(t *testing.T) {
-	kql := BuildSpanDetailsKQL("4bf92f3577b34da6", "00f067aa0ba902b7")
+func TestBuildScopedSpanDetailsKQL(t *testing.T) {
+	kql := BuildScopedSpanDetailsKQL("4bf92f3577b34da6", "00f067aa0ba902b7", "spike-ns", "proj-uid-1")
 
 	for _, want := range []string{
 		`| where OperationId == "4bf92f3577b34da6"`,
 		`| where Id == "00f067aa0ba902b7"`,
 		`StatusMessage = tostring(Properties["otel.status_description"])`,
+		`| where tostring(Properties["openchoreo.dev/namespace"]) == "spike-ns"`,
+		`| where tostring(Properties["openchoreo.dev/project-uid"]) == "proj-uid-1"`,
 		`Properties`,
 		`| take 1`,
 	} {
 		if !strings.Contains(kql, want) {
 			t.Errorf("missing %q in:\n%s", want, kql)
 		}
+	}
+}
+
+func TestBuildScopedSpanDetailsKQL_EmptyProject(t *testing.T) {
+	kql := BuildScopedSpanDetailsKQL("4bf92f3577b34da6", "00f067aa0ba902b7", "spike-ns", "")
+
+	if !strings.Contains(kql, `| where tostring(Properties["openchoreo.dev/namespace"]) == "spike-ns"`) {
+		t.Errorf("missing namespace filter in:\n%s", kql)
+	}
+	if strings.Contains(kql, "openchoreo.dev/project-uid") {
+		t.Errorf("unexpected project-uid filter in:\n%s", kql)
 	}
 }
 

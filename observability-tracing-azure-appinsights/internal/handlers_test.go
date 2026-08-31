@@ -5,6 +5,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"testing"
@@ -192,10 +193,11 @@ func TestQuerySpansForTrace_Success(t *testing.T) {
 			}
 			return &appinsights.SpansResult{
 				Spans: []appinsights.Span{{
-					SpanID:   "2419e7552dfbe055",
-					Name:     "lets-go",
-					SpanKind: "CLIENT",
-					Status:   "ok",
+					SpanID:        "2419e7552dfbe055",
+					Name:          "lets-go",
+					SpanKind:      "CLIENT",
+					Status:        "error",
+					StatusMessage: "connection refused",
 					Attributes: map[string]interface{}{
 						"peer.service": "telemetrygen-server",
 					},
@@ -220,6 +222,12 @@ func TestQuerySpansForTrace_Success(t *testing.T) {
 	spans := *ok.Spans
 	if len(spans) != 1 || *spans[0].SpanId != "2419e7552dfbe055" {
 		t.Errorf("unexpected spans payload: %+v", spans)
+	}
+	if spans[0].Status == nil || spans[0].Status.Code == nil || *spans[0].Status.Code != gen.Error {
+		t.Errorf("Status code = %v, want error", spans[0].Status)
+	}
+	if spans[0].Status == nil || spans[0].Status.Message == nil || *spans[0].Status.Message != "connection refused" {
+		t.Errorf("Status message = %v, want connection refused", spans[0].Status)
 	}
 	// includeAttributes defaults to false: attributes must be omitted.
 	if spans[0].Attributes != nil {
@@ -259,10 +267,11 @@ func TestGetSpanDetailsForTrace_Success(t *testing.T) {
 	h := testHandler(&mockClient{
 		getSpanDetailsFn: func(_ context.Context, traceID, spanID string) (*appinsights.Span, error) {
 			return &appinsights.Span{
-				SpanID:   spanID,
-				Name:     "lets-go",
-				SpanKind: "CLIENT",
-				Status:   "ok",
+				SpanID:        spanID,
+				Name:          "lets-go",
+				SpanKind:      "CLIENT",
+				Status:        "error",
+				StatusMessage: "connection refused",
 				ResourceAttributes: map[string]interface{}{
 					"openchoreo.dev/namespace": "spike-ns",
 				},
@@ -283,7 +292,30 @@ func TestGetSpanDetailsForTrace_Success(t *testing.T) {
 	if *ok.SpanId != "2419e7552dfbe055" {
 		t.Errorf("SpanId = %q", *ok.SpanId)
 	}
+	if ok.Status == nil || ok.Status.Code == nil || *ok.Status.Code != gen.Error {
+		t.Errorf("Status code = %v, want error", ok.Status)
+	}
+	if ok.Status == nil || ok.Status.Message == nil || *ok.Status.Message != "connection refused" {
+		t.Errorf("Status message = %v, want connection refused", ok.Status)
+	}
 	if len(*ok.ResourceAttributes) != 1 {
 		t.Errorf("ResourceAttributes = %+v", *ok.ResourceAttributes)
+	}
+}
+
+func TestToSpanStatus_OmitsEmptyMessage(t *testing.T) {
+	status := toSpanStatus("unset", "")
+	if status.Code == nil || *status.Code != gen.Unset {
+		t.Errorf("Code = %v, want unset", status.Code)
+	}
+	if status.Message != nil {
+		t.Errorf("Message = %q, want omitted", *status.Message)
+	}
+	payload, err := json.Marshal(status)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+	if got, want := string(payload), `{"code":"unset"}`; got != want {
+		t.Errorf("JSON = %s, want %s", got, want)
 	}
 }

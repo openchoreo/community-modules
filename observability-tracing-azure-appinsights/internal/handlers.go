@@ -248,16 +248,16 @@ func toTracesListResponse(result *appinsights.TracesResult) gen.TracesListRespon
 // toSpansListResponse converts internal spans to the generated response model.
 func toSpansListResponse(result *appinsights.SpansResult, includeAttributes bool) gen.TraceSpansListResponse {
 	apiSpans := make([]struct {
-		Attributes         *map[string]interface{}                `json:"attributes,omitempty"`
-		DurationNs         *int64                                 `json:"durationNs,omitempty"`
-		EndTime            *time.Time                             `json:"endTime,omitempty"`
-		ParentSpanId       *string                                `json:"parentSpanId,omitempty"`
-		ResourceAttributes *map[string]interface{}                `json:"resourceAttributes,omitempty"`
-		SpanId             *string                                `json:"spanId,omitempty"`
-		SpanKind           *string                                `json:"spanKind,omitempty"`
-		SpanName           *string                                `json:"spanName,omitempty"`
-		StartTime          *time.Time                             `json:"startTime,omitempty"`
-		Status             *gen.TraceSpansListResponseSpansStatus `json:"status,omitempty"`
+		Attributes         *map[string]interface{} `json:"attributes,omitempty"`
+		DurationNs         *int64                  `json:"durationNs,omitempty"`
+		EndTime            *time.Time              `json:"endTime,omitempty"`
+		ParentSpanId       *string                 `json:"parentSpanId,omitempty"`
+		ResourceAttributes *map[string]interface{} `json:"resourceAttributes,omitempty"`
+		SpanId             *string                 `json:"spanId,omitempty"`
+		SpanKind           *string                 `json:"spanKind,omitempty"`
+		SpanName           *string                 `json:"spanName,omitempty"`
+		StartTime          *time.Time              `json:"startTime,omitempty"`
+		Status             *gen.SpanStatus         `json:"status,omitempty"`
 	}, 0, len(result.Spans))
 
 	for _, s := range result.Spans {
@@ -268,18 +268,17 @@ func toSpansListResponse(result *appinsights.SpansResult, includeAttributes bool
 		spanName := s.Name
 		spanKind := s.SpanKind
 		parentSpanId := s.ParentSpanID
-		status := gen.TraceSpansListResponseSpansStatus(s.Status)
 		entry := struct {
-			Attributes         *map[string]interface{}                `json:"attributes,omitempty"`
-			DurationNs         *int64                                 `json:"durationNs,omitempty"`
-			EndTime            *time.Time                             `json:"endTime,omitempty"`
-			ParentSpanId       *string                                `json:"parentSpanId,omitempty"`
-			ResourceAttributes *map[string]interface{}                `json:"resourceAttributes,omitempty"`
-			SpanId             *string                                `json:"spanId,omitempty"`
-			SpanKind           *string                                `json:"spanKind,omitempty"`
-			SpanName           *string                                `json:"spanName,omitempty"`
-			StartTime          *time.Time                             `json:"startTime,omitempty"`
-			Status             *gen.TraceSpansListResponseSpansStatus `json:"status,omitempty"`
+			Attributes         *map[string]interface{} `json:"attributes,omitempty"`
+			DurationNs         *int64                  `json:"durationNs,omitempty"`
+			EndTime            *time.Time              `json:"endTime,omitempty"`
+			ParentSpanId       *string                 `json:"parentSpanId,omitempty"`
+			ResourceAttributes *map[string]interface{} `json:"resourceAttributes,omitempty"`
+			SpanId             *string                 `json:"spanId,omitempty"`
+			SpanKind           *string                 `json:"spanKind,omitempty"`
+			SpanName           *string                 `json:"spanName,omitempty"`
+			StartTime          *time.Time              `json:"startTime,omitempty"`
+			Status             *gen.SpanStatus         `json:"status,omitempty"`
 		}{
 			DurationNs:   &dur,
 			StartTime:    &startTime,
@@ -288,7 +287,7 @@ func toSpansListResponse(result *appinsights.SpansResult, includeAttributes bool
 			SpanName:     &spanName,
 			SpanKind:     &spanKind,
 			ParentSpanId: &parentSpanId,
-			Status:       &status,
+			Status:       toSpanStatus(s.Status, s.StatusMessage),
 		}
 		if includeAttributes {
 			if s.Attributes != nil {
@@ -322,7 +321,7 @@ func toSpanDetailsResponse(span *appinsights.Span) gen.TraceSpanDetailsResponse 
 		EndTime:      &endTime,
 		DurationNs:   &dur,
 		ParentSpanId: &span.ParentSpanID,
-		Status:       ptr(gen.TraceSpanDetailsResponseStatus(span.Status)),
+		Status:       toSpanStatus(span.Status, span.StatusMessage),
 	}
 	if span.Attributes != nil {
 		resp.Attributes = &span.Attributes
@@ -335,4 +334,16 @@ func toSpanDetailsResponse(span *appinsights.Span) gen.TraceSpanDetailsResponse 
 
 func ptr[T any](v T) *T {
 	return &v
+}
+
+// toSpanStatus builds the OTel span status object from the derived code and
+// optional message. The message is omitted when empty.
+func toSpanStatus(code, message string) *gen.SpanStatus {
+	status := &gen.SpanStatus{
+		Code: ptr(gen.SpanStatusCode(code)),
+	}
+	if message != "" {
+		status.Message = &message
+	}
+	return status
 }

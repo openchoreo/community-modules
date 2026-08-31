@@ -50,13 +50,14 @@ func mapSpanRows(resp azlogs.QueryWorkspaceResponse) ([]Span, error) {
 	out := make([]Span, 0, len(rows))
 	for _, row := range rows {
 		span := Span{
-			SpanID:       rowString(row, idx, "SpanId"),
-			Name:         rowString(row, idx, "Name"),
-			SpanKind:     rowString(row, idx, "SpanKind"),
-			ParentSpanID: rowString(row, idx, "ParentSpanId"),
-			StartTime:    rowTime(row, idx, "TimeGenerated"),
-			EndTime:      rowTime(row, idx, "SpanEnd"),
-			Status:       statusFromSuccess(row, idx),
+			SpanID:        rowString(row, idx, "SpanId"),
+			Name:          rowString(row, idx, "Name"),
+			SpanKind:      rowString(row, idx, "SpanKind"),
+			ParentSpanID:  rowString(row, idx, "ParentSpanId"),
+			StartTime:     rowTime(row, idx, "TimeGenerated"),
+			EndTime:       rowTime(row, idx, "SpanEnd"),
+			Status:        statusFromSuccess(row, idx),
+			StatusMessage: rowString(row, idx, "StatusMessage"),
 		}
 		// DurationMs is float milliseconds; ns precision below 1ms survives
 		// the multiplication because the column keeps fractional ms.

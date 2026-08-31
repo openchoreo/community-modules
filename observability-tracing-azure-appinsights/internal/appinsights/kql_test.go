@@ -83,6 +83,7 @@ func TestBuildSpansKQL(t *testing.T) {
 		`| where OperationId == "4bf92f3577b34da6a3ce929d0e0e4736"`,
 		`| where tostring(Properties["openchoreo.dev/namespace"]) == "spike-ns"`,
 		`ParentSpanId = iff(IsRoot, "", ParentId)`,
+		`StatusMessage = tostring(Properties["otel.status_description"])`,
 		`| top 1000 by TimeGenerated asc`,
 	} {
 		if !strings.Contains(kql, want) {
@@ -111,6 +112,7 @@ func TestBuildSpanDetailsKQL(t *testing.T) {
 	for _, want := range []string{
 		`| where OperationId == "4bf92f3577b34da6"`,
 		`| where Id == "00f067aa0ba902b7"`,
+		`StatusMessage = tostring(Properties["otel.status_description"])`,
 		`Properties`,
 		`| take 1`,
 	} {

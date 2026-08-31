@@ -44,6 +44,7 @@ type Span struct {
 	EndTime             time.Time
 	DurationNanoseconds int64
 	Status              string
+	StatusMessage       string
 	Attributes          map[string]interface{}
 	ResourceAttributes  map[string]interface{}
 }

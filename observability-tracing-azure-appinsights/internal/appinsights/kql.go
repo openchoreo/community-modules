@@ -126,6 +126,7 @@ func spanProjection(includeAttributes bool) string {
     SpanKind,
     DurationMs = todouble(DurationMs),
     Success,
+    StatusMessage = tostring(Properties["otel.status_description"]),
     SpanEnd`
 	if includeAttributes {
 		cols += `,

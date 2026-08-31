@@ -178,6 +178,52 @@ func TestMapSpanRows_SuccessAsString(t *testing.T) {
 	}
 }
 
+func TestMapSpanRows_StatusMessage(t *testing.T) {
+	tests := []struct {
+		name    string
+		columns []string
+		row     azlogs.Row
+		want    string
+	}{
+		{
+			name:    "present",
+			columns: []string{"StatusMessage"},
+			row:     azlogs.Row{"connection refused"},
+			want:    "connection refused",
+		},
+		{
+			name:    "empty",
+			columns: []string{"StatusMessage"},
+			row:     azlogs.Row{""},
+			want:    "",
+		},
+		{
+			name:    "missing column",
+			columns: []string{"SpanId"},
+			row:     azlogs.Row{"span-1"},
+			want:    "",
+		},
+		{
+			name:    "null",
+			columns: []string{"StatusMessage"},
+			row:     azlogs.Row{nil},
+			want:    "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			spans, err := mapSpanRows(tableResponse(tt.columns, []azlogs.Row{tt.row}))
+			if err != nil {
+				t.Fatalf("mapSpanRows: %v", err)
+			}
+			if got := spans[0].StatusMessage; got != tt.want {
+				t.Errorf("StatusMessage = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestMapTraceRows_NoTables(t *testing.T) {
 	if _, err := mapTraceRows(azlogs.QueryWorkspaceResponse{}); err == nil {
 		t.Error("expected error for empty response")

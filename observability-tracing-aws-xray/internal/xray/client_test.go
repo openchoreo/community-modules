@@ -440,7 +440,11 @@ func TestGetSpanDetail_Found(t *testing.T) {
 		"trace_id": "1-5759e988-bd862e3fe1be46a994272793",
 		"start_time": 1465510988.0,
 		"end_time": 1465510988.5,
-		"annotations": {"key1": "value1"},
+		"annotations": {
+			"key1": "value1",
+			"openchoreo.dev_namespace": "default",
+			"openchoreo.dev_project_uid": "proj-uid-1"
+		},
 		"http": {"request": {"method": "GET"}},
 		"subsegments": [
 			{
@@ -472,9 +476,13 @@ func TestGetSpanDetail_Found(t *testing.T) {
 	result, err := client.GetSpanDetail(context.Background(), TracesQueryParams{
 		TraceID: "5759e988bd862e3fe1be46a994272793",
 		SpanID:  "sub1",
+		Scope:   Scope{Namespace: "default", ProjectID: "proj-uid-1"},
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected a span, got nil")
 	}
 	if result.Span.SpanID != "sub1" {
 		t.Errorf("expected spanID sub1, got %s", result.Span.SpanID)
@@ -506,12 +514,144 @@ func TestGetSpanDetail_NotFound(t *testing.T) {
 	}
 
 	client := NewClientWithAWS(mock, &mockSTSClient{}, testLogger())
-	_, err := client.GetSpanDetail(context.Background(), TracesQueryParams{
+	result, err := client.GetSpanDetail(context.Background(), TracesQueryParams{
 		TraceID: "5759e988bd862e3fe1be46a994272793",
 		SpanID:  "nonexistent",
 	})
-	if err == nil {
-		t.Fatal("expected error for non-existent span")
+	if err != nil {
+		t.Fatalf("a lookup miss should not be an error, got %v", err)
+	}
+	if result != nil {
+		t.Errorf("expected nil for non-existent span, got %+v", result)
+	}
+}
+
+// BatchGetTraces takes no filter expression, so the scope must be enforced
+// against the annotations after the trace is fetched.
+func TestGetSpanDetail_EnforcesScope(t *testing.T) {
+	segDoc := `{
+		"id": "seg1",
+		"name": "GET /api",
+		"start_time": 1465510988.0,
+		"end_time": 1465510988.5,
+		"annotations": {"openchoreo.dev_namespace": "other-tenant"}
+	}`
+
+	mock := &mockXRayClient{
+		batchGetTracesFn: func(ctx context.Context, input *xray.BatchGetTracesInput, opts ...func(*xray.Options)) (*xray.BatchGetTracesOutput, error) {
+			return &xray.BatchGetTracesOutput{
+				Traces: []xraytypes.Trace{
+					{
+						Id: aws.String("1-5759e988-bd862e3fe1be46a994272793"),
+						Segments: []xraytypes.Segment{
+							{Document: aws.String(segDoc)},
+						},
+					},
+				},
+			}, nil
+		},
+	}
+
+	client := NewClientWithAWS(mock, &mockSTSClient{}, testLogger())
+	result, err := client.GetSpanDetail(context.Background(), TracesQueryParams{
+		TraceID: "5759e988bd862e3fe1be46a994272793",
+		SpanID:  "seg1",
+		Scope:   Scope{Namespace: "default"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result != nil {
+		t.Errorf("out-of-scope span leaked: %+v", result)
+	}
+}
+
+func TestGetSpanDetail_EnforcesProjectScope(t *testing.T) {
+	segDoc := `{
+		"id": "seg1",
+		"name": "GET /api",
+		"start_time": 1465510988.0,
+		"end_time": 1465510988.5,
+		"annotations": {
+			"openchoreo.dev_namespace": "default",
+			"openchoreo.dev_project_uid": "proj-uid-1"
+		}
+	}`
+
+	mock := &mockXRayClient{
+		batchGetTracesFn: func(ctx context.Context, input *xray.BatchGetTracesInput, opts ...func(*xray.Options)) (*xray.BatchGetTracesOutput, error) {
+			return &xray.BatchGetTracesOutput{
+				Traces: []xraytypes.Trace{
+					{
+						Id: aws.String("1-5759e988-bd862e3fe1be46a994272793"),
+						Segments: []xraytypes.Segment{
+							{Document: aws.String(segDoc)},
+						},
+					},
+				},
+			}, nil
+		},
+	}
+
+	client := NewClientWithAWS(mock, &mockSTSClient{}, testLogger())
+	result, err := client.GetSpanDetail(context.Background(), TracesQueryParams{
+		TraceID: "5759e988bd862e3fe1be46a994272793",
+		SpanID:  "seg1",
+		Scope:   Scope{Namespace: "default", ProjectID: "proj-uid-2"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result != nil {
+		t.Errorf("span from another project leaked: %+v", result)
+	}
+}
+
+// The collector promotes the annotations onto subsegments too, so a scope
+// match on a subsegment alone must admit the trace.
+func TestGetSpanDetail_MatchesScopeOnSubsegment(t *testing.T) {
+	segDoc := `{
+		"id": "seg1",
+		"name": "GET /api",
+		"start_time": 1465510988.0,
+		"end_time": 1465510988.5,
+		"subsegments": [
+			{
+				"id": "sub1",
+				"name": "DynamoDB",
+				"start_time": 1465510988.1,
+				"end_time": 1465510988.3,
+				"annotations": {"openchoreo.dev_namespace": "default"}
+			}
+		]
+	}`
+
+	mock := &mockXRayClient{
+		batchGetTracesFn: func(ctx context.Context, input *xray.BatchGetTracesInput, opts ...func(*xray.Options)) (*xray.BatchGetTracesOutput, error) {
+			return &xray.BatchGetTracesOutput{
+				Traces: []xraytypes.Trace{
+					{
+						Id: aws.String("1-5759e988-bd862e3fe1be46a994272793"),
+						Segments: []xraytypes.Segment{
+							{Document: aws.String(segDoc)},
+						},
+					},
+				},
+			}, nil
+		},
+	}
+
+	client := NewClientWithAWS(mock, &mockSTSClient{}, testLogger())
+	result, err := client.GetSpanDetail(context.Background(), TracesQueryParams{
+		TraceID: "5759e988bd862e3fe1be46a994272793",
+		SpanID:  "sub1",
+		Scope:   Scope{Namespace: "default"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result == nil || result.Span.SpanID != "sub1" {
+		t.Errorf("subsegment-scoped span not returned: %+v", result)
 	}
 }
 

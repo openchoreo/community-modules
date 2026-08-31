@@ -44,6 +44,90 @@ func TestBuildFilterExpression_NamespaceOnly(t *testing.T) {
 	}
 }
 
+func TestMatchesScope(t *testing.T) {
+	full := map[string]interface{}{
+		annotationNamespace:      "default",
+		annotationProjectUID:     "proj-1",
+		annotationComponentUID:   "comp-1",
+		annotationEnvironmentUID: "env-1",
+	}
+
+	tests := []struct {
+		name        string
+		annotations map[string]interface{}
+		scope       Scope
+		want        bool
+	}{
+		{
+			name:        "all fields match",
+			annotations: full,
+			scope: Scope{
+				Namespace:     "default",
+				ProjectID:     "proj-1",
+				ComponentID:   "comp-1",
+				EnvironmentID: "env-1",
+			},
+			want: true,
+		},
+		{
+			name:        "namespace only is not over-constrained",
+			annotations: full,
+			scope:       Scope{Namespace: "default"},
+			want:        true,
+		},
+		{
+			name:        "wrong namespace",
+			annotations: full,
+			scope:       Scope{Namespace: "other-tenant"},
+			want:        false,
+		},
+		{
+			name:        "wrong project",
+			annotations: full,
+			scope:       Scope{Namespace: "default", ProjectID: "proj-2"},
+			want:        false,
+		},
+		{
+			name:        "wrong environment",
+			annotations: full,
+			scope:       Scope{Namespace: "default", EnvironmentID: "env-2"},
+			want:        false,
+		},
+		{
+			name:        "missing annotation cannot satisfy a scoped field",
+			annotations: map[string]interface{}{annotationNamespace: "default"},
+			scope:       Scope{Namespace: "default", ProjectID: "proj-1"},
+			want:        false,
+		},
+		{
+			name:        "no annotations at all",
+			annotations: nil,
+			scope:       Scope{Namespace: "default"},
+			want:        false,
+		},
+		{
+			name:        "empty scope matches anything",
+			annotations: nil,
+			scope:       Scope{},
+			want:        true,
+		},
+		{
+			name:        "non-string annotation never matches",
+			annotations: map[string]interface{}{annotationNamespace: 42},
+			scope:       Scope{Namespace: "42"},
+			want:        false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := matchesScope(tt.annotations, tt.scope); got != tt.want {
+				t.Errorf("matchesScope() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestBuildFilterExpression_Empty(t *testing.T) {
 	scope := Scope{}
 	expr := buildFilterExpression(scope)

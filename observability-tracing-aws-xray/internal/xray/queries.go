@@ -193,7 +193,10 @@ func (c *Client) GetSpans(ctx context.Context, params TracesQueryParams) (*Spans
 	}, nil
 }
 
-// GetSpanDetail queries X-Ray for a specific span within a trace.
+// GetSpanDetail queries X-Ray for a specific span within a trace, scoped to
+// the search scope in params. Returns nil when the trace or span does not
+// exist, or when the trace falls outside the scope: BatchGetTraces carries no
+// filter expression, so the scope is enforced here against the span annotations.
 func (c *Client) GetSpanDetail(ctx context.Context, params TracesQueryParams) (*SpanDetailResult, error) {
 	xrayTraceID := toXRayTraceID(params.TraceID)
 
@@ -205,13 +208,13 @@ func (c *Client) GetSpanDetail(ctx context.Context, params TracesQueryParams) (*
 		return nil, fmt.Errorf("failed to batch get traces: %w", err)
 	}
 
-	if len(output.Traces) == 0 {
-		return nil, fmt.Errorf("trace not found: traceId=%s", params.TraceID)
+	if len(output.Traces) == 0 || !anySegmentMatchesScope(output.Traces[0], params.Scope) {
+		return nil, nil
 	}
 
-	detail, err := findSpanDetail(output.Traces[0], params.SpanID)
-	if err != nil {
-		return nil, err
+	detail := findSpanDetail(output.Traces[0], params.SpanID)
+	if detail == nil {
+		return nil, nil
 	}
 
 	return &SpanDetailResult{Span: *detail}, nil
@@ -340,26 +343,94 @@ func segmentHasErrors(seg *xraySegment) bool {
 	return false
 }
 
+// OpenChoreo span attributes indexed as X-Ray annotations by the awsxray
+// exporter's indexed_attributes. X-Ray annotation keys preserve dots and
+// convert slashes/hyphens to underscores, so these are the keys that appear
+// both in filter expressions and on a segment document's "annotations" object.
+const (
+	annotationNamespace      = "openchoreo.dev_namespace"
+	annotationComponentUID   = "openchoreo.dev_component_uid"
+	annotationProjectUID     = "openchoreo.dev_project_uid"
+	annotationEnvironmentUID = "openchoreo.dev_environment_uid"
+)
+
 // buildFilterExpression constructs an X-Ray filter expression from the search scope.
-// X-Ray annotation keys preserve dots and convert slashes/hyphens to underscores.
 // Keys containing dots must use annotation[key] filter syntax.
 func buildFilterExpression(scope Scope) string {
 	var parts []string
 
 	if scope.Namespace != "" {
-		parts = append(parts, fmt.Sprintf("annotation[openchoreo.dev_namespace] = %q", scope.Namespace))
+		parts = append(parts, fmt.Sprintf("annotation[%s] = %q", annotationNamespace, scope.Namespace))
 	}
 	if scope.ProjectID != "" {
-		parts = append(parts, fmt.Sprintf("annotation[openchoreo.dev_project_uid] = %q", scope.ProjectID))
+		parts = append(parts, fmt.Sprintf("annotation[%s] = %q", annotationProjectUID, scope.ProjectID))
 	}
 	if scope.ComponentID != "" {
-		parts = append(parts, fmt.Sprintf("annotation[openchoreo.dev_component_uid] = %q", scope.ComponentID))
+		parts = append(parts, fmt.Sprintf("annotation[%s] = %q", annotationComponentUID, scope.ComponentID))
 	}
 	if scope.EnvironmentID != "" {
-		parts = append(parts, fmt.Sprintf("annotation[openchoreo.dev_environment_uid] = %q", scope.EnvironmentID))
+		parts = append(parts, fmt.Sprintf("annotation[%s] = %q", annotationEnvironmentUID, scope.EnvironmentID))
 	}
 
 	return strings.Join(parts, " AND ")
+}
+
+// anySegmentMatchesScope reports whether any segment or subsegment of a trace
+// satisfies the scope. BatchGetTraces accepts only trace IDs and no filter
+// expression, so a scoped lookup has to be re-checked here against the
+// annotations the collector indexed onto each span.
+func anySegmentMatchesScope(trace xraytypes.Trace, scope Scope) bool {
+	for _, segment := range trace.Segments {
+		if segment.Document == nil {
+			continue
+		}
+
+		var seg xraySegment
+		if err := json.Unmarshal([]byte(*segment.Document), &seg); err != nil {
+			continue
+		}
+
+		if segmentTreeMatchesScope(&seg, scope) {
+			return true
+		}
+	}
+	return false
+}
+
+// segmentTreeMatchesScope reports whether a segment or any of its subsegments
+// satisfies the scope. Subsegments carry the annotations too, so a match on any
+// of them proves the trace belongs to the scope.
+func segmentTreeMatchesScope(seg *xraySegment, scope Scope) bool {
+	if matchesScope(seg.Annotations, scope) {
+		return true
+	}
+	for i := range seg.Subsegments {
+		if segmentTreeMatchesScope(&seg.Subsegments[i], scope) {
+			return true
+		}
+	}
+	return false
+}
+
+// matchesScope reports whether a segment's annotations satisfy the search
+// scope. Only the fields set on the scope are compared, so an unset project or
+// component UID does not constrain the match.
+func matchesScope(annotations map[string]interface{}, scope Scope) bool {
+	return annotationEquals(annotations, annotationNamespace, scope.Namespace) &&
+		annotationEquals(annotations, annotationProjectUID, scope.ProjectID) &&
+		annotationEquals(annotations, annotationComponentUID, scope.ComponentID) &&
+		annotationEquals(annotations, annotationEnvironmentUID, scope.EnvironmentID)
+}
+
+// annotationEquals reports whether the annotation matches want. An empty want
+// is treated as "not scoped" and always matches. A non-string annotation value
+// never matches, so a scoped lookup cannot be satisfied by unexpected types.
+func annotationEquals(annotations map[string]interface{}, key, want string) bool {
+	if want == "" {
+		return true
+	}
+	got, ok := annotations[key].(string)
+	return ok && got == want
 }
 
 // toXRayTraceID converts a plain OTLP trace ID (32 hex chars) to the X-Ray format
@@ -662,8 +733,9 @@ func flattenMap(prefix string, m map[string]interface{}) map[string]interface{} 
 	return result
 }
 
-// findSpanDetail locates a specific span by ID in a trace and returns its full detail.
-func findSpanDetail(trace xraytypes.Trace, spanID string) (*SpanDetail, error) {
+// findSpanDetail locates a specific span by ID in a trace and returns its full
+// detail, or nil when the trace holds no span with that ID.
+func findSpanDetail(trace xraytypes.Trace, spanID string) *SpanDetail {
 	traceID := ""
 	if trace.Id != nil {
 		traceID = fromXRayTraceID(*trace.Id)
@@ -680,11 +752,11 @@ func findSpanDetail(trace xraytypes.Trace, spanID string) (*SpanDetail, error) {
 		}
 
 		if detail := findInSegment(&seg, "", traceID, spanID, false); detail != nil {
-			return detail, nil
+			return detail
 		}
 	}
 
-	return nil, fmt.Errorf("span not found: traceId=%s, spanId=%s", traceID, spanID)
+	return nil
 }
 
 // findInSegment recursively searches for a span by ID in a segment tree.

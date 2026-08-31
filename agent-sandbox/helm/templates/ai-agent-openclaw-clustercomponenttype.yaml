@@ -12,6 +12,11 @@ spec:
   # Fixed image, kata isolation, egress allowed — no user-tunable parameters.
   workloadType: proxy
 
+  {{- with (index .Values.componentTypes "ai-agent-openclaw" "extraAllowedTraits") }}
+  allowedTraits:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+
   validations:
     - rule: >-
         ${workload.endpoints.exists(name, ep, "external" in ep.visibility)

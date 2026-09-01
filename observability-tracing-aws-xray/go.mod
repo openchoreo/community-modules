@@ -8,7 +8,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sts v1.47.1
 	github.com/aws/aws-sdk-go-v2/service/xray v1.36.23
 	github.com/getkin/kin-openapi v0.146.0
-	github.com/oapi-codegen/runtime v1.6.0
+	github.com/oapi-codegen/runtime v1.7.0
 )
 
 require (

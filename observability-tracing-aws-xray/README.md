@@ -428,7 +428,7 @@ helm upgrade --install observability-tracing-aws-xray \
   oci://ghcr.io/openchoreo/helm-charts/observability-tracing-aws-xray \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.3.0 \
+  --version 0.4.0 \
   --set region="$AWS_REGION"
 ```
 
@@ -441,7 +441,7 @@ helm upgrade --install observability-tracing-aws-xray \
   oci://ghcr.io/openchoreo/helm-charts/observability-tracing-aws-xray \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.3.0 \
+  --version 0.4.0 \
   --set region="$AWS_REGION" \
   --set opentelemetry-collector.enabled=false
 ```
@@ -455,7 +455,7 @@ helm upgrade --install observability-tracing-aws-xray \
   oci://ghcr.io/openchoreo/helm-charts/observability-tracing-aws-xray \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.3.0 \
+  --version 0.4.0 \
   --set region="$AWS_REGION" \
   --set adapter.enabled=false
 ```
@@ -701,7 +701,7 @@ helm upgrade --install observability-tracing-aws-xray \
   oci://ghcr.io/openchoreo/helm-charts/observability-tracing-aws-xray \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.3.0 \
+  --version 0.4.0 \
   --set region="$AWS_REGION" \
   --set awsCredentials.create=true \
   --set awsCredentials.name=tracing-aws-xray-aws-credentials \
@@ -720,7 +720,7 @@ helm upgrade --install observability-tracing-aws-xray \
   oci://ghcr.io/openchoreo/helm-charts/observability-tracing-aws-xray \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.3.0 \
+  --version 0.4.0 \
   --set region="$AWS_REGION" \
   --set awsCredentials.create=true \
   --set awsCredentials.name=tracing-aws-xray-aws-credentials \
@@ -738,7 +738,7 @@ helm upgrade --install observability-tracing-aws-xray \
   oci://ghcr.io/openchoreo/helm-charts/observability-tracing-aws-xray \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.3.0 \
+  --version 0.4.0 \
   --set region="$AWS_REGION" \
   --set awsCredentials.create=true \
   --set awsCredentials.name=tracing-aws-xray-aws-credentials \
@@ -830,7 +830,8 @@ Bundled upstream Helm charts:
 
 > **Note:** The Helm chart versions specified in the installation commands above are for the latest module version compatible with the development version of OpenChoreo. Refer to the compatibility table below to determine the appropriate module version for your OpenChoreo installation.
 
-| Module Version | OpenChoreo Version |
-|----------------|--------------------|
-| v0.3.x         | v1.2.x             |
-| v0.2.x         | v1.1.x             |
+| OpenChoreo Version | Module Version |
+|--------------------|----------------|
+| 1.2.5 and later    | 0.4.x          |
+| 1.2.0 - 1.2.4      | 0.3.x          |
+| 1.1.x              | 0.2.x          |

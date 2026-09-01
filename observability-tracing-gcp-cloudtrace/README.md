@@ -121,7 +121,7 @@ helm upgrade --install observability-tracing-gcp-cloudtrace \
   oci://ghcr.io/openchoreo/helm-charts/observability-tracing-gcp-cloudtrace \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.1.0 \
+  --version 0.2.0 \
   --set gcp.projectId="$PROJECT_ID" \
   --set adapter.serviceAccount.annotations."iam\.gke\.io/gcp-service-account"="tracing-adapter-cloudtrace@${PROJECT_ID}.iam.gserviceaccount.com" \
   --set opentelemetry-collector.serviceAccount.annotations."iam\.gke\.io/gcp-service-account"="otel-collector-cloudtrace@${PROJECT_ID}.iam.gserviceaccount.com"
@@ -142,7 +142,7 @@ helm upgrade --install observability-tracing-gcp-cloudtrace \
   oci://ghcr.io/openchoreo/helm-charts/observability-tracing-gcp-cloudtrace \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.1.0 \
+  --version 0.2.0 \
   --set opentelemetry-collector.enabled=false \
   --set gcp.projectId="$PROJECT_ID" \
   --set adapter.serviceAccount.annotations."iam\.gke\.io/gcp-service-account"="tracing-adapter-cloudtrace@${PROJECT_ID}.iam.gserviceaccount.com"
@@ -157,7 +157,7 @@ helm upgrade --install observability-tracing-gcp-cloudtrace \
   oci://ghcr.io/openchoreo/helm-charts/observability-tracing-gcp-cloudtrace \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.1.0 \
+  --version 0.2.0 \
   --set adapter.enabled=false \
   --set gcp.projectId="$PROJECT_ID" \
   --set opentelemetry-collector.serviceAccount.annotations."iam\.gke\.io/gcp-service-account"="otel-collector-cloudtrace@${PROJECT_ID}.iam.gserviceaccount.com"
@@ -180,6 +180,7 @@ Credentials come from Application Default Credentials: Workload Identity in-clus
 
 > **Note:** The Helm chart versions specified in the installation commands above are for the latest module version compatible with the development version of OpenChoreo. Refer to the compatibility table below to determine the appropriate module version for your OpenChoreo installation.
 
-| Module Version | OpenChoreo Version |
-|----------------|--------------------|
-| v0.1.x         | v1.2.x             |
+| OpenChoreo Version | Module Version |
+|--------------------|----------------|
+| 1.2.5 and later    | 0.2.x          |
+| 1.2.0 - 1.2.4      | 0.1.x          | 

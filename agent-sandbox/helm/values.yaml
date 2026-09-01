@@ -19,6 +19,29 @@ dataPlaneServiceAccount: cluster-agent-dataplane
 # *control plane* resources; set to false on a data-plane-only install.
 componentTypes:
   enabled: true
+  # Each block below groups per-component-type customizations for that
+  # ClusterComponentType. extraAllowedTraits appends additional entries to
+  # its allowedTraits. Defaults to empty — no behavior change unless set.
+  # Lets consumers attach platform-specific traits (credential injection,
+  # hardening, etc.) without forking the ClusterComponentType.
+  ai-agent:
+    extraAllowedTraits: []
+    #   - kind: ClusterTrait
+    #     name: my-platform-trait
+  ai-agent-claude:
+    extraAllowedTraits: []
+  ai-agent-codex:
+    extraAllowedTraits: []
+  ai-agent-copilot:
+    extraAllowedTraits: []
+  ai-agent-cursor:
+    extraAllowedTraits: []
+  ai-agent-gemini:
+    extraAllowedTraits: []
+  ai-agent-openclaw:
+    extraAllowedTraits: []
+  ai-agent-opencode:
+    extraAllowedTraits: []
 
 # rbac controls the openchoreo-agent-sandbox-access ClusterRole/Binding that
 # grants the data plane cluster-agent access to sandbox resources. This is a

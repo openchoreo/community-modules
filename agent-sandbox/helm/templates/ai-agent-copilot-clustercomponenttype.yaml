@@ -12,6 +12,11 @@ spec:
   # Fixed image, kata isolation, terminal-only — no user-tunable parameters.
   workloadType: proxy
 
+  {{- with (index .Values.componentTypes "ai-agent-copilot" "extraAllowedTraits") }}
+  allowedTraits:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+
   environmentConfigs:
     openAPIV3Schema:
       type: object

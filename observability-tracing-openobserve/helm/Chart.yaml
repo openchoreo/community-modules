@@ -21,7 +21,7 @@ dependencies:
     version: 0.169.0
     condition: opentelemetry-collector.enabled
   - name: openobserve-standalone
-    version: 0.92.0
+    version: 0.92.2
     repository: https://charts.openobserve.ai
     condition: openobserve-standalone.enabled
   - name: openobserve

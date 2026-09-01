@@ -3,7 +3,7 @@
 
 # Pin the target platform so a build from an arm64 host (e.g. Apple Silicon)
 # still produces a linux/amd64 image for the amd64 GKE nodes.
-FROM --platform=linux/amd64 golang:1.26-alpine AS builder
+FROM --platform=linux/amd64 golang:1.27-alpine AS builder
 
 WORKDIR /app
 COPY go.mod go.sum* ./

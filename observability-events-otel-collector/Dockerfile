@@ -5,7 +5,7 @@
 
 # Stage 1: build the collector distribution with OCB.
 # Built on $BUILDPLATFORM, cross-compiled to $TARGETARCH for native multi-arch builds.
-FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS builder
 RUN apk add --no-cache git
 WORKDIR /src
 

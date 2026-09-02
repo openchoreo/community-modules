@@ -3,7 +3,7 @@ module github.com/openchoreo/community-modules/observability-logs-azure-loganaly
 go 1.26.2
 
 require (
-	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.23.0
+	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.23.1
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.14.0
 	github.com/Azure/azure-sdk-for-go/sdk/monitor/query/azlogs v1.2.0
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/monitor/armmonitor v0.13.0
@@ -24,8 +24,8 @@ require (
 	github.com/oasdiff/yaml3 v0.0.14 // indirect
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
-	golang.org/x/crypto v0.54.0 // indirect
-	golang.org/x/net v0.57.0 // indirect
+	golang.org/x/crypto v0.55.0 // indirect
+	golang.org/x/net v0.58.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.40.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
 )

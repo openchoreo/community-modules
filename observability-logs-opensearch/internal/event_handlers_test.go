@@ -80,7 +80,7 @@ func TestQueryEvents_ComponentScope_EmptyNamespace(t *testing.T) {
 	body := gen.EventsQueryRequest{
 		StartTime:   time.Now(),
 		EndTime:     time.Now(),
-		SearchScope: searchScope,
+		SearchScope: &searchScope,
 	}
 	resp, err := handler.QueryEvents(context.Background(), gen.QueryEventsRequestObject{Body: &body})
 	if err != nil {
@@ -109,7 +109,7 @@ func TestQueryEvents_ComponentScope_Success(t *testing.T) {
 	body := gen.EventsQueryRequest{
 		StartTime:   time.Date(2026, 6, 5, 0, 0, 0, 0, time.UTC),
 		EndTime:     time.Date(2026, 6, 6, 0, 0, 0, 0, time.UTC),
-		SearchScope: searchScope,
+		SearchScope: &searchScope,
 	}
 
 	resp, err := handler.QueryEvents(context.Background(), gen.QueryEventsRequestObject{Body: &body})
@@ -165,7 +165,7 @@ func TestQueryEvents_WorkflowScope_Success(t *testing.T) {
 	body := gen.EventsQueryRequest{
 		StartTime:   time.Date(2026, 6, 5, 0, 0, 0, 0, time.UTC),
 		EndTime:     time.Date(2026, 6, 6, 0, 0, 0, 0, time.UTC),
-		SearchScope: searchScope,
+		SearchScope: &searchScope,
 	}
 
 	resp, err := handler.QueryEvents(context.Background(), gen.QueryEventsRequestObject{Body: &body})
@@ -174,6 +174,138 @@ func TestQueryEvents_WorkflowScope_Success(t *testing.T) {
 	}
 	if _, ok := resp.(gen.QueryEvents200JSONResponse); !ok {
 		t.Fatalf("expected 200 response, got %T", resp)
+	}
+}
+
+func TestQueryEvents_NoScope_NoReasons(t *testing.T) {
+	handler := NewLogsHandler(nil, nil, nil, nil, testLogger())
+
+	body := gen.EventsQueryRequest{
+		StartTime: time.Now(),
+		EndTime:   time.Now(),
+	}
+	resp, err := handler.QueryEvents(context.Background(), gen.QueryEventsRequestObject{Body: &body})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, ok := resp.(gen.QueryEvents400JSONResponse); !ok {
+		t.Fatalf("expected 400 response when neither searchScope nor reasons is set, got %T", resp)
+	}
+}
+
+func TestQueryEvents_UnscopedReasonSweep_Success(t *testing.T) {
+	server := eventsSearchServer(t)
+	defer server.Close()
+
+	osClient := newTestOSClient(t, server.URL)
+	eqb := osearch.NewQueryBuilder("k8s-events-")
+	handler := NewLogsHandler(osClient, nil, eqb, nil, testLogger())
+
+	reasons := []string{"DeploymentSucceeded", "DeploymentFailed"}
+	body := gen.EventsQueryRequest{
+		StartTime: time.Date(2026, 6, 5, 0, 0, 0, 0, time.UTC),
+		EndTime:   time.Date(2026, 6, 6, 0, 0, 0, 0, time.UTC),
+		Reasons:   &reasons,
+	}
+
+	resp, err := handler.QueryEvents(context.Background(), gen.QueryEventsRequestObject{Body: &body})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	queryResp, ok := resp.(gen.QueryEvents200JSONResponse)
+	if !ok {
+		t.Fatalf("expected 200 response, got %T", resp)
+	}
+	if queryResp.Events == nil || len(*queryResp.Events) != 1 {
+		t.Fatalf("expected 1 event from the unscoped sweep, got %v", queryResp.Events)
+	}
+}
+
+func TestQueryEvents_InvalidSearchAfterCursor(t *testing.T) {
+	handler := NewLogsHandler(nil, nil, nil, nil, testLogger())
+
+	reasons := []string{"DeploymentSucceeded"}
+	badCursor := "not-a-valid-cursor!!!"
+	body := gen.EventsQueryRequest{
+		StartTime:   time.Now(),
+		EndTime:     time.Now(),
+		Reasons:     &reasons,
+		SearchAfter: &badCursor,
+	}
+
+	resp, err := handler.QueryEvents(context.Background(), gen.QueryEventsRequestObject{Body: &body})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, ok := resp.(gen.QueryEvents400JSONResponse); !ok {
+		t.Fatalf("expected 400 response for an invalid searchAfter cursor, got %T", resp)
+	}
+}
+
+func TestQueryEvents_NextCursor_SetWhenPageFull(t *testing.T) {
+	// A single-hit page at limit=1 should be treated as possibly-truncated:
+	// nextCursor must be populated from that hit's sort values.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		resp := map[string]interface{}{
+			"took":      1,
+			"timed_out": false,
+			"hits": map[string]interface{}{
+				"total": map[string]interface{}{"value": 5, "relation": "eq"},
+				"hits": []map[string]interface{}{
+					{
+						"_id":    "ev-1",
+						"_score": 1.0,
+						"sort":   []interface{}{"2026-06-05T12:24:06.000Z", 42},
+						"_source": map[string]interface{}{
+							"@timestamp": "2026-06-05T12:24:06Z",
+							"body":       "Job completed",
+							"attributes": map[string]interface{}{
+								"k8s.event.reason": "DeploymentSucceeded",
+							},
+						},
+					},
+				},
+			},
+		}
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			t.Errorf("failed to encode response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	osClient := newTestOSClient(t, server.URL)
+	eqb := osearch.NewQueryBuilder("k8s-events-")
+	handler := NewLogsHandler(osClient, nil, eqb, nil, testLogger())
+
+	limit := 1
+	reasons := []string{"DeploymentSucceeded"}
+	body := gen.EventsQueryRequest{
+		StartTime: time.Date(2026, 6, 5, 0, 0, 0, 0, time.UTC),
+		EndTime:   time.Date(2026, 6, 6, 0, 0, 0, 0, time.UTC),
+		Reasons:   &reasons,
+		Limit:     &limit,
+	}
+
+	resp, err := handler.QueryEvents(context.Background(), gen.QueryEventsRequestObject{Body: &body})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	queryResp, ok := resp.(gen.QueryEvents200JSONResponse)
+	if !ok {
+		t.Fatalf("expected 200 response, got %T", resp)
+	}
+	if queryResp.NextCursor == nil || *queryResp.NextCursor == "" {
+		t.Fatalf("expected a non-empty nextCursor when the page is full")
+	}
+
+	decoded, err := osearch.DecodeSearchAfterCursor(*queryResp.NextCursor)
+	if err != nil {
+		t.Fatalf("nextCursor should decode cleanly: %v", err)
+	}
+	if len(decoded) != 2 {
+		t.Fatalf("expected 2 sort values in the cursor, got %v", decoded)
 	}
 }
 
@@ -195,7 +327,7 @@ func TestQueryEvents_SearchError(t *testing.T) {
 	body := gen.EventsQueryRequest{
 		StartTime:   time.Date(2026, 6, 5, 0, 0, 0, 0, time.UTC),
 		EndTime:     time.Date(2026, 6, 6, 0, 0, 0, 0, time.UTC),
-		SearchScope: searchScope,
+		SearchScope: &searchScope,
 	}
 
 	resp, err := handler.QueryEvents(context.Background(), gen.QueryEventsRequestObject{Body: &body})

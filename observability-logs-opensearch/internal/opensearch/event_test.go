@@ -47,6 +47,40 @@ func hasTermFilter(conds []interface{}, field, value string) bool {
 	return false
 }
 
+// hasTermsFilter reports whether the must conditions contain a terms filter on
+// field matching exactly the given values (order-independent).
+func hasTermsFilter(conds []interface{}, field string, values ...string) bool {
+	for _, c := range conds {
+		m, ok := c.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		terms, ok := m["terms"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		got, ok := terms[field].([]string)
+		if !ok || len(got) != len(values) {
+			continue
+		}
+		want := map[string]bool{}
+		for _, v := range values {
+			want[v] = true
+		}
+		matched := true
+		for _, v := range got {
+			if !want[v] {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			return true
+		}
+	}
+	return false
+}
+
 func hasWildcardFilter(conds []interface{}, field, value string) bool {
 	for _, c := range conds {
 		m, ok := c.(map[string]interface{})
@@ -118,12 +152,42 @@ func TestBuildComponentEventsQuery_Defaults(t *testing.T) {
 		t.Errorf("expected default size=100, got %v", got)
 	}
 	sort, ok := query["sort"].([]map[string]interface{})
-	if !ok || len(sort) != 1 {
+	if !ok || len(sort) != 2 {
 		t.Fatalf("unexpected sort: %v", query["sort"])
 	}
 	ts, ok := sort[0][EvTimestamp].(map[string]interface{})
 	if !ok || ts["order"] != "desc" {
 		t.Errorf("expected default sort order desc, got %v", sort[0])
+	}
+	tiebreaker, ok := sort[1]["_seq_no"].(map[string]interface{})
+	if !ok || tiebreaker["order"] != "desc" {
+		t.Errorf("expected _seq_no tiebreaker desc, got %v", sort[1])
+	}
+	if _, present := query["search_after"]; present {
+		t.Errorf("expected no search_after when SearchAfter is unset")
+	}
+}
+
+func TestBuildComponentEventsQuery_ReasonsAndSearchAfter(t *testing.T) {
+	qb := NewQueryBuilder("k8s-events-")
+	query, err := qb.BuildComponentEventsQuery(EventsQueryParams{
+		StartTime:     "2026-06-05T00:00:00Z",
+		EndTime:       "2026-06-06T00:00:00Z",
+		NamespaceName: "default",
+		Reasons:       []string{"DeploymentSucceeded", "DeploymentFailed"},
+		SearchAfter:   []any{"2026-06-05T12:00:00Z", float64(42)},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	conds := mustConditions(t, query)
+	if !hasTermsFilter(conds, EvReason, "DeploymentSucceeded", "DeploymentFailed") {
+		t.Errorf("missing reasons terms filter on %s: %v", EvReason, conds)
+	}
+	searchAfter, ok := query["search_after"].([]any)
+	if !ok || len(searchAfter) != 2 {
+		t.Fatalf("expected search_after to be forwarded, got %v", query["search_after"])
 	}
 }
 
@@ -188,6 +252,111 @@ func TestBuildWorkflowEventsQuery_MissingRequired(t *testing.T) {
 		NamespaceName: "default",
 	}); err == nil {
 		t.Errorf("expected error when workflow run ID is missing")
+	}
+}
+
+func TestBuildWorkflowEventsQuery_Reasons(t *testing.T) {
+	qb := NewQueryBuilder("k8s-events-")
+	query, err := qb.BuildWorkflowEventsQuery(WorkflowEventsQueryParams{
+		StartTime:     "2026-06-05T00:00:00Z",
+		EndTime:       "2026-06-06T00:00:00Z",
+		NamespaceName: "default",
+		WorkflowRunID: "build-run-123",
+		Reasons:       []string{"Completed"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	conds := mustConditions(t, query)
+	if !hasTermsFilter(conds, EvReason, "Completed") {
+		t.Errorf("missing reasons terms filter on %s: %v", EvReason, conds)
+	}
+}
+
+func TestBuildReasonFilteredEventsQuery(t *testing.T) {
+	qb := NewQueryBuilder("k8s-events-")
+	query, err := qb.BuildReasonFilteredEventsQuery(ReasonFilteredEventsQueryParams{
+		StartTime: "2026-06-05T00:00:00Z",
+		EndTime:   "2026-06-06T00:00:00Z",
+		Reasons:   []string{"DeploymentStarted", "DeploymentSucceeded"},
+		Limit:     500,
+		SortOrder: "asc",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := query["size"]; got != 500 {
+		t.Errorf("expected size=500, got %v", got)
+	}
+
+	conds := mustConditions(t, query)
+	if !hasTermsFilter(conds, EvReason, "DeploymentStarted", "DeploymentSucceeded") {
+		t.Errorf("missing reasons terms filter on %s: %v", EvReason, conds)
+	}
+	// No namespace/component/environment scoping: an unscoped sweep must not
+	// restrict to any single namespace.
+	if hasTermFilter(conds, EvNamespaceName, "default") {
+		t.Errorf("unscoped query should not filter by namespace: %v", conds)
+	}
+}
+
+func TestBuildReasonFilteredEventsQuery_MissingReasons(t *testing.T) {
+	qb := NewQueryBuilder("k8s-events-")
+	if _, err := qb.BuildReasonFilteredEventsQuery(ReasonFilteredEventsQueryParams{
+		StartTime: "2026-06-05T00:00:00Z",
+		EndTime:   "2026-06-06T00:00:00Z",
+	}); err == nil {
+		t.Errorf("expected error when reasons is empty")
+	}
+}
+
+func TestBuildReasonFilteredEventsQuery_MissingTimeRange(t *testing.T) {
+	qb := NewQueryBuilder("k8s-events-")
+	if _, err := qb.BuildReasonFilteredEventsQuery(ReasonFilteredEventsQueryParams{
+		Reasons: []string{"DeploymentStarted"},
+	}); err == nil {
+		t.Errorf("expected error when time range is missing")
+	}
+}
+
+func TestSearchAfterCursor_RoundTrip(t *testing.T) {
+	sort := []interface{}{"2026-06-05T12:00:00.000Z", float64(42)}
+
+	cursor, err := EncodeSearchAfterCursor(sort)
+	if err != nil {
+		t.Fatalf("unexpected encode error: %v", err)
+	}
+	if cursor == "" {
+		t.Fatalf("expected non-empty cursor")
+	}
+
+	decoded, err := DecodeSearchAfterCursor(cursor)
+	if err != nil {
+		t.Fatalf("unexpected decode error: %v", err)
+	}
+	if len(decoded) != len(sort) {
+		t.Fatalf("expected %d sort values, got %d", len(sort), len(decoded))
+	}
+	if decoded[0] != sort[0] || decoded[1] != sort[1] {
+		t.Errorf("expected %v, got %v", sort, decoded)
+	}
+}
+
+func TestSearchAfterCursor_Empty(t *testing.T) {
+	cursor, err := EncodeSearchAfterCursor(nil)
+	if err != nil || cursor != "" {
+		t.Fatalf("expected empty cursor for empty sort, got %q, err %v", cursor, err)
+	}
+
+	decoded, err := DecodeSearchAfterCursor("")
+	if err != nil || decoded != nil {
+		t.Fatalf("expected nil, nil for empty cursor, got %v, %v", decoded, err)
+	}
+}
+
+func TestSearchAfterCursor_InvalidCursor(t *testing.T) {
+	if _, err := DecodeSearchAfterCursor("not-valid-base64!!!"); err == nil {
+		t.Errorf("expected error decoding an invalid cursor")
 	}
 }
 

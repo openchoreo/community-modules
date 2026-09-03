@@ -400,46 +400,64 @@ func TestBuildTracesQuery_WithProjectUID(t *testing.T) {
 	}
 }
 
-func TestBuildSpanDetailsQuery(t *testing.T) {
-	query := BuildSpanDetailsQuery("trace-abc", "span-123")
+func TestBuildScopedSpanDetailsQuery(t *testing.T) {
+	query := BuildScopedSpanDetailsQuery("trace-abc", "span-123", "my-namespace", "proj-uid-1")
 	data, _ := json.Marshal(query)
 
 	var parsed map[string]interface{}
 	json.Unmarshal(data, &parsed)
 
-	// Size should be 1
-	if size, ok := parsed["size"].(float64); !ok || int(size) != 1 {
-		t.Errorf("expected size 1, got %v", parsed["size"])
-	}
-
-	// Should have 2 term filters
 	queryObj := parsed["query"].(map[string]interface{})
 	boolObj := queryObj["bool"].(map[string]interface{})
 	filters := boolObj["filter"].([]interface{})
 
-	if len(filters) != 2 {
-		t.Errorf("expected 2 filter conditions, got %d", len(filters))
+	if len(filters) != 4 {
+		t.Errorf("expected 4 filter conditions, got %d", len(filters))
 	}
 
-	// Verify traceId and spanId terms
-	foundTraceId := false
-	foundSpanId := false
+	foundProject := false
+	foundNamespace := false
 	for _, f := range filters {
 		filter := f.(map[string]interface{})
 		if term, ok := filter["term"].(map[string]interface{}); ok {
-			if term["traceId"] == "trace-abc" {
-				foundTraceId = true
+			if term["resource.openchoreo.dev/project-uid"] == "proj-uid-1" {
+				foundProject = true
 			}
-			if term["spanId"] == "span-123" {
-				foundSpanId = true
+			if term["resource.openchoreo.dev/namespace"] == "my-namespace" {
+				foundNamespace = true
 			}
 		}
 	}
-	if !foundTraceId {
-		t.Error("expected traceId term filter")
+	if !foundProject {
+		t.Error("expected project-uid term filter")
 	}
-	if !foundSpanId {
-		t.Error("expected spanId term filter")
+	if !foundNamespace {
+		t.Error("expected namespace term filter")
+	}
+}
+
+func TestBuildScopedSpanDetailsQuery_EmptyProject(t *testing.T) {
+	query := BuildScopedSpanDetailsQuery("trace-abc", "span-123", "my-namespace", "")
+	data, _ := json.Marshal(query)
+
+	var parsed map[string]interface{}
+	json.Unmarshal(data, &parsed)
+
+	queryObj := parsed["query"].(map[string]interface{})
+	boolObj := queryObj["bool"].(map[string]interface{})
+	filters := boolObj["filter"].([]interface{})
+
+	if len(filters) != 3 {
+		t.Errorf("expected 3 filter conditions, got %d", len(filters))
+	}
+
+	for _, f := range filters {
+		filter := f.(map[string]interface{})
+		if term, ok := filter["term"].(map[string]interface{}); ok {
+			if _, exists := term["resource.openchoreo.dev/project-uid"]; exists {
+				t.Error("did not expect project-uid term filter for empty project UID")
+			}
+		}
 	}
 }
 

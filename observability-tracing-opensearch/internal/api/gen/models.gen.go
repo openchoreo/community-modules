@@ -58,10 +58,21 @@ type ErrorResponse struct {
 // ErrorResponseTitle The error message
 type ErrorResponseTitle string
 
+// TraceSpanDetailsRequest defines model for TraceSpanDetailsRequest.
+type TraceSpanDetailsRequest struct {
+	SearchScope ComponentSearchScope `json:"searchScope"`
+}
+
 // TraceSpanDetailsResponse defines model for TraceSpanDetailsResponse.
 type TraceSpanDetailsResponse struct {
-	// Attributes The span attributes as a key/value map
-	Attributes *map[string]interface{} `json:"attributes,omitempty"`
+	// Attributes The span attributes as an array of {key, value} objects. The span-details endpoint returns attributes in this expanded form; the spans-list endpoint (POST /traces/{traceId}/spans/query) returns the same data as a key/value map.
+	Attributes *[]struct {
+		// Key The key of the attribute
+		Key *string `json:"key,omitempty"`
+
+		// Value The value of the attribute
+		Value *string `json:"value,omitempty"`
+	} `json:"attributes,omitempty"`
 
 	// DurationNs The duration of the span in nanoseconds
 	DurationNs *int64 `json:"durationNs,omitempty"`
@@ -72,8 +83,14 @@ type TraceSpanDetailsResponse struct {
 	// ParentSpanId The parent span ID
 	ParentSpanId *string `json:"parentSpanId,omitempty"`
 
-	// ResourceAttributes The resource attributes as a key/value map
-	ResourceAttributes *map[string]interface{} `json:"resourceAttributes,omitempty"`
+	// ResourceAttributes The resource attributes as an array of {key, value} objects. As with `attributes`, the spans-list endpoint returns these as a key/value map.
+	ResourceAttributes *[]struct {
+		// Key The key of the attribute
+		Key *string `json:"key,omitempty"`
+
+		// Value The value of the attribute
+		Value *string `json:"value,omitempty"`
+	} `json:"resourceAttributes,omitempty"`
 
 	// SpanId The span ID
 	SpanId *string `json:"spanId,omitempty"`
@@ -98,7 +115,7 @@ type TraceSpanDetailsResponseStatus string
 type TraceSpansListResponse struct {
 	// Spans The list of spans
 	Spans *[]struct {
-		// Attributes The span attributes as a key/value map
+		// Attributes The span attributes as a key/value map. The list endpoint returns attributes in this compact map form; the span-details endpoint (GET /traces/{traceId}/spans/{spanId}) returns the same data as an array of {key, value} objects.
 		Attributes *map[string]interface{} `json:"attributes,omitempty"`
 
 		// DurationNs The duration of the span in nanoseconds
@@ -110,7 +127,7 @@ type TraceSpansListResponse struct {
 		// ParentSpanId The parent span ID
 		ParentSpanId *string `json:"parentSpanId,omitempty"`
 
-		// ResourceAttributes The resource attributes as a key/value map
+		// ResourceAttributes The resource attributes as a key/value map. As with `attributes`, the span-details endpoint returns these as an array of {key, value} objects.
 		ResourceAttributes *map[string]interface{} `json:"resourceAttributes,omitempty"`
 
 		// SpanId The span ID
@@ -202,3 +219,6 @@ type QueryTracesJSONRequestBody = TracesQueryRequest
 
 // QuerySpansForTraceJSONRequestBody defines body for QuerySpansForTrace for application/json ContentType.
 type QuerySpansForTraceJSONRequestBody = TracesQueryRequest
+
+// QuerySpanDetailsForTraceJSONRequestBody defines body for QuerySpanDetailsForTrace for application/json ContentType.
+type QuerySpanDetailsForTraceJSONRequestBody = TraceSpanDetailsRequest

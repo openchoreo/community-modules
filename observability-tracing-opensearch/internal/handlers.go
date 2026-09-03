@@ -114,13 +114,33 @@ func (h *TracingHandler) QuerySpansForTrace(ctx context.Context, request gen.Que
 	return gen.QuerySpansForTrace200JSONResponse(toSpansListResponse(spans, total, tookMs, params.IncludeAttributes)), nil
 }
 
-// GetSpanDetailsForTrace implements GET /api/v1alpha1/traces/{traceId}/spans/{spanId}.
-func (h *TracingHandler) GetSpanDetailsForTrace(ctx context.Context, request gen.GetSpanDetailsForTraceRequestObject) (gen.GetSpanDetailsForTraceResponseObject, error) {
-	query := opensearch.BuildSpanDetailsQuery(request.TraceId, request.SpanId)
+// QuerySpanDetailsForTrace implements POST /api/v1alpha1/traces/{traceId}/spans/{spanId},
+// scoping the lookup to the namespace and project UID from the request body's searchScope.
+func (h *TracingHandler) QuerySpanDetailsForTrace(ctx context.Context, request gen.QuerySpanDetailsForTraceRequestObject) (gen.QuerySpanDetailsForTraceResponseObject, error) {
+	if request.Body == nil {
+		return gen.QuerySpanDetailsForTrace400JSONResponse{
+			Title:  ptr(gen.BadRequest),
+			Detail: ptr("request body is required"),
+		}, nil
+	}
+	if strings.TrimSpace(request.Body.SearchScope.Namespace) == "" {
+		return gen.QuerySpanDetailsForTrace400JSONResponse{
+			Title:  ptr(gen.BadRequest),
+			Detail: ptr("namespace is required"),
+		}, nil
+	}
+
+	namespace := request.Body.SearchScope.Namespace
+	var projectUID string
+	if request.Body.SearchScope.Project != nil {
+		projectUID = *request.Body.SearchScope.Project
+	}
+
+	query := opensearch.BuildScopedSpanDetailsQuery(request.TraceId, request.SpanId, namespace, projectUID)
 	response, err := h.client.Search(ctx, []string{tracesIndex}, query)
 	if err != nil {
 		h.logger.Error("Failed to query span detail", slog.Any("error", err))
-		return gen.GetSpanDetailsForTrace500JSONResponse{
+		return gen.QuerySpanDetailsForTrace500JSONResponse{
 			Title:  ptr(gen.InternalServerError),
 			Detail: ptr("internal server error"),
 		}, nil
@@ -128,14 +148,14 @@ func (h *TracingHandler) GetSpanDetailsForTrace(ctx context.Context, request gen
 
 	if len(response.Hits.Hits) == 0 {
 		detail := "span not found"
-		return gen.GetSpanDetailsForTrace500JSONResponse{
+		return gen.QuerySpanDetailsForTrace500JSONResponse{
 			Title:  ptr(gen.InternalServerError),
 			Detail: &detail,
 		}, nil
 	}
 
 	span := opensearch.ParseSpanEntry(response.Hits.Hits[0])
-	return gen.GetSpanDetailsForTrace200JSONResponse(toSpanDetailsResponse(&span)), nil
+	return gen.QuerySpanDetailsForTrace200JSONResponse(toSpanDetailsResponse(&span)), nil
 }
 
 // queryTracesWithAggregation uses a terms aggregation on traceId to return distinct traces.
@@ -434,23 +454,44 @@ func toSpanDetailsResponse(span *opensearch.Span) gen.TraceSpanDetailsResponse {
 	startTime := span.StartTime
 	endTime := span.EndTime
 
-	resp := gen.TraceSpanDetailsResponse{
-		SpanId:       &span.SpanID,
-		SpanName:     &span.Name,
-		SpanKind:     &span.SpanKind,
-		StartTime:    &startTime,
-		EndTime:      &endTime,
-		DurationNs:   &dur,
-		ParentSpanId: &span.ParentSpanID,
-		Status:       ptr(gen.TraceSpanDetailsResponseStatus(span.Status)),
+	attrs := make([]struct {
+		Key   *string `json:"key,omitempty"`
+		Value *string `json:"value,omitempty"`
+	}, 0, len(span.Attributes))
+	for k, v := range span.Attributes {
+		key := k
+		value := fmt.Sprintf("%v", v)
+		attrs = append(attrs, struct {
+			Key   *string `json:"key,omitempty"`
+			Value *string `json:"value,omitempty"`
+		}{Key: &key, Value: &value})
 	}
-	if span.Attributes != nil {
-		resp.Attributes = &span.Attributes
+
+	resAttrs := make([]struct {
+		Key   *string `json:"key,omitempty"`
+		Value *string `json:"value,omitempty"`
+	}, 0, len(span.ResourceAttributes))
+	for k, v := range span.ResourceAttributes {
+		key := k
+		value := fmt.Sprintf("%v", v)
+		resAttrs = append(resAttrs, struct {
+			Key   *string `json:"key,omitempty"`
+			Value *string `json:"value,omitempty"`
+		}{Key: &key, Value: &value})
 	}
-	if span.ResourceAttributes != nil {
-		resp.ResourceAttributes = &span.ResourceAttributes
+
+	return gen.TraceSpanDetailsResponse{
+		SpanId:             &span.SpanID,
+		SpanName:           &span.Name,
+		SpanKind:           &span.SpanKind,
+		StartTime:          &startTime,
+		EndTime:            &endTime,
+		DurationNs:         &dur,
+		ParentSpanId:       &span.ParentSpanID,
+		Status:             ptr(gen.TraceSpanDetailsResponseStatus(span.Status)),
+		Attributes:         &attrs,
+		ResourceAttributes: &resAttrs,
 	}
-	return resp
 }
 
 func ptr[T any](v T) *T {

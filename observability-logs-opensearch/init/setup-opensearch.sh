@@ -440,6 +440,78 @@ normalize_json() {
     echo "$1" | jq -c -S '.'
 }
 
+reconcile_ism_policy_indices() {
+    local policyName="$1"
+    local indexPattern="$policyName-*"
+    local response
+    local indicesWithPolicies
+    local indexName
+    local currentPolicyName
+    local operation
+    local requestBody
+    local -a curlArgs=(
+        --location
+        --header "Authorization: Basic $authnToken"
+        --insecure
+        --silent
+        --show-error
+        --fail-with-body
+    )
+
+    requestBody=$(jq --null-input --compact-output --arg policyId "$policyName" '{policy_id: $policyId}')
+    if ! response=$(curl "${curlArgs[@]}" "$openSearchHost/_cat/indices/$indexPattern?format=json&h=index"); then
+        echo "Failed to list indices matching $indexPattern: $response"
+        exit 1
+    fi
+
+    if [ "$(echo "$response" | jq 'length')" -eq 0 ]; then
+        return
+    fi
+
+    if ! response=$(curl "${curlArgs[@]}" "$openSearchHost/_plugins/_ism/explain/$indexPattern"); then
+        echo "Failed to inspect ISM policies for indices matching $indexPattern: $response"
+        exit 1
+    fi
+
+    indicesWithPolicies=$(echo "$response" | jq --raw-output '
+        to_entries[] |
+        select(.key != "total_managed_indices") |
+        [.key, (.value["index.plugins.index_state_management.policy_id"] // .value.policy_id // "")] |
+        @tsv
+    ')
+
+    while IFS=$'\t' read -r indexName currentPolicyName; do
+        if [ -z "$indexName" ]; then
+            continue
+        fi
+
+        if [ -z "$currentPolicyName" ]; then
+            operation="add"
+        elif [ "$currentPolicyName" = "$policyName" ]; then
+            operation="change_policy"
+        else
+            echo "Index $indexName uses ISM policy $currentPolicyName. Leaving it unchanged."
+            continue
+        fi
+
+        if ! response=$(curl "${curlArgs[@]}" \
+                             --request POST \
+                             --header "Content-Type: application/json" \
+                             --data "$requestBody" \
+                             "$openSearchHost/_plugins/_ism/$operation/$indexName"); then
+            echo "ISM $operation failed for index $indexName: $response"
+            exit 1
+        fi
+
+        if ! echo "$response" | jq --exit-status '.failures == false' >/dev/null; then
+            echo "ISM $operation failed for index $indexName: $response"
+            exit 1
+        fi
+
+        echo "ISM $operation succeeded for index $indexName."
+    done <<< "$indicesWithPolicies"
+}
+
 # Create or update ISM policies through a loop
 for ((i=0; i<${#ismPolicies[@]}; i+=2)); do
     ismPolicyName="${ismPolicies[i]}"
@@ -536,6 +608,8 @@ for ((i=0; i<${#ismPolicies[@]}; i+=2)); do
         echo "Response: $responseBody"
         exit 1
     fi
+
+    reconcile_ism_policy_indices "$ismPolicyName"
 
     echo ""
 done

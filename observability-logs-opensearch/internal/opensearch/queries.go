@@ -252,6 +252,32 @@ func (qb *QueryBuilder) BuildWorkflowRunLogsQuery(params WorkflowRunQueryParams)
 	return query
 }
 
+// reasonsFilter builds a terms filter restricting results to the given event
+// reasons (e.g. DeploymentSucceeded), or nil if reasons is empty.
+func reasonsFilter(reasons []string) map[string]interface{} {
+	if len(reasons) == 0 {
+		return nil
+	}
+	return map[string]interface{}{
+		"terms": map[string]interface{}{
+			EvReason: reasons,
+		},
+	}
+}
+
+// eventsSortAndPaging returns the sort clause and, when present, the
+// search_after value shared by every events query. Sorting on timestamp alone
+// is not stable across pages when multiple events share a timestamp, so
+// _seq_no is added as a tiebreaker (a numeric, always-doc-valued metadata
+// field — unlike _id, it needs no fielddata and is safe to sort on).
+func eventsSortAndPaging(sortOrder string, searchAfter []interface{}) ([]map[string]interface{}, []interface{}) {
+	sort := []map[string]interface{}{
+		{EvTimestamp: map[string]interface{}{"order": sortOrder}},
+		{"_seq_no": map[string]interface{}{"order": sortOrder}},
+	}
+	return sort, searchAfter
+}
+
 // BuildComponentEventsQuery builds a query for the API component events endpoint.
 func (qb *QueryBuilder) BuildComponentEventsQuery(params EventsQueryParams) (map[string]interface{}, error) {
 	if params.StartTime == "" || params.EndTime == "" || params.NamespaceName == "" {
@@ -292,6 +318,10 @@ func (qb *QueryBuilder) BuildComponentEventsQuery(params EventsQueryParams) (map
 		})
 	}
 
+	if filter := reasonsFilter(params.Reasons); filter != nil {
+		mustConditions = append(mustConditions, filter)
+	}
+
 	limit := params.Limit
 	if limit <= 0 {
 		limit = 100
@@ -302,6 +332,7 @@ func (qb *QueryBuilder) BuildComponentEventsQuery(params EventsQueryParams) (map
 		sortOrder = "desc"
 	}
 
+	sort, searchAfter := eventsSortAndPaging(sortOrder, params.SearchAfter)
 	query := map[string]interface{}{
 		"size": limit,
 		"query": map[string]interface{}{
@@ -309,13 +340,53 @@ func (qb *QueryBuilder) BuildComponentEventsQuery(params EventsQueryParams) (map
 				"must": mustConditions,
 			},
 		},
-		"sort": []map[string]interface{}{
-			{
-				EvTimestamp: map[string]interface{}{
-					"order": sortOrder,
-				},
+		"sort": sort,
+	}
+	if len(searchAfter) > 0 {
+		query["search_after"] = searchAfter
+	}
+
+	return query, nil
+}
+
+// BuildReasonFilteredEventsQuery builds an unscoped events query restricted
+// only by time range and reason: no namespace/component/environment filter.
+// Used by machine consumers (e.g. the Delivery Insights aggregator) sweeping
+// controller-emitted events across every namespace in one query.
+func (qb *QueryBuilder) BuildReasonFilteredEventsQuery(params ReasonFilteredEventsQueryParams) (map[string]interface{}, error) {
+	if params.StartTime == "" || params.EndTime == "" {
+		return nil, fmt.Errorf("start time and end time are required")
+	}
+	if len(params.Reasons) == 0 {
+		return nil, fmt.Errorf("at least one reason is required for an unscoped events sweep")
+	}
+
+	mustConditions := []map[string]interface{}{}
+	mustConditions = addTimeRangeFilter(mustConditions, params.StartTime, params.EndTime)
+	mustConditions = append(mustConditions, reasonsFilter(params.Reasons))
+
+	limit := params.Limit
+	if limit <= 0 {
+		limit = 100
+	}
+
+	sortOrder := params.SortOrder
+	if sortOrder == "" {
+		sortOrder = "desc"
+	}
+
+	sort, searchAfter := eventsSortAndPaging(sortOrder, params.SearchAfter)
+	query := map[string]interface{}{
+		"size": limit,
+		"query": map[string]interface{}{
+			"bool": map[string]interface{}{
+				"must": mustConditions,
 			},
 		},
+		"sort": sort,
+	}
+	if len(searchAfter) > 0 {
+		query["search_after"] = searchAfter
 	}
 
 	return query, nil
@@ -360,6 +431,10 @@ func (qb *QueryBuilder) BuildWorkflowEventsQuery(params WorkflowEventsQueryParam
 		},
 	})
 
+	if filter := reasonsFilter(params.Reasons); filter != nil {
+		mustConditions = append(mustConditions, filter)
+	}
+
 	limit := params.Limit
 	if limit <= 0 {
 		limit = 100
@@ -370,6 +445,7 @@ func (qb *QueryBuilder) BuildWorkflowEventsQuery(params WorkflowEventsQueryParam
 		sortOrder = "desc"
 	}
 
+	sort, searchAfter := eventsSortAndPaging(sortOrder, params.SearchAfter)
 	query := map[string]interface{}{
 		"size": limit,
 		"query": map[string]interface{}{
@@ -377,13 +453,10 @@ func (qb *QueryBuilder) BuildWorkflowEventsQuery(params WorkflowEventsQueryParam
 				"must": mustConditions,
 			},
 		},
-		"sort": []map[string]interface{}{
-			{
-				EvTimestamp: map[string]interface{}{
-					"order": sortOrder,
-				},
-			},
-		},
+		"sort": sort,
+	}
+	if len(searchAfter) > 0 {
+		query["search_after"] = searchAfter
 	}
 
 	return query, nil

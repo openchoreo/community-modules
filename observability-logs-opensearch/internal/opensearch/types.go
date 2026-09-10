@@ -29,6 +29,10 @@ type Hit struct {
 	ID     string                 `json:"_id"`
 	Source map[string]interface{} `json:"_source"`
 	Score  *float64               `json:"_score"`
+	// Sort holds the per-hit sort values OpenSearch returns when the query
+	// carries a "sort" clause; the last hit's values become the search_after
+	// cursor for the next page.
+	Sort []interface{} `json:"sort,omitempty"`
 }
 
 // LogEntry represents a parsed log entry from OpenSearch.

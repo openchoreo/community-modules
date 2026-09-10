@@ -309,9 +309,21 @@ func (h *LogsHandler) QueryEvents(ctx context.Context, request gen.QueryEventsRe
 			Message: ptr("request body is required"),
 		}, nil
 	}
+	req := request.Body
+
+	if req.SearchScope == nil {
+		reasons := eventReasonsOf(req)
+		if len(reasons) == 0 {
+			return gen.QueryEvents400JSONResponse{
+				Title:   ptr(gen.BadRequest),
+				Message: ptr("searchScope is required unless reasons is set for an unscoped sweep"),
+			}, nil
+		}
+		return h.queryUnscopedEvents(ctx, req, reasons)
+	}
 
 	// Try to interpret the search scope as a WorkflowSearchScope first
-	workflowScope, err := request.Body.SearchScope.AsWorkflowSearchScope()
+	workflowScope, err := req.SearchScope.AsWorkflowSearchScope()
 	if err == nil && workflowScope.WorkflowRunName != nil {
 		if strings.TrimSpace(workflowScope.Namespace) == "" || strings.TrimSpace(*workflowScope.WorkflowRunName) == "" {
 			return gen.QueryEvents400JSONResponse{
@@ -320,11 +332,11 @@ func (h *LogsHandler) QueryEvents(ctx context.Context, request gen.QueryEventsRe
 			}, nil
 		}
 
-		return h.queryWorkflowEvents(ctx, request.Body, &workflowScope)
+		return h.queryWorkflowEvents(ctx, req, &workflowScope)
 	}
 
 	// Fall back to ComponentSearchScope
-	scope, err := request.Body.SearchScope.AsComponentSearchScope()
+	scope, err := req.SearchScope.AsComponentSearchScope()
 	if err != nil || strings.TrimSpace(scope.Namespace) == "" {
 		return gen.QueryEvents400JSONResponse{
 			Title:   ptr(gen.BadRequest),
@@ -332,17 +344,56 @@ func (h *LogsHandler) QueryEvents(ctx context.Context, request gen.QueryEventsRe
 		}, nil
 	}
 
-	return h.queryComponentEvents(ctx, request.Body, &scope)
+	return h.queryComponentEvents(ctx, req, &scope)
+}
+
+// eventReasonsOf returns the request's reasons filter, or nil when unset.
+func eventReasonsOf(req *gen.EventsQueryRequest) []string {
+	if req.Reasons == nil {
+		return nil
+	}
+	return *req.Reasons
+}
+
+// eventSearchAfterOf decodes the request's searchAfter cursor into the sort
+// values OpenSearch's search_after expects, or (nil, nil) when unset.
+func eventSearchAfterOf(req *gen.EventsQueryRequest) ([]interface{}, error) {
+	if req.SearchAfter == nil || *req.SearchAfter == "" {
+		return nil, nil
+	}
+	return opensearch.DecodeSearchAfterCursor(*req.SearchAfter)
+}
+
+// eventLimitOf returns the request's limit, defaulting to 100 to match the
+// query builders' own default (kept in sync so the "page was full" check in
+// executeEventsQuery reflects the limit actually sent to OpenSearch).
+func eventLimitOf(req *gen.EventsQueryRequest) int {
+	if req.Limit != nil && *req.Limit > 0 {
+		return *req.Limit
+	}
+	return 100
 }
 
 func (h *LogsHandler) queryComponentEvents(ctx context.Context, req *gen.EventsQueryRequest, scope *gen.ComponentSearchScope) (gen.QueryEventsResponseObject, error) {
 	startTime := req.StartTime.Format(time.RFC3339)
 	endTime := req.EndTime.Format(time.RFC3339)
 
+	searchAfter, err := eventSearchAfterOf(req)
+	if err != nil {
+		return gen.QueryEvents400JSONResponse{
+			Title:   ptr(gen.BadRequest),
+			Message: ptr("invalid searchAfter cursor"),
+		}, nil
+	}
+
+	limit := eventLimitOf(req)
 	params := opensearch.EventsQueryParams{
 		StartTime:     startTime,
 		EndTime:       endTime,
 		NamespaceName: scope.Namespace,
+		Limit:         limit,
+		Reasons:       eventReasonsOf(req),
+		SearchAfter:   searchAfter,
 	}
 	if scope.ProjectUid != nil {
 		params.ProjectID = *scope.ProjectUid
@@ -352,9 +403,6 @@ func (h *LogsHandler) queryComponentEvents(ctx context.Context, req *gen.EventsQ
 	}
 	if scope.ComponentUid != nil {
 		params.ComponentID = *scope.ComponentUid
-	}
-	if req.Limit != nil {
-		params.Limit = *req.Limit
 	}
 	if req.SortOrder != nil {
 		params.SortOrder = string(*req.SortOrder)
@@ -372,26 +420,35 @@ func (h *LogsHandler) queryComponentEvents(ctx context.Context, req *gen.EventsQ
 		}, nil
 	}
 
-	return h.executeEventsQuery(ctx, query, startTime, endTime, scope.Namespace)
+	return h.executeEventsQuery(ctx, query, startTime, endTime, scope.Namespace, limit)
 }
 
 func (h *LogsHandler) queryWorkflowEvents(ctx context.Context, req *gen.EventsQueryRequest, scope *gen.WorkflowSearchScope) (gen.QueryEventsResponseObject, error) {
 	startTime := req.StartTime.Format(time.RFC3339)
 	endTime := req.EndTime.Format(time.RFC3339)
 
+	searchAfter, err := eventSearchAfterOf(req)
+	if err != nil {
+		return gen.QueryEvents400JSONResponse{
+			Title:   ptr(gen.BadRequest),
+			Message: ptr("invalid searchAfter cursor"),
+		}, nil
+	}
+
+	limit := eventLimitOf(req)
 	params := opensearch.WorkflowEventsQueryParams{
 		StartTime:     startTime,
 		EndTime:       endTime,
 		NamespaceName: scope.Namespace,
+		Limit:         limit,
+		Reasons:       eventReasonsOf(req),
+		SearchAfter:   searchAfter,
 	}
 	if scope.WorkflowRunName != nil {
 		params.WorkflowRunID = *scope.WorkflowRunName
 	}
 	if scope.TaskName != nil {
 		params.TaskName = *scope.TaskName
-	}
-	if req.Limit != nil {
-		params.Limit = *req.Limit
 	}
 	if req.SortOrder != nil {
 		params.SortOrder = string(*req.SortOrder)
@@ -409,11 +466,57 @@ func (h *LogsHandler) queryWorkflowEvents(ctx context.Context, req *gen.EventsQu
 		}, nil
 	}
 
-	return h.executeEventsQuery(ctx, query, startTime, endTime, scope.Namespace)
+	return h.executeEventsQuery(ctx, query, startTime, endTime, scope.Namespace, limit)
+}
+
+// queryUnscopedEvents runs a reason-filtered sweep across every namespace,
+// for machine consumers (e.g. the Delivery Insights aggregator) reading
+// controller-emitted events rather than interactively browsing one component.
+func (h *LogsHandler) queryUnscopedEvents(ctx context.Context, req *gen.EventsQueryRequest, reasons []string) (gen.QueryEventsResponseObject, error) {
+	startTime := req.StartTime.Format(time.RFC3339)
+	endTime := req.EndTime.Format(time.RFC3339)
+
+	searchAfter, err := eventSearchAfterOf(req)
+	if err != nil {
+		return gen.QueryEvents400JSONResponse{
+			Title:   ptr(gen.BadRequest),
+			Message: ptr("invalid searchAfter cursor"),
+		}, nil
+	}
+
+	limit := eventLimitOf(req)
+	params := opensearch.ReasonFilteredEventsQueryParams{
+		StartTime:   startTime,
+		EndTime:     endTime,
+		Reasons:     reasons,
+		Limit:       limit,
+		SearchAfter: searchAfter,
+	}
+	if req.SortOrder != nil {
+		params.SortOrder = string(*req.SortOrder)
+	}
+
+	query, err := h.eventsQueryBuilder.BuildReasonFilteredEventsQuery(params)
+	if err != nil {
+		h.logger.Error("Failed to build unscoped events query",
+			slog.String("function", "QueryEvents"),
+			slog.Any("error", err),
+		)
+		return gen.QueryEvents500JSONResponse{
+			Title:   ptr(gen.InternalServerError),
+			Message: ptr("internal server error"),
+		}, nil
+	}
+
+	return h.executeEventsQuery(ctx, query, startTime, endTime, "", limit)
 }
 
 // executeEventsQuery runs an events query against the events indices and assembles the response.
-func (h *LogsHandler) executeEventsQuery(ctx context.Context, query map[string]interface{}, startTime, endTime, namespace string) (gen.QueryEventsResponseObject, error) {
+// limit is the size actually sent to OpenSearch: when the result fills the page, nextCursor is
+// set from the last hit's sort values so the caller can page further.
+func (h *LogsHandler) executeEventsQuery(
+	ctx context.Context, query map[string]interface{}, startTime, endTime, namespace string, limit int,
+) (gen.QueryEventsResponseObject, error) {
 	indices, err := h.eventsQueryBuilder.GenerateIndices(startTime, endTime)
 	if err != nil {
 		h.logger.Error("Failed to generate event indices",
@@ -445,12 +548,21 @@ func (h *LogsHandler) executeEventsQuery(ctx context.Context, query map[string]i
 		entries = append(entries, toEventEntry(&eventEntry))
 	}
 
+	var nextCursor *string
+	if len(result.Hits.Hits) >= limit {
+		lastHit := result.Hits.Hits[len(result.Hits.Hits)-1]
+		if cursor, err := opensearch.EncodeSearchAfterCursor(lastHit.Sort); err == nil && cursor != "" {
+			nextCursor = &cursor
+		}
+	}
+
 	total := result.Hits.Total.Value
 	took := result.Took
 	resp := gen.EventsQueryResponse{
-		Events: &entries,
-		Total:  &total,
-		TookMs: &took,
+		Events:     &entries,
+		Total:      &total,
+		TookMs:     &took,
+		NextCursor: nextCursor,
 	}
 
 	return gen.QueryEvents200JSONResponse(resp), nil

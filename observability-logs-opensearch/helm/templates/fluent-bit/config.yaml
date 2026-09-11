@@ -1,4 +1,7 @@
 {{- if (index .Values "fluent-bit").enabled }}
+{{- if not (index .Values "fluent-bit").clusterInstance }}
+{{- fail "fluent-bit.clusterInstance is required. It names the cluster these records came from and cannot be defaulted." }}
+{{- end }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -21,7 +24,7 @@ data:
         Buffer_Chunk_Size 32KB
         Buffer_Max_Size 2MB
         DB /var/lib/fluent-bit/db/tail-container-logs.db
-        Exclude_Path /var/log/containers/fluent-bit-*.log
+        Exclude_Path /var/log/containers/fluent-bit-*.log,/var/log/containers/*_kube-system_*.log
         Inotify_Watcher false
         Mem_Buf_Limit 100MB
         Path /var/log/containers/*.log
@@ -41,6 +44,12 @@ data:
         Merge_Log Off
         tls.verify Off
         Use_Kubelet true
+
+    # Cluster identity stamped by the logs collector
+    [FILTER]
+        Name modify
+        Match kube.*
+        Set openchoreo_cluster_instance {{ (index .Values "fluent-bit").clusterInstance }}
 
     [OUTPUT]
         Name opensearch

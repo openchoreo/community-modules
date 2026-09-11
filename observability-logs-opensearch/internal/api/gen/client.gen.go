@@ -120,6 +120,11 @@ type ClientInterface interface {
 
 	HandleAlertWebhook(ctx context.Context, body HandleAlertWebhookJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// QueryPlatformLogsWithBody request with any body
+	QueryPlatformLogsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	QueryPlatformLogs(ctx context.Context, body QueryPlatformLogsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// Health request
 	Health(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
@@ -258,6 +263,30 @@ func (c *Client) HandleAlertWebhookWithBody(ctx context.Context, contentType str
 
 func (c *Client) HandleAlertWebhook(ctx context.Context, body HandleAlertWebhookJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewHandleAlertWebhookRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) QueryPlatformLogsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewQueryPlatformLogsRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) QueryPlatformLogs(ctx context.Context, body QueryPlatformLogsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewQueryPlatformLogsRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -555,6 +584,46 @@ func NewHandleAlertWebhookRequestWithBody(server string, contentType string, bod
 	return req, nil
 }
 
+// NewQueryPlatformLogsRequest calls the generic QueryPlatformLogs builder with application/json body
+func NewQueryPlatformLogsRequest(server string, body QueryPlatformLogsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewQueryPlatformLogsRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewQueryPlatformLogsRequestWithBody generates requests for QueryPlatformLogs with any type of body
+func NewQueryPlatformLogsRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1alpha1/platform-logs/query")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewHealthRequest generates requests for Health
 func NewHealthRequest(server string) (*http.Request, error) {
 	var err error
@@ -656,6 +725,11 @@ type ClientWithResponsesInterface interface {
 
 	HandleAlertWebhookWithResponse(ctx context.Context, body HandleAlertWebhookJSONRequestBody, reqEditors ...RequestEditorFn) (*HandleAlertWebhookResponse, error)
 
+	// QueryPlatformLogsWithBodyWithResponse request with any body
+	QueryPlatformLogsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*QueryPlatformLogsResponse, error)
+
+	QueryPlatformLogsWithResponse(ctx context.Context, body QueryPlatformLogsJSONRequestBody, reqEditors ...RequestEditorFn) (*QueryPlatformLogsResponse, error)
+
 	// HealthWithResponse request
 	HealthWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*HealthResponse, error)
 }
@@ -668,6 +742,7 @@ type QueryEventsResponse struct {
 	JSON401      *ErrorResponse
 	JSON403      *ErrorResponse
 	JSON500      *ErrorResponse
+	JSON501      *ErrorResponse
 }
 
 // Status returns HTTPResponse.Status
@@ -836,6 +911,33 @@ func (r HandleAlertWebhookResponse) StatusCode() int {
 	return 0
 }
 
+type QueryPlatformLogsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *PlatformLogsResponse
+	JSON400      *ErrorResponse
+	JSON401      *ErrorResponse
+	JSON403      *ErrorResponse
+	JSON500      *ErrorResponse
+	JSON501      *ErrorResponse
+}
+
+// Status returns HTTPResponse.Status
+func (r QueryPlatformLogsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r QueryPlatformLogsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type HealthResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -967,6 +1069,23 @@ func (c *ClientWithResponses) HandleAlertWebhookWithResponse(ctx context.Context
 	return ParseHandleAlertWebhookResponse(rsp)
 }
 
+// QueryPlatformLogsWithBodyWithResponse request with arbitrary body returning *QueryPlatformLogsResponse
+func (c *ClientWithResponses) QueryPlatformLogsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*QueryPlatformLogsResponse, error) {
+	rsp, err := c.QueryPlatformLogsWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseQueryPlatformLogsResponse(rsp)
+}
+
+func (c *ClientWithResponses) QueryPlatformLogsWithResponse(ctx context.Context, body QueryPlatformLogsJSONRequestBody, reqEditors ...RequestEditorFn) (*QueryPlatformLogsResponse, error) {
+	rsp, err := c.QueryPlatformLogs(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseQueryPlatformLogsResponse(rsp)
+}
+
 // HealthWithResponse request returning *HealthResponse
 func (c *ClientWithResponses) HealthWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*HealthResponse, error) {
 	rsp, err := c.Health(ctx, reqEditors...)
@@ -1024,6 +1143,13 @@ func ParseQueryEventsResponse(rsp *http.Response) (*QueryEventsResponse, error) 
 			return nil, err
 		}
 		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON501 = &dest
 
 	}
 
@@ -1306,6 +1432,67 @@ func ParseHandleAlertWebhookResponse(rsp *http.Response) (*HandleAlertWebhookRes
 			return nil, err
 		}
 		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseQueryPlatformLogsResponse parses an HTTP response from a QueryPlatformLogsWithResponse call
+func ParseQueryPlatformLogsResponse(rsp *http.Response) (*QueryPlatformLogsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &QueryPlatformLogsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PlatformLogsResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON501 = &dest
 
 	}
 

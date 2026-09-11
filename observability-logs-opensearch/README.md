@@ -83,6 +83,22 @@ helm upgrade --install observability-logs-opensearch \
 
 ## Enable log collection
 
+Every install that enables Fluent Bit must name its cluster:
+
+```bash
+--set fluent-bit.clusterInstance=clusterX
+```
+
+The value is required and the chart refuses to render without it. It cannot be
+defaulted: `planeID` defaults to `default` in every plane chart, so two clusters running
+defaults would produce indistinguishable records, and nothing surfaces the mistake until
+the second cluster exists. The collector stamps it on each record as
+`openchoreo_cluster_instance`, and platform observability filters on it.
+
+`kube-system` is excluded from collection. CoreDNS, kube-proxy, the CNI and the API
+server sit a layer below OpenChoreo; static pods cannot be labelled, and managed
+providers reconcile that namespace anyway.
+
 ### Single-cluster topology
 
 In a **single-cluster topology**, where the observability plane runs in the same cluster
@@ -96,13 +112,14 @@ helm upgrade observability-logs-opensearch \
   --namespace openchoreo-observability-plane \
   --version 0.5.3 \
   --reuse-values \
-  --set fluent-bit.enabled=true
+  --set fluent-bit.enabled=true \
+  --set fluent-bit.clusterInstance=singleCluster
 ```
 
 ### Multi-cluster topology
 
 In a **multi-cluster topology**, where the observability plane runs in a separate cluster
-from the data-plane / workflow-plane clusters, you need two things:
+from the control-plane/ data-plane / workflow-plane clusters, you need two things:
 
 1. **On the observability plane cluster**: expose OpenSearch through the gateway via TLS passthrough so remote fluent-bit instances can reach it.
 2. **On each remote cluster**: install this chart with only fluent-bit enabled, pointed at the obs cluster's OpenSearch endpoint.
@@ -135,9 +152,9 @@ gateway:
 
 > **Note:** If you use the helm subchart OpenSearch (`openSearch.enabled=true`) instead of the operator, the TLSRoute is not auto-generated and the `BackendConfigPolicy` on the default `opensearch` Service conflicts with TLS passthrough (causes double-TLS). You would need to create a separate passthrough Service and TLSRoute manually. The operator approach avoids this complexity.
 
-#### Remote cluster setup (data-plane / workflow-plane clusters)
+#### Remote cluster setup (control-plane / data-plane / workflow-plane clusters)
 
-Install the chart with only fluent-bit enabled:
+Install the chart with only fluent-bit enabled (set the `clusterInstance` accordingly):
 
 ```bash
 helm upgrade --install observability-logs-opensearch \
@@ -150,6 +167,7 @@ helm upgrade --install observability-logs-opensearch \
   --set openSearchCluster.enabled=false \
   --set openSearchSetup.enabled=false \
   --set fluent-bit.enabled=true \
+  --set fluent-bit.clusterInstance=clusterX \
   --set fluent-bit.openSearchHost=opensearch.<OBS_BASE_DOMAIN> \
   --set fluent-bit.openSearchPort=<gateway-tls-passthrough-port> \
   --set fluent-bit.openSearchVHost=opensearch.<OBS_BASE_DOMAIN>
@@ -179,10 +197,10 @@ Only logs written after the deletion will appear (Fluent Bit's tail cursor persi
 
 Bundled upstream Helm charts:
 
-| Chart | Repository |
-| ----- | ---------- |
+| Chart      | Repository                                        |
+| ---------- | ------------------------------------------------- |
 | opensearch | https://opensearch-project.github.io/helm-charts/ |
-| fluent-bit | https://fluent.github.io/helm-charts |
+| fluent-bit | https://fluent.github.io/helm-charts              |
 
 ## Compatibility
 

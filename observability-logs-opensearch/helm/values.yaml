@@ -99,6 +99,8 @@ fluent-bit:
   openSearchHost: "opensearch"
   openSearchPort: 9200
   openSearchVHost: "opensearch"
+  # Name of the cluster these records were collected from. REQUIRED
+  clusterInstance: ""
 
 openSearch:
   enabled: true

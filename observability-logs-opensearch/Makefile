@@ -1,6 +1,9 @@
 CFG_DIR := internal/api
 OAPI_CODEGEN_VERSION ?= v2.5.1
-SPEC := https://raw.githubusercontent.com/openchoreo/openchoreo/main/openapi/observability-logs-adapter-api.yaml
+# The adapter contract is owned by openchoreo/openchoreo. Override SPEC to generate
+# against a local checkout or a branch while a contract change is still in review, e.g.
+#   make openapi-codegen SPEC=../../openchoreo/openapi/observability-logs-adapter-api.yaml
+SPEC ?= https://raw.githubusercontent.com/openchoreo/openchoreo/main/openapi/observability-logs-adapter-api.yaml
 
 .PHONY: oapi-codegen-install openapi-codegen unit-test
 

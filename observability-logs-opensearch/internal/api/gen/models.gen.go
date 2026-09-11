@@ -64,6 +64,7 @@ const (
 	Forbidden           ErrorResponseTitle = "forbidden"
 	InternalServerError ErrorResponseTitle = "internalServerError"
 	NotFound            ErrorResponseTitle = "notFound"
+	NotImplemented      ErrorResponseTitle = "notImplemented"
 	Unauthorized        ErrorResponseTitle = "unauthorized"
 )
 
@@ -75,16 +76,30 @@ const (
 
 // Defines values for LogsQueryRequestLogLevels.
 const (
-	DEBUG LogsQueryRequestLogLevels = "DEBUG"
-	ERROR LogsQueryRequestLogLevels = "ERROR"
-	INFO  LogsQueryRequestLogLevels = "INFO"
-	WARN  LogsQueryRequestLogLevels = "WARN"
+	LogsQueryRequestLogLevelsDEBUG LogsQueryRequestLogLevels = "DEBUG"
+	LogsQueryRequestLogLevelsERROR LogsQueryRequestLogLevels = "ERROR"
+	LogsQueryRequestLogLevelsINFO  LogsQueryRequestLogLevels = "INFO"
+	LogsQueryRequestLogLevelsWARN  LogsQueryRequestLogLevels = "WARN"
 )
 
 // Defines values for LogsQueryRequestSortOrder.
 const (
 	LogsQueryRequestSortOrderAsc  LogsQueryRequestSortOrder = "asc"
 	LogsQueryRequestSortOrderDesc LogsQueryRequestSortOrder = "desc"
+)
+
+// Defines values for PlatformLogsQueryRequestLogLevels.
+const (
+	PlatformLogsQueryRequestLogLevelsDEBUG PlatformLogsQueryRequestLogLevels = "DEBUG"
+	PlatformLogsQueryRequestLogLevelsERROR PlatformLogsQueryRequestLogLevels = "ERROR"
+	PlatformLogsQueryRequestLogLevelsINFO  PlatformLogsQueryRequestLogLevels = "INFO"
+	PlatformLogsQueryRequestLogLevelsWARN  PlatformLogsQueryRequestLogLevels = "WARN"
+)
+
+// Defines values for PlatformLogsQueryRequestSortOrder.
+const (
+	Asc  PlatformLogsQueryRequestSortOrder = "asc"
+	Desc PlatformLogsQueryRequestSortOrder = "desc"
 )
 
 // AlertRuleRequest defines model for AlertRuleRequest.
@@ -419,6 +434,82 @@ type LogsQueryResponse_Logs struct {
 	union json.RawMessage
 }
 
+// PlatformLog defines model for PlatformLog.
+type PlatformLog struct {
+	ClusterInstance *string `json:"clusterInstance,omitempty"`
+	ContainerImage  *string `json:"containerImage,omitempty"`
+	ContainerName   *string `json:"containerName,omitempty"`
+
+	// Labels Pod labels carried on the record, as the backend stores them, with any
+	// backend-specific key mangling already undone by the adapter.
+	Labels *map[string]string `json:"labels,omitempty"`
+
+	// Level Log severity. Derived from the message text where the backend does not supply
+	// one; omitted when it cannot be determined.
+	Level *string `json:"level,omitempty"`
+
+	// Log The log message
+	Log           string  `json:"log"`
+	NamespaceName *string `json:"namespaceName,omitempty"`
+
+	// NodeName Node the pod was scheduled on.
+	NodeName *string `json:"nodeName,omitempty"`
+	PodIp    *string `json:"podIp,omitempty"`
+	PodName  *string `json:"podName,omitempty"`
+
+	// Timestamp The timestamp of the log entry
+	Timestamp time.Time `json:"timestamp"`
+}
+
+// PlatformLogsQueryRequest A flat set of Kubernetes coordinates. Multi-value fields OR within a field; fields
+// AND with each other. An absent field is not a filter.
+type PlatformLogsQueryRequest struct {
+	// ClusterInstance Clusters the records were collected from, as stamped by the collector
+	ClusterInstance *[]string `json:"clusterInstance,omitempty"`
+	ContainerName   *[]string `json:"containerName,omitempty"`
+
+	// EndTime Exclusive upper bound of the log window
+	EndTime time.Time `json:"endTime"`
+
+	// Labels Pod labels every returned record must carry, ANDed. The observer parses the
+	// equality-based selector it receives and passes the resulting pairs, so the
+	// adapter does not implement selector syntax. Plane attribution arrives here.
+	Labels *map[string]string `json:"labels,omitempty"`
+
+	// Limit The maximum number of entries to return
+	Limit     *int                                 `json:"limit,omitempty"`
+	LogLevels *[]PlatformLogsQueryRequestLogLevels `json:"logLevels,omitempty"`
+
+	// Namespace Kubernetes namespaces of the pods
+	Namespace    *[]string `json:"namespace,omitempty"`
+	PodName      *[]string `json:"podName,omitempty"`
+	SearchPhrase *string   `json:"searchPhrase,omitempty"`
+
+	// SortOrder Sort direction on the log timestamp
+	SortOrder *PlatformLogsQueryRequestSortOrder `json:"sortOrder,omitempty"`
+
+	// StartTime Inclusive lower bound of the log window
+	StartTime time.Time `json:"startTime"`
+}
+
+// PlatformLogsQueryRequestLogLevels defines model for PlatformLogsQueryRequest.LogLevels.
+type PlatformLogsQueryRequestLogLevels string
+
+// PlatformLogsQueryRequestSortOrder Sort direction on the log timestamp
+type PlatformLogsQueryRequestSortOrder string
+
+// PlatformLogsResponse defines model for PlatformLogsResponse.
+type PlatformLogsResponse struct {
+	// Logs The logs queried successfully
+	Logs []PlatformLog `json:"logs"`
+
+	// TookMs The time taken to query the logs in milliseconds
+	TookMs int `json:"tookMs"`
+
+	// Total The total number of matching log entries, capped at 1000
+	Total int `json:"total"`
+}
+
 // WorkflowLogEntry defines model for WorkflowLogEntry.
 type WorkflowLogEntry struct {
 	// Log The log message
@@ -454,6 +545,9 @@ type UpdateAlertRuleJSONRequestBody = AlertRuleRequest
 
 // HandleAlertWebhookJSONRequestBody defines body for HandleAlertWebhook for application/json ContentType.
 type HandleAlertWebhookJSONRequestBody = HandleAlertWebhookJSONBody
+
+// QueryPlatformLogsJSONRequestBody defines body for QueryPlatformLogs for application/json ContentType.
+type QueryPlatformLogsJSONRequestBody = PlatformLogsQueryRequest
 
 // AsComponentSearchScope returns the union data inside the EventsQueryRequest_SearchScope as a ComponentSearchScope
 func (t EventsQueryRequest_SearchScope) AsComponentSearchScope() (ComponentSearchScope, error) {

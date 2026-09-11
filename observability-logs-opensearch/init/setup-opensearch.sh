@@ -69,6 +69,18 @@ containerLogsIndexTemplate='
     },
     "mappings": {
       "dynamic": "false",
+      "dynamic_templates": [
+        {
+          "pod_labels_as_keywords": {
+            "path_match": "kubernetes.labels.*",
+            "match_mapping_type": "string",
+            "mapping": {
+              "type": "keyword",
+              "ignore_above": 256
+            }
+          }
+        }
+      ],
       "properties": {
         "@timestamp": {
           "type": "date"
@@ -86,6 +98,8 @@ containerLogsIndexTemplate='
               "type": "keyword"
             },
             "labels": {
+              "type": "object",
+              "dynamic": true,
               "properties": {
                 "build-name": {
                   "type": "keyword"
@@ -135,6 +149,9 @@ containerLogsIndexTemplate='
         },
         "log": {
           "type": "wildcard"
+        },
+        "openchoreo_cluster_instance": {
+          "type": "keyword"
         }
       }
     }

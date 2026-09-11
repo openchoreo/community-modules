@@ -2,19 +2,24 @@
 #
 # Unified LLM gateway trait — attach to any component to route LLM API calls
 # through Agent Gateway. Provides a single OpenAI-compatible endpoint that can
-# reach multiple providers (OpenAI, Anthropic, Vertex/Gemini, or any
-# OpenAI-compatible API such as Groq, Together AI, Azure OpenAI, etc.).
+# reach multiple providers (OpenAI, Anthropic, Vertex/Gemini, AWS Bedrock, or
+# any OpenAI-compatible API such as Groq, Together AI, Azure OpenAI, etc.).
 #
 # Features:
-#   - Multi-provider routing via a single OPENAI_BASE_URL endpoint
-#   - Provider switching without code changes (change the model name in request)
+#   - Multi-provider failover via a single OPENAI_BASE_URL endpoint
 #   - Per-environment rate limiting (requests/minute)
 #   - PII guardrails (credit cards, SSNs, emails) with per-environment toggle
 #   - API key management via OpenBao / External Secrets Operator
 #
 # The trait creates a single AgentgatewayBackend with all enabled providers in
-# one groups block. Agent Gateway uses the "model" field in the request to
-# route to the correct provider automatically.
+# one groups block. IMPORTANT: `groups` is a PRIORITY/FAILOVER list, not a
+# per-request model-based router — the group listed first is primary and
+# serves every request while healthy; later groups are pure standby, only
+# used once all backends in an earlier group are evicted as unhealthy. There
+# is no way for a client's request `model` field to select a specific group.
+# (Load balancing WITHIN a single group, across multiple providers in that
+# group's own `providers` list, does use Power of Two Choices — see
+# https://agentgateway.dev/docs/kubernetes/main/llm/failover/.)
 #
 apiVersion: openchoreo.dev/v1alpha1
 kind: ClusterTrait
@@ -125,6 +130,48 @@ spec:
             apiKeyRef:
               type: string
               description: "OpenBao secret key name containing the provider API key"
+            tls:
+              type: boolean
+              default: true
+              description: >-
+                Whether the provider host speaks TLS. Defaults to true (most
+                openaiCompatible providers, e.g. Groq, are genuine external
+                HTTPS APIs) — set false for a plain-HTTP, in-cluster-only
+                target (e.g. a self-hosted LiteLLM proxy). Leaving this true
+                against a plain-HTTP backend produces a TLS/plaintext
+                protocol-mismatch error, not an obvious TLS error.
+
+        # --- AWS Bedrock (native SigV4 auth, not a Bearer API key) ---
+        bedrock:
+          type: object
+          default:
+            enabled: false
+            region: "us-east-1"
+            credentialsVaultPath: ""
+          description: "AWS Bedrock provider (native agentgateway support)"
+          properties:
+            enabled:
+              type: boolean
+              default: false
+              description: "Enable this LLM provider"
+            model:
+              type: string
+              description: >-
+                Bedrock model/inference-profile id, e.g.
+                us.anthropic.claude-sonnet-5 (many current models require a
+                cross-region inference profile id, prefixed us./eu./apac.,
+                rather than the bare model id — check
+                `aws bedrock get-foundation-model` for
+                `inferenceTypesSupported`)
+            region:
+              type: string
+              default: "us-east-1"
+              description: "AWS region for the Bedrock endpoint"
+            credentialsVaultPath:
+              type: string
+              description: >-
+                OpenBao/Vault KV path containing AWS_ACCESS_KEY_ID and
+                AWS_SECRET_ACCESS_KEY properties
 
   # Per-environment overrides set via ReleaseBinding.spec.traitEnvironmentConfigs.
   environmentConfigs:
@@ -160,7 +207,8 @@ spec:
         ${parameters.openai.enabled
           || parameters.anthropic.enabled
           || parameters.vertex.enabled
-          || parameters.openaiCompatible.enabled}
+          || parameters.openaiCompatible.enabled
+          || parameters.bedrock.enabled}
       message: "At least one LLM provider must be enabled"
     - rule: "${!parameters.openai.enabled || size(parameters.openai.apiKeyRef) > 0}"
       message: "openai.apiKeyRef must be set when openai.enabled is true"
@@ -170,6 +218,10 @@ spec:
       message: "vertex.apiKeyRef must be set when vertex.enabled is true"
     - rule: "${!parameters.openaiCompatible.enabled || size(parameters.openaiCompatible.apiKeyRef) > 0}"
       message: "openaiCompatible.apiKeyRef must be set when openaiCompatible.enabled is true"
+    - rule: "${!parameters.bedrock.enabled || size(parameters.bedrock.model) > 0}"
+      message: "bedrock.model must be set when bedrock.enabled is true"
+    - rule: "${!parameters.bedrock.enabled || size(parameters.bedrock.credentialsVaultPath) > 0}"
+      message: "bedrock.credentialsVaultPath must be set when bedrock.enabled is true"
 
   creates:
     # ==================================================================
@@ -280,9 +332,45 @@ spec:
                 key: ${parameters.openaiCompatible.apiKeyRef}
                 property: value
 
+    - targetPlane: dataplane
+      includeWhen: ${parameters.bedrock.enabled}
+      template:
+        apiVersion: external-secrets.io/v1
+        kind: ExternalSecret
+        metadata:
+          name: ${metadata.name}-${trait.instanceName}-bedrock-auth
+          namespace: ${metadata.namespace}
+        spec:
+          refreshInterval: 1h
+          secretStoreRef:
+            kind: ClusterSecretStore
+            name: ${dataplane.secretStore}
+          target:
+            name: ${metadata.name}-${trait.instanceName}-bedrock-auth
+            creationPolicy: Owner
+            template:
+              type: Opaque
+              data:
+                # agentgateway's bedrock auth policy expects accessKey/secretKey,
+                # NOT a Bearer Authorization header (AWS SigV4, not a static
+                # API key — different shape from every other provider above).
+                accessKey: "{{ .accessKeyId | toString }}"
+                secretKey: "{{ .secretAccessKey | toString }}"
+          data:
+            - secretKey: accessKeyId
+              remoteRef:
+                key: ${parameters.bedrock.credentialsVaultPath}
+                property: AWS_ACCESS_KEY_ID
+            - secretKey: secretAccessKey
+              remoteRef:
+                key: ${parameters.bedrock.credentialsVaultPath}
+                property: AWS_SECRET_ACCESS_KEY
+
     # ==================================================================
-    #  Single AgentgatewayBackend — all enabled providers in one backend
-    #  Agent Gateway routes by "model" field in the request body.
+    #  Single AgentgatewayBackend — all enabled providers in one backend.
+    #  Each entry in `groups` is a priority/failover tier: the first group
+    #  is primary, later groups are standby only. This is NOT model-based
+    #  routing — see the file header.
     # ==================================================================
 
     - targetPlane: dataplane
@@ -318,6 +406,11 @@ spec:
                        "port": parameters.openaiCompatible.port,
                        "pathPrefix": parameters.openaiCompatible.pathPrefix,
                        "policies": {"auth": {"secretRef": {"name": metadata.name + "-" + trait.instanceName + "-" + parameters.openaiCompatible.name + "-auth"}}}}]}
+                  : oc_omit(),
+                parameters.bedrock.enabled
+                  ? {"providers": [{"name": "bedrock",
+                       "bedrock": {"model": parameters.bedrock.model, "region": parameters.bedrock.region},
+                       "policies": {"auth": {"aws": {"secretRef": {"name": metadata.name + "-" + trait.instanceName + "-bedrock-auth"}}}}}]}
                   : oc_omit()
               ]}
 
@@ -353,7 +446,7 @@ spec:
     # ==================================================================
 
     - targetPlane: dataplane
-      includeWhen: ${parameters.openaiCompatible.enabled}
+      includeWhen: ${parameters.openaiCompatible.enabled && parameters.openaiCompatible.tls}
       template:
         apiVersion: agentgateway.dev/v1alpha1
         kind: AgentgatewayPolicy
@@ -421,7 +514,28 @@ spec:
                   unit: Minutes
 
   # ------------------------------------------------------------------
-  #  Patches — inject gateway env vars into the component Deployment
+  #  Patches — inject gateway env vars into the component workload.
+  #
+  #  OPENAI_BASE_URL ends in /v1: agentgateway accepts standard OpenAI-
+  #  formatted requests at /v1/chat/completions, and the OpenAI SDK appends
+  #  only /chat/completions to whatever base_url it's given (no /v1 of its
+  #  own). OPENAI_API_KEY is a placeholder: auth is entirely gateway-side
+  #  (per-provider secretRef, attached by agentgateway itself), but the
+  #  OpenAI SDK requires a non-empty key just to construct a client.
+  #
+  #  X_OPENCHOREO_COMPONENT is only injected as an env var here — nothing
+  #  makes a client send it as the x-openchoreo-component HTTP header the
+  #  HTTPRoute above actually matches on. Client code must read this env
+  #  var and set it as a request header itself (e.g. via the OpenAI SDK's
+  #  default_headers option) for routing to work at all.
+  #
+  #  Two target kinds are patched because not every workload renders as an
+  #  apps/v1 Deployment — e.g. kubernetes-sigs/agent-sandbox's own ai-agent
+  #  ClusterComponentType renders as an
+  #  extensions.agents.x-k8s.io/v1alpha1 SandboxTemplate, wrapping its pod
+  #  spec at spec.podTemplate.spec instead of spec.template.spec. A
+  #  Deployment-only patch silently no-ops (dropped, not rejected) for any
+  #  such workload.
   # ------------------------------------------------------------------
   patches:
     - target:
@@ -429,15 +543,38 @@ spec:
         version: v1
         kind: Deployment
       operations:
-        # OPENAI_BASE_URL — the unified LLM endpoint (OpenAI-compatible API)
         - op: add
           path: /spec/template/spec/containers/0/env/-
           value:
             name: OPENAI_BASE_URL
-            value: "http://${parameters.gatewayName}.${parameters.gatewayNamespace}"
-        # X_OPENCHOREO_COMPONENT — header value for per-component routing
+            value: "http://${parameters.gatewayName}.${parameters.gatewayNamespace}/v1"
         - op: add
           path: /spec/template/spec/containers/0/env/-
+          value:
+            name: OPENAI_API_KEY
+            value: "managed-by-gateway"
+        - op: add
+          path: /spec/template/spec/containers/0/env/-
+          value:
+            name: X_OPENCHOREO_COMPONENT
+            value: ${metadata.componentName}
+    - target:
+        group: extensions.agents.x-k8s.io
+        kind: SandboxTemplate
+        version: v1alpha1
+      operations:
+        - op: add
+          path: /spec/podTemplate/spec/containers/0/env/-
+          value:
+            name: OPENAI_BASE_URL
+            value: "http://${parameters.gatewayName}.${parameters.gatewayNamespace}/v1"
+        - op: add
+          path: /spec/podTemplate/spec/containers/0/env/-
+          value:
+            name: OPENAI_API_KEY
+            value: "managed-by-gateway"
+        - op: add
+          path: /spec/podTemplate/spec/containers/0/env/-
           value:
             name: X_OPENCHOREO_COMPONENT
             value: ${metadata.componentName}

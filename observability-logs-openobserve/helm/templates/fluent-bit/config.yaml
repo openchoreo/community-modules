@@ -34,6 +34,15 @@ data:
         Tag kube.*
 
     [FILTER]
+        Name multiline
+        Match kube.*
+        multiline.key_content log
+        mode parser
+        multiline.parser go, java, python, dotnet
+        buffer On
+        flush_ms 2000
+
+    [FILTER]
         Name kubernetes
         Buffer_Size 15MB
         K8S-Logging.Parser On
@@ -62,4 +71,21 @@ data:
         Time_Keep Off
         Time_Key time
         Time_Format %Y-%m-%dT%H:%M:%S.%L
+
+    # The go, java and python multiline parsers referenced by the multiline
+    # filter above are built into Fluent Bit. .NET is not, so it is defined
+    # here as a custom parser. A .NET stack trace starts with a line that
+    # ends in "Exception: <message>" and continues with "   at ..." frames and
+    # "--- End of ... stack trace ---" markers.
+    #
+    # To support another log format not covered by the built-ins, add a
+    # [MULTILINE_PARSER] here (type regex) and append its name to
+    # `multiline.parser` on the multiline filter. See
+    # https://docs.fluentbit.io/manual/data-pipeline/filters/multiline-stacktrace
+    [MULTILINE_PARSER]
+        name          dotnet
+        type          regex
+        flush_timeout 2000
+        rule          "start_state" "/^.*Exception[:,].*$/" "cont"
+        rule          "cont"        "/^\s+(at\s|--- End of).*$/" "cont"
 {{- end }}

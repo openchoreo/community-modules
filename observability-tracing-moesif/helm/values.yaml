@@ -1,0 +1,83 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+## -----------------------------------------------------------
+## Values for OpenTelemetry Collector configuration
+## -----------------------------------------------------------
+opentelemetry-collector:
+  enabled: true
+  fullnameOverride: "moesif-tracing-collector"
+
+  clusterRole:
+    create: true
+    rules:
+      - apiGroups: [""]
+        resources: ["pods"]
+        verbs: ["list", "watch"]
+      - apiGroups: ["apps"]
+        resources: ["replicasets"]
+        verbs: ["list", "watch"]
+
+  configMap:
+    create: false
+    existingName: "moesif-tracing-collector-config"
+
+  image:
+    repository: otel/opentelemetry-collector-contrib
+
+  mode: deployment
+
+  extraVolumes:
+    - name: moesif-env-tokens
+      secret:
+        secretName: moesif-tracing-collector-secret
+
+  extraVolumeMounts:
+    - name: moesif-env-tokens
+      mountPath: /etc/moesif/env
+      readOnly: true
+
+  resources:
+    limits:
+      cpu: 100m
+      memory: 200Mi
+    requests:
+      cpu: 50m
+      memory: 100Mi
+
+  service:
+    type: ClusterIP
+
+opentelemetryCollectorCustomizations:
+  debug:
+    enabled: false
+
+  tailSampling:
+    enabled: true
+    decisionWait: 10s
+    numTraces: 100
+    expectedNewTracesPerSec: 10
+    decisionCache:
+      sampledCacheSize: 10000
+      nonSampledCacheSize: 1000
+    spansPerSecond: 10
+
+## -----------------------------------------------------------
+## Values for OpenChoreo specific customizations and workloads
+## -----------------------------------------------------------
+
+moesif:
+  adapter:
+    enabled: true
+    searchEndpoint: "https://api.moesif.com"
+    searchSecretName: "moesif-trace-search-secret"
+    image:
+      repository: "ghcr.io/openchoreo/observability-tracing-moesif-adapter"
+      tag: "1.0.0"
+    resources:
+      limits:
+        cpu: 200m
+        memory: 256Mi
+      requests:
+        cpu: 50m
+        memory: 128Mi

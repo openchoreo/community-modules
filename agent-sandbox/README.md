@@ -168,6 +168,33 @@ namespace — use the `--namespace` you installed with):
 kubectl logs -n openchoreo-control-plane job/agent-sandbox-upstream-install
 ```
 
+## Release resource tree
+
+You need OpenChoreo v1.3 or later. The release resource tree stops at the `SandboxClaim` and `SandboxWarmPool` that the component types render. The upstream controller creates the `Sandbox` and Pod beneath them. Add these rules so the tree can reach them. If you already have an `openchoreoApi.config.resourceTree.rules` list, append the rules to it.
+
+```yaml
+openchoreoApi:
+  config:
+    resourceTree:
+      rules:
+        - root: {group: extensions.agents.x-k8s.io, version: v1alpha1, kind: SandboxClaim, resource: sandboxclaims}
+          children:
+            - kind: {group: agents.x-k8s.io, version: v1alpha1, kind: Sandbox, resource: sandboxes}
+              children:
+                - kind: {version: v1, kind: Pod, resource: pods}
+        - root: {group: extensions.agents.x-k8s.io, version: v1alpha1, kind: SandboxWarmPool, resource: sandboxwarmpools}
+          children:
+            - kind: {group: agents.x-k8s.io, version: v1alpha1, kind: Sandbox, resource: sandboxes}
+              children:
+                - kind: {version: v1, kind: Pod, resource: pods}
+```
+
+The tree shows a `Sandbox` and its Pod under the `SandboxClaim`, and one pair per unclaimed replica under the `SandboxWarmPool`. Only the generic `ai-agent` type renders a warm pool, and only with `warmPoolSize > 0`. When a claim adopts a sandbox from the pool, the sandbox moves under the claim.
+
+No extra RBAC is needed. The module's `openchoreo-agent-sandbox-access` ClusterRole already grants the data-plane cluster-agent `get` and `list` on `sandboxclaims`, `sandboxwarmpools` and `sandboxes`, and the data plane chart covers Pods.
+
+See [Release Resource Tree Rules](https://openchoreo.dev/docs/next/platform-engineer-guide/resource-tree-rules) for how to apply the rules and troubleshoot the tree.
+
 ## Configuration
 
 | Value | Default | Description |

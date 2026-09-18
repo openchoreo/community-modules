@@ -106,6 +106,33 @@ enrichment:
   owner_references:
     enabled: true
 
+# Extra collector processors, keyed by processor ID (`<type>` or `<type>/<name>`).
+# Only types compiled into this distribution can be used: `resource` and `filter`,
+# alongside the built-in `k8seventenrich` and `batch`. A definition here is rendered
+# only when its key also appears in `pipelineProcessors`.
+# Values may reference env vars supplied via `collector.extraEnv` (`${env:...}`).
+extraProcessors: {}
+#   resource/cluster_identity:
+#     attributes:
+#       - { key: cloud.region, value: "${env:REGION}", action: upsert }
+#       - { key: openchoreo.plane_kind, value: "${env:PLANE_KIND}", action: upsert }
+#       - { key: openchoreo.plane_name, value: "${env:PLANE_NAME}", action: upsert }
+#   filter/drop_kube_system:
+#     error_mode: ignore
+#     logs:
+#       log_record:
+#         - 'attributes["k8s.namespace.name"] == "kube-system"'
+
+# Processors wired into the logs pipeline, in order.
+# NOTE: this is a full REPLACEMENT list, not a merge. To add one processor you must
+# re-list `k8seventenrich` and `batch` as well, or you silently lose them.
+# `k8seventenrich` is required and must run before anything that reads its output
+# (`k8s.object.label.*`, `k8s.object.annotation.*`, `k8s.object.owner.*`). `batch` is
+# optional, but if listed it must be last so batching happens after all other processing.
+pipelineProcessors:
+  - k8seventenrich
+  - batch
+
 # Exporters and pipelines configurations.
 # By default the chart ships ONLY the `debug` exporter, which prints enriched
 # events to the pod log. Point at a real backend by overriding `exporters` and

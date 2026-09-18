@@ -368,9 +368,6 @@ asks of the node.
 
 ## Uninstall
 
-Delete the policies first, then the controller. Removing the chart while policies still exist leaves
-webhooks that reject all matching requests.
-
 If you used the ProjectType approach, revert the ProjectType and let the bindings finish cleaning up
 first. The agent needs its RBAC grant to delete the policies it created, so removing that grant too
 early strands them.
@@ -393,7 +390,8 @@ helm uninstall kubewarden -n kubewarden
 kubectl delete namespace kubewarden
 ```
 
-`helm uninstall` keeps the Kubewarden CRDs, so a later reinstall finds them already in place.
+`helm uninstall` keeps the Kubewarden CRDs and any leftover Kubewarden CR policies. In the case
+of a reinstall, those policies would again take effect.
 
 ## Compatibility
 

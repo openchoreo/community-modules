@@ -8,11 +8,15 @@
 #   - Per-component rate limiting (60 req/min default, overridden per environment;
 #     the AgentgatewayPolicy in ai-llm-routing-trait.yaml targets the HTTPRoute,
 #     so the limit is enforced per-component across all providers, not per-provider)
-#   - Provider switching by changing the "model" field in the API request
+#   - Provider failover: enabled providers form an ordered priority list —
+#     the first one is primary, later ones are pure standby, only used once
+#     the primary's backends are evicted as unhealthy. This is NOT selectable
+#     per request via the "model" field.
 #
-# The application code sends requests to OPENAI_BASE_URL (injected by the trait)
-# using the standard OpenAI SDK format. The Agent Gateway routes to the correct
-# provider based on the model name.
+# The application code sends requests to OPENAI_BASE_URL (injected by the
+# trait, already ending in /v1) using the standard OpenAI SDK format. The
+# Agent Gateway serves every request from the primary (first-listed) enabled
+# provider while it's healthy, failing over to the next one only if it isn't.
 #
 # Prerequisites:
 #   - Agent Gateway installed (CRDs + controller + Gateway resource)

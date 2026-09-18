@@ -60,7 +60,7 @@ data:
     [FILTER]
         Name          rewrite_tag
         Match         kube.var.log.containers.*_{{ $p.namespace }}_{{ $p.container }}-*
-        Rule          $log "msg":"AUDIT-LOG" audit.{{ $p.producer }} false
+        Rule          $log AUDIT-LOG(?!-) audit.{{ $p.producer }} false
         Emitter_Name  audit_emitter_{{ $p.producer }}
 {{ end }}
     [FILTER]

@@ -367,6 +367,22 @@ The script rebuilds each index under its own name through a temporary
 - A rebuilt index gets a new creation date, so ISM keeps it up to one retention period longer than usual.
 - OpenSearch needs free disk space for a second copy of the largest index.
 
+## Applying Fluent Bit configuration changes
+
+Fluent Bit reads its configuration from the `fluent-bit` ConfigMap rendered by this chart, and only
+at startup. A `helm upgrade` that changes it, for example setting `auditLogs.enabled`, editing
+`auditLogs.producers` or changing the output settings, updates the ConfigMap but does not restart
+the Fluent Bit pods, so they keep running the previous configuration. Restart the DaemonSet after
+such an upgrade, in every cluster where the release was upgraded:
+
+```bash
+kubectl rollout restart daemonset/fluent-bit -n openchoreo-observability-plane
+```
+
+The same applies after the `opensearch-admin-credentials` Secret changes, because Fluent Bit reads
+the credentials into its environment at startup. The adapter restarts on its own when its
+configuration changes.
+
 ## Troubleshooting
 
 ### Observer returns no logs
@@ -413,6 +429,9 @@ The index stays empty and nothing errors. In order of likelihood:
 3. Audit publishing is disabled on the producer itself. That is configured in the
    OpenChoreo control plane and observability plane charts, not here.
 4. `auditLogs.output.host` is set but the `opensearch-audit-credentials` Secret is missing. Fluent Bit logs `variable ${AUDIT_OPENSEARCH_USERNAME} is used but not set` at startup.
+5. Audit was enabled with `helm upgrade` but Fluent Bit was not restarted, so it still runs
+   the configuration without the audit rules. See
+   [Applying Fluent Bit configuration changes](#applying-fluent-bit-configuration-changes).
 
 Check what the collector is doing — the audit rules appear as their own emitters:
 

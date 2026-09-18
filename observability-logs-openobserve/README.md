@@ -10,7 +10,7 @@ This module collects container logs using [Fluent Bit](https://fluentbit.io) and
 
 ## Prerequisites
 
-- [OpenChoreo](https://openchoreo.dev) must be installed with the **observability plane** enabled for this module to work. Deploy the `openchoreo-observability-plane` helm chart with the helm value `observer.logsAdapter.enabled="true"` to enable the observer to fetch data from this logs module.
+- [OpenChoreo](https://openchoreo.dev) must be installed with the **observability plane** enabled for this module to work. The observer reaches this module's adapter at `http://logs-adapter:9098`, which is the default value of `observer.logsAdapter.url` in the `openchoreo-observability-plane` helm chart, so no change to the observability plane is needed unless that value was overridden.
 
 ## Installation
 
@@ -290,6 +290,22 @@ This chart only ships records to that OpenObserve. It does not configure it, and
   chart does not install, set it accordingly, or audit records delivered late are dropped.
 - `resource.metadata` and `metadata` are returned in full, but OpenObserve flattens them into
   columns on ingest, so each distinct key adds a column to the stream.
+
+## Applying Fluent Bit configuration changes
+
+Fluent Bit reads its configuration from the `fluent-bit` ConfigMap rendered by this chart, and only
+at startup. A `helm upgrade` that changes it, for example setting `auditLogs.enabled`, editing
+`auditLogs.producers` or changing the `common.*` output settings, updates the ConfigMap but does not
+restart the Fluent Bit pods, so they keep running the previous configuration. Restart the DaemonSet
+after such an upgrade, in every cluster where the release was upgraded:
+
+```bash
+kubectl rollout restart daemonset/fluent-bit -n openchoreo-observability-plane
+```
+
+The same applies after the `openobserve-admin-credentials` Secret changes, because Fluent Bit reads
+the credentials into its environment at startup. The adapter restarts on its own when its
+configuration changes.
 
 ## Dependencies
 

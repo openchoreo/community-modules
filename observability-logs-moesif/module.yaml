@@ -5,4 +5,7 @@
 # Each entry defines the image name, build context, Dockerfile path, and the
 # corresponding field in helm/values.yaml to update with the published image URI.
 
-images: []
+images:
+  - name: observability-logs-moesif-cloud-adapter
+    context: adaptor-api
+    dockerfile: adaptor-api/Dockerfile

@@ -1,5 +1,7 @@
 # Observability Metrics Module for GCP Cloud Monitoring
 
+[![Codecov](https://codecov.io/gh/openchoreo/community-modules/branch/main/graph/badge.svg?flag=observability-metrics-gcp-cloudmonitoring)](https://app.codecov.io/gh/openchoreo/community-modules?flags%5B0%5D=observability-metrics-gcp-cloudmonitoring)
+
 This module exposes GCP Cloud Monitoring as an OpenChoreo metrics backend. It
 serves per-component CPU/memory time series from the GKE system metrics that
 Google's built-in agent publishes for every GKE cluster

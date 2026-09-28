@@ -1,8 +1,6 @@
 # Observability Metrics Module with Prometheus
 
-|               |                                                                                                                                                                                             |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Code coverage | [![Codecov](https://codecov.io/gh/openchoreo/community-modules/branch/main/graph/badge.svg?component=observability_metrics_prometheus)](https://codecov.io/gh/openchoreo/community-modules) |
+[![Codecov](https://codecov.io/gh/openchoreo/community-modules/branch/main/graph/badge.svg?flag=observability-metrics-prometheus)](https://app.codecov.io/gh/openchoreo/community-modules?flags%5B0%5D=observability-metrics-prometheus)
 
 This module collects and stores metrics using [Prometheus](https://prometheus.io).
 

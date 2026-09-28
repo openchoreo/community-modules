@@ -1,5 +1,7 @@
 # Observability Logs Module for GCP Cloud Logging
 
+[![Codecov](https://codecov.io/gh/openchoreo/community-modules/branch/main/graph/badge.svg?flag=observability-logs-gcp-cloudlogging)](https://app.codecov.io/gh/openchoreo/community-modules?flags%5B0%5D=observability-logs-gcp-cloudlogging)
+
 This module exposes Google Cloud Logging as an OpenChoreo logs backend. It
 queries GKE container logs (`resource.type="k8s_container"`, populated
 automatically by GKE's logging agent) and manages alert rules as Cloud Logging

@@ -1,8 +1,6 @@
 # Observability Events Collector (OpenTelemetry)
 
-|               |                                                                                                                                                                                                |
-| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Code coverage | [![Codecov](https://codecov.io/gh/openchoreo/community-modules/branch/main/graph/badge.svg?component=observability_events_otel_collector)](https://codecov.io/gh/openchoreo/community-modules) |
+[![Codecov](https://codecov.io/gh/openchoreo/community-modules/branch/main/graph/badge.svg?flag=observability-events-otel-collector)](https://app.codecov.io/gh/openchoreo/community-modules?flags%5B0%5D=observability-events-otel-collector)
 
 This module deploys a purpose-built [OpenTelemetry Collector](https://opentelemetry.io/docs/collector/)
 distribution that collects **Kubernetes events** cluster-wide and enriches each

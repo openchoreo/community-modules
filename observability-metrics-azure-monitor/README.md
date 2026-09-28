@@ -1,5 +1,7 @@
 # Observability Metrics Module for Azure Monitor
 
+[![Codecov](https://codecov.io/gh/openchoreo/community-modules/branch/main/graph/badge.svg?flag=observability-metrics-azure-monitor)](https://app.codecov.io/gh/openchoreo/community-modules?flags%5B0%5D=observability-metrics-azure-monitor)
+
 This module exposes **Azure Container Insights** as an OpenChoreo metrics
 backend. It serves per-pod CPU and memory time series by querying the `Perf`
 and `KubePodInventory` tables in the Log Analytics workspace that the Azure

@@ -1,8 +1,6 @@
 # Observability Tracing Module for OpenObserve
 
-|               |                                                                                                                                                                                              |
-| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Code coverage | [![Codecov](https://codecov.io/gh/openchoreo/community-modules/branch/main/graph/badge.svg?component=observability_tracing_openobserve)](https://codecov.io/gh/openchoreo/community-modules) |
+[![Codecov](https://codecov.io/gh/openchoreo/community-modules/branch/main/graph/badge.svg?flag=observability-tracing-openobserve)](https://app.codecov.io/gh/openchoreo/community-modules?flags%5B0%5D=observability-tracing-openobserve)
 
 This module collects distributed traces using [OpenTelemetry collector](https://opentelemetry.io) and stores them in [OpenObserve](https://openobserve.ai).
 

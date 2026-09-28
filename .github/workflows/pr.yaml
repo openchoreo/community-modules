@@ -9,6 +9,7 @@ on:
       - main
       - 'release-*'
     paths:
+      - ".github/workflows/pr.yaml"
       - "**/init/**"
       - "**/helm/**"
       - "**/module.yaml"
@@ -23,8 +24,10 @@ permissions:
   contents: read
 
 jobs:
-  docker-build:
+  detect-changed-modules:
     runs-on: ubuntu-latest
+    outputs:
+      modules: ${{ steps.detect.outputs.modules }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -34,10 +37,8 @@ jobs:
       - name: Install yq
         uses: mikefarah/yq@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Build Docker images for changed modules
+      - name: Detect changed modules
+        id: detect
         run: |
           set -euo pipefail
 
@@ -48,91 +49,7 @@ jobs:
           echo "$CHANGED_FILES"
           echo ""
 
-          BUILD_COUNT=0
-
-          for module_dir in */; do
-            module="${module_dir%/}"
-
-            # Skip if this module has no module.yaml
-            if [ ! -f "${module}/module.yaml" ]; then
-              continue
-            fi
-
-            # Check if any files in this module were changed
-            if ! echo "$CHANGED_FILES" | grep -q "^${module}/"; then
-              continue
-            fi
-
-            image_count=$(yq '.images | length' "${module}/module.yaml")
-            if [ "$image_count" = "0" ] || [ "$image_count" = "null" ]; then
-              echo "Skipping ${module}: no images defined"
-              continue
-            fi
-
-            for i in $(seq 0 $((image_count - 1))); do
-              image_name=$(yq ".images[${i}].name" "${module}/module.yaml")
-              context=$(yq ".images[${i}].context" "${module}/module.yaml")
-              dockerfile=$(yq ".images[${i}].dockerfile" "${module}/module.yaml")
-
-              echo "::group::Building ${image_name} (${module})"
-              docker buildx build \
-                --platform linux/amd64 \
-                --load \
-                -t "${image_name}:pr-validation" \
-                -f "${module}/${dockerfile}" \
-                "${module}/${context}"
-              echo "::endgroup::"
-
-              BUILD_COUNT=$((BUILD_COUNT + 1))
-            done
-          done
-
-          echo ""
-          if [ "$BUILD_COUNT" -eq 0 ]; then
-            echo "No Docker images to build for changed modules."
-          else
-            echo "Successfully built ${BUILD_COUNT} image(s). ✓"
-          fi
-
-  unit-test:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
-      - name: Install yq
-        uses: mikefarah/yq@v4
-
-      # TODO: Extend language setup for non-Go modules as they are added
-      - name: Determine Go version
-        id: go-version
-        run: |
-          # Find the highest Go version across all go.mod files
-          GO_VERSION=$(find . -name 'go.mod' -exec grep '^go ' {} \; | awk '{print $2}' | sort -V | tail -1)
-          echo "version=${GO_VERSION}" >> "$GITHUB_OUTPUT"
-
-      - name: Set up Go
-        uses: actions/setup-go@v7
-        with:
-          go-version: ${{ steps.go-version.outputs.version }}
-
-      - name: Run unit tests for changed modules
-        run: |
-          set -euo pipefail
-
-          # Get the list of changed files compared to the base branch
-          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
-
-          echo "Changed files:"
-          echo "$CHANGED_FILES"
-          echo ""
-
-          TEST_COUNT=0
+          MODULES=""
           FAILED=false
 
           for module_dir in */; do
@@ -148,24 +65,29 @@ jobs:
               continue
             fi
 
-            # Skip modules without a Makefile
-            if [ ! -f "${module}/Makefile" ]; then
-              echo "Skipping ${module}: no Makefile"
+            HAS_TESTS=false
+            if [ -f "${module}/Makefile" ]; then
+              # Fail if Makefile exists but has no unit-test target
+              if grep -q '^unit-test:' "${module}/Makefile"; then
+                HAS_TESTS=true
+              else
+                echo "::error::Module '${module}' has a Makefile but no 'unit-test' target. Please add a 'unit-test' target to ${module}/Makefile."
+                FAILED=true
+              fi
+            fi
+
+            HAS_IMAGES=false
+            image_count=$(yq '.images | length' "${module}/module.yaml")
+            if [ "$image_count" != "0" ] && [ "$image_count" != "null" ]; then
+              HAS_IMAGES=true
+            fi
+
+            if [ "$HAS_TESTS" = "false" ] && [ "$HAS_IMAGES" = "false" ]; then
+              echo "Skipping ${module}: no unit tests and no images"
               continue
             fi
 
-            # Fail if Makefile exists but has no unit-test target
-            if ! grep -q '^unit-test:' "${module}/Makefile"; then
-              echo "::error::Module '${module}' has a Makefile but no 'unit-test' target. Please add a 'unit-test' target to ${module}/Makefile."
-              FAILED=true
-              continue
-            fi
-
-            echo "::group::Testing ${module}"
-            make -C "${module}" unit-test
-            echo "::endgroup::"
-
-            TEST_COUNT=$((TEST_COUNT + 1))
+            MODULES="${MODULES}${module}"$'\n'
           done
 
           if [ "$FAILED" = "true" ]; then
@@ -174,16 +96,106 @@ jobs:
             exit 1
           fi
 
+          MATRIX=$(printf '%s' "$MODULES" | jq -R . | jq -sc .)
+          echo "modules=${MATRIX}" >> "$GITHUB_OUTPUT"
+
           echo ""
-          if [ "$TEST_COUNT" -eq 0 ]; then
-            echo "No modules with unit tests found for changed files."
-          else
-            echo "Successfully tested ${TEST_COUNT} module(s). ✓"
+          echo "Modules to validate: ${MATRIX}"
+
+  docker-build:
+    needs: detect-changed-modules
+    if: ${{ needs.detect-changed-modules.outputs.modules != '[]' }}
+    name: docker-build (${{ matrix.module }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module: ${{ fromJson(needs.detect-changed-modules.outputs.modules) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install yq
+        uses: mikefarah/yq@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build Docker images
+        run: |
+          set -euo pipefail
+
+          module="${{ matrix.module }}"
+
+          image_count=$(yq '.images | length' "${module}/module.yaml")
+          if [ "$image_count" = "0" ] || [ "$image_count" = "null" ]; then
+            echo "Skipping ${module}: no images defined"
+            exit 0
           fi
 
+          for i in $(seq 0 $((image_count - 1))); do
+            image_name=$(yq ".images[${i}].name" "${module}/module.yaml")
+            context=$(yq ".images[${i}].context" "${module}/module.yaml")
+            dockerfile=$(yq ".images[${i}].dockerfile" "${module}/module.yaml")
+
+            echo "::group::Building ${image_name}"
+            docker buildx build \
+              --platform linux/amd64 \
+              --load \
+              -t "${image_name}:pr-validation" \
+              -f "${module}/${dockerfile}" \
+              "${module}/${context}"
+            echo "::endgroup::"
+          done
+
+  unit-test:
+    needs: detect-changed-modules
+    if: ${{ needs.detect-changed-modules.outputs.modules != '[]' }}
+    name: unit-tests (${{ matrix.module }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        module: ${{ fromJson(needs.detect-changed-modules.outputs.modules) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Determine Go version
+        id: go-version
+        run: |
+          # Find the highest Go version across this module's go.mod files
+          GO_VERSION=$(find "${{ matrix.module }}" -name 'go.mod' -exec grep '^go ' {} \; | awk '{print $2}' | sort -V | tail -1)
+          echo "version=${GO_VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Go
+        if: ${{ steps.go-version.outputs.version != '' }}
+        uses: actions/setup-go@v7
+        with:
+          go-version: ${{ steps.go-version.outputs.version }}
+
+      - name: Run unit tests
+        run: |
+          set -euo pipefail
+
+          module="${{ matrix.module }}"
+
+          if [ ! -f "${module}/Makefile" ] || ! grep -q '^unit-test:' "${module}/Makefile"; then
+            echo "Skipping ${module}: no unit tests"
+            exit 0
+          fi
+
+          make -C "${module}" unit-test
+
       - name: Upload coverage to Codecov
+        if: ${{ hashFiles(format('{0}-coverage.out', matrix.module)) != '' }}
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
-          files: ./*-coverage.out
-          fail_ci_if_error: false
           use_oidc: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork) }}
+          files: ./${{ matrix.module }}-coverage.out
+          flags: ${{ matrix.module }}
+          disable_search: true
+          fail_ci_if_error: false

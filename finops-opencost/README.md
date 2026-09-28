@@ -1,5 +1,7 @@
 # FinOps Module with OpenCost
 
+[![Codecov](https://codecov.io/gh/openchoreo/community-modules/branch/main/graph/badge.svg?flag=finops-opencost)](https://app.codecov.io/gh/openchoreo/community-modules?flags%5B0%5D=finops-opencost)
+
 This module provides FinOps capabilities for OpenChoreo using [OpenCost](https://opencost.io/), an open source cost monitoring tool for Kubernetes.
 
 It bundles OpenCost together with an adapter — a Go service that the OpenChoreo Observer calls to retrieve per-component cost records and right-sizing recommendations. The adapter queries OpenCost's allocation API for cost data and the Observer's metrics API for resource usage.

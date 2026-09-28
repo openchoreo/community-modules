@@ -1,5 +1,7 @@
 # Observability Tracing Module for OpenSearch
 
+[![Codecov](https://codecov.io/gh/openchoreo/community-modules/branch/main/graph/badge.svg?flag=observability-tracing-opensearch)](https://app.codecov.io/gh/openchoreo/community-modules?flags%5B0%5D=observability-tracing-opensearch)
+
 This module collects traces using [OpenTelemetry collector](https://opentelemetry.io) and stores them in [OpenSearch](https://opensearch.org).
 
 ## Prerequisites

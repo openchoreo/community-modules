@@ -1,8 +1,6 @@
 # Observability Logs Module for OpenObserve
 
-|               |                                                                                                                                                                                           |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Code coverage | [![Codecov](https://codecov.io/gh/openchoreo/community-modules/branch/main/graph/badge.svg?component=observability_logs_openobserve)](https://codecov.io/gh/openchoreo/community-modules) |
+[![Codecov](https://codecov.io/gh/openchoreo/community-modules/branch/main/graph/badge.svg?flag=observability-logs-openobserve)](https://app.codecov.io/gh/openchoreo/community-modules?flags%5B0%5D=observability-logs-openobserve)
 
 This module collects container logs using [Fluent Bit](https://fluentbit.io) and stores them in [OpenObserve](https://openobserve.ai).
 

@@ -1,5 +1,7 @@
 # Observability Logs Module for Azure Log Analytics
 
+[![Codecov](https://codecov.io/gh/openchoreo/community-modules/branch/main/graph/badge.svg?flag=observability-logs-azure-loganalytics)](https://app.codecov.io/gh/openchoreo/community-modules?flags%5B0%5D=observability-logs-azure-loganalytics)
+
 This module exposes Azure Log Analytics as an OpenChoreo logs backend. It
 queries `ContainerLogV2` (populated by the Azure Monitor Agent through the
 AKS Container Insights addon) and manages alert rules via Azure Monitor

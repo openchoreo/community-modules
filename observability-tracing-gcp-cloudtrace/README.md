@@ -1,5 +1,7 @@
 # Observability Tracing Module for Google Cloud Trace
 
+[![Codecov](https://codecov.io/gh/openchoreo/community-modules/branch/main/graph/badge.svg?flag=observability-tracing-gcp-cloudtrace)](https://app.codecov.io/gh/openchoreo/community-modules?flags%5B0%5D=observability-tracing-gcp-cloudtrace)
+
 This module collects distributed traces using [OpenTelemetry collector](https://opentelemetry.io) and stores them in [Google Cloud Trace](https://cloud.google.com/trace).
 
 Spans are exported to Cloud Trace through the collector's `googlecloud` exporter. An adapter implements the OpenChoreo Observability Tracing Adapter API and answers Observer trace queries through the Cloud Trace v1 read API (`ListTraces` / `GetTrace`).

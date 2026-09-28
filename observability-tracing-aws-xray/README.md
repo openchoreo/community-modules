@@ -1,8 +1,6 @@
 # Observability Tracing Module for AWS X-Ray
 
-|               |           |
-| ------------- | --------- |
-| Code coverage | [![Codecov](https://codecov.io/gh/openchoreo/community-modules/branch/main/graph/badge.svg?component=observability_tracing_aws_xray)](https://codecov.io/gh/openchoreo/community-modules) |
+[![Codecov](https://codecov.io/gh/openchoreo/community-modules/branch/main/graph/badge.svg?flag=observability-tracing-aws-xray)](https://app.codecov.io/gh/openchoreo/community-modules?flags%5B0%5D=observability-tracing-aws-xray)
 
 This module supports both:
 

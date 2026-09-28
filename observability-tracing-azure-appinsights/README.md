@@ -1,5 +1,7 @@
 # Observability Tracing Module for Azure Application Insights
 
+[![Codecov](https://codecov.io/gh/openchoreo/community-modules/branch/main/graph/badge.svg?flag=observability-tracing-azure-appinsights)](https://app.codecov.io/gh/openchoreo/community-modules?flags%5B0%5D=observability-tracing-azure-appinsights)
+
 This module collects distributed traces using [OpenTelemetry collector](https://opentelemetry.io) and stores them in [Azure Application Insights](https://learn.microsoft.com/azure/azure-monitor/app/app-insights-overview).
 
 Spans are exported to a workspace-based Application Insights resource. An adapter implements the OpenChoreo Observability Tracing Adapter API and answers Observer trace queries by running KQL against the backing Log Analytics workspace.

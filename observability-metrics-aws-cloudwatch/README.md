@@ -1,8 +1,6 @@
 # Observability Metrics Module for AWS CloudWatch
 
-|               |           |
-| ------------- | --------- |
-| Code coverage | [![Codecov](https://codecov.io/gh/openchoreo/community-modules/branch/main/graph/badge.svg?component=observability_metrics_aws_cloudwatch)](https://codecov.io/gh/openchoreo/community-modules) |
+[![Codecov](https://codecov.io/gh/openchoreo/community-modules/branch/main/graph/badge.svg?flag=observability-metrics-aws-cloudwatch)](https://app.codecov.io/gh/openchoreo/community-modules?flags%5B0%5D=observability-metrics-aws-cloudwatch)
 
 This module supports both:
 

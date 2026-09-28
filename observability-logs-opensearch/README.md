@@ -1,5 +1,7 @@
 # Observability Logs Module for OpenSearch
 
+[![Codecov](https://codecov.io/gh/openchoreo/community-modules/branch/main/graph/badge.svg?flag=observability-logs-opensearch)](https://app.codecov.io/gh/openchoreo/community-modules?flags%5B0%5D=observability-logs-opensearch)
+
 This module collects logs using [Fluent Bit](https://fluentbit.io) and stores them in [OpenSearch](https://opensearch.org).
 
 ## Prerequisites

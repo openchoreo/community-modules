@@ -148,7 +148,7 @@ jobs:
             echo "::endgroup::"
           done
 
-  unit-test:
+  unit-tests:
     needs: detect-changed-modules
     if: ${{ needs.detect-changed-modules.outputs.modules != '[]' }}
     name: unit-tests (${{ matrix.module }})

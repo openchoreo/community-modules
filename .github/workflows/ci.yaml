@@ -83,7 +83,7 @@ jobs:
           echo ""
           echo "Modules to test: ${MATRIX}"
 
-  unit-test:
+  unit-tests:
     needs: detect-changed-modules
     if: ${{ needs.detect-changed-modules.outputs.modules != '[]' }}
     runs-on: ubuntu-latest
@@ -123,8 +123,8 @@ jobs:
           fail_ci_if_error: false
 
   build-and-release:
-    needs: [detect-changed-modules, unit-test]
-    if: ${{ !cancelled() && needs.detect-changed-modules.result == 'success' && needs.unit-test.result != 'failure' }}
+    needs: [detect-changed-modules, unit-tests]
+    if: ${{ !cancelled() && needs.detect-changed-modules.result == 'success' && needs.unit-tests.result != 'failure' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write

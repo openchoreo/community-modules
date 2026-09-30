@@ -3,7 +3,7 @@ module github.com/openchoreo/community-modules/observability-metrics-gcp-cloudmo
 go 1.26.5
 
 require (
-	cloud.google.com/go/monitoring v1.30.0
+	cloud.google.com/go/monitoring v1.31.0
 	github.com/getkin/kin-openapi v0.149.0
 	github.com/google/uuid v1.6.0
 	github.com/oapi-codegen/runtime v1.7.0

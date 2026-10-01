@@ -62,11 +62,19 @@ spec:
             {{- $location := $redis.location | default $settings.location }}
 
             {{- /* Managed Redis names are unique per region, up to 60
-                   characters. Keep the prefix, and if the result is too long,
-                   keep it unique with a hash of the full name. */}}
-            {{- $azureName := printf "%s%s" $settings.namePrefix $xr.metadata.name }}
+                   characters. The RedisInstance name only covers the Resource
+                   and the environment, so add a hash of its namespace, which
+                   differs per OpenChoreo namespace and project. If the result
+                   is too long, keep it unique with a hash of the full name. A
+                   cache that already exists keeps its name. */}}
+            {{- $azureName := printf "%s%s-%s" $settings.namePrefix $xr.metadata.name ($xr.metadata.namespace | sha256sum | trunc 8) }}
             {{- if gt (len $azureName) 60 }}
             {{- $azureName = printf "%s-%s" ($azureName | trunc 51 | trimSuffix "-") ($azureName | sha256sum | trunc 8) }}
+            {{- end }}
+            {{- with getComposedResource . "cache" }}
+            {{- with dig "metadata" "annotations" "crossplane.io/external-name" "" . }}
+            {{- $azureName = . }}
+            {{- end }}
             {{- end }}
 
             {{- $sku := index (dict "small" "Balanced_B0" "medium" "Balanced_B1" "large" "Balanced_B3") $xr.spec.size }}

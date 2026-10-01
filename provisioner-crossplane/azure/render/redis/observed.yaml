@@ -17,7 +17,7 @@ spec:
     name: r-orders-cache-development-1a2b3c4d-provider-conn
 status:
   atProvider:
-    hostname: xp-r-orders-cache-development-1a2b3c4d.eastus.redis.azure.net
+    hostname: xp-r-orders-cache-development-1a2b3c4d-a8b59b7c.eastus.redis.azure.net
     defaultDatabase:
       port: 10000
   conditions:

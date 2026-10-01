@@ -13,7 +13,7 @@ metadata:
     crossplane.io/composition-resource-name: server
 status:
   atProvider:
-    fqdn: xp-r-orders-db-development-1a2b3c4d.postgres.database.azure.com
+    fqdn: xp-r-orders-db-development-1a2b3c4d-a8b59b7c.postgres.database.azure.com
   conditions:
     - type: Ready
       status: "True"

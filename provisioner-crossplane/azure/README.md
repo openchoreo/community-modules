@@ -227,8 +227,10 @@ Under `postgres` in the `azure` EnvironmentConfig:
 | `administratorLogin` | Administrator login for new servers. Azure reserves some names, such as `admin` and `root` |
 | `firewallRules` | One firewall rule per entry, each with `name`, `startIpAddress` and `endIpAddress` |
 
-Server names are global in Azure and limited to 63 characters. Names that would be longer are
-shortened, with a hash of the full name appended to keep them unique.
+Server names are global in Azure and limited to 63 characters. Each name is `namePrefix`, the
+`PostgresInstance` name and a short hash of its namespace, so Resources with the same name in
+different OpenChoreo namespaces or projects get different servers. Names that would be longer are
+shortened, with a hash of the full name appended. A server keeps its name once created.
 
 ### Sizes
 
@@ -311,8 +313,10 @@ Under `redis` in the `azure` EnvironmentConfig:
 | :---- | :------ |
 | `location` | Optional. Region for new caches, when it differs from the top-level `location`. Not every region has capacity for every Managed Redis size |
 
-Managed Redis names must be unique within their region and are limited to 60 characters. Names
-that would be longer are shortened, with a hash of the full name appended to keep them unique.
+Managed Redis names must be unique within their region and are limited to 60 characters. Each name
+is `namePrefix`, the `RedisInstance` name and a short hash of its namespace, so Resources with the
+same name in different OpenChoreo namespaces or projects get different caches. Names that would be
+longer are shortened, with a hash of the full name appended. A cache keeps its name once created.
 
 ### Sizes
 

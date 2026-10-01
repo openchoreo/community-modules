@@ -55,12 +55,20 @@ spec:
             {{- $settings := index .context "apiextensions.crossplane.io/environment" }}
             {{- $pg := $settings.postgres }}
 
-            {{- /* Azure server names are global, 3-63 characters. Keep the
-                   prefix, and if the result is too long, keep it unique with a
-                   hash of the full name. */}}
-            {{- $azureName := printf "%s%s" $settings.namePrefix $xr.metadata.name }}
+            {{- /* Azure server names are global, 3-63 characters. The
+                   PostgresInstance name only covers the Resource and the
+                   environment, so add a hash of its namespace, which differs
+                   per OpenChoreo namespace and project. If the result is too
+                   long, keep it unique with a hash of the full name. A server
+                   that already exists keeps its name. */}}
+            {{- $azureName := printf "%s%s-%s" $settings.namePrefix $xr.metadata.name ($xr.metadata.namespace | sha256sum | trunc 8) }}
             {{- if gt (len $azureName) 63 }}
             {{- $azureName = printf "%s-%s" ($azureName | trunc 54 | trimSuffix "-") ($azureName | sha256sum | trunc 8) }}
+            {{- end }}
+            {{- with getComposedResource . "server" }}
+            {{- with dig "metadata" "annotations" "crossplane.io/external-name" "" . }}
+            {{- $azureName = . }}
+            {{- end }}
             {{- end }}
 
             {{- $sku := index (dict "small" "B_Standard_B1ms" "medium" "GP_Standard_D2ds_v5" "large" "GP_Standard_D4ds_v5") $xr.spec.size }}

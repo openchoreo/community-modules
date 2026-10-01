@@ -31,7 +31,7 @@ opentelemetry-collector:
 
   image:
     repository: otel/opentelemetry-collector-contrib
-    tag: 0.151.0
+    tag: 0.161.0
 
   serviceAccount:
     create: true

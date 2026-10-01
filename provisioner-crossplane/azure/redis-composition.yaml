@@ -1,0 +1,146 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# Builds a RedisInstance as an Azure Managed Redis instance.
+#
+# For each RedisInstance, in the RedisInstance's own namespace:
+#   ManagedRedis   the cache, with access keys enabled, TLS-only connections
+#                  and the EnterpriseCluster policy, so clients connect to a
+#                  single endpoint
+#   Secret         "<name>-conn", holding the primary access key as
+#                  "password". The provider writes the key to its own
+#                  connection Secret under a provider-specific name. This copies
+#                  it to the name the ResourceType expects
+#
+# Per-data-plane settings come from the `azure` EnvironmentConfig: the resource
+# group, region and name prefix shared by every Azure Composition, and the
+# Redis settings under `redis`. The resource group is referenced by name and never
+# created or deleted here.
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: redis-azure
+  labels:
+    app.kubernetes.io/name: provisioner-crossplane
+    app.kubernetes.io/part-of: openchoreo
+spec:
+  compositeTypeRef:
+    apiVersion: crossplane.community.openchoreo.dev/v1alpha1
+    kind: RedisInstance
+  mode: Pipeline
+  pipeline:
+    # 1. Load this data plane's settings into the pipeline context.
+    - step: load-settings
+      functionRef:
+        name: function-environment-configs
+      input:
+        apiVersion: environmentconfigs.fn.crossplane.io/v1beta1
+        kind: Input
+        spec:
+          environmentConfigs:
+            - type: Reference
+              ref:
+                name: azure
+
+    # 2. Render the cache and the connection Secret, and copy what clients need
+    #    into the RedisInstance's status.
+    - step: render
+      functionRef:
+        name: function-go-templating
+      input:
+        apiVersion: gotemplating.fn.crossplane.io/v1beta1
+        kind: GoTemplate
+        source: Inline
+        inline:
+          template: |
+            {{- $xr := .observed.composite.resource }}
+            {{- $settings := index .context "apiextensions.crossplane.io/environment" }}
+            {{- $redis := $settings.redis | default dict }}
+
+            {{- /* Not every region has capacity for every size, so Redis can
+                   use its own region. */}}
+            {{- $location := $redis.location | default $settings.location }}
+
+            {{- /* Managed Redis names are unique per region, up to 60
+                   characters. Keep the prefix, and if the result is too long,
+                   keep it unique with a hash of the full name. */}}
+            {{- $azureName := printf "%s%s" $settings.namePrefix $xr.metadata.name }}
+            {{- if gt (len $azureName) 60 }}
+            {{- $azureName = printf "%s-%s" ($azureName | trunc 51 | trimSuffix "-") ($azureName | sha256sum | trunc 8) }}
+            {{- end }}
+
+            {{- $sku := index (dict "small" "Balanced_B0" "medium" "Balanced_B1" "large" "Balanced_B3") $xr.spec.size }}
+            {{- /* High availability doubles the cost; leave it off for small. */}}
+            {{- $highAvailability := ne $xr.spec.size "small" }}
+
+            {{- /* The provider publishes the access key in the cache's
+                   connection details, under a key ending in
+                   primary_access_key. Values are already base64-encoded. */}}
+            {{- $password := "" }}
+            {{- with index (.observed.resources | default dict) "cache" }}
+            {{- range $key, $value := (.connectionDetails | default dict) }}
+            {{- if hasSuffix "primary_access_key" $key }}
+            {{- $password = $value }}
+            {{- end }}
+            {{- end }}
+            {{- end }}
+
+            {{- $address := "" }}
+            {{- $port := "" }}
+            {{- with getComposedResource . "cache" }}
+            {{- $address = dig "status" "atProvider" "hostname" "" . }}
+            {{- $port = dig "status" "atProvider" "defaultDatabase" "port" "" . }}
+            {{- end }}
+            ---
+            apiVersion: cache.azure.m.upbound.io/v1beta1
+            kind: ManagedRedis
+            metadata:
+              name: {{ $xr.metadata.name }}
+              annotations:
+                {{ setResourceNameAnnotation "cache" }}
+                crossplane.io/external-name: {{ $azureName }}
+            spec:
+              forProvider:
+                resourceGroupName: {{ $settings.resourceGroupName }}
+                location: {{ $location }}
+                skuName: {{ $sku }}
+                highAvailabilityEnabled: {{ $highAvailability }}
+                defaultDatabase:
+                  accessKeysAuthenticationEnabled: true
+                  clientProtocol: Encrypted
+                  clusteringPolicy: EnterpriseCluster
+              writeConnectionSecretToRef:
+                name: {{ $xr.metadata.name }}-provider-conn
+            ---
+            {{- /* Not ready until it holds the password, so the RedisInstance
+                   does not report Ready before clients can authenticate. */}}
+            apiVersion: v1
+            kind: Secret
+            metadata:
+              name: {{ $xr.metadata.name }}-conn
+              annotations:
+                {{ setResourceNameAnnotation "connection-secret" }}
+                gotemplating.fn.crossplane.io/ready: {{ if $password }}"True"{{ else }}"False"{{ end }}
+            type: Opaque
+            {{- if $password }}
+            data:
+              password: {{ $password }}
+            {{- end }}
+            {{- if $address }}
+            ---
+            {{- /* No resource-name annotation: this updates the
+                   RedisInstance's own status instead of composing one. */}}
+            apiVersion: crossplane.community.openchoreo.dev/v1alpha1
+            kind: RedisInstance
+            status:
+              address: {{ $address }}
+              {{- if $port }}
+              port: {{ $port }}
+              {{- end }}
+            {{- end }}
+
+    # 3. Mark the cache Ready when Azure reports it Ready, and the RedisInstance
+    #    Ready when the cache and the Secret are.
+    - step: ready
+      functionRef:
+        name: function-auto-ready

@@ -1,0 +1,54 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# A Redis ResourceType backed by Crossplane. Apply on the control plane.
+#
+# It renders a single RedisInstance into the cell namespace and names no cloud:
+# the data plane that receives it decides, through whichever Redis Composition
+# it has installed.
+apiVersion: openchoreo.dev/v1alpha1
+kind: ClusterResourceType
+metadata:
+  name: redis-crossplane
+  labels:
+    app.kubernetes.io/name: provisioner-crossplane
+    app.kubernetes.io/part-of: openchoreo
+  annotations:
+    openchoreo.dev/local-dev-addresses: client=outputs.host:outputs.port
+    openchoreo.dev/description: >-
+      Redis provisioned by Crossplane. Where it runs is decided by the data
+      plane, through the Redis Composition installed there.
+spec:
+  environmentConfigs:
+    openAPIV3Schema:
+      type: object
+      properties:
+        size:
+          type: string
+          enum: [small, medium, large]
+          default: small
+
+  retainPolicy: Delete
+
+  outputs:
+    - name: host
+      value: ${applied.instance.status.address}
+    - name: port
+      value: ${string(applied.instance.status.port)}
+    - name: password
+      secretKeyRef:
+        name: ${metadata.name}-conn
+        key: password
+
+  resources:
+    - id: instance
+      readyWhen: "${has(applied.instance.status.conditions) && applied.instance.status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')}"
+      template:
+        apiVersion: crossplane.community.openchoreo.dev/v1alpha1
+        kind: RedisInstance
+        metadata:
+          name: ${metadata.name}
+          namespace: ${metadata.namespace}
+          labels: ${metadata.labels}
+        spec:
+          size: ${environmentConfigs.size}

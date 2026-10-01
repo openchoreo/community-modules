@@ -1,0 +1,14 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# The connection Secret the provider writes for the cache, with a fake access
+# key (base64 of "not-a-real-key"). Pass it with --required-resources so the
+# render copies it into the RedisInstance's own Secret.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: r-orders-cache-development-1a2b3c4d-provider-conn
+  namespace: dp-default-shop-development-5f6e7d8c
+type: Opaque
+data:
+  attribute.default_database.0.primary_access_key: bm90LWEtcmVhbC1rZXk=

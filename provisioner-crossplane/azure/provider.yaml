@@ -1,16 +1,19 @@
 # Copyright 2026 The OpenChoreo Authors
 # SPDX-License-Identifier: Apache-2.0
 #
-# The Crossplane provider for Azure Database for PostgreSQL, authenticating with
-# AKS workload identity. Installing it also installs `provider-family-azure`,
-# which owns the ProviderConfig types.
+# The Crossplane providers for the Azure services this backing uses, each
+# authenticating with AKS workload identity. Installing any of them also
+# installs `provider-family-azure`, which owns the ProviderConfig types. Apply
+# only the providers for the resources this data plane offers.
 #
 # Replace <managed-identity-client-id> with the client ID of the managed
-# identity the provider acts as. That identity needs a federated credential
-# with the subject
-#   system:serviceaccount:crossplane-system:provider-azure-dbforpostgresql
-# The ServiceAccount name is fixed below for that reason: left to Crossplane,
+# identity the providers act as. That identity needs one federated credential
+# per provider, with the subject
+#   system:serviceaccount:crossplane-system:<provider name>
+# Each ServiceAccount name is fixed below for that reason: left to Crossplane,
 # it is named after the provider revision and changes on every upgrade.
+
+# PostgreSQL: Azure Database for PostgreSQL Flexible Server
 apiVersion: pkg.crossplane.io/v1beta1
 kind: DeploymentRuntimeConfig
 metadata:
@@ -38,3 +41,31 @@ spec:
   package: xpkg.crossplane.io/crossplane-contrib/provider-azure-dbforpostgresql:v2.7.0
   runtimeConfigRef:
     name: provider-azure-dbforpostgresql
+---
+# Redis: Azure Managed Redis
+apiVersion: pkg.crossplane.io/v1beta1
+kind: DeploymentRuntimeConfig
+metadata:
+  name: provider-azure-cache
+spec:
+  serviceAccountTemplate:
+    metadata:
+      name: provider-azure-cache
+      annotations:
+        azure.workload.identity/client-id: <managed-identity-client-id>
+  deploymentTemplate:
+    spec:
+      selector: {}
+      template:
+        metadata:
+          labels:
+            azure.workload.identity/use: "true"
+---
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-azure-cache
+spec:
+  package: xpkg.crossplane.io/crossplane-contrib/provider-azure-cache:v2.7.0
+  runtimeConfigRef:
+    name: provider-azure-cache

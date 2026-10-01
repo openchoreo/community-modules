@@ -1,0 +1,19 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# A Redis cache for the `shop` project. Nothing here names a cloud: the data
+# plane each environment runs on decides how it is provisioned.
+#
+# Size is per environment, set on the ResourceReleaseBinding through
+# `resourceTypeEnvironmentConfigs`.
+apiVersion: openchoreo.dev/v1alpha1
+kind: Resource
+metadata:
+  name: orders-cache
+  namespace: default
+spec:
+  owner:
+    projectName: shop
+  type:
+    kind: ClusterResourceType
+    name: redis-crossplane

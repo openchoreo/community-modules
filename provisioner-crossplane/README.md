@@ -9,17 +9,23 @@ The ResourceTypes do not name a cloud. The same Resource can be a managed cloud 
 plane and something else on another, and supporting another platform is a new Composition, without
 changing the ResourceTypes or the Resources that use them.
 
+> [!NOTE]
+> These ResourceTypes and Compositions are working examples designed to demonstrate the integration
+> between OpenChoreo and Crossplane. Before using them in production, adapt them to your environment
+> and requirements, such as resource sizing, high availability, networking, and backup settings.
+
 ## Resources
 
 | Resource | ResourceType | Composite resource | Backings | Guide |
 | :------- | :----------- | :----------------- | :------- | :---- |
 | PostgreSQL | `postgres-crossplane` | `PostgresInstance` | Azure | [apis/postgres/README.md](apis/postgres/README.md) |
+| Redis | `redis-crossplane` | `RedisInstance` | Azure | [apis/redis/README.md](apis/redis/README.md) |
 
 ## Backings
 
 | Backing | Resources | Guide |
 | :------ | :-------- | :---- |
-| Azure | PostgreSQL | [azure/README.md](azure/README.md) |
+| Azure | PostgreSQL, Redis | [azure/README.md](azure/README.md) |
 
 ## Features
 
@@ -114,11 +120,16 @@ nothing else. Crossplane creates the cloud resources under its own permissions.
 ### 4. Install the APIs
 
 Apply the XRD for each resource this data plane should offer, from the [Resources](#resources)
-table. For PostgreSQL:
+table:
 
 ```bash
+# PostgreSQL
 kubectl apply -f apis/postgres/definition.yaml
 kubectl wait xrd postgresinstances.crossplane.community.openchoreo.dev --for=condition=Established
+
+# Redis
+kubectl apply -f apis/redis/definition.yaml
+kubectl wait xrd redisinstances.crossplane.community.openchoreo.dev --for=condition=Established
 ```
 
 ### 5. Set up a backing
@@ -128,10 +139,12 @@ installs the Crossplane providers, their credentials and the Compositions.
 
 ### 6. Add the ResourceTypes
 
-Apply these on the cluster running the OpenChoreo **control plane**. For PostgreSQL:
+Apply these on the cluster running the OpenChoreo **control plane**, for each resource the data
+planes offer:
 
 ```bash
 kubectl apply -f apis/postgres/resource-type.yaml
+kubectl apply -f apis/redis/resource-type.yaml
 ```
 
 ## Using your own Crossplane APIs
@@ -191,10 +204,12 @@ kubectl get composite -A
 # 2. Remove each backing, following the uninstall steps in its guide
 
 # 3. On the control plane: remove the ResourceTypes
-kubectl delete -f apis/postgres/resource-type.yaml
+kubectl delete --ignore-not-found -f apis/postgres/resource-type.yaml
+kubectl delete --ignore-not-found -f apis/redis/resource-type.yaml
 
 # 4. On the data plane: remove the APIs, the agent grant, the functions and Crossplane
-kubectl delete -f apis/postgres/definition.yaml
+kubectl delete --ignore-not-found -f apis/postgres/definition.yaml
+kubectl delete --ignore-not-found -f apis/redis/definition.yaml
 kubectl delete -f cluster-agent-crossplane-rbac.yaml
 kubectl delete -f functions.yaml
 helm uninstall crossplane -n crossplane-system

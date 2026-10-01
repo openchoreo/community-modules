@@ -1,0 +1,55 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# The RedisInstance API. This is the contract: every Redis Composition in this
+# module implements it, whatever it provisions underneath, and the
+# `redis-crossplane` ClusterResourceType creates it.
+#
+# Install on every data plane that serves Redis. The Composition that builds a
+# RedisInstance is whichever one that data plane has installed: with exactly
+# one Redis Composition present, Crossplane selects it. With more than one, set
+# spec.defaultCompositionRef below, or Crossplane picks one of them at random.
+#
+# Every Composition must, once the cache is reachable:
+#   - set status.address and status.port
+#   - write a Secret named "<RedisInstance name>-conn", in the same namespace,
+#     with the password under the key "password"
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: redisinstances.crossplane.community.openchoreo.dev
+  labels:
+    app.kubernetes.io/name: provisioner-crossplane
+    app.kubernetes.io/part-of: openchoreo
+spec:
+  scope: Namespaced
+  group: crossplane.community.openchoreo.dev
+  names:
+    kind: RedisInstance
+    plural: redisinstances
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                size:
+                  type: string
+                  description: >-
+                    Relative size. Each Composition maps it to its own
+                    provider's compute and memory.
+                  enum: [small, medium, large]
+                  default: small
+            status:
+              type: object
+              properties:
+                address:
+                  type: string
+                  description: Hostname clients connect to.
+                port:
+                  type: integer

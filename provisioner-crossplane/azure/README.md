@@ -9,6 +9,7 @@ For how the module fits together, see the [module README](../README.md).
 | Resource | Built as | Provider | Composition |
 | :------- | :------- | :------- | :---------- |
 | PostgreSQL | Azure Database for PostgreSQL Flexible Server | `provider-azure-dbforpostgresql` | [`postgres-composition.yaml`](postgres-composition.yaml) |
+| Redis | Azure Managed Redis | `provider-azure-cache` | [`redis-composition.yaml`](redis-composition.yaml) |
 
 | File | What it is |
 | :--- | :--------- |
@@ -17,6 +18,31 @@ For how the module fits together, see the [module README](../README.md).
 | [`environment-config.yaml`](environment-config.yaml) | This data plane's Azure settings, read by every Composition |
 | `<resource>-composition.yaml` | One Composition per resource |
 | `render/<resource>/` | Sample inputs for checking a Composition without a cluster |
+
+## How the providers authenticate
+
+Each provider runs as its own pod, under a ServiceAccount with a fixed name. AKS gives that pod a
+token signed by the cluster's OIDC issuer. A federated credential on a user-assigned managed
+identity tells Microsoft Entra ID to accept that token in exchange for the identity, and the
+identity's role on the resource group decides what the provider can do there.
+
+```mermaid
+flowchart TB
+  subgraph aks["AKS data plane"]
+    pod["Provider pod<br/>fixed ServiceAccount"]
+  end
+  issuer["AKS OIDC issuer"]
+  subgraph entra["Microsoft Entra ID"]
+    fic["Federated credential<br/>one per provider"]
+    mi["User-assigned managed identity"]
+  end
+  rg[("Resource group")]
+
+  issuer -->|signs a ServiceAccount token| pod
+  pod -->|presents the token| fic
+  fic -->|accepts it for| mi
+  mi -->|Contributor| rg
+```
 
 ## Prerequisites
 
@@ -31,11 +57,10 @@ For how the module fits together, see the [module README](../README.md).
 
 Run these from the module's root directory, against the cluster running the OpenChoreo data plane.
 
-### 1. Create an Azure identity for the provider
+### 1. Create an Azure identity for the providers
 
-The provider acts as a user-assigned managed identity. AKS gives the provider pod a token for its
-ServiceAccount, and a federated credential on the identity tells Microsoft Entra ID to accept that
-token in exchange for the identity.
+Create the managed identity, its role and the federated credentials described in
+[How the providers authenticate](#how-the-providers-authenticate).
 
 ```bash
 RESOURCE_GROUP=<resource group for the resources>
@@ -51,23 +76,28 @@ az role assignment create \
   --role Contributor \
   --scope "$(az group show -n "$RESOURCE_GROUP" --query id -o tsv)"
 
-az identity federated-credential create \
-  -g "$RESOURCE_GROUP" --identity-name "$IDENTITY" \
-  --name crossplane-provider-azure-dbforpostgresql \
-  --issuer "$(az aks show -g "$AKS_RESOURCE_GROUP" -n "$AKS_CLUSTER" --query oidcIssuerProfile.issuerUrl -o tsv)" \
-  --subject system:serviceaccount:crossplane-system:provider-azure-dbforpostgresql \
-  --audiences api://AzureADTokenExchange
+# One federated credential per provider this data plane uses
+for PROVIDER in provider-azure-dbforpostgresql provider-azure-cache; do
+  az identity federated-credential create \
+    -g "$RESOURCE_GROUP" --identity-name "$IDENTITY" \
+    --name "crossplane-$PROVIDER" \
+    --issuer "$(az aks show -g "$AKS_RESOURCE_GROUP" -n "$AKS_CLUSTER" --query oidcIssuerProfile.issuerUrl -o tsv)" \
+    --subject "system:serviceaccount:crossplane-system:$PROVIDER" \
+    --audiences api://AzureADTokenExchange
+done
 ```
 
-The federated credential names one provider's ServiceAccount. Each provider in
-[`provider.yaml`](provider.yaml) needs its own.
+A federated credential names one provider's ServiceAccount, so each provider in
+[`provider.yaml`](provider.yaml) needs its own. Leave out the providers for resources this data plane
+does not offer.
 
 `Contributor` on the resource group lets the providers manage anything in that group, so use a group
 that holds only the resources this backing creates.
 
 ### 2. Install the providers
 
-Set the identity's client ID in [`provider.yaml`](provider.yaml), then apply it.
+Set the identity's client ID on each DeploymentRuntimeConfig in [`provider.yaml`](provider.yaml),
+and remove the providers for resources this data plane does not offer. Then apply it.
 
 ```bash
 az identity show -g "$RESOURCE_GROUP" -n "$IDENTITY" --query clientId -o tsv
@@ -86,11 +116,12 @@ provider upgrades.
 > Policy add-on run Gatekeeper, which also defines a `Provider` kind, and `kubectl get providers`
 > may return Gatekeeper's.
 
-Check that AKS injected the workload identity token into the provider pod:
+Check that AKS injected the workload identity token into each provider pod:
 
 ```bash
-kubectl get pods -n crossplane-system -o name | grep provider-azure-dbforpostgresql \
-  | xargs kubectl get -n crossplane-system -o jsonpath='{.spec.containers[0].env[*].name}'
+for POD in $(kubectl get pods -n crossplane-system -o name | grep -E 'provider-azure-(dbforpostgresql|cache)'); do
+  echo "$POD: $(kubectl get -n crossplane-system "$POD" -o jsonpath='{.spec.containers[0].env[*].name}')"
+done
 ```
 
 The output should include `AZURE_CLIENT_ID` and `AZURE_FEDERATED_TOKEN_FILE`. If it does not, check
@@ -118,10 +149,11 @@ kubectl apply -f azure/environment-config.yaml
 
 ### 5. Install the Compositions
 
-Apply the Composition for each resource this data plane should offer. For PostgreSQL:
+Apply the Composition for each resource this data plane should offer:
 
 ```bash
 kubectl apply -f azure/postgres-composition.yaml
+kubectl apply -f azure/redis-composition.yaml
 ```
 
 Then return to the [module install](../README.md#6-add-the-resourcetypes) to add the ResourceTypes.
@@ -150,40 +182,41 @@ section below.
 Not every region offers every size on every subscription. If a resource stays not ready,
 `kubectl describe` on it shows the error from Azure.
 
+## Checking a Composition
+
+`crossplane composition render` runs a Composition's functions locally, in Docker, and prints what
+Crossplane would create, without a cluster. Each resource has sample inputs under
+`render/<resource>/`: a composite resource, and the Azure resources as they look once Azure has
+finished, plus the provider's connection Secret where a Composition reads it. Run the commands in
+each resource's section from the module's root directory.
+
+With Colima, point the CLI at its socket first:
+`export DOCKER_HOST=unix://$HOME/.colima/default/docker.sock`.
+
 ## PostgreSQL
 
-The [`postgres-composition.yaml`](postgres-composition.yaml) Composition builds a `PostgresInstance`
-as an Azure Database for PostgreSQL Flexible Server.
+[`postgres-composition.yaml`](postgres-composition.yaml) builds a `PostgresInstance` as an Azure
+Database for PostgreSQL Flexible Server.
 
-```mermaid
-flowchart TB
-  subgraph dp["AKS data plane"]
-    xr["PostgresInstance"]
-    comp["postgres-azure Composition"]
-    env["EnvironmentConfig azure"]
-    mrs["FlexibleServer<br/>FlexibleServerDatabase<br/>FlexibleServerFirewallRule"]
-    secret["Connection Secret"]
-  end
-  azure[("Azure Database for<br/>PostgreSQL Flexible Server")]
+### What it creates
 
-  xr -->|Crossplane selects| comp
-  env -.-> comp
-  comp --> mrs
-  mrs -->|provider, workload identity| azure
-  mrs --> secret
-```
-
-For each `PostgresInstance`, it creates, in the same namespace:
+For each `PostgresInstance`, in the same namespace:
 
 | Resource | Purpose |
 | :------- | :------ |
-| `FlexibleServer` | The server. The provider generates its administrator password into a Secret on the data plane |
+| `FlexibleServer` | The server. The provider generates its administrator password into a Secret on the data plane, and writes the connection Secret `<name>-conn` |
 | `FlexibleServerDatabase` | The application database |
 | `FlexibleServerFirewallRule` | One per entry in `postgres.firewallRules` |
 
-It fills the [outputs](../apis/postgres/README.md#outputs) as follows: `address` is the server's
-fully qualified domain name, `port` is 5432, `database` is the database it created, `username` is
-`postgres.administratorLogin`, and the password is in the Secret the provider writes.
+### Outputs
+
+| [Output](../apis/postgres/README.md#outputs) | Filled from |
+| :----- | :---------- |
+| `host` | The server's fully qualified domain name |
+| `port` | `5432` |
+| `database` | The database it created |
+| `username` | `postgres.administratorLogin` |
+| `password` | The connection Secret the provider writes |
 
 ### Settings
 
@@ -197,7 +230,7 @@ Under `postgres` in the `azure` EnvironmentConfig:
 Server names are global in Azure and limited to 63 characters. Names that would be longer are
 shortened, with a hash of the full name appended to keep them unique.
 
-`size` maps to:
+### Sizes
 
 | `size` | Azure SKU | Storage |
 | :----- | :-------- | :------ |
@@ -205,7 +238,7 @@ shortened, with a hash of the full name appended to keep them unique.
 | `medium` | `GP_Standard_D2ds_v5` | 64 GiB |
 | `large` | `GP_Standard_D4ds_v5` | 128 GiB |
 
-### Firewall
+### Networking
 
 Workloads connect over the server's public endpoint, so the rules in `postgres.firewallRules` have
 to admit the data plane's outbound traffic.
@@ -235,11 +268,6 @@ networking is not covered by this Composition yet.
 
 ### Checking the Composition
 
-`crossplane composition render` runs the Composition's functions locally, in Docker, and prints what
-Crossplane would create. [`render/postgres/`](render/postgres) has a sample `PostgresInstance`, and
-the Azure resources as they look once Azure has finished. Run these from the module's root
-directory.
-
 ```bash
 # First reconcile: nothing exists in Azure yet
 crossplane composition render azure/render/postgres/xr.yaml azure/postgres-composition.yaml functions.yaml \
@@ -253,8 +281,83 @@ crossplane composition render azure/render/postgres/xr.yaml azure/postgres-compo
   --observed-resources azure/render/postgres/observed.yaml
 ```
 
-With Colima, point the CLI at its socket first:
-`export DOCKER_HOST=unix://$HOME/.colima/default/docker.sock`.
+## Redis
+
+[`redis-composition.yaml`](redis-composition.yaml) builds a `RedisInstance` as an Azure Managed
+Redis instance.
+
+### What it creates
+
+For each `RedisInstance`, in the same namespace:
+
+| Resource | Purpose |
+| :------- | :------ |
+| `ManagedRedis` | The cache, with access keys enabled, TLS-only connections and the `EnterpriseCluster` policy, so clients connect to a single endpoint. The provider writes both access keys to its own connection Secret, `<name>-provider-conn`, as `attribute.default_database.0.primary_access_key` and `attribute.default_database.0.secondary_access_key`. Anything that prints that Secret prints both |
+| Secret `<name>-conn` | The primary access key, copied from the provider's Secret as `password`. The `RedisInstance` does not become Ready until it is filled |
+
+### Outputs
+
+| [Output](../apis/redis/README.md#outputs) | Filled from |
+| :----- | :---------- |
+| `host` | The cache's host name |
+| `port` | The database port, `10000` |
+| `password` | The Secret `<name>-conn` |
+
+### Settings
+
+Under `redis` in the `azure` EnvironmentConfig:
+
+| Field | Purpose |
+| :---- | :------ |
+| `location` | Optional. Region for new caches, when it differs from the top-level `location`. Not every region has capacity for every Managed Redis size |
+
+Managed Redis names must be unique within their region and are limited to 60 characters. Names
+that would be longer are shortened, with a hash of the full name appended to keep them unique.
+
+### Sizes
+
+| `size` | Azure SKU | High availability |
+| :----- | :-------- | :---------------- |
+| `small` | `Balanced_B0` | Off |
+| `medium` | `Balanced_B1` | On |
+| `large` | `Balanced_B3` | On |
+
+> [!WARNING]
+> The provider cannot change high availability on an existing cache and refuses the update. Moving
+> a binding between `small` and `medium` or `large` leaves the cache as it is, with the error on the
+> `ManagedRedis` (`kubectl describe`). To change it, delete and recreate the binding, which creates a
+> new, empty cache.
+
+### Networking
+
+The Composition sets no network restrictions. The cache is reachable on its public endpoint, and
+clients need TLS and the access key. Private networking is not covered by this Composition yet.
+
+### What to expect
+
+- **A new cache takes about eight minutes to become Ready.** In testing (`small`, eastus), the
+  binding followed a few minutes later, and a dependent component connected straight after.
+- **Deletion is quick.** Azure removed the cache about five minutes after the binding was deleted,
+  and both Secrets, `<name>-conn` and `<name>-provider-conn`, went with it.
+
+### Checking the Composition
+
+The second run also passes the provider's connection Secret, with a fake access key, so the
+Composition copies it into `<name>-conn` and the `RedisInstance` becomes Ready.
+
+```bash
+# First reconcile: nothing exists in Azure yet
+crossplane composition render azure/render/redis/xr.yaml azure/redis-composition.yaml functions.yaml \
+  --xrd apis/redis/definition.yaml \
+  --required-resources azure/environment-config.yaml
+
+# A later reconcile: the RedisInstance gets its address and port, and becomes Ready
+crossplane composition render azure/render/redis/xr.yaml azure/redis-composition.yaml functions.yaml \
+  --xrd apis/redis/definition.yaml \
+  --required-resources azure/environment-config.yaml \
+  --required-resources azure/render/redis/provider-conn.yaml \
+  --observed-resources azure/render/redis/observed.yaml
+```
 
 ## Uninstall
 
@@ -267,7 +370,7 @@ Azure with nothing left to delete them.
 kubectl get managed -A
 
 # 2. Remove the Compositions, the settings, the credentials and the providers
-kubectl delete -f azure/postgres-composition.yaml
+kubectl delete --ignore-not-found -f azure/postgres-composition.yaml -f azure/redis-composition.yaml
 kubectl delete -f azure/environment-config.yaml
 kubectl delete -f azure/provider-config.yaml
 kubectl delete -f azure/provider.yaml
@@ -287,4 +390,5 @@ Then continue with the [module uninstall](../README.md#uninstall).
 | Component | Compatible version | Notes |
 | :-------- | :----------------- | :---- |
 | **provider-azure-dbforpostgresql** | `v2.7.x` | Verified against v2.7.0, from `xpkg.crossplane.io/crossplane-contrib`. Uses the namespaced `*.azure.m.upbound.io` API groups. |
+| **provider-azure-cache** | `v2.7.x` | Verified against v2.7.0, from `xpkg.crossplane.io/crossplane-contrib`. |
 | **AKS** | `1.36` | Verified on AKS 1.36.4 with workload identity. |

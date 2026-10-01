@@ -39,3 +39,9 @@ data:
       - name: data-plane-egress
         startIpAddress: <egress-ip>
         endIpAddress: <egress-ip>
+
+  redis:
+    # Optional. Azure region for new caches, when it differs from the
+    # top-level `location`. Managed Redis capacity at small sizes is not
+    # available in every region.
+    # location: <region>

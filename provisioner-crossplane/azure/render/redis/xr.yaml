@@ -1,0 +1,13 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# A RedisInstance as OpenChoreo renders it into a cell namespace. Used with
+# `crossplane composition render` to check the Azure Composition without a
+# cluster. See azure/README.md, "Checking the Composition".
+apiVersion: crossplane.community.openchoreo.dev/v1alpha1
+kind: RedisInstance
+metadata:
+  name: r-orders-cache-development-1a2b3c4d
+  namespace: dp-default-shop-development-5f6e7d8c
+spec:
+  size: small

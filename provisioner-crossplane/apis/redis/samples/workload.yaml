@@ -1,0 +1,24 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# A Workload that consumes `orders-cache`. Each output of the ResourceType is
+# bound to an environment variable, resolved for whichever environment the
+# component is deployed to.
+apiVersion: openchoreo.dev/v1alpha1
+kind: Workload
+metadata:
+  name: orders-worker
+  namespace: default
+spec:
+  owner:
+    projectName: shop
+    componentName: orders-worker
+  container:
+    image: ghcr.io/example/orders-worker:latest
+  dependencies:
+    resources:
+      - ref: orders-cache
+        envBindings:
+          host: REDIS_HOST
+          port: REDIS_PORT
+          password: REDIS_PASSWORD

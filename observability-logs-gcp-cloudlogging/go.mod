@@ -3,7 +3,7 @@ module github.com/openchoreo/community-modules/observability-logs-gcp-cloudloggi
 go 1.26.2
 
 require (
-	cloud.google.com/go/logging v1.19.1
+	cloud.google.com/go/logging v1.20.0
 	cloud.google.com/go/monitoring v1.30.0
 	github.com/getkin/kin-openapi v0.149.0
 	github.com/oapi-codegen/runtime v1.7.0

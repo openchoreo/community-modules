@@ -23,4 +23,7 @@ data:
 
   DEFAULT_EVALUATION_FREQUENCY: {{ .Values.adapter.alertRuleDefaults.evaluationFrequency | quote }}
   DEFAULT_WINDOW_SIZE: {{ .Values.adapter.alertRuleDefaults.windowSize | quote }}
+
+  EVENTS_TABLE: {{ .Values.adapter.events.table | quote }}
+  EVENTS_SCOPE_NAME: {{ .Values.adapter.events.scopeName | quote }}
 {{- end }}

@@ -46,7 +46,7 @@ helm upgrade --install observability-events-otel-collector \
   oci://ghcr.io/openchoreo/helm-charts/observability-events-otel-collector \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.2.0
+  --version 0.2.1
 ```
 
 Out of the box the collector enriches events and prints them to its pod log via
@@ -62,7 +62,8 @@ The chart is backend-agnostic. Point it at a real backend by overriding
 `exporters` (the exporter definition) and `pipelineExporters` (which exporters
 are active in the pipeline). Credentials go in `collector.extraEnv`; exporter
 auth helpers go in `extraExtensions`. The distribution bundles the OpenSearch,
-OTLP (gRPC + HTTP), AWS CloudWatch Logs, and debug exporters.
+OTLP (gRPC + HTTP), AWS CloudWatch Logs, and debug exporters, plus the basic-auth
+and Azure auth extensions.
 
 ### OpenSearch
 
@@ -71,7 +72,7 @@ Compatible with `observability-logs-opensearch` community module (>= version 0.6
 ```bash
 helm upgrade --install observability-events-otel-collector \
   oci://ghcr.io/openchoreo/helm-charts/observability-events-otel-collector \
-  --namespace openchoreo-observability-plane --version 0.2.0 \
+  --namespace openchoreo-observability-plane --version 0.2.1 \
   -f - <<'EOF'
 collector:
   extraEnv: &opensearchEnv
@@ -186,7 +187,7 @@ Compatible with `observability-logs-openobserve` community module (>= version 0.
 ```bash
 helm upgrade --install observability-events-otel-collector \
   oci://ghcr.io/openchoreo/helm-charts/observability-events-otel-collector \
-  --namespace openchoreo-observability-plane --create-namespace --version 0.2.0 \
+  --namespace openchoreo-observability-plane --create-namespace --version 0.2.1 \
   -f - <<'EOF'
 collector:
   extraEnv:
@@ -236,6 +237,160 @@ pipelineExporters:
   - awscloudwatchlogs
 ```
 
+### Azure Log Analytics (native OTLP ingestion)
+
+Compatible with `observability-logs-azure-loganalytics` community module (>= version 0.2.0).
+
+Events are sent with the bundled `otlphttp` exporter to Azure Monitor's
+[native OTLP ingestion](https://learn.microsoft.com/en-us/azure/azure-monitor/containers/opentelemetry-protocol-ingestion)
+endpoint, authenticated by the `azure_auth` extension through AKS Workload
+Identity (no secrets). A Data Collection Rule (DCR) routes them into the
+built-in [`OTelLogs`](https://learn.microsoft.com/en-us/azure/azure-monitor/reference/tables/otellogs)
+table of the Log Analytics workspace the logs adapter already reads. Event
+attributes land in the `Attributes` column and the enriched resource attributes
+(`k8s.object.*`, `k8s.object.label.*`) in `ResourceAttributes`.
+
+**Prerequisites:** the Log Analytics workspace used by
+`observability-logs-azure-loganalytics`, and an AKS cluster with the OIDC issuer
+and Workload Identity enabled (see that module's README).
+
+```bash
+RG="<your-resource-group>"
+LOCATION="<workspace-region>"          # DCE, DCR and workspace must share a region
+AKS_NAME="<your-aks-cluster>"
+WORKSPACE_NAME="<your-log-analytics-workspace>"
+SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+WORKSPACE_ARM_ID=$(az monitor log-analytics workspace show -g "$RG" -n "$WORKSPACE_NAME" --query id -o tsv)
+```
+
+**1. Data Collection Endpoint (DCE):**
+
+```bash
+az monitor data-collection endpoint create -g "$RG" -n openchoreo-events-dce \
+  -l "$LOCATION" --public-network-access Enabled
+DCE_ARM_ID=$(az monitor data-collection endpoint show -g "$RG" -n openchoreo-events-dce --query id -o tsv)
+DCE_LOGS_ENDPOINT=$(az monitor data-collection endpoint show -g "$RG" -n openchoreo-events-dce \
+  --query logsIngestion.endpoint -o tsv)
+```
+
+**2. Data Collection Rule (DCR)** accepting OTLP logs sent directly by a
+collector (`directDataSources`) and writing them to the workspace. It is created
+with `az rest` because `directDataSources` is newer than the
+`az monitor data-collection rule` command group:
+
+```bash
+cat > events-dcr.json <<EOF
+{
+  "location": "$LOCATION",
+  "properties": {
+    "description": "OpenChoreo Kubernetes events (OTLP) to Log Analytics",
+    "dataCollectionEndpointId": "$DCE_ARM_ID",
+    "directDataSources": {
+      "otelLogs": [
+        {
+          "name": "openchoreoEvents",
+          "streams": ["Microsoft-OTel-Logs"],
+          "enrichWithResourceAttributes": ["*"]
+        }
+      ]
+    },
+    "destinations": {
+      "logAnalytics": [
+        { "name": "workspace", "workspaceResourceId": "$WORKSPACE_ARM_ID" }
+      ]
+    },
+    "dataFlows": [
+      { "streams": ["Microsoft-OTel-Logs"], "destinations": ["workspace"] }
+    ]
+  }
+}
+EOF
+
+DCR_ARM_ID="/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RG/providers/Microsoft.Insights/dataCollectionRules/openchoreo-events-dcr"
+az rest --method put --url "https://management.azure.com${DCR_ARM_ID}?api-version=2024-03-11" \
+  --body @events-dcr.json
+DCR_IMMUTABLE_ID=$(az rest --method get --url "https://management.azure.com${DCR_ARM_ID}?api-version=2024-03-11" \
+  --query properties.immutableId -o tsv)
+```
+
+**3. Identity:** a user-assigned managed identity allowed to publish to the DCR,
+federated to the collector's ServiceAccount (`events-collector` unless
+`fullnameOverride` / `serviceAccount.name` is set):
+
+```bash
+az identity create -g "$RG" -n openchoreo-events-collector -l "$LOCATION"
+COLLECTOR_CLIENT_ID=$(az identity show -g "$RG" -n openchoreo-events-collector --query clientId -o tsv)
+COLLECTOR_PRINCIPAL_ID=$(az identity show -g "$RG" -n openchoreo-events-collector --query principalId -o tsv)
+
+az role assignment create --assignee-object-id "$COLLECTOR_PRINCIPAL_ID" \
+  --assignee-principal-type ServicePrincipal \
+  --role "Monitoring Metrics Publisher" --scope "$DCR_ARM_ID"
+
+OIDC_ISSUER=$(az aks show -g "$RG" -n "$AKS_NAME" --query oidcIssuerProfile.issuerUrl -o tsv)
+az identity federated-credential create -g "$RG" --identity-name openchoreo-events-collector \
+  -n "events-collector-$AKS_NAME" --issuer "$OIDC_ISSUER" \
+  --subject "system:serviceaccount:openchoreo-observability-plane:events-collector" \
+  --audiences api://AzureADTokenExchange
+```
+
+Each cluster that runs the collector has its own OIDC issuer, so repeat the
+federated credential for every cluster; they can all share the identity, DCE
+and DCR.
+
+**4. Install the collector:**
+
+```bash
+helm upgrade --install observability-events-otel-collector \
+  oci://ghcr.io/openchoreo/helm-charts/observability-events-otel-collector \
+  --namespace openchoreo-observability-plane --create-namespace --version 0.2.1 \
+  -f - <<EOF
+serviceAccount:
+  annotations:
+    azure.workload.identity/client-id: "$COLLECTOR_CLIENT_ID"
+collector:
+  podLabels:
+    azure.workload.identity/use: "true"
+
+# The Workload Identity webhook injects the AZURE_* variables into the pod.
+extraExtensions:
+  azure_auth:
+    workload_identity:
+      client_id: \${env:AZURE_CLIENT_ID}
+      tenant_id: \${env:AZURE_TENANT_ID}
+      federated_token_file: \${env:AZURE_FEDERATED_TOKEN_FILE}
+    scopes:
+      - https://monitor.azure.com/.default
+
+exporters:
+  otlphttp/azuremonitor:
+    logs_endpoint: "$DCE_LOGS_ENDPOINT/dataCollectionRules/$DCR_IMMUTABLE_ID/streams/Microsoft-OTLP-Logs/otlp/v1/logs"
+    auth:
+      authenticator: azure_auth
+
+pipelineExporters:
+  - otlphttp/azuremonitor
+EOF
+```
+
+The heredoc is unquoted so the shell fills in the Azure values; `\${env:...}`
+stays literal for the collector to resolve.
+
+**5. Verify.** Role assignments can take a few minutes to propagate; until then
+the exporter logs `403` errors and retries. Ingested events typically appear
+within a few minutes:
+
+```bash
+WORKSPACE_ID=$(az monitor log-analytics workspace show -g "$RG" -n "$WORKSPACE_NAME" --query customerId -o tsv)
+az monitor log-analytics query -w "$WORKSPACE_ID" --analytics-query '
+OTelLogs
+| where ScopeName == "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/k8seventsreceiver"
+| project TimeGenerated, Body, SeverityText, Attributes, ResourceAttributes
+| take 5'
+```
+
+`OTelLogs` is shared by every OTLP log source routed to the workspace; the logs
+adapter tells events apart by the k8s events receiver's `ScopeName`.
+
 > If you need a pipeline the structured values don't cover, set `configOverride` to a
 > raw collector config and it replaces the rendered one entirely.
 
@@ -270,7 +425,7 @@ no separate mechanism is needed for `${env:...}`:
 ```bash
 helm upgrade --install observability-events-otel-collector \
   oci://ghcr.io/openchoreo/helm-charts/observability-events-otel-collector \
-  --namespace openchoreo-observability-plane --version 0.2.0 \
+  --namespace openchoreo-observability-plane --version 0.2.1 \
   -f - <<'EOF'
 collector:
   extraEnv:
@@ -381,7 +536,7 @@ persistence:
 ```bash
 helm upgrade --install observability-events-otel-collector \
   oci://ghcr.io/openchoreo/helm-charts/observability-events-otel-collector \
-  --namespace openchoreo-observability-plane --version 0.2.0 --reuse-values \
+  --namespace openchoreo-observability-plane --version 0.2.1 --reuse-values \
   --set persistence.enabled=true \
   --set persistence.storageClassName=<your-storage-class>
 ```

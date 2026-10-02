@@ -21,13 +21,6 @@ import (
 // Each is independently declinable, so adopting one later does not disturb
 // the others.
 
-func (h *LogsHandler) QueryEvents(
-	_ context.Context, _ gen.QueryEventsRequestObject,
-) (gen.QueryEventsResponseObject, error) {
-	return gen.QueryEvents501JSONResponse(
-		makeError(gen.NotImplemented, errCodeNotImplemented, "events are not supported by this adapter")), nil
-}
-
 func (h *LogsHandler) QueryAuditLogs(
 	_ context.Context, _ gen.QueryAuditLogsRequestObject,
 ) (gen.QueryAuditLogsResponseObject, error) {

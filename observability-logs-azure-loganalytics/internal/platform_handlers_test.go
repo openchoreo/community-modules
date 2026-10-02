@@ -321,14 +321,6 @@ func TestUnsupportedSignalsAnswer501(t *testing.T) {
 		want func(any) (*string, bool)
 	}{
 		{
-			"events",
-			func() (any, error) { return h.QueryEvents(ctx, gen.QueryEventsRequestObject{}) },
-			func(r any) (*string, bool) {
-				v, ok := r.(gen.QueryEvents501JSONResponse)
-				return v.ErrorCode, ok
-			},
-		},
-		{
 			"audit logs",
 			func() (any, error) { return h.QueryAuditLogs(ctx, gen.QueryAuditLogsRequestObject{}) },
 			func(r any) (*string, bool) {

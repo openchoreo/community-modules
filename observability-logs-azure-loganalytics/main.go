@@ -50,8 +50,10 @@ func main() {
 	}
 
 	laClient, err := loganalytics.NewClient(cred, loganalytics.Config{
-		WorkspaceID:  cfg.WorkspaceID,
-		QueryTimeout: cfg.QueryTimeout,
+		WorkspaceID:     cfg.WorkspaceID,
+		QueryTimeout:    cfg.QueryTimeout,
+		EventsTable:     cfg.EventsTable,
+		EventsScopeName: cfg.EventsScopeName,
 	}, logger.With("component", "loganalytics"))
 	if err != nil {
 		logger.Error("failed to construct Log Analytics client", slog.Any("error", err))
@@ -66,6 +68,16 @@ func main() {
 		os.Exit(1)
 	}
 	logger.Info("Log Analytics workspace reachable", slog.String("workspaceId", cfg.WorkspaceID))
+
+	// Not fatal: OTelLogs is built in, but a custom events table appears only
+	// once events are ingested, which may be after the adapter is installed.
+	// Queries answer empty until then.
+	if err := laClient.ProbeEventsTable(bootstrapCtx); err != nil {
+		logger.Warn("events table is not queryable yet; events queries will return no events until it is",
+			slog.String("table", cfg.EventsTable),
+			slog.Any("error", err),
+		)
+	}
 
 	alertClient, err := azuremonitor.NewClient(cred, azuremonitor.Config{
 		SubscriptionID:             cfg.SubscriptionID,

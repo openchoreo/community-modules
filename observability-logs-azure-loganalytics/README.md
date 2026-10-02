@@ -4,8 +4,10 @@
 
 This module exposes Azure Log Analytics as an OpenChoreo logs backend. It
 queries `ContainerLogV2` (populated by the Azure Monitor Agent through the
-AKS Container Insights addon) and manages alert rules via Azure Monitor
-`scheduledQueryRules` with delivery through pre-existing Action Groups.
+AKS Container Insights addon), serves Kubernetes events from `OTelLogs`
+(shipped by the `observability-events-otel-collector` module), and manages
+alert rules via Azure Monitor `scheduledQueryRules` with delivery through
+pre-existing Action Groups.
 
 It targets AKS clusters with Workload Identity. Authentication uses
 `DefaultAzureCredential` against a User-Assigned Managed Identity
@@ -20,10 +22,11 @@ federated to the adapter's ServiceAccount.
 5. [Installation on AKS](#installation-on-aks)
 6. [Log alerting](#log-alerting)
 7. [Platform logs](#platform-logs)
-8. [Shared webhook secret](#shared-webhook-secret)
-9. [Troubleshooting](#troubleshooting)
-10. [Configuration reference](#configuration-reference)
-11. [Compatibility](#compatibility)
+8. [Kubernetes events](#kubernetes-events)
+9. [Shared webhook secret](#shared-webhook-secret)
+10. [Troubleshooting](#troubleshooting)
+11. [Configuration reference](#configuration-reference)
+12. [Compatibility](#compatibility)
 
 ## Architecture
 
@@ -53,17 +56,18 @@ metadata through `KubernetesMetadata.podLabels`:
   `openchoreo.dev/component-uid`, `openchoreo.dev/project-uid`,
   `openchoreo.dev/environment-uid`)
 
-| Endpoint                                         | Purpose                                                                                                                           |
-| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
-| `POST /api/v1/logs/query`                        | Runs a KQL query against `ContainerLogV2`, scoped by OpenChoreo namespace label plus optional component/project/environment UIDs. |
-| `POST /api/v1alpha1/platform-logs/query`         | Queries any pod log the observability plane collects, by raw Kubernetes coordinates. See [Platform logs](#platform-logs).         |
-| `POST /api/v1alpha1/platform-logs/filter-values` | Lists the distinct values one platform-logs filter can take, to drive the filter pickers.                                         |
-| `POST /api/v1alpha1/alerts/rules`                | Creates an Azure Monitor scheduled query rule wired to the configured Action Group.                                               |
-| `GET /api/v1alpha1/alerts/rules/{ruleName}`      | Looks the rule up by its `openchoreo-rule-name` tag.                                                                              |
-| `PUT /api/v1alpha1/alerts/rules/{ruleName}`      | Updates the rule (CreateOrUpdate semantics).                                                                                      |
-| `DELETE /api/v1alpha1/alerts/rules/{ruleName}`   | Deletes the rule.                                                                                                                 |
-| `POST /api/v1alpha1/alerts/webhook`              | Receives Common Alert Schema payloads from the Action Group and forwards a normalised alert to the Observer.                      |
-| `GET /health`                                    | Readiness/liveness check.                                                                                                         |
+| Endpoint                                         | Purpose                                                                                                                                                            |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `POST /api/v1/logs/query`                        | Runs a KQL query against `ContainerLogV2`, scoped by OpenChoreo namespace label plus optional component/project/environment UIDs.                                  |
+| `POST /api/v1/events/query`                      | Queries Kubernetes events in `OTelLogs`, scoped to a component or workflow run, or swept across namespaces by reason. See [Kubernetes events](#kubernetes-events). |
+| `POST /api/v1alpha1/platform-logs/query`         | Queries any pod log the observability plane collects, by raw Kubernetes coordinates. See [Platform logs](#platform-logs).                                          |
+| `POST /api/v1alpha1/platform-logs/filter-values` | Lists the distinct values one platform-logs filter can take, to drive the filter pickers.                                                                          |
+| `POST /api/v1alpha1/alerts/rules`                | Creates an Azure Monitor scheduled query rule wired to the configured Action Group.                                                                                |
+| `GET /api/v1alpha1/alerts/rules/{ruleName}`      | Looks the rule up by its `openchoreo-rule-name` tag.                                                                                                               |
+| `PUT /api/v1alpha1/alerts/rules/{ruleName}`      | Updates the rule (CreateOrUpdate semantics).                                                                                                                       |
+| `DELETE /api/v1alpha1/alerts/rules/{ruleName}`   | Deletes the rule.                                                                                                                                                  |
+| `POST /api/v1alpha1/alerts/webhook`              | Receives Common Alert Schema payloads from the Action Group and forwards a normalised alert to the Observer.                                                       |
+| `GET /health`                                    | Readiness/liveness check.                                                                                                                                          |
 
 ## Choose a deployment topology
 
@@ -434,6 +438,65 @@ arrives as `imageRepo` = `ghcr.io`, `image` = `openchoreo/controller` and
 collected rather than failing — so keep all four image fields in the
 ConfigMap if you want the full reference the other backends return.
 
+## Kubernetes events
+
+Kubernetes events are shipped to the workspace by the
+[`observability-events-otel-collector`](../observability-events-otel-collector/README.md#azure-log-analytics-native-otlp-ingestion)
+module, which enriches each event with the labels of the object it
+involves and sends it over Azure Monitor's native OTLP ingestion into the
+built-in `OTelLogs` table. Container Insights' own `KubeEvents` table is not
+used: it does not carry the object's labels, so its events cannot be tied to
+an OpenChoreo component. Follow that module's Azure section to create the
+Data Collection Endpoint, Data Collection Rule and collector identity; this
+chart needs no extra values and the adapter's identity no extra role, since
+**Log Analytics Reader** on the workspace already covers `OTelLogs`.
+
+`OTelLogs` is shared by every OTLP log source routed to the workspace, so the
+adapter selects events by the instrumentation scope of the k8s events
+receiver (`adapter.events.scopeName`). A record maps onto the adapter
+contract as follows:
+
+| Event field                  | `OTelLogs` source                                                                                          |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `timestamp`                  | `TimeGenerated`                                                                                            |
+| `message`                    | `Body`                                                                                                     |
+| `type`                       | `SeverityText`                                                                                             |
+| `reason`                     | `Attributes["k8s.event.reason"]`                                                                           |
+| `metadata.objectNamespace`   | `Attributes["k8s.namespace.name"]`                                                                         |
+| `metadata.objectKind`/`Name` | `ResourceAttributes["k8s.object.kind"]` / `["k8s.object.name"]`                                            |
+| OpenChoreo names and UIDs    | `ResourceAttributes["k8s.object.label.openchoreo.dev/<namespace\|component\|project\|environment>[-uid]"]` |
+
+Queries follow the adapter contract:
+
+- **Component scope** matches the `openchoreo.dev/namespace` label and,
+  when given, the project, component and environment UID labels.
+- **Workflow scope** matches events in `workflows-<namespace>` whose object
+  name starts with the workflow run name, and contains the task name when
+  one is given.
+- **Unscoped sweeps** (no `searchScope`, `reasons` required) are supported and
+  filter by reason alone across every namespace. A request with neither a
+  scope nor reasons is rejected with `400`.
+- The window is `[startTime, endTime)`. A page is never cut between events
+  sharing one timestamp: it is extended to include the whole group, so it can
+  exceed `limit`. `total` is the exact number of matching events in the
+  window, so `total` greater than the number of events returned means the
+  read stopped short.
+- Each query is one round trip to Log Analytics, which allows only five
+  concurrent queries per identity.
+
+`OTelLogs` is a built-in table, so events queries simply return no events
+until the collector ships its first one. If `adapter.events.table` names a
+custom table that does not exist yet, the adapter logs a warning at boot and
+answers events queries with no events rather than an error. Confirm events
+are arriving with:
+
+```kusto
+OTelLogs
+| where ScopeName == "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/k8seventsreceiver"
+| project TimeGenerated, Body, SeverityText, Attributes, ResourceAttributes
+| take 5
+```
+
 ## Shared webhook secret
 
 When `adapter.webhookAuth.enabled` is `true` (the default), the adapter
@@ -583,6 +646,22 @@ ContainerLogV2
 | summarize count() by _ResourceId
 ```
 
+### Events queries return no events
+
+1. Run the verification query in [Kubernetes events](#kubernetes-events). If
+   it returns no rows, nothing has been ingested yet: check the
+   events collector's logs for exporter `401`/`403` errors (the identity's
+   **Monitoring Metrics Publisher** assignment on the DCR can take a few
+   minutes to propagate) or `404` errors (wrong DCE host, DCR immutable ID or
+   stream in the `logs_endpoint` URL).
+2. If `OTelLogs` has rows but none match the scope name, the events were
+   shipped by a different receiver or through a custom DCR transformation;
+   set `adapter.events.scopeName` (and `adapter.events.table` for a custom
+   table) to match.
+3. With a custom `adapter.events.table`, look for
+   `events table does not exist in the workspace yet` in the adapter logs: the
+   adapter answers with no events until that table is created.
+
 ## Configuration reference
 
 | Value                                           | Default                                                                          | Description                                                                                                                                                                                                            |
@@ -603,6 +682,8 @@ ContainerLogV2
 | `adapter.logLevel`                              | `INFO`                                                                           | `DEBUG` \| `INFO` \| `WARN` \| `ERROR`.                                                                                                                                                                                |
 | `adapter.alertRuleDefaults.evaluationFrequency` | `PT5M`                                                                           | ISO 8601 duration used when an alert rule request omits one.                                                                                                                                                           |
 | `adapter.alertRuleDefaults.windowSize`          | `PT5M`                                                                           | ISO 8601 duration used when an alert rule request omits one.                                                                                                                                                           |
+| `adapter.events.table`                          | `OTelLogs`                                                                       | Table Kubernetes events are read from. Must be a plain table name.                                                                                                                                                     |
+| `adapter.events.scopeName`                      | k8s events receiver scope                                                        | Instrumentation scope that marks a record in `adapter.events.table` as a Kubernetes event.                                                                                                                             |
 | `adapter.serviceAccount.annotations`            | `{}`                                                                             | Annotations applied to the adapter ServiceAccount. Use `azure.workload.identity/client-id: <uami-client-id>` to bind a Managed Identity.                                                                               |
 | `adapter.webhookAuth.enabled`                   | `true`                                                                           | Reject webhook calls without the shared secret.                                                                                                                                                                        |
 | `adapter.webhookAuth.sharedSecret`              | `""`                                                                             | Inline secret value. Chart creates a Secret; min 16 characters.                                                                                                                                                        |

@@ -37,6 +37,9 @@ exporters:
 extensions:
   # Supplies basic-auth credentials to the opensearch exporter's HTTP client.
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/basicauthextension v0.153.0
+  # Attaches a Microsoft Entra bearer token (Workload Identity, managed identity or service
+  # principal) to the otlphttp exporter for Azure Monitor native OTLP ingestion.
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/azureauthextension v0.153.0
   # Persists the receiver's watch resourceVersion so a pod restart doesn't re-emit seen events.
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/storage/filestorage v0.153.0
   # Liveness/readiness endpoint for Kubernetes probes.

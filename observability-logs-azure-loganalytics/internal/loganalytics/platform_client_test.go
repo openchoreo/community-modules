@@ -17,13 +17,15 @@ import (
 
 // stubAPI records the query it was asked to run and replays a canned response.
 type stubAPI struct {
-	resp    azlogs.QueryWorkspaceResponse
-	err     error
-	lastKQL string
+	resp     azlogs.QueryWorkspaceResponse
+	err      error
+	lastKQL  string
+	lastBody azlogs.QueryBody
 }
 
 func (s *stubAPI) QueryWorkspace(_ context.Context, _ string, body azlogs.QueryBody,
 	_ *azlogs.QueryWorkspaceOptions) (azlogs.QueryWorkspaceResponse, error) {
+	s.lastBody = body
 	if body.Query != nil {
 		s.lastKQL = *body.Query
 	}

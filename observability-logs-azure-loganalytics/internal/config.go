@@ -8,9 +8,17 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"regexp"
 	"strings"
 	"time"
+
+	"github.com/openchoreo/community-modules/observability-logs-azure-loganalytics/internal/loganalytics"
 )
+
+// kqlTableName matches a Log Analytics table name. EVENTS_TABLE is written
+// into queries as an identifier, which no quoting can make safe, so anything
+// else is refused at startup.
+var kqlTableName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 // Config holds the runtime configuration for the adapter, populated
 // from environment variables.
@@ -66,6 +74,14 @@ type Config struct {
 	// DefaultWindowSize is the ISO 8601 duration used when a request
 	// omits one. Default PT5M.
 	DefaultWindowSize string
+
+	// EventsTable is the table Kubernetes events are read from. Default
+	// OTelLogs, where Azure Monitor's native OTLP ingestion writes them.
+	EventsTable string
+
+	// EventsScopeName is the instrumentation scope marking a record in
+	// EventsTable as a Kubernetes event. Default: the k8s events receiver's.
+	EventsScopeName string
 }
 
 // LoadConfig reads environment variables and returns a populated Config
@@ -78,10 +94,16 @@ func LoadConfig() (*Config, error) {
 		QueryTimeout:               30 * time.Second,
 		DefaultEvaluationFrequency: getEnvDefault("DEFAULT_EVALUATION_FREQUENCY", "PT5M"),
 		DefaultWindowSize:          getEnvDefault("DEFAULT_WINDOW_SIZE", "PT5M"),
+		EventsTable:                getEnvDefault("EVENTS_TABLE", loganalytics.DefaultEventsTable),
+		EventsScopeName:            getEnvDefault("EVENTS_SCOPE_NAME", loganalytics.DefaultEventsScopeName),
 	}
 
 	if cfg.WorkspaceID == "" {
 		return nil, errors.New("LOG_ANALYTICS_WORKSPACE_ID is required")
+	}
+
+	if !kqlTableName.MatchString(cfg.EventsTable) {
+		return nil, fmt.Errorf("EVENTS_TABLE %q is not a valid table name", cfg.EventsTable)
 	}
 
 	if v := strings.TrimSpace(os.Getenv("QUERY_TIMEOUT")); v != "" {

@@ -51,6 +51,14 @@ adapter:
   # (observer-internal:8081), not the public gateway-facing service (:8080).
   observerUrl: "http://observer-internal.openchoreo-observability-plane.svc.cluster.local:8081"
 
+  # Kubernetes events, shipped by the observability-events-otel-collector
+  # module over Azure Monitor native OTLP ingestion. The adapter reads them from
+  # `table`, selecting records by the k8s events receiver's instrumentation
+  # scope. A custom table that does not exist yet yields no events.
+  events:
+    table: "OTelLogs"
+    scopeName: "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/k8seventsreceiver"
+
   # Default evaluation frequency + window applied when an alert rule request
   # omits one. ISO 8601 durations.
   alertRuleDefaults:

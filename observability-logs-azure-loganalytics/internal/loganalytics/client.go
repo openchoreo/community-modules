@@ -22,15 +22,26 @@ type QueryAPI interface {
 }
 
 type Client struct {
-	api          QueryAPI
-	workspaceID  string
-	queryTimeout time.Duration
-	logger       *slog.Logger
+	api             QueryAPI
+	workspaceID     string
+	queryTimeout    time.Duration
+	eventsTable     string
+	eventsScopeName string
+	logger          *slog.Logger
 }
 
 type Config struct {
 	WorkspaceID  string
 	QueryTimeout time.Duration
+
+	// EventsTable is the table Kubernetes events are read from. It is written
+	// into queries as an identifier, so callers must validate it. Default
+	// DefaultEventsTable.
+	EventsTable string
+
+	// EventsScopeName is the instrumentation scope that marks a record in
+	// EventsTable as a Kubernetes event. Default DefaultEventsScopeName.
+	EventsScopeName string
 }
 
 func NewClient(cred azcore.TokenCredential, cfg Config, logger *slog.Logger) (*Client, error) {
@@ -49,16 +60,24 @@ func NewClientWithQueryAPI(api QueryAPI, cfg Config, logger *slog.Logger) *Clien
 	if cfg.QueryTimeout == 0 {
 		cfg.QueryTimeout = 30 * time.Second
 	}
+	if cfg.EventsTable == "" {
+		cfg.EventsTable = DefaultEventsTable
+	}
+	if cfg.EventsScopeName == "" {
+		cfg.EventsScopeName = DefaultEventsScopeName
+	}
 	if logger == nil {
 		// The query paths log on degraded results, and an exported constructor
 		// makes a nil logger easy to pass by accident.
 		logger = slog.New(slog.DiscardHandler)
 	}
 	return &Client{
-		api:          api,
-		workspaceID:  cfg.WorkspaceID,
-		queryTimeout: cfg.QueryTimeout,
-		logger:       logger,
+		api:             api,
+		workspaceID:     cfg.WorkspaceID,
+		queryTimeout:    cfg.QueryTimeout,
+		eventsTable:     cfg.EventsTable,
+		eventsScopeName: cfg.EventsScopeName,
+		logger:          logger,
 	}
 }
 

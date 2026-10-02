@@ -1,0 +1,27 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+{{- if .Values.adapter.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: logs-adapter-dynatrace
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: logs-adapter-dynatrace
+data:
+  SERVER_PORT: "9098"
+  LOG_LEVEL: {{ .Values.adapter.logLevel | quote }}
+  DT_PLATFORM_URL: {{ trimSuffix "/" .Values.dynatrace.platformUrl | quote }}
+  DT_AUTH_MODE: {{ .Values.adapter.authMode | quote }}
+  DT_QUERY_TIMEOUT: {{ .Values.adapter.queryTimeout | quote }}
+  DT_ALLOW_INSECURE_HTTP: {{ .Values.adapter.allowInsecureHttp | quote }}
+  DT_CONTAINER_LOGS_SOURCE: {{ .Values.dynatrace.containerLogsSource | quote }}
+  DT_AUDIT_LOGS_SOURCE: {{ .Values.dynatrace.auditLogsSource | quote }}
+  DT_AUDIT_BUCKET: {{ .Values.auditLogs.bucket | quote }}
+{{- if eq .Values.adapter.authMode "oauth" }}
+  DT_OAUTH_TOKEN_URL: {{ .Values.adapter.oauth.tokenUrl | quote }}
+  DT_OAUTH_SCOPE: {{ .Values.adapter.oauth.scope | quote }}
+  DT_OAUTH_RESOURCE: {{ .Values.adapter.oauth.resource | quote }}
+{{- end }}
+{{- end }}

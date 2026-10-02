@@ -38,7 +38,7 @@ opentelemetry-collector:
     # The upstream opentelemetry-collector-contrib image bundles
     # kubeletstats and the awsemf exporter we need.
     repository: otel/opentelemetry-collector-contrib
-    tag: 0.149.0
+    tag: 0.161.0
   serviceAccount:
     create: true
     # Annotations applied to the OpenTelemetry collector ServiceAccount. Use this to

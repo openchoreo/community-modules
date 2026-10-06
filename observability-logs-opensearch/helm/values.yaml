@@ -317,7 +317,7 @@ adapter:
   observerUrl: "http://observer-internal.openchoreo-observability-plane:8081"
   openSearchSecretName: ""
   image:
-    repository: "ghcr.io/openchoreo/observability-logs-opensearch-adapter"
+    repository: "cr.openchoreo.dev/openchoreo/observability-logs-opensearch-adapter"
     tag: ""
   resources:
     limits:
@@ -330,7 +330,7 @@ adapter:
 openSearchSetup:
   enabled: true
   image:
-    repository: "ghcr.io/openchoreo/observability-logs-opensearch-setup"
+    repository: "cr.openchoreo.dev/openchoreo/observability-logs-opensearch-setup"
   openSearchSecretName: ""
 
   alertingWebhookUrl: "http://observer-internal.openchoreo-observability-plane:8081/api/v1alpha1/alerts/webhook"

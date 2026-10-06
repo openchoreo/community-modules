@@ -17,7 +17,7 @@ The chart deploys OpenCost and the cost insights adapter into the observability 
 
 ```bash
 helm upgrade --install finops-opencost \
-  oci://ghcr.io/openchoreo/helm-charts/finops-opencost \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/finops-opencost \
   --create-namespace \
   --namespace openchoreo-observability-plane \
   --version 0.0.0-latest-dev

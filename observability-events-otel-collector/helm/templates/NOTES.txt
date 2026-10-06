@@ -19,7 +19,7 @@ Watch it work:
    overriding `exporters` and `pipelineExporters`. See the module README for
    ready-to-use OpenSearch / OpenObserve / CloudWatch snippets, for example:
 
-     helm upgrade {{ .Release.Name }} oci://ghcr.io/openchoreo/helm-charts/{{ .Chart.Name }} \
+     helm upgrade {{ .Release.Name }} oci://cr.openchoreo.dev/openchoreo/helm-charts/{{ .Chart.Name }} \
        --namespace {{ .Release.Namespace }} --reuse-values \
        --set-json 'exporters={"otlphttp":{"endpoint":"https://<backend>/api/<org>"}}' \
        --set-json 'pipelineExporters=["otlphttp"]'

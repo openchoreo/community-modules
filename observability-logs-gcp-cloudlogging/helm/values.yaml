@@ -20,7 +20,7 @@ adapter:
   enabled: true
   replicas: 1
   image:
-    repository: "ghcr.io/openchoreo/observability-logs-gcp-cloudlogging-adapter"
+    repository: "cr.openchoreo.dev/openchoreo/observability-logs-gcp-cloudlogging-adapter"
     tag: ""
     pullPolicy: IfNotPresent
   service:

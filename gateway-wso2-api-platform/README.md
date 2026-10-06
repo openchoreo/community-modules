@@ -568,7 +568,7 @@ Apply it with a Helm upgrade of the data plane chart (use the same chart version
 
 ```bash
 helm upgrade openchoreo-data-plane \
-  oci://ghcr.io/openchoreo/helm-charts/openchoreo-data-plane \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/openchoreo-data-plane \
   --version 0.0.0-latest-dev \
   --namespace openchoreo-data-plane \
   --reuse-values \
@@ -656,7 +656,7 @@ spec:
       port: 9090
       visibility: [external]
   container:
-    image: ghcr.io/openchoreo/samples/greeter-service:latest
+    image: cr.openchoreo.dev/openchoreo/samples/greeter-service:latest
     args: ["--port", "9090"]
 ```
 

@@ -423,7 +423,7 @@ Deploy the adapter and OpenTelemetry collector in one cluster:
 
 ```bash
 helm upgrade --install observability-tracing-aws-xray \
-  oci://ghcr.io/openchoreo/helm-charts/observability-tracing-aws-xray \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-tracing-aws-xray \
   --create-namespace \
   --namespace "$NS" \
   --version 0.3.0 \
@@ -436,7 +436,7 @@ Deploy only the adapter in the observability plane cluster:
 
 ```bash
 helm upgrade --install observability-tracing-aws-xray \
-  oci://ghcr.io/openchoreo/helm-charts/observability-tracing-aws-xray \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-tracing-aws-xray \
   --create-namespace \
   --namespace "$NS" \
   --version 0.3.0 \
@@ -450,7 +450,7 @@ Deploy only the OpenTelemetry collector in each workload cluster:
 
 ```bash
 helm upgrade --install observability-tracing-aws-xray \
-  oci://ghcr.io/openchoreo/helm-charts/observability-tracing-aws-xray \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-tracing-aws-xray \
   --create-namespace \
   --namespace "$NS" \
   --version 0.3.0 \
@@ -696,7 +696,7 @@ Deploy the adapter and OpenTelemetry collector in one cluster:
 
 ```bash
 helm upgrade --install observability-tracing-aws-xray \
-  oci://ghcr.io/openchoreo/helm-charts/observability-tracing-aws-xray \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-tracing-aws-xray \
   --create-namespace \
   --namespace "$NS" \
   --version 0.3.0 \
@@ -715,7 +715,7 @@ Deploy only the adapter in the observability plane cluster:
 
 ```bash
 helm upgrade --install observability-tracing-aws-xray \
-  oci://ghcr.io/openchoreo/helm-charts/observability-tracing-aws-xray \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-tracing-aws-xray \
   --create-namespace \
   --namespace "$NS" \
   --version 0.3.0 \
@@ -733,7 +733,7 @@ Deploy only the OpenTelemetry collector in each workload cluster:
 
 ```bash
 helm upgrade --install observability-tracing-aws-xray \
-  oci://ghcr.io/openchoreo/helm-charts/observability-tracing-aws-xray \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-tracing-aws-xray \
   --create-namespace \
   --namespace "$NS" \
   --version 0.3.0 \
@@ -793,7 +793,7 @@ kubectl -n "$NS" logs deployment/opentelemetry-collector --tail=200
 | `opentelemetry-collector.serviceAccount.annotations` | `{}` | ServiceAccount annotations for IRSA or other identity integrations. |
 | `opentelemetry-collector.extraEnvsFrom` | `[{configMapRef: {name: tracing-aws-xray-collector-env}}]` | Extra `envFrom` entries for the collector. The default ConfigMap supplies `AWS_REGION`. Append the static AWS credentials Secret at index `1` on non-EKS clusters. |
 | `adapter.enabled` | `true` | Deploys the X-Ray Tracing Adapter Deployment and Service. Set to `false` on data-plane clusters in a multi-cluster topology. |
-| `adapter.image.repository` | `ghcr.io/openchoreo/observability-tracing-aws-xray-adapter` | Adapter image repository. |
+| `adapter.image.repository` | `cr.openchoreo.dev/openchoreo/observability-tracing-aws-xray-adapter` | Adapter image repository. |
 | `adapter.image.tag` | `""` | Adapter image tag. Empty defaults to chart `appVersion`. |
 | `adapter.image.pullPolicy` | `IfNotPresent` | Adapter image pull policy. |
 | `adapter.service.port` | `9100` | Adapter HTTP port. |

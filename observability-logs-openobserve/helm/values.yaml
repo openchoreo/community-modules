@@ -202,7 +202,7 @@ adapter:
     passwordKey: "ZO_ROOT_USER_PASSWORD"
 
   image:
-    repository: "ghcr.io/openchoreo/observability-logs-openobserve-adapter"
+    repository: "cr.openchoreo.dev/openchoreo/observability-logs-openobserve-adapter"
     tag: "" # Defaults to Chart.AppVersion via the template
   resources:
     limits:
@@ -219,7 +219,7 @@ openObserveSetup:
   auditLogsRetentionDays: 365
 
   image:
-    repository: "ghcr.io/openchoreo/observability-logs-openobserve-setup"
+    repository: "cr.openchoreo.dev/openchoreo/observability-logs-openobserve-setup"
     tag: ""
 
   # Credentials to connect to OpenObserve

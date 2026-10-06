@@ -323,7 +323,7 @@ kubectl get gatewayclass apisix
 Install or upgrade the OpenChoreo data plane Helm chart with the APISIX `gatewayClassName`:
 
 ```bash
-helm upgrade openchoreo-data-plane oci://ghcr.io/openchoreo/helm-charts/openchoreo-data-plane \
+helm upgrade openchoreo-data-plane oci://cr.openchoreo.dev/openchoreo/helm-charts/openchoreo-data-plane \
   --version 0.0.0-latest-dev --namespace openchoreo-data-plane \
   --set gateway.gatewayClassName=apisix \
   --set gateway.httpPort=19080 \

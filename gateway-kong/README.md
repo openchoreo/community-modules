@@ -259,7 +259,7 @@ kubectl get gatewayclass kong
 Install or upgrade the OpenChoreo data plane Helm chart with the Kong `gatewayClassName`:
 
 ```bash
-helm upgrade openchoreo-data-plane oci://ghcr.io/openchoreo/helm-charts/openchoreo-data-plane \
+helm upgrade openchoreo-data-plane oci://cr.openchoreo.dev/openchoreo/helm-charts/openchoreo-data-plane \
   --version 0.0.0-latest-dev --namespace openchoreo-data-plane \
   --set gateway.gatewayClassName=kong \
   --set gateway.httpPort=19080 --reuse-values

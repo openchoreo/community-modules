@@ -224,7 +224,7 @@ WEBHOOK_TOKEN="<your-webhook-shared-secret>"
 
 ```bash
 helm upgrade --install observability-logs-gcp-cloudlogging \
-  oci://ghcr.io/openchoreo/helm-charts/observability-logs-gcp-cloudlogging \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-logs-gcp-cloudlogging \
   --namespace openchoreo-observability-plane --create-namespace \
   --version <chart-version> \
   --set gcp.projectId="$PROJECT_ID" \
@@ -452,7 +452,7 @@ example a rule created out-of-band rather than through the CR).
 | `notificationChannel.id` | `""` | Resource name of a pre-existing `webhook_basicauth` notification channel pointed at the adapter. Empty disables alert delivery. |
 | `adapter.enabled` | `true` | Toggle the adapter Deployment. |
 | `adapter.replicas` | `1` | Adapter replica count. |
-| `adapter.image.repository` | `ghcr.io/openchoreo/observability-logs-gcp-cloudlogging-adapter` | Adapter container image. |
+| `adapter.image.repository` | `cr.openchoreo.dev/openchoreo/observability-logs-gcp-cloudlogging-adapter` | Adapter container image. |
 | `adapter.image.tag` | Chart `appVersion` | Image tag. |
 | `adapter.image.pullPolicy` | `IfNotPresent` | Image pull policy. |
 | `adapter.service.port` | `9098` | HTTP listener + Service port. Must match the Observer's `logs.adapter.url`. |

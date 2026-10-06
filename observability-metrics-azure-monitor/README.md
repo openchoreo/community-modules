@@ -252,7 +252,7 @@ webhook through the observability-plane gateway.
 
 ```bash
 helm upgrade --install metrics-adapter-azure-monitor \
-  oci://ghcr.io/openchoreo/helm-charts/observability-metrics-azure-monitor \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-metrics-azure-monitor \
   --namespace openchoreo-observability-plane --create-namespace \
   --version 0.1.1 \
   --set region=eastus2 \

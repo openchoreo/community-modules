@@ -120,7 +120,7 @@ Install the chart into the observability plane cluster/namespace. This deploys b
 
 ```bash
 helm upgrade --install observability-tracing-gcp-cloudtrace \
-  oci://ghcr.io/openchoreo/helm-charts/observability-tracing-gcp-cloudtrace \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-tracing-gcp-cloudtrace \
   --create-namespace \
   --namespace openchoreo-observability-plane \
   --version 0.1.0 \
@@ -141,7 +141,7 @@ This cluster runs the adapter that serves Observer queries. The collector is dis
 
 ```bash
 helm upgrade --install observability-tracing-gcp-cloudtrace \
-  oci://ghcr.io/openchoreo/helm-charts/observability-tracing-gcp-cloudtrace \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-tracing-gcp-cloudtrace \
   --create-namespace \
   --namespace openchoreo-observability-plane \
   --version 0.1.0 \
@@ -156,7 +156,7 @@ Install the chart in each data-plane cluster. The collector receives OTLP from i
 
 ```bash
 helm upgrade --install observability-tracing-gcp-cloudtrace \
-  oci://ghcr.io/openchoreo/helm-charts/observability-tracing-gcp-cloudtrace \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-tracing-gcp-cloudtrace \
   --create-namespace \
   --namespace openchoreo-observability-plane \
   --version 0.1.0 \

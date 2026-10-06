@@ -148,7 +148,7 @@ Install the chart into the observability plane cluster/namespace. This deploys b
 
 ```bash
 helm upgrade --install observability-tracing-azure-appinsights \
-  oci://ghcr.io/openchoreo/helm-charts/observability-tracing-azure-appinsights \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-tracing-azure-appinsights \
   --create-namespace \
   --namespace openchoreo-observability-plane \
   --version 0.1.2 \
@@ -170,7 +170,7 @@ This cluster runs the adapter that serves Observer queries. The collector is dis
 
 ```bash
 helm upgrade --install observability-tracing-azure-appinsights \
-  oci://ghcr.io/openchoreo/helm-charts/observability-tracing-azure-appinsights \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-tracing-azure-appinsights \
   --create-namespace \
   --namespace openchoreo-observability-plane \
   --version 0.1.2 \
@@ -185,7 +185,7 @@ Install the chart in each data-plane cluster. The collector receives OTLP from i
 
 ```bash
 helm upgrade --install observability-tracing-azure-appinsights \
-  oci://ghcr.io/openchoreo/helm-charts/observability-tracing-azure-appinsights \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-tracing-azure-appinsights \
   --create-namespace \
   --namespace openchoreo-observability-plane \
   --version 0.1.2 \

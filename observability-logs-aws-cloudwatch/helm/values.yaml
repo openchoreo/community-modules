@@ -253,7 +253,7 @@ amazon-cloudwatch-observability:
 setup:
   enabled: true
   image:
-    repository: "ghcr.io/openchoreo/observability-logs-aws-cloudwatch-setup"
+    repository: "cr.openchoreo.dev/openchoreo/observability-logs-aws-cloudwatch-setup"
     tag: ""
     pullPolicy: IfNotPresent
   resources:
@@ -271,7 +271,7 @@ adapter:
   enabled: true
   replicas: 1
   image:
-    repository: "ghcr.io/openchoreo/observability-logs-aws-cloudwatch-adapter"
+    repository: "cr.openchoreo.dev/openchoreo/observability-logs-aws-cloudwatch-adapter"
     tag: ""
     pullPolicy: IfNotPresent
   service:

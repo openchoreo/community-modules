@@ -23,7 +23,7 @@ collector:
   replicaCount: 1
 
   image:
-    repository: ghcr.io/openchoreo/observability-events-otel-collector
+    repository: cr.openchoreo.dev/openchoreo/observability-events-otel-collector
     tag: "" # defaults to .Chart.AppVersion
     pullPolicy: IfNotPresent
   imagePullSecrets: []

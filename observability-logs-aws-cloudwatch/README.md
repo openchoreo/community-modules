@@ -560,7 +560,7 @@ Deploy the adapter, CloudWatch Agent, Fluent Bit, and setup Job in one cluster:
 
 ```bash
 helm upgrade --install observability-logs-aws-cloudwatch \
-  oci://ghcr.io/openchoreo/helm-charts/observability-logs-aws-cloudwatch \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-logs-aws-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
   --version 0.3.0 \
@@ -575,7 +575,7 @@ Deploy only the adapter in the observability plane cluster:
 
 ```bash
 helm upgrade --install observability-logs-aws-cloudwatch \
-  oci://ghcr.io/openchoreo/helm-charts/observability-logs-aws-cloudwatch \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-logs-aws-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
   --version 0.3.0 \
@@ -592,7 +592,7 @@ Deploy only the CloudWatch Agent, Fluent Bit, and setup Job in each workload clu
 
 ```bash
 helm upgrade --install observability-logs-aws-cloudwatch \
-  oci://ghcr.io/openchoreo/helm-charts/observability-logs-aws-cloudwatch \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-logs-aws-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
   --version 0.3.0 \
@@ -751,7 +751,7 @@ kubectl -n "$NS" get deployment/events-collector >/dev/null 2>&1 && \
 # Re-trigger the setup Helm hook (it ran once at install time)
 kubectl -n "$NS" delete job cloudwatch-setup-logs --ignore-not-found
 helm upgrade observability-logs-aws-cloudwatch \
-  oci://ghcr.io/openchoreo/helm-charts/observability-logs-aws-cloudwatch \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-logs-aws-cloudwatch \
   --namespace "$NS" --version 0.3.0 --reuse-values
 ```
 
@@ -773,7 +773,7 @@ kubectl -n "$NS" get deployment/events-collector >/dev/null 2>&1 && \
 
 kubectl -n "$NS" delete job cloudwatch-setup-logs --ignore-not-found
 helm upgrade observability-logs-aws-cloudwatch \
-  oci://ghcr.io/openchoreo/helm-charts/observability-logs-aws-cloudwatch \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-logs-aws-cloudwatch \
   --namespace "$NS" --version 0.3.0 --reuse-values
 ```
 
@@ -939,7 +939,7 @@ Deploy the adapter, CloudWatch Agent, Fluent Bit, and setup Job in one cluster:
 
 ```bash
 helm upgrade --install observability-logs-aws-cloudwatch \
-  oci://ghcr.io/openchoreo/helm-charts/observability-logs-aws-cloudwatch \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-logs-aws-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
   --version 0.3.0 \
@@ -967,7 +967,7 @@ Deploy only the adapter in the observability plane cluster:
 
 ```bash
 helm upgrade --install observability-logs-aws-cloudwatch \
-  oci://ghcr.io/openchoreo/helm-charts/observability-logs-aws-cloudwatch \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-logs-aws-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
   --version 0.3.0 \
@@ -988,7 +988,7 @@ Deploy only the CloudWatch Agent, Fluent Bit, and setup Job in each workload clu
 
 ```bash
 helm upgrade --install observability-logs-aws-cloudwatch \
-  oci://ghcr.io/openchoreo/helm-charts/observability-logs-aws-cloudwatch \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-logs-aws-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
   --version 0.3.0 \
@@ -1308,7 +1308,7 @@ kubectl -n "$NS" delete job cloudwatch-setup-logs --ignore-not-found
 
 # 2. Re-fire the post-upgrade hook.
 helm upgrade observability-logs-aws-cloudwatch \
-  oci://ghcr.io/openchoreo/helm-charts/observability-logs-aws-cloudwatch \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-logs-aws-cloudwatch \
   --namespace "$NS" --version 0.3.0 --reuse-values
 
 # 3. Watch the new Job complete.

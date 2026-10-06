@@ -63,7 +63,7 @@ Install this module in your OpenChoreo cluster using:
 
 ```bash
 helm upgrade --install observability-tracing-openobserve \
-  oci://ghcr.io/openchoreo/helm-charts/observability-tracing-openobserve \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-tracing-openobserve \
   --create-namespace \
   --namespace openchoreo-observability-plane \
   --version 0.0.0-latest-dev
@@ -73,7 +73,7 @@ To switch to HA mode, disable the standalone chart and enable the distributed ch
 
 ```bash
 helm upgrade --install observability-tracing-openobserve \
-  oci://ghcr.io/openchoreo/helm-charts/observability-tracing-openobserve \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-tracing-openobserve \
   --namespace openchoreo-observability-plane \
   --version 0.0.0-latest-dev \
   --reuse-values \
@@ -87,7 +87,7 @@ Refer to the [openobserve Helm chart documentation](https://github.com/openobser
 >
 > ```bash
 > helm upgrade --install observability-tracing-openobserve \
->  oci://ghcr.io/openchoreo/helm-charts/observability-tracing-openobserve \
+>  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-tracing-openobserve \
 >  --create-namespace \
 >  --namespace openchoreo-observability-plane \
 >  --version 0.0.0-latest-dev \
@@ -127,7 +127,7 @@ remote exporters will target, so the receiver's `HTTPRoute` is created on `gatew
 
 ```bash
 helm upgrade --install observability-tracing-openobserve \
-  oci://ghcr.io/openchoreo/helm-charts/observability-tracing-openobserve \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-tracing-openobserve \
   --create-namespace \
   --namespace openchoreo-observability-plane \
   --version 0.0.0-latest-dev \
@@ -151,7 +151,7 @@ differs from the gateway hostname.
 
 ```bash
 helm upgrade --install observability-tracing-openobserve \
-  oci://ghcr.io/openchoreo/helm-charts/observability-tracing-openobserve \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-tracing-openobserve \
   --create-namespace \
   --namespace openchoreo-observability-plane \
   --version 0.0.0-latest-dev \

@@ -284,7 +284,7 @@ WEBHOOK_TOKEN="<your-webhook-shared-secret>"
 
 ```bash
 helm upgrade --install observability-logs-azure-loganalytics \
-  oci://ghcr.io/openchoreo/helm-charts/observability-logs-azure-loganalytics \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-logs-azure-loganalytics \
   --namespace openchoreo-observability-plane --create-namespace \
   --version 0.1.3 \
   --set azure.subscriptionId="$AZURE_SUBSCRIPTION_ID" \
@@ -595,7 +595,7 @@ ContainerLogV2
 | `actionGroup.id`                                | Required                                                                         | ARM ID of a pre-existing Action Group with a webhook receiver pointed at the adapter.                                                                                                                                  |
 | `adapter.enabled`                               | `true`                                                                           | Toggle the adapter Deployment.                                                                                                                                                                                         |
 | `adapter.replicas`                              | `1`                                                                              | Adapter replica count.                                                                                                                                                                                                 |
-| `adapter.image.repository`                      | `ghcr.io/openchoreo/observability-logs-azure-loganalytics-adapter`               | Adapter container image.                                                                                                                                                                                               |
+| `adapter.image.repository`                      | `cr.openchoreo.dev/openchoreo/observability-logs-azure-loganalytics-adapter`               | Adapter container image.                                                                                                                                                                                               |
 | `adapter.image.tag`                             | Chart `appVersion`                                                               | Image tag.                                                                                                                                                                                                             |
 | `adapter.service.port`                          | `8080`                                                                           | HTTP listener port.                                                                                                                                                                                                    |
 | `adapter.observerUrl`                           | `http://observer-internal.openchoreo-observability-plane.svc.cluster.local:8081` | Observer base URL. Fired alerts are forwarded to `${observerUrl}/api/v1alpha1/alerts/webhook`. The alert-webhook endpoint lives on the Observer's internal service (`observer-internal:8081`), not the public `:8080`. |

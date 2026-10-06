@@ -63,7 +63,7 @@ Install this module in your OpenChoreo cluster using:
 
 ```bash
 helm upgrade --install observability-logs-openobserve \
-  oci://ghcr.io/openchoreo/helm-charts/observability-logs-openobserve \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-logs-openobserve \
   --create-namespace \
   --namespace openchoreo-observability-plane \
   --version 0.0.0-latest-dev
@@ -73,7 +73,7 @@ To switch to HA mode, disable the standalone chart and enable the distributed ch
 
 ```bash
 helm upgrade --install observability-logs-openobserve \
-  oci://ghcr.io/openchoreo/helm-charts/observability-logs-openobserve \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-logs-openobserve \
   --namespace openchoreo-observability-plane \
   --version 0.0.0-latest-dev \
   --reuse-values \
@@ -93,7 +93,7 @@ to start collecting logs from the cluster and publish them to OpenObserve:
 
 ```bash
 helm upgrade observability-logs-openobserve \
-  oci://ghcr.io/openchoreo/helm-charts/observability-logs-openobserve \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-logs-openobserve \
   --namespace openchoreo-observability-plane \
   --version 0.0.0-latest-dev \
   --reuse-values \
@@ -124,7 +124,7 @@ in-cluster `openobserve` Service:
 
 ```bash
 helm upgrade --install observability-logs-openobserve \
-  oci://ghcr.io/openchoreo/helm-charts/observability-logs-openobserve \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-logs-openobserve \
   --create-namespace \
   --namespace openchoreo-observability-plane \
   --version 0.0.0-latest-dev \
@@ -141,7 +141,7 @@ the gateway endpoint:
 
 ```bash
 helm upgrade --install observability-logs-openobserve \
-  oci://ghcr.io/openchoreo/helm-charts/observability-logs-openobserve \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-logs-openobserve \
   --create-namespace \
   --namespace openchoreo-observability-plane \
   --version 0.0.0-latest-dev \
@@ -174,7 +174,7 @@ under its own retention:
 
 ```bash
 helm upgrade observability-logs-openobserve \
-  oci://ghcr.io/openchoreo/helm-charts/observability-logs-openobserve \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-logs-openobserve \
   --namespace openchoreo-observability-plane \
   --version 0.0.0-latest-dev \
   --reuse-values \
@@ -194,7 +194,7 @@ On the **observability plane cluster**, Fluent Bit ships to the in-cluster OpenO
 
 ```bash
 helm upgrade observability-logs-openobserve \
-  oci://ghcr.io/openchoreo/helm-charts/observability-logs-openobserve \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-logs-openobserve \
   --namespace openchoreo-observability-plane \
   --version 0.0.0-latest-dev \
   --reuse-values \
@@ -207,7 +207,7 @@ On the **control plane cluster**, install the chart with only Fluent Bit enabled
 
 ```bash
 helm upgrade --install observability-logs-openobserve \
-  oci://ghcr.io/openchoreo/helm-charts/observability-logs-openobserve \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-logs-openobserve \
   --create-namespace \
   --namespace openchoreo-observability-plane \
   --version 0.0.0-latest-dev \

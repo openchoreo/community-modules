@@ -197,7 +197,7 @@ kube-prometheus-stack:
 
 adapter:
   image:
-    repository: "ghcr.io/openchoreo/observability-metrics-prometheus-adapter"
+    repository: "cr.openchoreo.dev/openchoreo/observability-metrics-prometheus-adapter"
     tag: "" # Defaults to Chart.AppVersion via the template
     pullPolicy: IfNotPresent
   logLevel: "INFO" # Supports DEBUG, INFO, WARN, ERROR

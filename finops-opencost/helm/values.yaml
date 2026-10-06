@@ -70,7 +70,7 @@ adapter:
   logLevel: "INFO"
 
   image:
-    repository: "ghcr.io/openchoreo/finops-opencost-adapter"
+    repository: "cr.openchoreo.dev/openchoreo/finops-opencost-adapter"
     tag: ""
     pullPolicy: IfNotPresent
 

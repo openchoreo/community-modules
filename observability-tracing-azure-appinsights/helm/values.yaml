@@ -14,7 +14,7 @@ adapter:
   enabled: true
   replicas: 1
   image:
-    repository: "ghcr.io/openchoreo/observability-tracing-azure-appinsights-adapter"
+    repository: "cr.openchoreo.dev/openchoreo/observability-tracing-azure-appinsights-adapter"
     tag: ""
     pullPolicy: IfNotPresent
   service:

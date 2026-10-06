@@ -90,7 +90,7 @@ install guides for your distribution.
 
 ```bash
 helm upgrade --install agent-sandbox \
-  oci://ghcr.io/openchoreo/helm-charts/agent-sandbox \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/agent-sandbox \
   --version 0.0.0-latest-dev \
   --namespace openchoreo-control-plane \
   --wait --timeout 10m
@@ -126,7 +126,7 @@ select each half:
 ```bash
 # Control plane — register the component types only
 helm upgrade --install agent-sandbox \
-  oci://ghcr.io/openchoreo/helm-charts/agent-sandbox \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/agent-sandbox \
   --version 0.0.0-latest-dev \
   --kube-context <control-plane-ctx> \
   --namespace openchoreo-control-plane \
@@ -135,7 +135,7 @@ helm upgrade --install agent-sandbox \
 
 # Each data plane — install the sandbox controller and RBAC
 helm upgrade --install agent-sandbox \
-  oci://ghcr.io/openchoreo/helm-charts/agent-sandbox \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/agent-sandbox \
   --version 0.0.0-latest-dev \
   --kube-context <data-plane-ctx> \
   --namespace openchoreo-data-plane \

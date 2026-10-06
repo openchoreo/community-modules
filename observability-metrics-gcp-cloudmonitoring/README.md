@@ -191,7 +191,7 @@ WEBHOOK_TOKEN="<your-webhook-shared-secret>"
 
 ```bash
 helm upgrade --install observability-metrics-gcp-cloudmonitoring \
-  oci://ghcr.io/openchoreo/helm-charts/observability-metrics-gcp-cloudmonitoring \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-metrics-gcp-cloudmonitoring \
   --namespace openchoreo-observability-plane --create-namespace \
   --version <chart-version> \
   --set gcp.projectId="$PROJECT_ID" \
@@ -436,7 +436,7 @@ rule created out-of-band rather than through the CR).
 | `notificationChannel.id` | `""` | Resource name of a pre-existing `webhook_basicauth` notification channel pointed at the adapter. Empty disables alerting. |
 | `adapter.enabled` | `true` | Toggle the adapter Deployment. |
 | `adapter.replicas` | `1` | Adapter replica count. |
-| `adapter.image.repository` | `ghcr.io/openchoreo/observability-metrics-gcp-cloudmonitoring-adapter` | Adapter container image. |
+| `adapter.image.repository` | `cr.openchoreo.dev/openchoreo/observability-metrics-gcp-cloudmonitoring-adapter` | Adapter container image. |
 | `adapter.image.tag` | Chart `appVersion` | Image tag. |
 | `adapter.image.pullPolicy` | `IfNotPresent` | Image pull policy. |
 | `adapter.service.port` | `9099` | HTTP listener + Service port. Must match the Observer's `METRICS_ADAPTER_URL`. |

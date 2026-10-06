@@ -165,7 +165,7 @@ openSearchCluster:
 adapter:
   enabled: true
   image:
-    repository: "ghcr.io/openchoreo/observability-tracing-opensearch-adapter"
+    repository: "cr.openchoreo.dev/openchoreo/observability-tracing-opensearch-adapter"
     tag: ""  # Defaults to Chart.AppVersion via the template
   serverPort: "9100"
   openSearchAddress: "https://opensearch:9200"
@@ -182,7 +182,7 @@ adapter:
 openSearchSetup:
   enabled: true
   image:
-    repository: "ghcr.io/openchoreo/observability-tracing-opensearch-setup"
+    repository: "cr.openchoreo.dev/openchoreo/observability-tracing-opensearch-setup"
 
   openSearchSecretName: ""
 

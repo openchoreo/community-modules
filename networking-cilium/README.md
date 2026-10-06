@@ -87,7 +87,7 @@ kubectl annotate clusterdataplanes.openchoreo.dev default openchoreo.dev/network
 Example:
 
 ```bash
-helm upgrade --install openchoreo-data-plane oci://ghcr.io/openchoreo/helm-charts/openchoreo-data-plane \
+helm upgrade --install openchoreo-data-plane oci://cr.openchoreo.dev/openchoreo/helm-charts/openchoreo-data-plane \
   --version 1.2.0 \
   --namespace openchoreo-data-plane \
   --create-namespace \

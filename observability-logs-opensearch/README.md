@@ -66,7 +66,7 @@ OpenSearch. Every install that runs Fluent Bit must name its cluster with
 
 ```bash
 helm upgrade --install observability-logs-opensearch \
-  oci://ghcr.io/openchoreo/helm-charts/observability-logs-opensearch \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-logs-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
   --version 0.6.0 \
@@ -83,7 +83,7 @@ clusters, see [Multi-cluster topology](#multi-cluster-topology).
 >
 > ```bash
 > helm upgrade --install observability-logs-opensearch \
->   oci://ghcr.io/openchoreo/helm-charts/observability-logs-opensearch \
+>   oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-logs-opensearch \
 >   --create-namespace \
 >   --namespace openchoreo-observability-plane \
 >   --version 0.6.0 \
@@ -138,7 +138,7 @@ The recommended approach is the **OpenSearch Operator** (`openSearchCluster.enab
 
 ```bash
 helm upgrade --install observability-logs-opensearch \
-  oci://ghcr.io/openchoreo/helm-charts/observability-logs-opensearch \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-logs-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
   --version 0.6.0 \
@@ -170,7 +170,7 @@ Install the chart with only fluent-bit enabled (set the `clusterInstance` accord
 
 ```bash
 helm upgrade --install observability-logs-opensearch \
-  oci://ghcr.io/openchoreo/helm-charts/observability-logs-opensearch \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-logs-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
   --version 0.6.0 \
@@ -203,7 +203,7 @@ Enable it alongside Fluent Bit:
 
 ```bash
 helm upgrade observability-logs-opensearch \
-  oci://ghcr.io/openchoreo/helm-charts/observability-logs-opensearch \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-logs-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
   --version 0.6.0 \
@@ -226,7 +226,7 @@ On the **observability plane cluster**, Fluent Bit ships to the in-cluster OpenS
 
 ```bash
 helm upgrade observability-logs-opensearch \
-  oci://ghcr.io/openchoreo/helm-charts/observability-logs-opensearch \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-logs-opensearch \
   --namespace openchoreo-observability-plane \
   --version 0.6.0 \
   --reuse-values \
@@ -238,7 +238,7 @@ On the **control plane cluster**, install the chart with only Fluent Bit enabled
 
 ```bash
 helm upgrade --install observability-logs-opensearch \
-  oci://ghcr.io/openchoreo/helm-charts/observability-logs-opensearch \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-logs-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
   --version 0.6.0 \

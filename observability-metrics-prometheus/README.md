@@ -22,7 +22,7 @@ This chart supports three `global.installationMode` values:
 
 ```bash
 helm upgrade --install observability-metrics-prometheus \
-  oci://ghcr.io/openchoreo/helm-charts/observability-metrics-prometheus \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-metrics-prometheus \
   --create-namespace \
   --namespace openchoreo-observability-plane \
   --version 0.7.1
@@ -34,7 +34,7 @@ helm upgrade --install observability-metrics-prometheus \
 
 ```bash
 helm upgrade --install observability-metrics-prometheus \
-  oci://ghcr.io/openchoreo/helm-charts/observability-metrics-prometheus \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-metrics-prometheus \
   --create-namespace \
   --namespace openchoreo-observability-plane \
   --version 0.7.1 \
@@ -48,7 +48,7 @@ Set `prometheusCustomizations.http.observabilityPlaneUrl` to the receiver endpoi
 
 ```bash
 helm upgrade --install observability-metrics-prometheus \
-  oci://ghcr.io/openchoreo/helm-charts/observability-metrics-prometheus \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-metrics-prometheus \
   --create-namespace \
   --namespace openchoreo-observability-plane \
   --version 0.7.1 \
@@ -85,7 +85,7 @@ In `singleCluster` and `multiClusterReceiver` modes, the Prometheus server store
 
 ```bash
 helm upgrade --install observability-metrics-prometheus \
-  oci://ghcr.io/openchoreo/helm-charts/observability-metrics-prometheus \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-metrics-prometheus \
   --namespace openchoreo-observability-plane --reuse-values \
   --set kube-prometheus-stack.prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.storageClassName=<your-storage-class> \
   --set kube-prometheus-stack.alertmanager.alertmanagerSpec.storage.volumeClaimTemplate.spec.storageClassName=<your-storage-class>
@@ -99,7 +99,7 @@ helm upgrade --install observability-metrics-prometheus \
 
 ```bash
 helm upgrade --install observability-metrics-prometheus \
-  oci://ghcr.io/openchoreo/helm-charts/observability-metrics-prometheus \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-metrics-prometheus \
   --namespace openchoreo-observability-plane --reuse-values \
   --set kube-prometheus-stack.prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.resources.requests.storage=50Gi \
   --set kube-prometheus-stack.prometheus.prometheusSpec.retentionSize=40GiB
@@ -118,7 +118,7 @@ In `multiClusterExporter` mode there is no TSDB — the PrometheusAgent only for
 
 ```bash
 helm upgrade --install observability-metrics-prometheus \
-  oci://ghcr.io/openchoreo/helm-charts/observability-metrics-prometheus \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-metrics-prometheus \
   --namespace openchoreo-observability-plane --reuse-values \
   --set prometheusCustomizations.agent.persistence.enabled=true \
   --set prometheusCustomizations.agent.persistence.storageClassName=<your-storage-class>
@@ -130,7 +130,7 @@ To use ephemeral storage — metrics are then lost on every pod restart — hand
 
 ```bash
 helm upgrade --install observability-metrics-prometheus \
-  oci://ghcr.io/openchoreo/helm-charts/observability-metrics-prometheus \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-metrics-prometheus \
   --namespace openchoreo-observability-plane --reuse-values \
   --set-json 'kube-prometheus-stack.prometheus.prometheusSpec.storageSpec.emptyDir={}' \
   --set-json 'kube-prometheus-stack.alertmanager.alertmanagerSpec.storage.emptyDir={}'

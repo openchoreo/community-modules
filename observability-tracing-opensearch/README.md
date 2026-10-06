@@ -72,7 +72,7 @@ This chart supports three `global.installationMode` values:
 
 ```bash
 helm upgrade --install observability-tracing-opensearch \
-  oci://ghcr.io/openchoreo/helm-charts/observability-tracing-opensearch \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-tracing-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
   --version 0.0.0-latest-dev \
@@ -83,7 +83,7 @@ helm upgrade --install observability-tracing-opensearch \
 >
 > ```bash
 > helm upgrade --install observability-tracing-opensearch \
->   oci://ghcr.io/openchoreo/helm-charts/observability-tracing-opensearch \
+>   oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-tracing-opensearch \
 >   --create-namespace \
 >   --namespace openchoreo-observability-plane \
 >   --version 0.0.0-latest-dev \
@@ -104,7 +104,7 @@ Install the chart in the observability plane cluster/namespace (this is the clus
 
 ```bash
 helm upgrade --install observability-tracing-opensearch \
-  oci://ghcr.io/openchoreo/helm-charts/observability-tracing-opensearch \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-tracing-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
   --version 0.0.0-latest-dev \
@@ -116,7 +116,7 @@ helm upgrade --install observability-tracing-opensearch \
 >
 > ```bash
 > helm upgrade --install observability-tracing-opensearch \
->   oci://ghcr.io/openchoreo/helm-charts/observability-tracing-opensearch \
+>   oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-tracing-opensearch \
 >   --create-namespace \
 >   --namespace openchoreo-observability-plane \
 >   --version 0.0.0-latest-dev \
@@ -135,7 +135,7 @@ Also set `opentelemetryCollectorCustomizations.http.observabilityPlaneVirtualHos
 
 ```bash
 helm upgrade --install observability-tracing-opensearch \
-  oci://ghcr.io/openchoreo/helm-charts/observability-tracing-opensearch \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-tracing-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
   --version 0.0.0-latest-dev \

@@ -351,7 +351,7 @@ Set `AM_API_CLIENT_ID` to the Client ID of the Agent Manager API Client register
 ```bash
 # Multi-cluster: switch to control plane context before running
 helm install amp-platform-resources \
-  oci://ghcr.io/openchoreo/helm-charts/amp-platform-resources \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/amp-platform-resources \
   --version 0.1.0 \
   --namespace default \
   --create-namespace \

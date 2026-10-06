@@ -77,7 +77,7 @@ opentelemetry-collector:
 adapter:
   enabled: true
   image:
-    repository: ghcr.io/openchoreo/observability-tracing-aws-xray-adapter
+    repository: cr.openchoreo.dev/openchoreo/observability-tracing-aws-xray-adapter
     tag: ""
     pullPolicy: IfNotPresent
   service:

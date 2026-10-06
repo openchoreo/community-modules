@@ -527,7 +527,7 @@ Deploy the adapter, OpenTelemetry collector, kube-state-metrics, and retention J
 
 ```bash
 helm upgrade --install observability-metrics-aws-cloudwatch \
-  oci://ghcr.io/openchoreo/helm-charts/observability-metrics-aws-cloudwatch \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-metrics-aws-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
   --version 0.3.0 \
@@ -542,7 +542,7 @@ Deploy only the adapter in the observability plane cluster:
 
 ```bash
 helm upgrade --install observability-metrics-aws-cloudwatch \
-  oci://ghcr.io/openchoreo/helm-charts/observability-metrics-aws-cloudwatch \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-metrics-aws-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
   --version 0.3.0 \
@@ -560,7 +560,7 @@ Deploy only the OpenTelemetry collector, kube-state-metrics, and retention Job i
 
 ```bash
 helm upgrade --install observability-metrics-aws-cloudwatch \
-  oci://ghcr.io/openchoreo/helm-charts/observability-metrics-aws-cloudwatch \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-metrics-aws-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
   --version 0.3.0 \
@@ -698,7 +698,7 @@ kubectl -n "$NS" rollout restart deployment/metrics-adapter-aws-cloudwatch
 # Re-trigger the retention Helm hook (it ran once at install time)
 kubectl -n "$NS" delete job metrics-aws-cloudwatch-retention --ignore-not-found
 helm upgrade observability-metrics-aws-cloudwatch \
-  oci://ghcr.io/openchoreo/helm-charts/observability-metrics-aws-cloudwatch \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-metrics-aws-cloudwatch \
   --namespace "$NS" --version 0.3.0 --reuse-values
 ```
 
@@ -715,7 +715,7 @@ kubectl -n "$NS" rollout restart daemonset/metrics-opentelemetry-collector-agent
 
 kubectl -n "$NS" delete job metrics-aws-cloudwatch-retention --ignore-not-found
 helm upgrade observability-metrics-aws-cloudwatch \
-  oci://ghcr.io/openchoreo/helm-charts/observability-metrics-aws-cloudwatch \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-metrics-aws-cloudwatch \
   --namespace "$NS" --version 0.3.0 --reuse-values
 ```
 
@@ -856,7 +856,7 @@ Deploy the adapter, OpenTelemetry collector, kube-state-metrics, and retention J
 
 ```bash
 helm upgrade --install observability-metrics-aws-cloudwatch \
-  oci://ghcr.io/openchoreo/helm-charts/observability-metrics-aws-cloudwatch \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-metrics-aws-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
   --version 0.3.0 \
@@ -885,7 +885,7 @@ Deploy only the adapter in the observability plane cluster:
 
 ```bash
 helm upgrade --install observability-metrics-aws-cloudwatch \
-  oci://ghcr.io/openchoreo/helm-charts/observability-metrics-aws-cloudwatch \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-metrics-aws-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
   --version 0.3.0 \
@@ -907,7 +907,7 @@ Deploy only the OpenTelemetry collector, kube-state-metrics, and retention Job i
 
 ```bash
 helm upgrade --install observability-metrics-aws-cloudwatch \
-  oci://ghcr.io/openchoreo/helm-charts/observability-metrics-aws-cloudwatch \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-metrics-aws-cloudwatch \
   --create-namespace \
   --namespace "$NS" \
   --version 0.3.0 \
@@ -1232,7 +1232,7 @@ kubectl -n "$NS" delete job metrics-aws-cloudwatch-retention --ignore-not-found
 
 # 2. Re-fire the post-upgrade hook.
 helm upgrade observability-metrics-aws-cloudwatch \
-  oci://ghcr.io/openchoreo/helm-charts/observability-metrics-aws-cloudwatch \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-metrics-aws-cloudwatch \
   --version 0.3.0 --namespace "$NS" --reuse-values
 
 # 3. Watch the new Job complete.
@@ -1273,7 +1273,7 @@ kubectl -n "$NS" logs -l job-name=metrics-aws-cloudwatch-retention --tail=100
 | `opentelemetry-collector.extraEnvsFrom` | `[{configMapRef: {name: metrics-aws-cloudwatch-cluster-env}}]` | Extra `envFrom` entries for the OpenTelemetry collector. The default ConfigMap supplies `AWS_REGION` and `EMF_LOG_GROUP_NAME`; append the static AWS credentials Secret at index `1` on non-EKS clusters. |
 | `adapter.enabled` | `true` | Deploys the CloudWatch Metrics Adapter Deployment and Service. Set to `false` on data-plane installs. |
 | `adapter.replicas` | `1` | Number of adapter replicas. |
-| `adapter.image.repository` | `ghcr.io/openchoreo/observability-metrics-aws-cloudwatch-adapter` | Adapter image repository. |
+| `adapter.image.repository` | `cr.openchoreo.dev/openchoreo/observability-metrics-aws-cloudwatch-adapter` | Adapter image repository. |
 | `adapter.image.tag` | `""` | Adapter image tag. Empty defaults to chart `appVersion`. |
 | `adapter.service.port` | `9099` | Adapter HTTP port. |
 | `adapter.serviceAccount.annotations` | `{}` | ServiceAccount annotations for IRSA or other identity integrations. |

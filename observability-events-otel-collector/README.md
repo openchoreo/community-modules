@@ -43,7 +43,7 @@ Install the chart into the observability plane namespace:
 
 ```bash
 helm upgrade --install observability-events-otel-collector \
-  oci://ghcr.io/openchoreo/helm-charts/observability-events-otel-collector \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-events-otel-collector \
   --create-namespace \
   --namespace openchoreo-observability-plane \
   --version 0.2.0
@@ -70,7 +70,7 @@ Compatible with `observability-logs-opensearch` community module (>= version 0.6
 
 ```bash
 helm upgrade --install observability-events-otel-collector \
-  oci://ghcr.io/openchoreo/helm-charts/observability-events-otel-collector \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-events-otel-collector \
   --namespace openchoreo-observability-plane --version 0.2.0 \
   -f - <<'EOF'
 collector:
@@ -185,7 +185,7 @@ Compatible with `observability-logs-openobserve` community module (>= version 0.
 
 ```bash
 helm upgrade --install observability-events-otel-collector \
-  oci://ghcr.io/openchoreo/helm-charts/observability-events-otel-collector \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-events-otel-collector \
   --namespace openchoreo-observability-plane --create-namespace --version 0.2.0 \
   -f - <<'EOF'
 collector:
@@ -269,7 +269,7 @@ no separate mechanism is needed for `${env:...}`:
 
 ```bash
 helm upgrade --install observability-events-otel-collector \
-  oci://ghcr.io/openchoreo/helm-charts/observability-events-otel-collector \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-events-otel-collector \
   --namespace openchoreo-observability-plane --version 0.2.0 \
   -f - <<'EOF'
 collector:
@@ -380,7 +380,7 @@ persistence:
 
 ```bash
 helm upgrade --install observability-events-otel-collector \
-  oci://ghcr.io/openchoreo/helm-charts/observability-events-otel-collector \
+  oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-events-otel-collector \
   --namespace openchoreo-observability-plane --version 0.2.0 --reuse-values \
   --set persistence.enabled=true \
   --set persistence.storageClassName=<your-storage-class>

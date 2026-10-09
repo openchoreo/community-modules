@@ -1,0 +1,22 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v2
+name: observability-logs-dynatrace
+description: A Helm chart for OpenChoreo Logs Module for Dynatrace
+type: application
+version: 0.0.0-latest-dev
+appVersion: "latest-dev"
+keywords:
+  - dynatrace
+  - grail
+  - openchoreo
+  - logs
+maintainers:
+  - name: OpenChoreo Team
+home: https://github.com/openchoreo/community-modules
+dependencies:
+  - name: fluent-bit
+    version: "0.56.0"
+    repository: https://fluent.github.io/helm-charts
+    condition: fluent-bit.enabled

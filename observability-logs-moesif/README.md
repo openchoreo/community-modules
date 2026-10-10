@@ -1,32 +1,64 @@
 # Observability Logs Module for Moesif
 
-This module collects container logs using Fluent Bit and exports them to Moesif via OpenTelemetry Collector.
+This module collects container logs using [Fluent Bit](https://fluentbit.io) and exports them to [Moesif](https://www.moesif.com) via [OpenTelemetry Collector](https://opentelemetry.io).
 
 ## Prerequisites
 
 - [OpenChoreo](https://github.com/openchoreo/openchoreo) must be installed with the **observability plane** enabled for this module to work.
-- A Moesif account and Application ID from [Moesif](https://www.moesif.com/)
+- A Moesif account and a **Collector Application ID** for each environment from [Moesif](https://www.moesif.com/).
 
 ## Installation
 
-### Create a Kubernetes Secret (Optional)
+### Create a Kubernetes Secret
 
-If you want to store your Moesif Application IDs in a Kubernetes Secret, create one with your credentials for each environment:
+Create a Kubernetes secret containing your Moesif Collector Application IDs, with one key per environment.
+
+First, get the environment names and their UIDs:
 
 ```bash
-kubectl create secret generic moesif-app-secret \
-  --from-literal=development="YOUR_DEV_APP_ID" \
-  --from-literal=production="YOUR_PROD_APP_ID" \
+kubectl get environments -o custom-columns="NAME:.metadata.name,UID:.metadata.uid"
+```
+
+Use the environment **UID** as the secret key and the Moesif **Collector Application ID** as the value.
+
+For example, if the output is:
+
+```
+NAME          UID
+development   a1b2c3d4-e5f6-7890-abcd-ef1234567890
+production    f9e8d7c6-b5a4-3210-fedc-ba0987654321
+```
+
+Create the secret using the UIDs as keys:
+
+```bash
+kubectl create secret generic moesif-logs-collector-secret \
+  --from-literal=a1b2c3d4-e5f6-7890-abcd-ef1234567890="YOUR_DEV_COLLECTOR_APP_ID" \
+  --from-literal=f9e8d7c6-b5a4-3210-fedc-ba0987654321="YOUR_PROD_COLLECTOR_APP_ID" \
   --namespace openchoreo-observability-plane
 ```
 
-> **Note:** 
-> - Create separate keys for each environment (e.g., `development`, `production`)
-> - For environment names with hyphens (e.g., "my-env"), replace hyphens with underscores in the secret key name (e.g., "my_env")
+### (Optional) Create a Search API Secret for Built-in Dashboards
+
+> **Note:** This step is **optional** and only required if you want to populate the built-in dashboards with log data from Moesif.
+> The Management API key generation is a **paid feature** of Moesif. Configure this only if your Moesif plan supports it.
+
+To generate an API key in Moesif:
+
+1. Go to your Moesif dashboard and navigate to the **Management API Keys** section.
+2. Create a new API key and select scopes under the **Analytics** section with **read** permission.
+3. Create one key per environment, or use a single organization-level key.
+
+Create the search secret using the environment **UID** as the key and the bearer token as the value:
+
+```bash
+kubectl create secret generic moesif-logs-search-secret \
+  --from-literal=a1b2c3d4-e5f6-7890-abcd-ef1234567890="YOUR_DEV_MANAGEMENT_API_BEARER_TOKEN" \
+  --from-literal=f9e8d7c6-b5a4-3210-fedc-ba0987654321="YOUR_PROD_MANAGEMENT_API_BEARER_TOKEN" \
+  --namespace openchoreo-observability-plane
+```
 
 ### Install the Helm Chart
-
-Install this module in your OpenChoreo cluster:
 
 ```bash
 helm upgrade --install observability-logs-moesif \
@@ -38,34 +70,27 @@ helm upgrade --install observability-logs-moesif \
 
 ### Configuration Options
 
-You can configure multiple environments and customize the Moesif endpoint:
-
-#### Using a values.yaml file
-
-For easier configuration management, create a `moesif-values.yaml` file:
+For easier configuration management, create a `values.yaml` file:
 
 ```yaml
-# moesif-values.yaml
-# Configuration for Moesif log collection
+# values.yaml
 
 moesif:
-  # List of environment names to collect logs from
-  # These must match the openchoreo.dev/environment label on your resources
+  # List of environments to collect logs from.
+  # Get name and id by running: kubectl get environments -o custom-columns="NAME:.metadata.name,UID:.metadata.uid"
   environments:
-    - development
-    - production
-    - staging
-  
-  # (Optional) Moesif API endpoint
-  # Uncomment to override the default endpoint
-  # endpoint: "https://api.moesif.net"
+    - name: development
+      id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+    - name: production
+      id: f9e8d7c6-b5a4-3210-fedc-ba0987654321
 
-# (Optional) Reference a pre-existing secret containing Moesif Application IDs
-# Uncomment if you created the moesif-app-secret
-# opentelemetry-collector:
-#   extraEnvsFrom:
-#     - secretRef:
-#         name: moesif-app-secret
+  # Moesif adapter configuration
+  adapter:
+    enabled: true
+
+opentelemetryCollectorCustomizations:
+  debug:
+    enabled: false  # Enable debug exporter for troubleshooting
 ```
 
 Then install with:
@@ -76,31 +101,35 @@ helm upgrade --install observability-logs-moesif \
   --create-namespace \
   --namespace openchoreo-observability-plane \
   --version 0.1.0 \
-  -f moesif-values.yaml
+  -f moesif-logs-values.yaml
 ```
 
 #### Configuration Parameters
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `moesif.environments` | List of environment names to collect logs from | `[]` |
+| `moesif.environments` | List of environments with `name` and `id` (UID) to collect logs from | `[]` |
 | `moesif.endpoint` | (Optional) Moesif API endpoint URL | `https://api.moesif.net` |
+| `moesif.adapter.enabled` | Enable the Moesif adapter for log search | `true` |
+| `moesif.adapter.searchEndpoint` | Moesif search API endpoint | `https://api.moesif.com` |
+| `moesif.adapter.searchSecretName` | Secret name for Moesif search credentials | `moesif-search-credentials` |
+| `opentelemetryCollectorCustomizations.debug.enabled` | Enable debug exporter for troubleshooting | `false` |
 
 ## How It Works
 
 This module deploys two main components:
 
-1. **Fluent Bit**: Collects logs from all containers in the cluster
-2. **OpenTelemetry Collector**: Receives logs from Fluent Bit, processes them, and routes them to the appropriate Moesif application based on environment labels
+1. **Fluent Bit**: Collects logs from all containers in the cluster and forwards them to the OpenTelemetry Collector.
+2. **OpenTelemetry Collector**: Receives logs from Fluent Bit, processes them, and routes them to the correct Moesif application based on the environment UID.
 
-The module uses the `openchoreo.dev/environment` label on your resources to route logs to the correct Moesif application.
+The module uses the Moesif Collector Application ID stored in the `moesif-logs-collector-secret` Kubernetes secret to authenticate with the Moesif API.
 
 ## Troubleshooting
 
 ### Check OpenTelemetry Collector logs
 
 ```bash
-kubectl -n openchoreo-observability-plane logs -f deploy/opentelemetry-collector
+kubectl -n openchoreo-observability-plane logs -f deploy/moesif-logs-collector
 ```
 
 ### Check Fluent Bit logs
@@ -109,15 +138,19 @@ kubectl -n openchoreo-observability-plane logs -f deploy/opentelemetry-collector
 kubectl -n openchoreo-observability-plane logs -f ds/fluent-bit
 ```
 
-### Verify Secret Configuration
+### Verify the secret exists
 
 ```bash
-kubectl -n openchoreo-observability-plane get secret moesif-app-secret -o yaml
+kubectl -n openchoreo-observability-plane get secret moesif-logs-collector-secret
+```
+
+### Check pod health
+
+```bash
+kubectl -n openchoreo-observability-plane get pods
 ```
 
 ## Uninstalling
-
-To remove this module:
 
 ```bash
 helm uninstall observability-logs-moesif \
@@ -127,17 +160,10 @@ helm uninstall observability-logs-moesif \
 To also remove the secret:
 
 ```bash
-kubectl delete secret moesif-app-secret \
+kubectl delete secret moesif-logs-collector-secret \
   --namespace openchoreo-observability-plane
+kubectl delete secret moesif-logs-search-secret \
+  --namespace openchoreo-observability-plane  
+  
 ```
-
-
-## Dependencies
-
-Bundled upstream Helm charts:
-
-| Chart | Repository |
-| ----- | ---------- |
-| opentelemetry-collector | https://open-telemetry.github.io/opentelemetry-helm-charts |
-| fluent-bit | https://fluent.github.io/helm-charts |
 

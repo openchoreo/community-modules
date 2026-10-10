@@ -1,0 +1,17 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+{{- if .Values.moesif.adapter.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: moesif-logs-adapter
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: moesif-logs-adapter
+data:
+  SERVER_PORT: "9098"
+  SEARCH_ENDPOINT: {{ .Values.moesif.adapter.searchEndpoint | quote }}
+  SEARCH_AUTH_MODE: {{ .Values.moesif.auth_mode | quote }}
+
+{{- end }}

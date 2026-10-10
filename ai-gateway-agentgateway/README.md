@@ -8,11 +8,16 @@ providing AI-native gateway capabilities for components.
 ### 1. Unified LLM Routing (`ai-llm-routing` ClusterTrait)
 
 Route LLM API calls through a single OpenAI-compatible endpoint to multiple
-providers — OpenAI, Anthropic, Vertex AI/Gemini, Groq, or any OpenAI-compatible
-API.
+providers — OpenAI, Anthropic, Vertex AI/Gemini, AWS Bedrock, Groq, or any
+OpenAI-compatible API.
 
-- **Single endpoint**: All providers share one `OPENAI_BASE_URL`; apps use the standard OpenAI SDK
-- **Provider switching**: Change the `model` field in the request — no code changes, no redeployment
+- **Single endpoint**: All providers share one `OPENAI_BASE_URL` (ends in
+  `/v1`); apps use the standard OpenAI SDK
+- **Provider failover**: Enabled providers form an ordered priority list —
+  the first is primary, later ones are pure standby, only used once the
+  primary's backends are evicted as unhealthy. This is NOT per-request
+  model-based selection — a client cannot pick a specific provider via the
+  `model` field. See [Agent Gateway's failover docs](https://agentgateway.dev/docs/kubernetes/main/llm/failover/).
 - **Cost control**: Per-environment rate limiting (requests/minute) via ReleaseBinding
 - **PII guardrails**: Block/mask credit cards, SSNs, emails in requests and responses
 - **API key management**: Keys stored in OpenBao, injected via External Secrets Operator
@@ -40,7 +45,7 @@ and call tools from many backends without knowing where each tool lives.
   │  │  Component Pod    │       │  Agent Gateway Proxy      │   │
   │  │                  │       │  (agentgateway-proxy)     │   │
   │  │  OPENAI_BASE_URL ├──────▶│                           │   │
-  │  │  = http://gw:80  │  LLM  │  ┌─ OpenAI ──▶ api.openai│   │
+  │  │  = http://gw:80/v1│  LLM │  ┌─ OpenAI ──▶ api.openai│   │
   │  │                  │       │  ├─ Anthropic ▶ api.anthr │   │
   │  │  MCP_GATEWAY_URL ├──────▶│  └─ Groq ────▶ api.groq  │   │
   │  │  = http://gw:3000│  MCP  │                           │   │
@@ -228,10 +233,12 @@ format and gets responses back. Everything else happens at the gateway layer:
 
 - **API key management** — Keys are stored in OpenBao and pulled via
   ExternalSecret. The app never sees or handles credentials.
-- **Provider switching** — Changing from OpenAI to Anthropic to Groq is a
-  configuration change on the trait. At request time, Agent Gateway reads the
-  `model` field to route to the correct provider — no code changes, no
-  redeployment.
+- **Provider failover** — Adding a standby provider (e.g. Anthropic behind
+  OpenAI, or Bedrock behind a self-hosted LiteLLM proxy) is a configuration
+  change on the trait, no code changes. Agent Gateway automatically fails
+  over to the next configured provider once the primary's backends are
+  evicted as unhealthy — this is priority-ordered failover, not a
+  per-request `model`-based choice a client can make.
 - **PII guardrails** — Credit card numbers, SSNs, and emails are automatically
   blocked in requests and masked in responses at the gateway, before they reach
   the LLM provider. The app doesn't need to implement this.
@@ -394,8 +401,16 @@ spec:
           apiKeyRef: anthropic-api-key
 ```
 
-Your app receives `OPENAI_BASE_URL` and calls it with the standard OpenAI SDK.
-To switch providers, just change the `model` in the request body.
+Your app receives `OPENAI_BASE_URL` (already ending in `/v1`) and
+`OPENAI_API_KEY` (a placeholder — auth is handled entirely gateway-side, but
+the OpenAI SDK requires a non-empty key just to construct a client) and
+calls it with the standard OpenAI SDK. It also receives
+`X_OPENCHOREO_COMPONENT` as an env var — nothing sends this as the
+`x-openchoreo-component` HTTP header the gateway routes on automatically;
+your app must read the env var and set it itself, e.g. via the OpenAI
+Python SDK's `default_headers` option. Anthropic here is a pure standby —
+it's only ever used if OpenAI's own backends are evicted as unhealthy, not
+selectable per request.
 
 ### Attaching the MCP Federation Trait
 
@@ -475,6 +490,11 @@ spec:
 | `openaiCompatible.port`       | int    | `443`                      | API port                                 |
 | `openaiCompatible.pathPrefix` | string | `/openai/v1`               | API path prefix                          |
 | `openaiCompatible.apiKeyRef`  | string | —                          | OpenBao secret key name                  |
+| `openaiCompatible.tls`        | bool   | `true`                     | Whether the provider host speaks TLS — set `false` for a plain-HTTP, in-cluster-only target |
+| `bedrock.enabled`             | bool   | `false`                    | Enable AWS Bedrock provider (native SigV4 auth, not a Bearer API key) |
+| `bedrock.model`               | string | —                          | Bedrock model/inference-profile id (e.g. `us.anthropic.claude-sonnet-5`) |
+| `bedrock.region`              | string | `us-east-1`                | AWS region for the Bedrock endpoint      |
+| `bedrock.credentialsVaultPath`| string | —                          | OpenBao path with `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` |
 
 **Environment Configs** (per-environment via ReleaseBinding):
 
@@ -513,11 +533,11 @@ spec:
 
 | Resource                   | Purpose                                                     |
 |----------------------------|-------------------------------------------------------------|
-| `ExternalSecret`           | Pulls API key from OpenBao, formats as Authorization header |
-| `AgentgatewayBackend`      | Configures the LLM provider (model, auth)                   |
+| `ExternalSecret`           | Pulls credentials from OpenBao — formats as an `Authorization` Bearer header for `openai`/`anthropic`/`vertex`/`openaiCompatible`, or as `accessKey`/`secretKey` for `bedrock` (AWS SigV4, a different auth shape) |
+| `AgentgatewayBackend`      | Configures each enabled provider as a priority/failover group (model, auth) |
 | `HTTPRoute`                | Routes component traffic to the provider backend            |
 | `AgentgatewayPolicy`       | Applies rate limiting + PII guardrails to the route         |
-| `AgentgatewayPolicy` (TLS) | TLS to upstream (openaiCompatible providers only)           |
+| `AgentgatewayPolicy` (TLS) | TLS to upstream (`openaiCompatible` providers only, and only when `openaiCompatible.tls` is `true`) |
 
 ### `ai-mcp-federation`
 
@@ -530,8 +550,15 @@ spec:
 
 ## Injected Environment Variables
 
+Injected into both an `apps/v1` `Deployment`'s `spec.template.spec` and an
+`extensions.agents.x-k8s.io/v1alpha1` `SandboxTemplate`'s
+`spec.podTemplate.spec` (e.g. `kubernetes-sigs/agent-sandbox`'s `ai-agent`
+`ClusterComponentType`) — whichever the target Component actually renders
+as.
+
 | Variable                 | Trait               | Value                                          |
 |--------------------------|---------------------|------------------------------------------------|
-| `OPENAI_BASE_URL`        | `ai-llm-routing`    | `http://<gatewayName>.<gatewayNamespace>`      |
+| `OPENAI_BASE_URL`        | `ai-llm-routing`    | `http://<gatewayName>.<gatewayNamespace>/v1`   |
+| `OPENAI_API_KEY`         | `ai-llm-routing`    | `managed-by-gateway` (placeholder — auth is gateway-side; only present so OpenAI-SDK clients can construct without erroring) |
 | `MCP_GATEWAY_URL`        | `ai-mcp-federation` | `http://<gatewayName>.<gatewayNamespace>:3000` |
-| `X_OPENCHOREO_COMPONENT` | Both                | Component name (for per-component routing)     |
+| `X_OPENCHOREO_COMPONENT` | Both                | Component name — set as an env var only. Your app must read it and send it itself as the `x-openchoreo-component` HTTP header (the value the `HTTPRoute` actually matches on) for routing to work at all. |

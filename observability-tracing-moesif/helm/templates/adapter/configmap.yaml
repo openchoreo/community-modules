@@ -1,0 +1,16 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+{{- if .Values.moesif.adapter.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: moesif-tracing-adapter
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: moesif-tracing-adapter
+data:
+  SERVER_PORT: "9100"
+  SEARCH_ENDPOINT: {{ .Values.moesif.adapter.searchEndpoint | quote }}
+  SEARCH_AUTH_MODE: {{ .Values.moesif.auth_mode | quote }}
+{{- end }}

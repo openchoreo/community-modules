@@ -1,0 +1,214 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ClusterWorkflowTemplate
+metadata:
+  name: {{ .Values.workflow.templateName }}
+  labels:
+    {{- include "image-security.labels" . | nindent 4 }}
+spec:
+  templates:
+    # Scans the image tarball written by the build step, before it is pushed.
+    # Writes report.json (all findings), sbom.cdx.json, vuln.cosign.json
+    # (fixable findings only) and provenance.json to the report directory.
+    - name: scan-image
+      podSpecPatch: '{"hostUsers": false}'
+      inputs:
+        parameters:
+          - name: git-repo
+          - name: commit
+          - name: branch
+          - name: mode
+            default: {{ .Values.scan.mode | quote }}
+          - name: severity
+            default: {{ .Values.scan.severity | quote }}
+      outputs:
+        parameters:
+          - name: result
+            valueFrom:
+              path: /tmp/result.txt
+      volumes:
+        - name: scan-cache
+          emptyDir:
+            sizeLimit: 5Gi
+      container:
+        image: "{{ .Values.scan.image.repository }}:{{ .Values.scan.image.tag }}"
+        imagePullPolicy: {{ .Values.scan.image.pullPolicy }}
+        env:
+          - name: MODE
+            value: '{{ "{{inputs.parameters.mode}}" }}'
+          - name: SEVERITY
+            value: '{{ "{{inputs.parameters.severity}}" }}'
+          - name: GIT_REPO
+            value: '{{ "{{inputs.parameters.git-repo}}" }}'
+          - name: GIT_COMMIT
+            value: '{{ "{{inputs.parameters.commit}}" }}'
+          - name: GIT_BRANCH
+            value: '{{ "{{inputs.parameters.branch}}" }}'
+          - name: WORKFLOW_NAME
+            value: '{{ "{{workflow.name}}" }}'
+          - name: WORKFLOW_NAMESPACE
+            value: '{{ "{{workflow.namespace}}" }}'
+          - name: WORKFLOW_UID
+            value: '{{ "{{workflow.uid}}" }}'
+          - name: BUILDER_ID
+            value: {{ .Values.workflow.builderId | quote }}
+          - name: IMAGE_TAR
+            value: {{ .Values.workflow.imageTarPath | quote }}
+          - name: SOURCE_DIR
+            value: {{ .Values.workflow.sourcePath | quote }}
+          - name: REPORT_DIR
+            value: {{ .Values.workflow.reportDir | quote }}
+          - name: IGNORE_FILE
+            value: {{ .Values.scan.ignoreFile | quote }}
+          - name: TRIVY_SCANNERS
+            value: {{ .Values.scan.scanners | quote }}
+          - name: TRIVY_TIMEOUT
+            value: {{ .Values.scan.timeout | quote }}
+          - name: TRIVY_CACHE_DIR
+            value: /cache
+          {{- if .Values.server.enabled }}
+          - name: TRIVY_SERVER
+            value: {{ include "image-security.serverURL" . | quote }}
+          {{- else }}
+          {{- with .Values.scan.dbRepository }}
+          - name: TRIVY_DB_REPOSITORY
+            value: {{ . | quote }}
+          {{- end }}
+          {{- with .Values.scan.javaDbRepository }}
+          - name: TRIVY_JAVA_DB_REPOSITORY
+            value: {{ . | quote }}
+          {{- end }}
+          {{- end }}
+          {{- with .Values.scan.extraEnv }}
+          {{- toYaml . | nindent 10 }}
+          {{- end }}
+        command:
+          - sh
+          - -c
+        args:
+          - |-
+{{ .Files.Get "files/scan.sh" | indent 12 }}
+        resources:
+          {{- toYaml .Values.scan.resources | nindent 10 }}
+        volumeMounts:
+          - mountPath: /mnt/vol
+            name: {{ .Values.workflow.workspaceVolume }}
+          - mountPath: /cache
+            name: scan-cache
+{{- if .Values.signing.enabled }}
+
+    # Signs the published image. The image reference may carry a tag; cosign
+    # resolves it and signs the digest.
+    - name: sign-image
+      podSpecPatch: '{"hostUsers": false}'
+      timeout: {{ .Values.signing.timeout | quote }}
+      inputs:
+        parameters:
+          - name: image
+      volumes:
+        {{- include "image-security.registryVolume" . | nindent 8 }}
+      container:
+        image: "{{ .Values.signing.image.repository }}:{{ .Values.signing.image.tag }}"
+        imagePullPolicy: {{ .Values.signing.image.pullPolicy }}
+        command:
+          {{- toYaml .Values.signing.image.command | nindent 10 }}
+        env:
+          {{- include "image-security.cosignEnv" . | nindent 10 }}
+        args:
+          - sign
+          {{- include "image-security.cosignFlags" . | nindent 10 }}
+          - '{{ "{{inputs.parameters.image}}" }}'
+        resources:
+          {{- toYaml .Values.signing.resources | nindent 10 }}
+        volumeMounts:
+          - mountPath: /etc/cosign/docker
+            name: registry-push-secret
+            readOnly: true
+
+    # Attaches one in-toto attestation to the published image.
+    # type: cyclonedx | vuln | slsaprovenance1 (any cosign --type value)
+    # predicate: file name inside the report directory
+    - name: attest
+      podSpecPatch: '{"hostUsers": false}'
+      timeout: {{ .Values.signing.timeout | quote }}
+      inputs:
+        parameters:
+          - name: image
+          - name: type
+          - name: predicate
+      volumes:
+        {{- include "image-security.registryVolume" . | nindent 8 }}
+      container:
+        image: "{{ .Values.signing.image.repository }}:{{ .Values.signing.image.tag }}"
+        imagePullPolicy: {{ .Values.signing.image.pullPolicy }}
+        command:
+          {{- toYaml .Values.signing.image.command | nindent 10 }}
+        env:
+          {{- include "image-security.cosignEnv" . | nindent 10 }}
+        args:
+          - attest
+          {{- include "image-security.cosignFlags" . | nindent 10 }}
+          - --type
+          - '{{ "{{inputs.parameters.type}}" }}'
+          - --predicate
+          - '{{ printf "%s/{{inputs.parameters.predicate}}" .Values.workflow.reportDir }}'
+          - '{{ "{{inputs.parameters.image}}" }}'
+        resources:
+          {{- toYaml .Values.signing.resources | nindent 10 }}
+        volumeMounts:
+          - mountPath: /mnt/vol
+            name: {{ .Values.workflow.workspaceVolume }}
+            readOnly: true
+          - mountPath: /etc/cosign/docker
+            name: registry-push-secret
+            readOnly: true
+
+    # Signs the image and attaches every enabled attestation, one after the
+    # other (the workspace volume is ReadWriteOnce).
+    - name: sign-and-attest
+      inputs:
+        parameters:
+          - name: image
+      steps:
+        - - name: sign
+            template: sign-image
+            arguments:
+              parameters:
+                - name: image
+                  value: '{{ "{{inputs.parameters.image}}" }}'
+        {{- if .Values.signing.attestations.sbom }}
+        - - name: attest-sbom
+            template: attest
+            arguments:
+              parameters:
+                - name: image
+                  value: '{{ "{{inputs.parameters.image}}" }}'
+                - name: type
+                  value: cyclonedx
+                - name: predicate
+                  value: sbom.cdx.json
+        {{- end }}
+        {{- if .Values.signing.attestations.vulnerabilities }}
+        - - name: attest-vulnerabilities
+            template: attest
+            arguments:
+              parameters:
+                - name: image
+                  value: '{{ "{{inputs.parameters.image}}" }}'
+                - name: type
+                  value: vuln
+                - name: predicate
+                  value: vuln.cosign.json
+        {{- end }}
+        {{- if .Values.signing.attestations.provenance }}
+        - - name: attest-provenance
+            template: attest
+            arguments:
+              parameters:
+                - name: image
+                  value: '{{ "{{inputs.parameters.image}}" }}'
+                - name: type
+                  value: slsaprovenance1
+                - name: predicate
+                  value: provenance.json
+        {{- end }}
+{{- end }}

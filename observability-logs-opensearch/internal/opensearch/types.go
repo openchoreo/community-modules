@@ -86,6 +86,7 @@ type ComponentLogsQueryParamsV1 struct {
 	ProjectID     string   `json:"projectId,omitempty"`
 	ComponentID   string   `json:"componentId,omitempty"`
 	EnvironmentID string   `json:"environmentId,omitempty"`
+	ReleaseLineID string   `json:"releaseLineId,omitempty"`
 	SearchPhrase  string   `json:"searchPhrase,omitempty"`
 	LogLevels     []string `json:"logLevels,omitempty"`
 	Limit         int      `json:"limit"`
@@ -113,6 +114,7 @@ type AlertingRuleMetadata struct {
 	ComponentUID   string `json:"component-uid"`
 	ProjectUID     string `json:"project-uid"`
 	EnvironmentUID string `json:"environment-uid"`
+	ReleaseLineUID string `json:"release-line-uid,omitempty"`
 }
 
 // AlertingRuleSource defines the source of data for the alerting rule.

@@ -154,6 +154,14 @@ func (qb *QueryBuilder) BuildComponentLogsQueryV1(params ComponentLogsQueryParam
 		mustConditions = append(mustConditions, environmentFilter)
 	}
 
+	if params.ReleaseLineID != "" {
+		mustConditions = append(mustConditions, map[string]interface{}{
+			"term": map[string]interface{}{
+				OSReleaseLineID: params.ReleaseLineID,
+			},
+		})
+	}
+
 	mustConditions = addSearchPhraseFilter(mustConditions, params.SearchPhrase)
 	mustConditions = addLogLevelFilter(mustConditions, params.LogLevels)
 
@@ -442,6 +450,14 @@ func (qb *QueryBuilder) BuildComponentEventsQuery(params EventsQueryParams) (map
 		})
 	}
 
+	if params.ReleaseLineID != "" {
+		mustConditions = append(mustConditions, map[string]interface{}{
+			"term": map[string]interface{}{
+				EvReleaseLineID: params.ReleaseLineID,
+			},
+		})
+	}
+
 	if filter := reasonsFilter(params.Reasons); filter != nil {
 		mustConditions = append(mustConditions, filter)
 	}
@@ -673,6 +689,16 @@ func (qb *QueryBuilder) BuildLogAlertingRuleQuery(params AlertingRuleRequest) (m
 				},
 			},
 		},
+	}
+	if params.Metadata.ReleaseLineUID != "" {
+		filterConditions = append(filterConditions, map[string]interface{}{
+			"term": map[string]interface{}{
+				OSReleaseLineID: map[string]interface{}{
+					"value": params.Metadata.ReleaseLineUID,
+					"boost": 1,
+				},
+			},
+		})
 	}
 
 	query := map[string]interface{}{

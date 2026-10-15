@@ -16,6 +16,7 @@ const (
 	ComponentID     = "openchoreo.dev/component-uid"
 	EnvironmentID   = "openchoreo.dev/environment-uid"
 	ProjectID       = "openchoreo.dev/project-uid"
+	ReleaseLineID   = "openchoreo.dev/release-line-uid"
 	ComponentName   = "openchoreo.dev/component"
 	EnvironmentName = "openchoreo.dev/environment"
 	ProjectName     = "openchoreo.dev/project"
@@ -53,6 +54,7 @@ var (
 	OSComponentID   = KubernetesLabelsPrefix + "." + ReplaceDots(ComponentID)
 	OSEnvironmentID = KubernetesLabelsPrefix + "." + ReplaceDots(EnvironmentID)
 	OSProjectID     = KubernetesLabelsPrefix + "." + ReplaceDots(ProjectID)
+	OSReleaseLineID = KubernetesLabelsPrefix + "." + ReplaceDots(ReleaseLineID)
 	OSVersion       = KubernetesLabelsPrefix + "." + ReplaceDots(Version)
 	OSVersionID     = KubernetesLabelsPrefix + "." + ReplaceDots(VersionID)
 	OSNamespaceName = KubernetesLabelsPrefix + "." + ReplaceDots(NamespaceName)

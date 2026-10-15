@@ -120,13 +120,13 @@ func TestQueryEvents_ComponentScope_Success(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected 200 response, got %T", resp)
 	}
-	if queryResp.Total != 1 {
-		t.Fatalf("expected total=1, got %d", queryResp.Total)
+	if queryResp.Body.Total != 1 {
+		t.Fatalf("expected total=1, got %d", queryResp.Body.Total)
 	}
-	if queryResp.Events == nil || len(*queryResp.Events) != 1 {
-		t.Fatalf("expected 1 event, got %v", queryResp.Events)
+	if queryResp.Body.Events == nil || len(*queryResp.Body.Events) != 1 {
+		t.Fatalf("expected 1 event, got %v", queryResp.Body.Events)
 	}
-	ev := (*queryResp.Events)[0]
+	ev := (*queryResp.Body.Events)[0]
 	if ev.Reason == nil || *ev.Reason != "Completed" {
 		t.Errorf("expected reason 'Completed', got %v", ev.Reason)
 	}
@@ -246,8 +246,8 @@ func TestQueryEvents_UnscopedReasonSweep_Success(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected 200 response, got %T", resp)
 	}
-	if queryResp.Events == nil || len(*queryResp.Events) != 1 {
-		t.Fatalf("expected 1 event from the unscoped sweep, got %v", queryResp.Events)
+	if queryResp.Body.Events == nil || len(*queryResp.Body.Events) != 1 {
+		t.Fatalf("expected 1 event from the unscoped sweep, got %v", queryResp.Body.Events)
 	}
 }
 
@@ -319,11 +319,11 @@ func TestQueryEvents_TotalExceedsPageWhenTruncated(t *testing.T) {
 	defer server.Close()
 
 	queryResp := queryEventsAtLimit(t, server.URL, 1)
-	if queryResp.Events == nil || len(*queryResp.Events) != 1 {
-		t.Fatalf("expected 1 event, got %v", queryResp.Events)
+	if queryResp.Body.Events == nil || len(*queryResp.Body.Events) != 1 {
+		t.Fatalf("expected 1 event, got %v", queryResp.Body.Events)
 	}
-	if queryResp.Total != 5 {
-		t.Errorf("expected total=5 for a truncated read, got %d", queryResp.Total)
+	if queryResp.Body.Total != 5 {
+		t.Errorf("expected total=5 for a truncated read, got %d", queryResp.Body.Total)
 	}
 }
 
@@ -333,11 +333,11 @@ func TestQueryEvents_TotalMatchesPageWhenWindowRead(t *testing.T) {
 	defer server.Close()
 
 	queryResp := queryEventsAtLimit(t, server.URL, 10)
-	if queryResp.Events == nil || len(*queryResp.Events) != 1 {
-		t.Fatalf("expected 1 event, got %v", queryResp.Events)
+	if queryResp.Body.Events == nil || len(*queryResp.Body.Events) != 1 {
+		t.Fatalf("expected 1 event, got %v", queryResp.Body.Events)
 	}
-	if queryResp.Total != 1 {
-		t.Errorf("expected total=1 for a fully read window, got %d", queryResp.Total)
+	if queryResp.Body.Total != 1 {
+		t.Errorf("expected total=1 for a fully read window, got %d", queryResp.Body.Total)
 	}
 }
 
@@ -388,18 +388,18 @@ func TestQueryEvents_DoesNotSplitATimestampGroup(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected 200 response, got %T", resp)
 	}
-	if queryResp.Events == nil {
+	if queryResp.Body.Events == nil {
 		t.Fatal("expected events")
 	}
-	got := *queryResp.Events
+	got := *queryResp.Body.Events
 	// The whole group comes back, not the two that fit the page.
 	if len(got) != 4 {
 		t.Fatalf("expected the boundary group finished (4 events), got %d", len(got))
 	}
 	// And total describes the page that was actually returned, so the caller reads
 	// the window as fully read rather than re-sweeping it forever.
-	if queryResp.Total != len(got) {
-		t.Fatalf("expected total=%d to match the events returned, got %d", len(got), queryResp.Total)
+	if queryResp.Body.Total != len(got) {
+		t.Fatalf("expected total=%d to match the events returned, got %d", len(got), queryResp.Body.Total)
 	}
 }
 

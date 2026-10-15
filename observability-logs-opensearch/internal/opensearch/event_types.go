@@ -34,6 +34,7 @@ type EventsQueryParams struct {
 	ProjectID     string   `json:"projectId,omitempty"`
 	ComponentID   string   `json:"componentId,omitempty"`
 	EnvironmentID string   `json:"environmentId,omitempty"`
+	ReleaseLineID string   `json:"releaseLineId,omitempty"`
 	Limit         int      `json:"limit"`
 	SortOrder     string   `json:"sortOrder"`
 	Reasons       []string `json:"reasons,omitempty"`

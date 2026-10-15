@@ -190,6 +190,12 @@ k8sEventsIndexTemplate='
                             "dev/environment-uid": {
                               "type": "keyword"
                             },
+                            "dev/release-line": {
+                              "type": "keyword"
+                            },
+                            "dev/release-line-uid": {
+                              "type": "keyword"
+                            },
                             "dev/namespace": {
                               "type": "keyword"
                             }
@@ -448,6 +454,59 @@ for ((i=0; i<${#indexTemplates[@]}; i+=2)); do
 done
 
 echo -e "Index template creation complete\n"
+
+# A template only shapes indices created after it changes. Fields added to the k8s-events
+# template are also added to the existing daily indices, so events ingested from now on are
+# filterable without waiting for the next index. Adding fields to a mapping is always allowed.
+k8sEventsAddedFields='
+{
+  "properties": {
+    "resource": {
+      "properties": {
+        "k8s": {
+          "properties": {
+            "object": {
+              "properties": {
+                "label": {
+                  "properties": {
+                    "openchoreo": {
+                      "properties": {
+                        "dev/release-line": {
+                          "type": "keyword"
+                        },
+                        "dev/release-line-uid": {
+                          "type": "keyword"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}'
+
+echo "Adding new fields to existing k8s-events indices"
+response=$(curl --data "$k8sEventsAddedFields" \
+                --header "Authorization: Basic $authnToken" \
+                --header "Content-Type: application/json" \
+                --insecure \
+                --request PUT \
+                --show-error \
+                --silent \
+                --write-out "\n%{http_code}" \
+                "$openSearchHost/k8s-events-*/_mapping?allow_no_indices=true&ignore_unavailable=true")
+httpCode=$(echo "$response" | tail -n1)
+if [ "$httpCode" -ne 200 ]; then
+    echo "Response: $(echo "$response" | head -n-1)"
+    echo "Failed to add new fields to existing k8s-events indices. HTTP response code: $httpCode"
+    exit 1
+fi
+echo -e "Existing k8s-events indices updated\n"
 
 
 # 3. Add Channel for Notifications

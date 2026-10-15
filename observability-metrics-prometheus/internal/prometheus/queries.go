@@ -13,6 +13,7 @@ const (
 	LabelComponentUID   = "openchoreo.dev/component-uid"
 	LabelProjectUID     = "openchoreo.dev/project-uid"
 	LabelEnvironmentUID = "openchoreo.dev/environment-uid"
+	LabelReleaseLineUID = "openchoreo.dev/release-line-uid"
 	LabelNamespace      = "openchoreo.dev/namespace"
 	LabelComponent      = "openchoreo.dev/component"
 	LabelProject        = "openchoreo.dev/project"
@@ -31,7 +32,7 @@ func prometheusLabelName(kubernetesLabel string) string {
 // BuildLabelFilter builds a Prometheus label filter string for component identification.
 // If any of the IDs are empty, they are not included in the filter.
 // The namespace is always required and included.
-func BuildLabelFilter(namespace, componentUID, projectUID, environmentUID string) string {
+func BuildLabelFilter(namespace, componentUID, projectUID, environmentUID, releaseLineUID string) string {
 	namespaceLabel := prometheusLabelName(LabelNamespace)
 	componentLabel := prometheusLabelName(LabelComponentUID)
 	projectLabel := prometheusLabelName(LabelProjectUID)
@@ -47,7 +48,15 @@ func BuildLabelFilter(namespace, componentUID, projectUID, environmentUID string
 	if environmentUID != "" {
 		labelFilter = fmt.Sprintf("%s,%s=%q", labelFilter, environmentLabel, environmentUID)
 	}
-	return labelFilter
+	return withReleaseLine(labelFilter, releaseLineUID)
+}
+
+// withReleaseLine appends the release line UID matcher to a label filter when one is given.
+func withReleaseLine(labelFilter, releaseLineUID string) string {
+	if releaseLineUID == "" {
+		return labelFilter
+	}
+	return fmt.Sprintf("%s,%s=%q", labelFilter, prometheusLabelName(LabelReleaseLineUID), releaseLineUID)
 }
 
 // BuildScopeLabelNames returns the Prometheus label names for whichever of
@@ -94,14 +103,15 @@ func BuildGroupLeftClause(scopeLabels []string) string {
 }
 
 // BuildComponentLabelFilter builds a label filter using component/project/environment UIDs
-// without namespace. Used for alert rule expressions.
-func BuildComponentLabelFilter(componentUID, projectUID, environmentUID string) string {
+// without namespace, and the release line UID when given. Used for alert rule expressions.
+func BuildComponentLabelFilter(componentUID, projectUID, environmentUID, releaseLineUID string) string {
 	componentLabel := prometheusLabelName(LabelComponentUID)
 	projectLabel := prometheusLabelName(LabelProjectUID)
 	environmentLabel := prometheusLabelName(LabelEnvironmentUID)
 
-	return fmt.Sprintf(`%s=%q,%s=%q,%s=%q`,
+	labelFilter := fmt.Sprintf(`%s=%q,%s=%q,%s=%q`,
 		componentLabel, componentUID, projectLabel, projectUID, environmentLabel, environmentUID)
+	return withReleaseLine(labelFilter, releaseLineUID)
 }
 
 // ----------------------------

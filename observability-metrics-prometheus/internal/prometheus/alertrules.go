@@ -28,6 +28,7 @@ type AlertRuleParams struct {
 	ComponentUID   string
 	ProjectUID     string
 	EnvironmentUID string
+	ReleaseLineUID string
 	Metric         string
 	Enabled        bool
 	Window         string
@@ -109,11 +110,11 @@ func buildAlertExpression(rule AlertRuleParams) (string, error) {
 
 	switch rule.Metric {
 	case MetricTypeCPUUsage:
-		return buildCPUUsageAlertExpression(rule.ComponentUID, rule.ProjectUID, rule.EnvironmentUID, operator, rule.Threshold, rule.Window), nil
+		return buildCPUUsageAlertExpression(rule.ComponentUID, rule.ProjectUID, rule.EnvironmentUID, rule.ReleaseLineUID, operator, rule.Threshold, rule.Window), nil
 	case MetricTypeMemoryUsage:
-		return buildMemoryUsageAlertExpression(rule.ComponentUID, rule.ProjectUID, rule.EnvironmentUID, operator, rule.Threshold, rule.Window), nil
+		return buildMemoryUsageAlertExpression(rule.ComponentUID, rule.ProjectUID, rule.EnvironmentUID, rule.ReleaseLineUID, operator, rule.Threshold, rule.Window), nil
 	case MetricTypeBudget:
-		return buildBudgetAlertExpression(rule.ComponentUID, rule.ProjectUID, rule.EnvironmentUID, operator, rule.Threshold, rule.Window)
+		return buildBudgetAlertExpression(rule.ComponentUID, rule.ProjectUID, rule.EnvironmentUID, rule.ReleaseLineUID, operator, rule.Threshold, rule.Window)
 	default:
 		return "", fmt.Errorf("unsupported metric type: %s", rule.Metric)
 	}
@@ -122,8 +123,8 @@ func buildAlertExpression(rule AlertRuleParams) (string, error) {
 // buildCPUUsageAlertExpression builds a PromQL expression for CPU usage alerts.
 // The window parameter is used for the rate() calculation window. A minimum of 2m is enforced
 // to ensure sufficient data points for rate calculation.
-func buildCPUUsageAlertExpression(componentUID, projectUID, environmentUID, operator string, threshold float64, window string) string {
-	labelFilter := BuildComponentLabelFilter(componentUID, projectUID, environmentUID)
+func buildCPUUsageAlertExpression(componentUID, projectUID, environmentUID, releaseLineUID, operator string, threshold float64, window string) string {
+	labelFilter := BuildComponentLabelFilter(componentUID, projectUID, environmentUID, releaseLineUID)
 
 	// Use the provided window, but ensure a minimum of 2m for rate calculation
 	rateWindow := ensureMinimumWindow(window, "2m")
@@ -137,8 +138,8 @@ func buildCPUUsageAlertExpression(componentUID, projectUID, environmentUID, oper
 // buildMemoryUsageAlertExpression builds a PromQL expression for memory usage alerts.
 // The window parameter is accepted for API consistency but not used, as memory usage
 // is measured as an instant value rather than a rate over time.
-func buildMemoryUsageAlertExpression(componentUID, projectUID, environmentUID, operator string, threshold float64, window string) string {
-	labelFilter := BuildComponentLabelFilter(componentUID, projectUID, environmentUID)
+func buildMemoryUsageAlertExpression(componentUID, projectUID, environmentUID, releaseLineUID, operator string, threshold float64, window string) string {
+	labelFilter := BuildComponentLabelFilter(componentUID, projectUID, environmentUID, releaseLineUID)
 
 	return fmt.Sprintf(
 		`(sum(container_memory_working_set_bytes{container!=""} * on (pod) group_left(label_openchoreo_dev_component_uid,label_openchoreo_dev_project_uid,label_openchoreo_dev_environment_uid) kube_pod_labels{job="kube-state-metrics",%s}) / sum(kube_pod_container_resource_limits{resource="memory",job="kube-state-metrics"} * on (pod) group_left(label_openchoreo_dev_component_uid,label_openchoreo_dev_project_uid,label_openchoreo_dev_environment_uid) kube_pod_labels{job="kube-state-metrics",%s})) * 100 %s %v`,
@@ -149,8 +150,8 @@ func buildMemoryUsageAlertExpression(componentUID, projectUID, environmentUID, o
 // buildBudgetAlertExpression builds a PromQL expression for budget alerts.
 // Cost is calculated from configured CPU and memory requests (reserved capacity)
 // The threshold is in USD and represents the total cost for the window period.
-func buildBudgetAlertExpression(componentUID, projectUID, environmentUID, operator string, threshold float64, window string) (string, error) {
-	labelFilter := BuildComponentLabelFilter(componentUID, projectUID, environmentUID)
+func buildBudgetAlertExpression(componentUID, projectUID, environmentUID, releaseLineUID, operator string, threshold float64, window string) (string, error) {
+	labelFilter := BuildComponentLabelFilter(componentUID, projectUID, environmentUID, releaseLineUID)
 
 	// Scale factor converts hourly cost to the window duration.
 	windowDuration, err := time.ParseDuration(window)

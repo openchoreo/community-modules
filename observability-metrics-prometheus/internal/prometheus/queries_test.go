@@ -79,7 +79,7 @@ func TestBuildLabelFilter(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := BuildLabelFilter(tt.namespace, tt.componentUID, tt.projectUID, tt.environmentUID)
+			got := BuildLabelFilter(tt.namespace, tt.componentUID, tt.projectUID, tt.environmentUID, "")
 			for _, want := range tt.wantContains {
 				if !strings.Contains(got, want) {
 					t.Errorf("BuildLabelFilter() = %q, want to contain %q", got, want)
@@ -184,7 +184,7 @@ func TestBuildGroupLeftClause(t *testing.T) {
 }
 
 func TestBuildComponentLabelFilter(t *testing.T) {
-	got := BuildComponentLabelFilter("comp-1", "proj-1", "env-1")
+	got := BuildComponentLabelFilter("comp-1", "proj-1", "env-1", "")
 	wantParts := []string{
 		`label_openchoreo_dev_component_uid="comp-1"`,
 		`label_openchoreo_dev_project_uid="proj-1"`,

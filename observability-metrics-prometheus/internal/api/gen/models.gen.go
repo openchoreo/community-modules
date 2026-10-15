@@ -71,6 +71,7 @@ const (
 	BadRequest          ErrorResponseTitle = "badRequest"
 	Forbidden           ErrorResponseTitle = "forbidden"
 	InternalServerError ErrorResponseTitle = "internalServerError"
+	NotImplemented      ErrorResponseTitle = "notImplemented"
 	Unauthorized        ErrorResponseTitle = "unauthorized"
 )
 
@@ -148,6 +149,9 @@ type AlertRuleRequest struct {
 
 		// ProjectUid The OpenChoreo project UID to query
 		ProjectUid openapi_types.UUID `json:"projectUid"`
+
+		// ReleaseLineUid The UID of the component's release line the rule evaluates, filtered on the openchoreo.dev/release-line-uid label. Absent for components without release lines. Adapters that scope the rule to it set the OpenChoreo-Release-Line-Applied response header to "true".
+		ReleaseLineUid *openapi_types.UUID `json:"releaseLineUid,omitempty"`
 	} `json:"metadata"`
 	Source struct {
 		// Metric The metric to query for metric based alerts
@@ -249,6 +253,9 @@ type ComponentSearchScope struct {
 	EnvironmentUid *string `json:"environmentUid,omitempty"`
 	Namespace      string  `json:"namespace"`
 	ProjectUid     *string `json:"projectUid,omitempty"`
+
+	// ReleaseLineUid The UID of the component's release line to restrict the result to. Adapters that support it filter on the openchoreo.dev/release-line-uid label and set the OpenChoreo-Release-Line-Applied response header to "true".
+	ReleaseLineUid *string `json:"releaseLineUid,omitempty"`
 }
 
 // ErrorResponse defines model for ErrorResponse.
@@ -296,7 +303,7 @@ type MetricsQueryRequest struct {
 // MetricsQueryRequestMetric The type of query to execute
 type MetricsQueryRequestMetric string
 
-// MetricsQueryResponse defines model for MetricsQueryResponse.
+// MetricsQueryResponse Response for POST /api/v1/metrics/query. The variant is determined by the request's `metric` field: `resource` yields a ResourceMetricsTimeSeries and `http` yields an HttpMetricsTimeSeries. The two variants have disjoint property sets, so the response carries no separate discriminator field.
 type MetricsQueryResponse struct {
 	union json.RawMessage
 }
@@ -312,12 +319,16 @@ type MetricsTimeSeriesItem struct {
 
 // ResourceMetricsTimeSeries defines model for ResourceMetricsTimeSeries.
 type ResourceMetricsTimeSeries struct {
-	CpuLimits      *[]MetricsTimeSeriesItem `json:"cpuLimits,omitempty"`
-	CpuRequests    *[]MetricsTimeSeriesItem `json:"cpuRequests,omitempty"`
-	CpuUsage       *[]MetricsTimeSeriesItem `json:"cpuUsage,omitempty"`
-	MemoryLimits   *[]MetricsTimeSeriesItem `json:"memoryLimits,omitempty"`
-	MemoryRequests *[]MetricsTimeSeriesItem `json:"memoryRequests,omitempty"`
-	MemoryUsage    *[]MetricsTimeSeriesItem `json:"memoryUsage,omitempty"`
+	CpuLimits            *[]MetricsTimeSeriesItem `json:"cpuLimits,omitempty"`
+	CpuRequests          *[]MetricsTimeSeriesItem `json:"cpuRequests,omitempty"`
+	CpuUsage             *[]MetricsTimeSeriesItem `json:"cpuUsage,omitempty"`
+	DiskReadBytes        *[]MetricsTimeSeriesItem `json:"diskReadBytes,omitempty"`
+	DiskWriteBytes       *[]MetricsTimeSeriesItem `json:"diskWriteBytes,omitempty"`
+	MemoryLimits         *[]MetricsTimeSeriesItem `json:"memoryLimits,omitempty"`
+	MemoryRequests       *[]MetricsTimeSeriesItem `json:"memoryRequests,omitempty"`
+	MemoryUsage          *[]MetricsTimeSeriesItem `json:"memoryUsage,omitempty"`
+	NetworkReceiveBytes  *[]MetricsTimeSeriesItem `json:"networkReceiveBytes,omitempty"`
+	NetworkTransmitBytes *[]MetricsTimeSeriesItem `json:"networkTransmitBytes,omitempty"`
 }
 
 // RuntimeTopologyEdge An observed traffic flow from a source node to a target node.
@@ -466,8 +477,8 @@ type RuntimeTopologyNodeRefGateway struct {
 type RuntimeTopologyNodeRefGatewayKind string
 
 // RuntimeTopologyRequest Request body for POST /api/v1alpha1/metrics/runtime-topology.
-// searchScope must include namespace, projectUid, and environmentUid —
-// runtime topology is project- and environment-scoped. The optional
+// Runtime topology is project- and environment-scoped, so searchScope
+// requires namespace, projectUid, and environmentUid. The optional
 // componentUid, if set, restricts results to edges that touch that
 // component.
 type RuntimeTopologyRequest struct {
@@ -479,8 +490,16 @@ type RuntimeTopologyRequest struct {
 	IncludeExternal *bool `json:"includeExternal,omitempty"`
 
 	// IncludeGateways Whether to include gateway -> component edges. Defaults to true.
-	IncludeGateways *bool                `json:"includeGateways,omitempty"`
-	SearchScope     ComponentSearchScope `json:"searchScope"`
+	IncludeGateways *bool `json:"includeGateways,omitempty"`
+
+	// SearchScope Project- and environment-scoped search scope.
+	SearchScope struct {
+		// ComponentUid If set, restricts results to edges that touch this component.
+		ComponentUid   *string `json:"componentUid,omitempty"`
+		EnvironmentUid string  `json:"environmentUid"`
+		Namespace      string  `json:"namespace"`
+		ProjectUid     string  `json:"projectUid"`
+	} `json:"searchScope"`
 
 	// StartTime The start time of the query window
 	StartTime time.Time `json:"startTime"`

@@ -321,7 +321,7 @@ func TestQueryMetrics_WithCustomStep(t *testing.T) {
 func TestVisitQueryMetricsResponse(t *testing.T) {
 	// Create a response wrapper
 	response := metricsQueryOKResponse{
-		gen.MetricsQueryResponse{},
+		MetricsQueryResponse: gen.MetricsQueryResponse{},
 	}
 
 	// Create a test response writer

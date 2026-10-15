@@ -110,8 +110,9 @@ func (h *MetricsHandler) QueryMetrics(ctx context.Context, request gen.QueryMetr
 	componentUID := derefString(scope.ComponentUid)
 	projectUID := derefString(scope.ProjectUid)
 	environmentUID := derefString(scope.EnvironmentUid)
+	releaseLineUID := derefString(scope.ReleaseLineUid)
 
-	labelFilter := prometheus.BuildLabelFilter(scope.Namespace, componentUID, projectUID, environmentUID)
+	labelFilter := prometheus.BuildLabelFilter(scope.Namespace, componentUID, projectUID, environmentUID, releaseLineUID)
 	scopeLabels := prometheus.BuildScopeLabelNames(componentUID, projectUID, environmentUID)
 	groupLeftClause := prometheus.BuildGroupLeftClause(scopeLabels)
 	sumByClause := prometheus.BuildSumByClause("", scopeLabels)
@@ -119,14 +120,21 @@ func (h *MetricsHandler) QueryMetrics(ctx context.Context, request gen.QueryMetr
 	startTime := request.Body.StartTime
 	endTime := request.Body.EndTime
 
+	var resp gen.QueryMetricsResponseObject
+	var err error
 	switch request.Body.Metric {
 	case gen.MetricsQueryRequestMetricResource:
-		return h.queryResourceMetrics(ctx, labelFilter, sumByClause, groupLeftClause, startTime, endTime, step)
+		resp, err = h.queryResourceMetrics(ctx, labelFilter, sumByClause, groupLeftClause, startTime, endTime, step)
 	case gen.MetricsQueryRequestMetricHttp:
-		return h.queryHTTPMetrics(ctx, labelFilter, sumByClause, groupLeftClause, startTime, endTime, step)
+		resp, err = h.queryHTTPMetrics(ctx, labelFilter, sumByClause, groupLeftClause, startTime, endTime, step)
 	default:
 		return badRequestMetrics(fmt.Sprintf("unknown metric type: %s", request.Body.Metric)), nil
 	}
+	if ok, isOK := resp.(metricsQueryOKResponse); isOK {
+		ok.releaseLineApplied = releaseLineUID != ""
+		resp = ok
+	}
+	return resp, err
 }
 
 func (h *MetricsHandler) queryResourceMetrics(
@@ -201,7 +209,7 @@ func (h *MetricsHandler) queryResourceMetrics(
 	if err := response.FromResourceMetricsTimeSeries(result); err != nil {
 		return serverErrorMetrics(fmt.Sprintf("failed to build response: %v", err)), nil
 	}
-	return metricsQueryOKResponse{response}, nil
+	return metricsQueryOKResponse{MetricsQueryResponse: response}, nil
 }
 
 func (h *MetricsHandler) queryHTTPMetrics(
@@ -265,7 +273,7 @@ func (h *MetricsHandler) queryHTTPMetrics(
 	if err := response.FromHttpMetricsTimeSeries(result); err != nil {
 		return serverErrorMetrics(fmt.Sprintf("failed to build response: %v", err)), nil
 	}
-	return metricsQueryOKResponse{response}, nil
+	return metricsQueryOKResponse{MetricsQueryResponse: response}, nil
 }
 
 // CreateAlertRule creates a new PrometheusRule CR.
@@ -333,7 +341,10 @@ func (h *MetricsHandler) CreateAlertRule(ctx context.Context, request gen.Create
 		status = gen.Failed
 	}
 
-	return gen.CreateAlertRule201JSONResponse(buildSyncResponse(gen.Created, params.Name, backendID, status)), nil
+	return gen.CreateAlertRule201JSONResponse{
+		Body:    buildSyncResponse(gen.Created, params.Name, backendID, status),
+		Headers: gen.CreateAlertRule201ResponseHeaders{OpenChoreoReleaseLineApplied: releaseLineApplied(params.ReleaseLineUID)},
+	}, nil
 }
 
 // GetAlertRule retrieves a PrometheusRule CR.
@@ -420,7 +431,10 @@ func (h *MetricsHandler) UpdateAlertRule(ctx context.Context, request gen.Update
 
 	if prometheusSpecsAreEqual(existing, newRule) {
 		h.logger.Debug("PrometheusRule unchanged, skipping update", "rule_name", request.RuleName)
-		return gen.UpdateAlertRule200JSONResponse(buildSyncResponse(gen.Unchanged, request.RuleName, backendID, gen.Synced)), nil
+		return gen.UpdateAlertRule200JSONResponse{
+			Body:    buildSyncResponse(gen.Unchanged, request.RuleName, backendID, gen.Synced),
+			Headers: gen.UpdateAlertRule200ResponseHeaders{OpenChoreoReleaseLineApplied: releaseLineApplied(params.ReleaseLineUID)},
+		}, nil
 	}
 
 	existing.Spec = newRule.Spec
@@ -432,7 +446,10 @@ func (h *MetricsHandler) UpdateAlertRule(ctx context.Context, request gen.Update
 	}
 
 	h.logger.Info("PrometheusRule updated", "rule_name", request.RuleName, "backend_id", backendID)
-	return gen.UpdateAlertRule200JSONResponse(buildSyncResponse(gen.Updated, request.RuleName, backendID, gen.Synced)), nil
+	return gen.UpdateAlertRule200JSONResponse{
+		Body:    buildSyncResponse(gen.Updated, request.RuleName, backendID, gen.Synced),
+		Headers: gen.UpdateAlertRule200ResponseHeaders{OpenChoreoReleaseLineApplied: releaseLineApplied(params.ReleaseLineUID)},
+	}, nil
 }
 
 // DeleteAlertRule deletes a PrometheusRule CR.
@@ -603,6 +620,7 @@ func alertRuleParamsFromRequest(req gen.AlertRuleRequest) prometheus.AlertRulePa
 		ComponentUID:   req.Metadata.ComponentUid.String(),
 		ProjectUID:     req.Metadata.ProjectUid.String(),
 		EnvironmentUID: req.Metadata.EnvironmentUid.String(),
+		ReleaseLineUID: uuidString(req.Metadata.ReleaseLineUid),
 		Metric:         string(req.Source.Metric),
 		Enabled:        req.Condition.Enabled,
 		Window:         req.Condition.Window,
@@ -816,6 +834,27 @@ func derefString(s *string) string {
 	return *s
 }
 
+// releaseLineAppliedHeader confirms to the observer that a result was restricted to the
+// requested release line.
+const releaseLineAppliedHeader = "OpenChoreo-Release-Line-Applied"
+
+// releaseLineApplied is the OpenChoreo-Release-Line-Applied header value for a request
+// scoped to the given release line UID: "true" when it was, empty otherwise.
+func releaseLineApplied(releaseLineUID string) string {
+	if releaseLineUID == "" {
+		return ""
+	}
+	return "true"
+}
+
+// uuidString returns the UUID as a string, empty when it is nil.
+func uuidString(id *openapi_types.UUID) string {
+	if id == nil {
+		return ""
+	}
+	return id.String()
+}
+
 func strPtr(s string) *string {
 	return &s
 }
@@ -829,10 +868,15 @@ func errorTitle(t gen.ErrorResponseTitle) *gen.ErrorResponseTitle {
 // the custom MarshalJSON needed to serialize the internal union field.
 type metricsQueryOKResponse struct {
 	gen.MetricsQueryResponse
+	// releaseLineApplied is true when the query was restricted to the requested release line.
+	releaseLineApplied bool
 }
 
 func (r metricsQueryOKResponse) VisitQueryMetricsResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
+	if r.releaseLineApplied {
+		w.Header().Set(releaseLineAppliedHeader, "true")
+	}
 	w.WriteHeader(200)
 	return json.NewEncoder(w).Encode(r.MetricsQueryResponse)
 }
@@ -879,8 +923,8 @@ func (h *MetricsHandler) QueryRuntimeTopology(
 	if scope.Namespace == "" {
 		return badOrServerErrorRuntimeTopology400("searchScope.namespace is required"), nil
 	}
-	projectUID := derefString(scope.ProjectUid)
-	environmentUID := derefString(scope.EnvironmentUid)
+	projectUID := scope.ProjectUid
+	environmentUID := scope.EnvironmentUid
 	if projectUID == "" {
 		return badOrServerErrorRuntimeTopology400("searchScope.projectUid is required"), nil
 	}

@@ -93,6 +93,7 @@ type TracesRequestParams struct {
 	Limit             int      `json:"limit,omitempty"`
 	Namespace         string   `json:"namespace"`
 	ProjectUID        string   `json:"projectUid"`
+	ReleaseLineUID    string   `json:"releaseLineUid,omitempty"`
 	SortOrder         string   `json:"sortOrder,omitempty"`
 	StartTime         string   `json:"startTime"`
 	TraceID           string   `json:"traceId,omitempty"`

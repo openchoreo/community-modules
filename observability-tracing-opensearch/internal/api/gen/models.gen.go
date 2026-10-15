@@ -34,6 +34,9 @@ type ComponentSearchScope struct {
 	Environment *string `json:"environment,omitempty"`
 	Namespace   string  `json:"namespace"`
 	Project     *string `json:"project,omitempty"`
+
+	// ReleaseLine The UID of the component's release line to restrict the result to, like the other fields here. Adapters that support it filter on the openchoreo.dev/release-line-uid label and set the OpenChoreo-Release-Line-Applied response header to "true".
+	ReleaseLine *string `json:"releaseLine,omitempty"`
 }
 
 // ErrorResponse defines model for ErrorResponse.

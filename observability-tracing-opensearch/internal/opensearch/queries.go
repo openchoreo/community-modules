@@ -79,6 +79,14 @@ func BuildTracesQuery(params TracesRequestParams) map[string]interface{} {
 		})
 	}
 
+	if params.ReleaseLineUID != "" {
+		filterConditions = append(filterConditions, map[string]interface{}{
+			"term": map[string]interface{}{
+				"resource.openchoreo.dev/release-line-uid": params.ReleaseLineUID,
+			},
+		})
+	}
+
 	if params.Namespace != "" {
 		filterConditions = append(filterConditions, map[string]interface{}{
 			"term": map[string]interface{}{
@@ -156,6 +164,14 @@ func BuildTracesAggregationQuery(params TracesRequestParams) map[string]interfac
 		filterConditions = append(filterConditions, map[string]interface{}{
 			"term": map[string]interface{}{
 				"resource.openchoreo.dev/project-uid": params.ProjectUID,
+			},
+		})
+	}
+
+	if params.ReleaseLineUID != "" {
+		filterConditions = append(filterConditions, map[string]interface{}{
+			"term": map[string]interface{}{
+				"resource.openchoreo.dev/release-line-uid": params.ReleaseLineUID,
 			},
 		})
 	}

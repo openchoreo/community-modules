@@ -134,9 +134,10 @@ type queryErrorDetail struct {
 	InnerError *queryErrorDetail `json:"innererror"`
 }
 
-// isMissingTable reports whether err is the service rejecting the query
-// because the configured events table does not exist. Only that table counts:
-// a missing column is a real error.
+// isMissingTable reports whether err is the service rejecting the query because
+// the named table does not exist. Used for the events and audit tables, both of
+// which a workspace may not carry yet. Only the named table counts: a missing
+// column is a real error.
 //
 // It reads the service's error body rather than ResponseError.Error(), whose
 // layout is presentation, not contract. Anything it cannot decode is not a

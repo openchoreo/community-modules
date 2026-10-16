@@ -30,4 +30,11 @@ data:
   {{- with dig "events" "scopeName" "" .Values.adapter }}
   EVENTS_SCOPE_NAME: {{ . | quote }}
   {{- end }}
+
+  {{- with dig "audit" "workspaceId" "" .Values.adapter }}
+  AUDIT_WORKSPACE_ID: {{ . | quote }}
+  {{- end }}
+  {{- with dig "audit" "table" "" .Values.adapter }}
+  AUDIT_TABLE: {{ . | quote }}
+  {{- end }}
 {{- end }}

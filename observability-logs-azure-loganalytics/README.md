@@ -23,10 +23,11 @@ federated to the adapter's ServiceAccount.
 6. [Log alerting](#log-alerting)
 7. [Platform logs](#platform-logs)
 8. [Kubernetes events](#kubernetes-events)
-9. [Shared webhook secret](#shared-webhook-secret)
-10. [Troubleshooting](#troubleshooting)
-11. [Configuration reference](#configuration-reference)
-12. [Compatibility](#compatibility)
+9. [Audit logs](#audit-logs)
+10. [Shared webhook secret](#shared-webhook-secret)
+11. [Troubleshooting](#troubleshooting)
+12. [Configuration reference](#configuration-reference)
+13. [Compatibility](#compatibility)
 
 ## Architecture
 
@@ -497,6 +498,546 @@ OTelLogs
 | take 5
 ```
 
+## Audit logs
+
+OpenChoreo's audit trail — who did what, from where, and whether it was
+allowed — is written by `openchoreo-api` and `observer` to their container
+logs. This adapter reads it back from a **custom table of its own**, not from
+`ContainerLogV2`.
+
+That separation is the whole point, and it is not stylistic. In Azure both
+retention and read access are properties of a *table*:
+
+- **Retention.** The trail is a compliance record, kept far longer than
+  operational logs. Records sitting in `ContainerLogV2` inherit container-log
+  retention, and one table cannot have two.
+- **Access.** Anyone granted read on `ContainerLogV2` — every developer using
+  the logs feature — would otherwise be able to read the full audit trail,
+  including the `category: access` records about who read the audit trail.
+
+Audit is off until `adapter.audit.workspaceId` is set. Until then both audit
+endpoints answer `501`, which the Observer surfaces so the UI can say the
+backend does not serve audit — as opposed to an empty page, which reads as
+"nothing happened".
+
+### Turning it on
+
+Four steps. The sections after this are the reference detail behind them.
+
+**1. Emit the records.** Both producers default to off:
+
+```bash
+helm upgrade ... --set openchoreoApi.config.audit.enabled=true   # control plane
+helm upgrade ... --set observer.audit.enabled=true               # observability plane
+```
+
+**2. Create the table and route the records**, once per cluster that runs a
+producer:
+
+```bash
+scripts/setup-audit.sh --cluster <aks-name> --resource-group <rg>           # dry run
+scripts/setup-audit.sh --cluster <aks-name> --resource-group <rg> --apply
+```
+
+**3. Grant the adapter read** on the audit workspace, if it is not the workspace
+the container logs already live in. Restricting *other* principals is
+[Access](#access), and that is the part that makes the separation worth having.
+
+**4. Point the adapter at the table:**
+
+```bash
+helm upgrade observability-logs-azure-loganalytics <chart> \
+  --namespace openchoreo-observability-plane --reuse-values \
+  --set adapter.audit.workspaceId=<workspace-customerId-guid> \
+  --set adapter.audit.table=OpenChoreoAuditLog_CL
+```
+
+The adapter logs `audit table reachable` at boot when all four are done.
+
+### The table
+
+Create a custom table with the schema below, on the **Analytics** plan. Basic
+and Auxiliary fix interactive retention at 30 days, which is far short of what a
+compliance record needs, and they bill per GB scanned rather than including
+query cost, which an audit UI paging through a window would feel.
+
+| Column                                                                                | Type       | From                                |
+| ------------------------------------------------------------------------------------- | ---------- | ----------------------------------- |
+| `TimeGenerated`                                                                       | `datetime` | the record's `event_time`           |
+| `EventTime`                                                                           | `datetime` | `event_time`, kept verbatim         |
+| `CollectedTime`                                                                       | `datetime` | the collector's arrival time        |
+| `SchemaVersion`, `EventId`, `Action`, `Category`, `Result`                            | `string`   | same-named record fields            |
+| `RequestId`, `SourceIP`, `UserAgent`, `Producer`, `Surface`, `OperationId`            | `string`   | same-named record fields            |
+| `ActorType`, `ActorId`, `ActorIssuer`, `ActorSessionId`                               | `string`   | the record's `actor` group          |
+| `ActorEntitlements`                                                                   | `dynamic`  | `actor.entitlements`, as emitted    |
+| `HttpMethod`, `HttpPath`                                                              | `string`   | the record's `http` group           |
+| `ResourceType`, `ResourceNamespace`, `ResourceProject`                                | `string`   | the record's `resource` group       |
+| `ResourceEnvironment`                                                                 | `string`   | `{namespace}/{name}` — see below    |
+| `ResourceComponent`, `ResourceResource`, `ResourceUid`, `ResourceName`                | `string`   | the record's `resource` group       |
+| `ResourceMetadata`, `Metadata`                                                        | `dynamic`  | the metadata objects                |
+| `CollectorNamespace`, `CollectorPod`, `CollectorContainer`                            | `string`   | stamped by the collector            |
+| `ClusterInstance`                                                                     | `string`   | a per-cluster literal               |
+| `RawRecord`                                                                           | `string`   | the producer's line, as emitted     |
+
+Four of these are load-bearing and easy to get wrong:
+
+- **`TimeGenerated` must carry `event_time`,** not the arrival time. It is the
+  table's partition column, so every query ranges on it; filling it with the
+  collector's clock would make each audit query scan the whole retention window.
+  Note that Azure **replaces** a `TimeGenerated` more than two days old (or more
+  than a day ahead) with the arrival time, which a replay after a collector
+  outage can trigger. `EventTime` is kept separately for exactly that reason:
+  it is never rewritten, and `TimeGenerated != EventTime` identifies a record
+  this happened to.
+- **`ActorEntitlements` is stored as emitted**, the whole `actor.entitlements`
+  object, with no flattened copy alongside it. Claim names vary by subject, so
+  the adapter walks the object with `bag_keys` at query time rather than naming
+  a key. Do not try to flatten it in the transform: transformations run per
+  record and have neither `mv-expand` nor `bag_unpack`.
+- **`ResourceEnvironment` is dual-scoped**: the contract's environment filter
+  sends `{namespace}/{name}` (`acme/dev`), and a bare name does not match. The
+  record already carries that form in `resource.environment`, so copy it rather
+  than rebuilding it from the parts. Store a bare name and the column looks
+  populated while the environment filter silently returns nothing.
+- **`RawRecord`** is what `searchPhrase` scans, and it is the insurance against
+  Azure's closed table schema — a field a later `schema_version` adds is dropped
+  at ingestion rather than stored unindexed, and this is where it survives.
+
+Azure reserves `Type`, `id`, `TenantId`, `UniqueId`, `Title`, `_ResourceId` and
+`_SubscriptionId`, which is why `actor.type` and `resource.type` are stored
+under prefixed names.
+
+One command creates the table with its retention:
+
+```bash
+az monitor log-analytics workspace table create \
+  --resource-group "$RG" --workspace-name "$WS" \
+  --name OpenChoreoAuditLog_CL \
+  --plan Analytics \
+  --retention-time 365 --total-retention-time 365 \
+  --columns \
+    TimeGenerated=datetime EventTime=datetime CollectedTime=datetime \
+    SchemaVersion=string EventId=string Action=string Category=string Result=string \
+    RequestId=string SourceIP=string UserAgent=string Producer=string \
+    Surface=string OperationId=string \
+    ActorType=string ActorId=string ActorIssuer=string ActorSessionId=string \
+    ActorEntitlements=dynamic \
+    HttpMethod=string HttpPath=string \
+    ResourceType=string ResourceNamespace=string ResourceEnvironment=string \
+    ResourceProject=string ResourceComponent=string ResourceResource=string \
+    ResourceUid=string ResourceName=string ResourceMetadata=dynamic \
+    Metadata=dynamic \
+    CollectorNamespace=string CollectorPod=string CollectorContainer=string \
+    ClusterInstance=string RawRecord=string
+```
+
+The name must end in `_CL`, and `TimeGenerated` must be declared explicitly.
+
+### Retention
+
+The create above sets it. To change it later, on the table rather than the
+workspace:
+
+```bash
+az monitor log-analytics workspace table update \
+  --resource-group "$RG" --workspace-name "$WS" \
+  --name OpenChoreoAuditLog_CL \
+  --retention-time 365 --total-retention-time 365
+```
+
+`--retention-time` (4–730) is the window this adapter can serve.
+`--total-retention-time` may go further, up to 12 years, but data past the
+interactive window is reachable only through an asynchronous **search job** —
+which needs `workspaces/tables/write`, does not support `summarize`, and is not
+covered by granular RBAC. The adapter therefore never runs one. Treat anything
+beyond interactive retention as an operator-run forensic retrieval, not as
+something the audit UI can page through. The Azure CLI caps
+`--total-retention-time` at 7 years; use the REST API for 12.
+
+### Getting records into the table
+
+Not in this chart's scope, the same as container logs. The records are stdout
+lines from `openchoreo-api` and `observer` containing the marker `AUDIT-LOG`
+followed by JSON, and something has to route them.
+
+With Container Insights already collecting those namespaces, the least-moving-
+parts option is a second data flow on the `Microsoft-ContainerLogV2` stream in
+the cluster's data collection rule, with a `transformKql` that selects the audit
+lines, parses them into the columns above and sends them to the audit table via
+`outputStream: Custom-OpenChoreoAuditLog_CL`. Two things to get right:
+
+- The default `ContainerLogV2` data flow needs the **complementary** filter, so
+  audit lines leave `ContainerLogV2` rather than being copied into both. If the
+  two drift you get silent duplication or silent loss.
+- Match on `PodNamespace` and `ContainerName`, which the agent stamps from the
+  kubelet, plus the marker. This is a **security boundary**, and what it rests on
+  is set out under [What the producer filter does and does not
+  guarantee](#what-the-producer-filter-does-and-does-not-guarantee).
+
+`ClusterInstance` is a literal in each cluster's transform. `openchoreo-api` and
+`observer` commonly run in different clusters, so every producer cluster needs
+its own data flow, and an unlabelled record cannot be attributed afterwards.
+Those clusters share one audit table only if they share one Log Analytics
+workspace, for the reason under [Why not a separate
+workspace](#why-not-a-separate-workspace). Producer clusters on separate
+workspaces get a table each, which is not one audit trail.
+
+#### Applying it
+
+`scripts/setup-audit.sh` does all of this. It creates the table, finds the DCR,
+builds both filters from one producer list and writes the data flows. Without
+`--apply` it leaves the rule alone, though it still creates the table, since the
+rule cannot reference a table that does not exist:
+
+```bash
+scripts/setup-audit.sh --cluster <aks-name> --resource-group <rg>
+scripts/setup-audit.sh --cluster <aks-name> --resource-group <rg> --apply
+```
+
+Run it once per cluster that runs a producer, and check the workspace it prints
+matches on every run. `--producer NS:CONTAINER` (repeatable) replaces the default
+allowlist. Every run keeps its pre-edit rule under a timestamp in the work
+directory, and the earliest of those is the rollback to the original.
+
+It is operator-run rather than a chart Job deliberately: it needs rights to
+create tables and edit data collection rules, and those are exactly the rights
+that let a principal write into the audit table. Giving them to the module's own
+identity would defeat the isolation.
+
+What it does, and the decisions worth knowing about:
+
+- Finds the DCR **by association** rather than by the `MSCI-<region>-<cluster>`
+  name. The region in that name follows the workspace, not the cluster.
+- Stops if the rule collects `Microsoft-ContainerInsights-Group-Default`.
+  Transformations cannot attach to a group stream, and this is the step that is
+  easy to miss on a cluster left on the default cost preset.
+- **Subtracts** both container log stream names, `Microsoft-ContainerLogV2` and
+  `Microsoft-ContainerLogV2-HighScale`, from the existing data flows rather than
+  dropping those flows. Subtracting rather than dropping matters because a
+  Container Insights DCR commonly lists every stream in one flow, so removing the
+  entry would silently stop collecting `KubeEvents` and the inventory streams,
+  including the events this same adapter serves. Taking both names matters on a
+  re-run after high scale mode, where an earlier run's flows carry the old name
+  and would otherwise survive beside the new ones.
+- Generates the audit predicate **and its complement** from one producer list.
+  Transformations have no `not()`, so the complement is De Morgan: each pair's
+  `and` becomes an `or` of negations, joined with `and`. Deriving both is what
+  stops them drifting.
+- Matches on `PodNamespace` and `ContainerName` paired per producer. Two separate
+  `in` lists would admit any container named `observer` in either namespace. Note
+  the container is `api-server`; `openchoreo-api` is the producer name recorded in
+  the record, not the container the kubelet reports.
+- Matches the marker as `tostring(LogMessage.msg) == 'AUDIT-LOG'`. `LogMessage` is
+  `dynamic`, so the record arrives already parsed and needs no `parse_json`, and
+  the exact comparison separates a real record from the `AUDIT-LOG-RENDER-FAILED`
+  line a producer emits when it cannot marshal one.
+
+The transform itself is `scripts/audit-transform.kql`. Two things in it are easy
+to reverse and silent when wrong: `CollectedTime` is captured **before**
+`TimeGenerated` is overwritten, and `resource.environment` is already
+`{namespace}/{name}` in the record so it is copied rather than rebuilt.
+
+Audit records land in the audit table **only**. The two flows partition the
+stream: each filter excludes exactly what the other selects, so nothing reaches
+both `ContainerLogV2` and the audit table. The producers' ordinary application
+logs are untouched and keep going to `ContainerLogV2`.
+
+Confirm both halves, not just the first: audit records reaching the new table,
+**and** none left behind in `ContainerLogV2`.
+
+```kusto
+OpenChoreoAuditLog_CL
+| where TimeGenerated > ago(2h)
+| extend Ingested = ingestion_time()
+| project TimeGenerated, Ingested, Producer, Action, ActorId
+| sort by Ingested desc
+| take 10
+
+ContainerLogV2
+| where TimeGenerated > ago(2h)
+| where (PodNamespace == 'openchoreo-control-plane' and ContainerName == 'api-server')
+     or (PodNamespace == 'openchoreo-observability-plane' and ContainerName == 'observer')
+| where tostring(LogMessage.msg) == 'AUDIT-LOG'
+| count
+```
+
+The second must be zero. A non-zero count means the complementary filter does
+not match the audit filter, and those records are being stored twice and billed
+twice.
+
+It matches the producer pairs and not the marker alone. A pod outside those
+namespaces printing `AUDIT-LOG` is sent to `ContainerLogV2` deliberately, as
+[What the producer filter does and does not
+guarantee](#what-the-producer-filter-does-and-does-not-guarantee) describes, so
+counting the marker on its own reports drift that is not there.
+
+Keep the window generous. `TimeGenerated` carries `event_time`, but a record is
+queryable only once ingestion completes, which took seven minutes on the table's
+first write and under a minute after. A tight `ago()` window therefore returns
+zero on a healthy pipeline, once the records' own timestamps fall outside it.
+
+#### What the producer filter does and does not guarantee
+
+`PodNamespace` and `ContainerName` come from the container runtime by way of the
+kubelet, not from the log line. A workload cannot state its own namespace, so a
+pod in `default` printing a byte-perfect audit record is excluded, and the
+`Collector*` columns record which pod each stored record actually came from.
+`ClusterInstance` is a literal in the transform rather than a field read from the
+record, so it cannot be forged either. The transform lives in one cluster's DCR,
+so a second cluster cannot write into the table until its own DCR is edited.
+
+What the filter reduces to is **who can run a pod in the producer namespaces**.
+The container name is chosen freely in a pod spec, so anyone able to create a pod
+named `observer` in `openchoreo-observability-plane` can write into the audit
+trail. That is a Kubernetes RBAC property of those two namespaces, not something
+the transform can enforce, and it is the assumption worth checking before relying
+on any of this.
+
+Two things it does not address at all:
+
+- **Anything running inside a genuine producer container** shares that
+  container's stdout and can emit records that are indistinguishable from real
+  ones. This is inherent to collecting the trail from container logs, and is
+  equally true of the OpenSearch and OpenObserve modules.
+- **The table is not write-protected by the transform.** Ingestion into
+  `Custom-OpenChoreoAuditLog_CL` is reachable from any data collection rule that
+  declares that output stream, by any principal holding `Monitoring Metrics
+  Publisher` on such a rule. The filter guards the Container Insights path, not
+  the table. Restricting who can create or edit data collection rules in the
+  subscription is what closes that, and it belongs with the role assignments in
+  [Access](#access).
+
+### Access
+
+The adapter's managed identity needs read on the audit workspace, in addition to
+its existing grant on the logs workspace. If the audit table lives in the same
+workspace, it already has it.
+
+Isolating the trail is about **every other principal**, not the adapter: a
+platform engineer, a CI service principal, another workload. Use a granular-RBAC
+condition on `Microsoft.OperationalInsights/workspaces/tables/data/read`:
+
+```
+Microsoft.OperationalInsights/workspaces/tables:name StringEquals 'OpenChoreoAuditLog_CL'
+```
+
+#### Why not a separate workspace
+
+Because the DCR split cannot reach one. Azure's rule is that [one stream can only
+send to one Log Analytics workspace in a
+DCR](https://learn.microsoft.com/en-us/azure/azure-monitor/data-collection/data-collection-rule-structure#destinations):
+several `dataFlows` may share a stream only when they write to different tables
+in the **same** workspace, which is exactly the shape
+[Getting records into the table](#getting-records-into-the-table) builds. Sending
+one stream to two workspaces needs a second DCR, and a second Container Insights
+DCR on the same cluster would collect `ContainerLogV2` twice.
+
+This costs less than it sounds. Retention is a property of the **table**, not the
+workspace, so the retention half of the requirement is met either way. Only the
+access half depends on the condition above.
+
+The adapter itself is indifferent: `adapter.audit.workspaceId` may equal
+`logAnalytics.workspaceId` or not, and nothing in the query path changes. Genuine
+workspace separation needs a different ingestion path, under [Clusters on
+separate workspaces](#clusters-on-separate-workspaces).
+
+If you take the condition route, know that **Azure RBAC is additive with no
+deny**: a principal holding a broader `*/read` on the same scope keeps full
+access and the condition never binds. Audit the existing assignments before
+relying on it, and watch `LAQueryLogs.ConditionalDataAccess`, which records
+whether a query actually ran under a condition.
+
+One role deliberately goes unassigned: `Data Purger`. Ingestion through a data
+collection rule is append-only — there is no update or delete — so leaving
+`Microsoft.OperationalInsights/workspaces/purge/action` unassigned is what makes
+the trail tamper-evident. The adapter never needs it.
+
+#### Clusters on separate workspaces
+
+An observability plane serves platform logs from its own workspace, so it cannot
+redirect its container logs to the audit workspace the way a control-plane or
+data-plane cluster can. Splitting its Container Insights DCR therefore keeps its
+audit records local, and several such clusters end up with a table each.
+
+Azure's mechanism for this is [multitenant managed
+logging](https://learn.microsoft.com/en-us/azure/azure-monitor/containers/container-insights-multitenant):
+extra `ContainerLogV2Extension` DCRs, each covering a set of namespaces with its
+own workspace destination and its own `transformKql`.
+
+Routing is **either/or, not additive**. A namespace covered by an extension DCR
+is processed by that DCR alone and stops reaching the default workspace, and
+`disable_fallback_ingestion` governs only namespaces that are *not* covered. So
+one extension DCR over `openchoreo-observability-plane` would take the observer's
+ordinary application logs to the audit workspace along with its audit records,
+out of the workspace this module serves platform logs from.
+
+The arrangement that works is therefore two extension DCRs over the same
+namespace, one transforming audit records into the audit workspace and one
+carrying the complement back to the local one. The docs call two DCRs over one
+namespace *multihoming* and describe it as sending the same logs to several
+workspaces, but each DCR applies its own `transformKql` before routing, so
+complementary filters partition the namespace rather than copying it.
+
+Do the following on each observability plane.
+
+**1. Enable [high scale
+mode](https://learn.microsoft.com/en-us/azure/azure-monitor/containers/container-insights-high-scale)**,
+on the addon and in the agent's ConfigMap. Both halves are needed; either alone
+does nothing. An existing cluster has to be disabled and re-enabled, as there is
+no automatic migration, and the audit data flows do not survive it.
+
+```bash
+az aks enable-addons -a monitoring -g <rg> -n <cluster> \
+  --workspace-resource-id <workspace-resource-id> --enable-high-log-scale-mode
+```
+
+The same ConfigMap carries multitenancy. `schema-version` is mandatory: without
+it the agent discards the whole map silently and neither setting takes effect.
+`disable_fallback_ingestion` stays false so namespaces without an extension DCR
+keep reaching the local workspace.
+
+```yaml
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: container-azm-ms-agentconfig
+  namespace: kube-system
+data:
+  schema-version: v1
+  config-version: ver1
+  agent-settings: |-
+    [agent_settings.high_log_scale]
+      enabled = true
+  log-data-collection-settings: |-
+    [log_collection_settings]
+      [log_collection_settings.multi_tenancy]
+        enabled = true
+        disable_fallback_ingestion = false
+```
+
+Apply it, then restart the agent, which reads the map only at container start:
+
+```bash
+kubectl apply -f container-azm-ms-agentconfig.yaml
+kubectl -n kube-system rollout restart daemonset/ama-logs
+```
+
+Confirm both took, because a rejected map is silent:
+
+```bash
+POD=$(kubectl -n kube-system get pods -o name | grep -m1 'pod/ama-logs-[a-z0-9]*$' | cut -d/ -f2)
+kubectl -n kube-system logs "$POD" -c ama-logs | grep -i 'schema version\|high log scale\|multi_tenancy'
+```
+
+Settings errors surface in the `KubeMonAgentEvents` table in the local workspace.
+
+**2. Create a data collection endpoint**, which every extension DCR needs.
+
+```bash
+az monitor data-collection endpoint create \
+  -g <rg> -n <dce-name> -l <region> --kind Linux --public-network-access Enabled
+```
+
+**3. Create two extension DCRs** over the producer namespace. The first sends
+audit records to the audit workspace:
+
+```json
+{
+  "location": "<region>",
+  "kind": "Linux",
+  "properties": {
+    "dataCollectionEndpointId": "<dce-resource-id>",
+    "dataSources": {
+      "extensions": [{
+        "name": "ContainerLogV2Extension",
+        "extensionName": "ContainerLogV2Extension",
+        "streams": ["Microsoft-ContainerLogV2-HighScale"],
+        "extensionSettings": {
+          "dataCollectionSettings": {
+            "namespaces": ["openchoreo-observability-plane"]
+          }
+        }
+      }]
+    },
+    "destinations": {
+      "logAnalytics": [{
+        "workspaceResourceId": "<audit-workspace-resource-id>",
+        "name": "ciworkspace"
+      }]
+    },
+    "dataFlows": [{
+      "streams": ["Microsoft-ContainerLogV2-HighScale"],
+      "destinations": ["ciworkspace"],
+      "transformKql": "<scripts/audit-transform.kql, placeholders substituted>",
+      "outputStream": "Custom-OpenChoreoAuditLog_CL"
+    }]
+  }
+}
+```
+
+The second is the same document with the **local** workspace as its destination,
+the complementary predicate as its whole transform, and no `outputStream`, so its
+records land in the local `ContainerLogV2`:
+
+```json
+"transformKql": "source | where <complement of the audit predicate>"
+```
+
+Derive both predicates from one producer list rather than writing them
+separately, the way `scripts/setup-audit.sh` does. Transformations have no
+`not()`, so the complement is written out by De Morgan, and the two drift apart
+if maintained by hand.
+
+```bash
+az monitor data-collection rule create -g <rg> -n <name> --rule-file <file>.json
+```
+
+**4. Associate both with the cluster.** A cluster supports 30 extension DCR
+associations.
+
+```bash
+az monitor data-collection rule association create \
+  --name <name>-dcra --resource <aks-resource-id> --rule-id <dcr-resource-id>
+```
+
+**5. Re-run `scripts/setup-audit.sh --apply --skip-preflight`** against the
+cluster's default Container Insights DCR. High scale mode renames the stream to
+`Microsoft-ContainerLogV2-HighScale`, and a rule still naming
+`Microsoft-ContainerLogV2` duplicates data. The script reads the stream off the
+cluster's extension and replaces flows under either name, so the re-run is the
+whole fix. `--skip-preflight` is needed because the preflight looks for audit
+records in `ContainerLogV2`, and once the flows exist they are not there.
+
+The handover is not immediate. The agent refetches DCRs every five minutes from
+container start, and until it does the namespace is still handled by the default
+Container Insights DCR, so audit records emitted in that window land in the
+cluster's own `ContainerLogV2`. Ingestion is append-only, so they cannot be moved
+afterwards. Either accept that gap or keep the producers quiet until the agent has
+the new rules, which `grep -l ContainerLogV2Extension
+/etc/mdsd.d/config-cache/configchunks/*.json` inside the agent confirms.
+
+On cost, the high scale mode documentation names no separate charge, ingestion is
+billed as before, and the data collection endpoint it requires has no standalone
+cost. That is the absence of a pricing statement rather than a documented
+exemption, so confirm against current pricing before committing to it.
+
+High scale mode is unavailable with an HTTP proxy using a trusted certificate,
+through portal onboarding, through **Monitor Settings** in AKS Insights, and
+through Bicep, Terraform or Azure Policy on Arc-enabled clusters. Where it is
+unavailable, the remaining option is to stop relying on the Azure Monitor agent
+for this signal and ship audit records with a collector of your own, such as
+Fluent Bit or an OpenTelemetry collector, writing to the audit workspace
+directly.
+
+### Querying the table directly
+
+```kusto
+OpenChoreoAuditLog_CL
+| where isnotempty(EventId)
+| project TimeGenerated, EventTime, ActorId, Action, Result, ResourceProject
+| take 5
+```
+
 ## Shared webhook secret
 
 When `adapter.webhookAuth.enabled` is `true` (the default), the adapter
@@ -662,6 +1203,86 @@ ContainerLogV2
    `events table does not exist in the workspace yet` in the adapter logs: the
    adapter answers with no events until that table is created.
 
+### Audit queries answer `501`
+
+The adapter declines audit whenever it has no audit table to read. Either
+`adapter.audit.workspaceId` is unset, or the table named by
+`adapter.audit.table` does not exist in that workspace yet. The boot log says
+which:
+
+```
+audit logs are not configured; audit queries will answer 501
+audit table is not queryable yet; audit queries will answer 501 until it is
+```
+
+The second is expected until the first record is ingested — a custom table
+appears only once something writes to it, and that may be well after the adapter
+is installed. Confirm with `OpenChoreoAuditLog_CL | take 1` in the workspace.
+
+### The audit table looks empty after setup
+
+Check arrival before concluding anything is wrong:
+
+```kusto
+OpenChoreoAuditLog_CL
+| extend Ingested = ingestion_time()
+| summarize Records = count(), First = min(Ingested), Last = max(Ingested)
+```
+
+Records returned means ingestion works and the empty result came from the query
+window. None means nothing has arrived, so confirm a producer emitted after the
+data flow was applied, since a transformation runs at ingestion time only and
+records emitted before the DCR was edited stay in `ContainerLogV2` for good.
+
+```bash
+kubectl -n openchoreo-control-plane logs <api-server-pod> -c api-server \
+  --since=10m | grep AUDIT-LOG
+```
+
+The agent's own configuration is not where to look. Transformations and
+`outputStream` are evaluated after the data leaves the cluster, so neither
+appears in the AMA config chunks under `/etc/mdsd.d/config-cache/configchunks/`
+even when routing works, and restarting `ama-logs` changes nothing.
+
+### Audit queries return nothing, but the table is filling
+
+The adapter drops rows with an empty `EventId`, and it skips records missing
+`schema_version`, `actor.type`, `actor.id`, `result` or `event_time` — a record
+with no actor would otherwise read as a real finding about an anonymous action.
+A transform that writes rows without those fields therefore produces a table
+that looks populated and queries that return nothing.
+
+Check what actually landed:
+
+```kusto
+OpenChoreoAuditLog_CL
+| summarize Total = count(), Usable = countif(isnotempty(EventId))
+```
+
+If `Usable` is far below `Total`, the DCR transform is matching lines it cannot
+parse — most often because the marker filter is wider than intended. Adapter
+logs name each skipped record with the field it was missing.
+
+### Audit records have the wrong timestamps after an outage
+
+Azure replaces a submitted `TimeGenerated` more than two days old with the
+arrival time, so a collector replaying a long backlog writes records that sort by
+when they were recovered rather than when they happened. The original survives in
+`EventTime`:
+
+```kusto
+OpenChoreoAuditLog_CL
+| where TimeGenerated != EventTime
+| project EventTime, TimeGenerated, EventId
+```
+
+Nothing is lost, but paging and the timeline use `TimeGenerated` while the
+record reports `EventTime`, and the two disagree for a clamped record. A caller
+that resumes from the `event_time` it was last given sets a bound that is
+compared against `TimeGenerated`, so it can skip the span between them. After a
+long replay, re-read the affected window by `TimeGenerated` rather than paging
+through it.
+
 ## Configuration reference
 
 | Value                                           | Default                                                                          | Description                                                                                                                                                                                                            |
@@ -684,6 +1305,8 @@ ContainerLogV2
 | `adapter.alertRuleDefaults.windowSize`          | `PT5M`                                                                           | ISO 8601 duration used when an alert rule request omits one.                                                                                                                                                           |
 | `adapter.events.table`                          | `OTelLogs`                                                                       | Table Kubernetes events are read from. Must be a plain table name.                                                                                                                                                     |
 | `adapter.events.scopeName`                      | k8s events receiver scope                                                        | Instrumentation scope that marks a record in `adapter.events.table` as a Kubernetes event.                                                                                                                             |
+| `adapter.audit.workspaceId`                     | `""`                                                                             | Workspace `customerId` (GUID) holding the audit table. Empty turns audit off and both audit endpoints answer `501`. May be the same GUID as `logAnalytics.workspaceId`.                                                |
+| `adapter.audit.table`                           | `OpenChoreoAuditLog_CL`                                                          | Custom table audit records are read from. Must be a plain table name.                                                                                                                                                  |
 | `adapter.serviceAccount.annotations`            | `{}`                                                                             | Annotations applied to the adapter ServiceAccount. Use `azure.workload.identity/client-id: <uami-client-id>` to bind a Managed Identity.                                                                               |
 | `adapter.webhookAuth.enabled`                   | `true`                                                                           | Reject webhook calls without the shared secret.                                                                                                                                                                        |
 | `adapter.webhookAuth.sharedSecret`              | `""`                                                                             | Inline secret value. Chart creates a Secret; min 16 characters.                                                                                                                                                        |

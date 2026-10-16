@@ -70,3 +70,50 @@ func TestLoadConfig_RejectsInvalidEventsTable(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadConfig_AuditDefaults(t *testing.T) {
+	setRequiredEnv(t)
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	// Audit is opt-in: without a workspace the adapter declines rather than
+	// querying the container-logs workspace for a table that is not there.
+	if cfg.AuditWorkspaceID != "" {
+		t.Errorf("AuditWorkspaceID = %q, want empty", cfg.AuditWorkspaceID)
+	}
+	if cfg.AuditTable != loganalytics.DefaultAuditTable {
+		t.Errorf("AuditTable = %q, want %q", cfg.AuditTable, loganalytics.DefaultAuditTable)
+	}
+}
+
+func TestLoadConfig_AuditOverrides(t *testing.T) {
+	setRequiredEnv(t)
+	t.Setenv("AUDIT_WORKSPACE_ID", "audit-ws-guid")
+	t.Setenv("AUDIT_TABLE", "MyAudit_CL")
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.AuditWorkspaceID != "audit-ws-guid" || cfg.AuditTable != "MyAudit_CL" {
+		t.Errorf("got workspace=%q table=%q", cfg.AuditWorkspaceID, cfg.AuditTable)
+	}
+}
+
+// Validated even when audit is off, so a typo surfaces at startup rather than
+// the first time someone opens the audit trail.
+func TestLoadConfig_RejectsInvalidAuditTable(t *testing.T) {
+	for _, table := range []string{"Audit | take 1", "1Audit", "Audit;drop", "Audit-Log"} {
+		t.Run(table, func(t *testing.T) {
+			setRequiredEnv(t)
+			t.Setenv("AUDIT_TABLE", table)
+
+			_, err := LoadConfig()
+			if err == nil || !strings.Contains(err.Error(), "AUDIT_TABLE") {
+				t.Errorf("want an AUDIT_TABLE error, got %v", err)
+			}
+		})
+	}
+}

@@ -22,12 +22,14 @@ type QueryAPI interface {
 }
 
 type Client struct {
-	api             QueryAPI
-	workspaceID     string
-	queryTimeout    time.Duration
-	eventsTable     string
-	eventsScopeName string
-	logger          *slog.Logger
+	api              QueryAPI
+	workspaceID      string
+	queryTimeout     time.Duration
+	eventsTable      string
+	eventsScopeName  string
+	auditWorkspaceID string
+	auditTable       string
+	logger           *slog.Logger
 }
 
 type Config struct {
@@ -42,6 +44,15 @@ type Config struct {
 	// EventsScopeName is the instrumentation scope that marks a record in
 	// EventsTable as a Kubernetes event. Default DefaultEventsScopeName.
 	EventsScopeName string
+
+	// AuditWorkspaceID is the workspace holding the audit table, which may be
+	// WorkspaceID or a separate one. Empty means audit is not configured.
+	AuditWorkspaceID string
+
+	// AuditTable is the custom table audit records are read from. It is written
+	// into queries as an identifier, so callers must validate it. Default
+	// DefaultAuditTable.
+	AuditTable string
 }
 
 func NewClient(cred azcore.TokenCredential, cfg Config, logger *slog.Logger) (*Client, error) {
@@ -66,18 +77,25 @@ func NewClientWithQueryAPI(api QueryAPI, cfg Config, logger *slog.Logger) *Clien
 	if cfg.EventsScopeName == "" {
 		cfg.EventsScopeName = DefaultEventsScopeName
 	}
+	// Only the table defaults. Defaulting AuditWorkspaceID to the logs
+	// workspace would silently query a table that is not there.
+	if cfg.AuditTable == "" {
+		cfg.AuditTable = DefaultAuditTable
+	}
 	if logger == nil {
 		// The query paths log on degraded results, and an exported constructor
 		// makes a nil logger easy to pass by accident.
 		logger = slog.New(slog.DiscardHandler)
 	}
 	return &Client{
-		api:             api,
-		workspaceID:     cfg.WorkspaceID,
-		queryTimeout:    cfg.QueryTimeout,
-		eventsTable:     cfg.EventsTable,
-		eventsScopeName: cfg.EventsScopeName,
-		logger:          logger,
+		api:              api,
+		workspaceID:      cfg.WorkspaceID,
+		queryTimeout:     cfg.QueryTimeout,
+		eventsTable:      cfg.EventsTable,
+		eventsScopeName:  cfg.EventsScopeName,
+		auditWorkspaceID: cfg.AuditWorkspaceID,
+		auditTable:       cfg.AuditTable,
+		logger:           logger,
 	}
 }
 

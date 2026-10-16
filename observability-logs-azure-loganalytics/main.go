@@ -50,10 +50,12 @@ func main() {
 	}
 
 	laClient, err := loganalytics.NewClient(cred, loganalytics.Config{
-		WorkspaceID:     cfg.WorkspaceID,
-		QueryTimeout:    cfg.QueryTimeout,
-		EventsTable:     cfg.EventsTable,
-		EventsScopeName: cfg.EventsScopeName,
+		WorkspaceID:      cfg.WorkspaceID,
+		QueryTimeout:     cfg.QueryTimeout,
+		EventsTable:      cfg.EventsTable,
+		EventsScopeName:  cfg.EventsScopeName,
+		AuditWorkspaceID: cfg.AuditWorkspaceID,
+		AuditTable:       cfg.AuditTable,
 	}, logger.With("component", "loganalytics"))
 	if err != nil {
 		logger.Error("failed to construct Log Analytics client", slog.Any("error", err))
@@ -76,6 +78,24 @@ func main() {
 		logger.Warn("events table is not queryable yet; events queries will return no events until it is",
 			slog.String("table", cfg.EventsTable),
 			slog.Any("error", err),
+		)
+	}
+
+	if !laClient.AuditEnabled() {
+		logger.Info("audit logs are not configured; audit queries will answer 501",
+			slog.String("hint", "set AUDIT_WORKSPACE_ID to enable them"))
+	} else if err := laClient.ProbeAuditTable(bootstrapCtx); err != nil {
+		// Not fatal: the table appears only once audit collection is set up,
+		// which may be after the adapter is installed.
+		logger.Warn("audit table is not queryable yet; audit queries will answer 501 until it is",
+			slog.String("workspaceId", cfg.AuditWorkspaceID),
+			slog.String("table", laClient.AuditTable()),
+			slog.Any("error", err),
+		)
+	} else {
+		logger.Info("audit table reachable",
+			slog.String("workspaceId", cfg.AuditWorkspaceID),
+			slog.String("table", laClient.AuditTable()),
 		)
 	}
 

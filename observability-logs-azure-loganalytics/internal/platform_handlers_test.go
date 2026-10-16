@@ -306,57 +306,6 @@ func TestQueryPlatformLogFilterValues_RejectsUnlistableFilter(t *testing.T) {
 	}
 }
 
-// The observer negotiates capability at runtime: an adapter that cannot
-// answer a signal must say 501, which the observer surfaces verbatim. A 404
-// would read as a misrouted request instead.
-func TestUnsupportedSignalsAnswer501(t *testing.T) {
-	h := platformHandler(&stubQueryAPI{})
-	ctx := context.Background()
-
-	// errorCode is checked on each: the contract's 501 examples leave it empty,
-	// but every other status this module serves carries one.
-	cases := []struct {
-		name string
-		call func() (any, error)
-		want func(any) (*string, bool)
-	}{
-		{
-			"audit logs",
-			func() (any, error) { return h.QueryAuditLogs(ctx, gen.QueryAuditLogsRequestObject{}) },
-			func(r any) (*string, bool) {
-				v, ok := r.(gen.QueryAuditLogs501JSONResponse)
-				return v.ErrorCode, ok
-			},
-		},
-		{
-			"audit log filter values",
-			func() (any, error) {
-				return h.QueryAuditLogFilterValues(ctx, gen.QueryAuditLogFilterValuesRequestObject{})
-			},
-			func(r any) (*string, bool) {
-				v, ok := r.(gen.QueryAuditLogFilterValues501JSONResponse)
-				return v.ErrorCode, ok
-			},
-		},
-	}
-
-	for _, c := range cases {
-		resp, err := c.call()
-		if err != nil {
-			t.Errorf("%s: unexpected error: %v", c.name, err)
-			continue
-		}
-		code, ok := c.want(resp)
-		if !ok {
-			t.Errorf("%s: got %T, want 501", c.name, resp)
-			continue
-		}
-		if code == nil || *code == "" {
-			t.Errorf("%s: 501 should carry an error code", c.name)
-		}
-	}
-}
-
 // The observer caps valueSearch too, but an adapter runs without in-process
 // auth and does not assume the observer is its only caller.
 func TestQueryPlatformLogFilterValues_RejectsOverlongValueSearch(t *testing.T) {

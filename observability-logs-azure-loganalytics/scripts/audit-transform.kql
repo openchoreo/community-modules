@@ -1,0 +1,66 @@
+// Ingestion-time transform for the OpenChoreo audit trail.
+//
+// setup-audit.sh substitutes <AUDIT> with the producer predicate and
+// <CLUSTER_INSTANCE> with the cluster's name, then installs this as the
+// transformKql of a Microsoft-ContainerLogV2 data flow whose outputStream is
+// Custom-OpenChoreoAuditLog_CL.
+//
+// Column names must match internal/loganalytics/audit_columns.go. A mismatch
+// fails silently, as a column that is always empty or a filter that matches
+// nothing.
+//
+// LogMessage is dynamic, so the record is already parsed and needs no
+// parse_json. Members are read with ["..."] rather than dot notation because
+// resource.project collides with the project operator and fails to compile.
+// Only that one field needs it; the rest use brackets for consistency, so a
+// field added later cannot reintroduce the same failure.
+source
+| where <AUDIT>
+| extend CollectedTime = TimeGenerated
+| extend
+    EventTime = todatetime(LogMessage["event_time"]),
+    SchemaVersion = tostring(LogMessage["schema_version"]),
+    EventId = tostring(LogMessage["event_id"]),
+    Action = tostring(LogMessage["action"]),
+    Category = tostring(LogMessage["category"]),
+    Result = tostring(LogMessage["result"]),
+    RequestId = tostring(LogMessage["request_id"]),
+    SourceIP = tostring(LogMessage["source_ip"]),
+    UserAgent = tostring(LogMessage["user_agent"]),
+    Producer = tostring(LogMessage["producer"]),
+    Surface = tostring(LogMessage["surface"]),
+    OperationId = tostring(LogMessage["operation_id"])
+| extend
+    ActorType = tostring(LogMessage["actor"]["type"]),
+    ActorId = tostring(LogMessage["actor"]["id"]),
+    ActorIssuer = tostring(LogMessage["actor"]["issuer"]),
+    ActorSessionId = tostring(LogMessage["actor"]["session_id"]),
+    ActorEntitlements = LogMessage["actor"]["entitlements"],
+    HttpMethod = tostring(LogMessage["http"]["method"]),
+    HttpPath = tostring(LogMessage["http"]["path"])
+| extend
+    ResourceType = tostring(LogMessage["resource"]["type"]),
+    ResourceNamespace = tostring(LogMessage["resource"]["namespace"]),
+    ResourceEnvironment = tostring(LogMessage["resource"]["environment"]),
+    ResourceProject = tostring(LogMessage["resource"]["project"]),
+    ResourceComponent = tostring(LogMessage["resource"]["component"]),
+    ResourceResource = tostring(LogMessage["resource"]["resource"]),
+    ResourceUid = tostring(LogMessage["resource"]["uid"]),
+    ResourceName = tostring(LogMessage["resource"]["name"]),
+    ResourceMetadata = LogMessage["resource"]["metadata"],
+    Metadata = LogMessage["metadata"]
+| extend
+    CollectorNamespace = PodNamespace,
+    CollectorPod = PodName,
+    CollectorContainer = ContainerName,
+    ClusterInstance = '<CLUSTER_INSTANCE>',
+    RawRecord = tostring(LogMessage)
+| extend TimeGenerated = EventTime
+| project
+    TimeGenerated, EventTime, CollectedTime, SchemaVersion, EventId, Action,
+    Category, Result, RequestId, SourceIP, UserAgent, Producer, Surface,
+    OperationId, ActorType, ActorId, ActorIssuer, ActorSessionId,
+    ActorEntitlements, HttpMethod, HttpPath, ResourceType, ResourceNamespace,
+    ResourceEnvironment, ResourceProject, ResourceComponent, ResourceResource,
+    ResourceUid, ResourceName, ResourceMetadata, Metadata, CollectorNamespace,
+    CollectorPod, CollectorContainer, ClusterInstance, RawRecord

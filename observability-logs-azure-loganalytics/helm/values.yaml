@@ -59,6 +59,27 @@ adapter:
     table: "OTelLogs"
     scopeName: "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/k8seventsreceiver"
 
+  # OpenChoreo's audit trail - who did what, from where, and whether it was
+  # allowed. Read from a custom table of its own rather than from the container
+  # logs, because in Azure both retention and read access are per-table: the
+  # trail is kept far longer than operational logs, and a reader of one should
+  # not automatically be a reader of the other.
+  #
+  # `workspaceId` is what turns audit on. Leave it empty and the adapter
+  # declines the audit endpoints with 501, which is how the observer learns the
+  # backend does not serve that signal - distinct from answering an empty page,
+  # which reads as "nothing happened".
+  #
+  # The adapter reads whichever workspace this names. Splitting the cluster's
+  # Container Insights rule, which is what scripts/setup-audit.sh does, can only
+  # reach the workspace the container logs already go to, because a stream sends
+  # to one workspace per DCR. Isolation on that path is a role assignment on the
+  # table rather than a separate workspace. Reaching another workspace needs the
+  # extension rules under Clusters on separate workspaces in the README.
+  audit:
+    workspaceId: ""
+    table: "OpenChoreoAuditLog_CL"
+
   # Default evaluation frequency + window applied when an alert rule request
   # omits one. ISO 8601 durations.
   alertRuleDefaults:

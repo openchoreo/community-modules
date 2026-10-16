@@ -7,8 +7,11 @@
 # Build and distribution output
 **/dist/
 
-# Go coverage profiles emitted by a module's `make unit-test`
+# Go coverage profiles emitted by a module's `make unit-test`. Each module's
+# Makefile writes coverage.out and renames it afterwards, so an interrupted run
+# leaves the unrenamed file behind.
 *-coverage.out
+**/coverage.out
 
 # macOS
 .DS_Store

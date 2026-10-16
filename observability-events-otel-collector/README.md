@@ -289,7 +289,7 @@ cat > events-dcr.json <<EOF
       "otelLogs": [
         {
           "name": "openchoreoEvents",
-          "streams": ["Microsoft-OTel-Logs"],
+          "streams": ["Microsoft-OTLP-Logs"],
           "enrichWithResourceAttributes": ["*"]
         }
       ]
@@ -300,7 +300,7 @@ cat > events-dcr.json <<EOF
       ]
     },
     "dataFlows": [
-      { "streams": ["Microsoft-OTel-Logs"], "destinations": ["workspace"] }
+      { "streams": ["Microsoft-OTLP-Logs"], "destinations": ["workspace"] }
     ]
   }
 }

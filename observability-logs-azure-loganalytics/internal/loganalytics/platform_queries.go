@@ -59,7 +59,7 @@ func BuildPlatformLogsKQL(p PlatformLogsParams) string {
 	sb.WriteString("Base\n| order by TimeGenerated ")
 	sb.WriteString(string(sortOrderOrDefault(p.SortOrder)))
 	if p.Limit > 0 {
-		sb.WriteString(fmt.Sprintf("\n| take %d", p.Limit))
+		fmt.Fprintf(&sb, "\n| take %d", p.Limit)
 	}
 	// Level is projected either way; platformBase only computes it when it also
 	// has to filter on it, so compute it here over the page when it did not.
@@ -92,7 +92,7 @@ func BuildPlatformLogsKQL(p PlatformLogsParams) string {
 
 	// take before summarize bounds the scan: the contract caps total at 1000,
 	// so one past the cap is all that distinguishes "1000" from "more".
-	sb.WriteString(fmt.Sprintf("Base\n| take %d\n| summarize Total = count()", MaxPlatformTotal+1))
+	fmt.Fprintf(&sb, "Base\n| take %d\n| summarize Total = count()", MaxPlatformTotal+1)
 
 	return sb.String()
 }
@@ -128,12 +128,12 @@ func BuildPlatformLogFilterValuesKQL(p PlatformLogFilterValuesParams) string {
 	}
 
 	sb.WriteString(values)
-	sb.WriteString(fmt.Sprintf(`
+	fmt.Fprintf(&sb, `
 | summarize _count = count() by _value
 | sort by _count desc, _value asc
 | take %d
 | project Value = _value, Count = _count;
-`, maxValues))
+`, maxValues)
 
 	sb.WriteString(values)
 	sb.WriteString("\n| summarize TotalValues = dcount(_value)")
@@ -240,9 +240,9 @@ func levelExpr() string {
 	sb.WriteString("| extend _lvlRaw = case(")
 	for _, key := range levelEnvelopeKeys {
 		ref := "_envelope." + key
-		sb.WriteString(fmt.Sprintf(
+		fmt.Fprintf(&sb,
 			`gettype(%s) == "string" and isnotempty(tostring(%s)), tostring(%s), `,
-			ref, ref, ref))
+			ref, ref, ref)
 	}
 	sb.WriteString(`"")`)
 	sb.WriteString("\n| extend _lvlUp = toupper(trim(@\"\\s+\", _lvlRaw))\n")
@@ -253,8 +253,8 @@ func levelExpr() string {
 	sb.WriteString(levelAliasExpr())
 	sb.WriteString(", ")
 	for _, kw := range levelKeywords {
-		sb.WriteString(fmt.Sprintf("_msg contains %s, %s, ",
-			kqlString(kw.Keyword), kqlString(kw.Level)))
+		fmt.Fprintf(&sb, "_msg contains %s, %s, ",
+			kqlString(kw.Keyword), kqlString(kw.Level))
 	}
 	sb.WriteString(kqlString(defaultLogLevel))
 	sb.WriteString(")")

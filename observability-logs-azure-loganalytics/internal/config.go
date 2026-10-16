@@ -82,6 +82,15 @@ type Config struct {
 	// EventsScopeName is the instrumentation scope marking a record in
 	// EventsTable as a Kubernetes event. Default: the k8s events receiver's.
 	EventsScopeName string
+
+	// AuditWorkspaceID is the workspace customerId GUID holding the audit
+	// table. Empty means audit is not configured and the endpoints answer 501.
+	// May be the same GUID as WorkspaceID.
+	AuditWorkspaceID string
+
+	// AuditTable is the custom table audit records are read from. Default
+	// OpenChoreoAuditLog_CL.
+	AuditTable string
 }
 
 // LoadConfig reads environment variables and returns a populated Config
@@ -96,6 +105,8 @@ func LoadConfig() (*Config, error) {
 		DefaultWindowSize:          getEnvDefault("DEFAULT_WINDOW_SIZE", "PT5M"),
 		EventsTable:                getEnvDefault("EVENTS_TABLE", loganalytics.DefaultEventsTable),
 		EventsScopeName:            getEnvDefault("EVENTS_SCOPE_NAME", loganalytics.DefaultEventsScopeName),
+		AuditWorkspaceID:           strings.TrimSpace(os.Getenv("AUDIT_WORKSPACE_ID")),
+		AuditTable:                 getEnvDefault("AUDIT_TABLE", loganalytics.DefaultAuditTable),
 	}
 
 	if cfg.WorkspaceID == "" {
@@ -104,6 +115,12 @@ func LoadConfig() (*Config, error) {
 
 	if !kqlTableName.MatchString(cfg.EventsTable) {
 		return nil, fmt.Errorf("EVENTS_TABLE %q is not a valid table name", cfg.EventsTable)
+	}
+
+	// Validated even when audit is off, so a typo shows at startup rather than
+	// the first time someone opens the audit trail.
+	if !kqlTableName.MatchString(cfg.AuditTable) {
+		return nil, fmt.Errorf("AUDIT_TABLE %q is not a valid table name", cfg.AuditTable)
 	}
 
 	if v := strings.TrimSpace(os.Getenv("QUERY_TIMEOUT")); v != "" {

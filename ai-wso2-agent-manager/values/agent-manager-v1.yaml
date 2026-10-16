@@ -1,0 +1,41 @@
+# AMP 1.0.0 core values template, rendered by provision-thunder-identities.py.
+# Do not pass this unrendered file to Helm. The rendered copy contains secrets.
+# These overrides configure core identity and routing only. Combine them with
+# the deployment values listed in IDENTITY.md (OpenBao token, database,
+# replicas) before installing.
+console:
+  config:
+    apiBaseUrl: "${API_URL}"
+    instrumentationUrl: "${INSTRUMENTATION_URL}"
+    tlsEnabled: "${TLS_ENABLED_TEXT}"
+    auth:
+      clientId: amp-console-client
+      baseUrl: "${THUNDER_URL}"
+      signInRedirectURL: "${CONSOLE_URL}/login"
+      signOutRedirectURL: "${CONSOLE_URL}/login"
+  ocIngress:
+    hostname: "${CONSOLE_HOST}"
+
+agentManagerService:
+  ocIngress:
+    hostname: "${API_HOST}"
+  config:
+    serverPublicURL: "${API_URL}"
+    amObserverPublicURL: "${OBSERVER_URL}"
+    tlsEnabled: "${TLS_ENABLED}"
+    oidc:
+      tokenUrl: "${TOKEN_URL}"
+      clientId: amp-api-client
+      clientSecret: "${AMP_API_CLIENT_SECRET}"
+    # audience is left at the chart default, which accepts the console, CLI,
+    # publisher, and MCP clients. The chart appends the MCP audience itself.
+    keyManager:
+      issuer: "${THUNDER_URL}"
+      jwksUrl: "${JWKS_URL}"
+    thunder:
+      baseURL: "${THUNDER_URL}"
+      resolveToHost: "${THUNDER_DIAL_HOST}"
+      clientId: amp-system-client
+      clientSecret: "${AMP_SYSTEM_CLIENT_SECRET}"
+    openChoreo:
+      baseURL: "${OPENCHOREO_URL}"

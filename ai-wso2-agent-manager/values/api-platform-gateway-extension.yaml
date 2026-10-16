@@ -1,0 +1,27 @@
+# Values for oci://ghcr.io/wso2/wso2-amp-api-platform-gateway-extension 1.0.0
+# on an existing OpenChoreo v1.3.x installation, registered for the default
+# organization and environment.
+#
+# The Thunder token URL, virtual host, hostname, and key managers are set with
+# --set in the README install command. gateway.vhost is written into Agent
+# Manager at first registration only, so set it on the first install.
+# gateway.hostname sets the gateway route's host and follows upgrades; keep it
+# matching the vhost's host.
+
+agentManager:
+  orgName: default
+  idp:
+    # The bootstrap job authenticates to the Agent Manager API as
+    # amp-api-client. The Secret holds its client-id and client-secret. The
+    # token URL is set with --set from the README's THUNDER_INTERNAL_URL.
+    existingSecret: gateway-idp-credentials
+
+gateway:
+  environment: default
+  # Serve both inbound and outbound traffic. The role is written once at
+  # registration and never rewritten.
+  type: BOTH
+
+# Turn off the relaxed security checks the chart enables by default. Requires
+# the gateway-encryption-keys Secret created with the Gateway Operator.
+developmentMode: false

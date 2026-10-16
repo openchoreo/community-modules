@@ -1,0 +1,86 @@
+# Rendered from oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-tracing-opensearch 0.6.0
+# with default values (installationMode: singleCluster), as the OpenChoreo v1.3 guide installs it.
+---
+# Source: observability-tracing-opensearch/templates/opentelemetry-collector/configMap.yaml
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opentelemetry-collector
+  namespace: openchoreo-observability-plane
+data:
+  relay: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+    exporters:
+      opensearch:
+        http:
+          auth:
+            authenticator: basicauth/opensearch
+          endpoint: https://opensearch.openchoreo-observability-plane.svc.cluster.local:9200
+          tls:
+            insecure_skip_verify: true
+        sending_queue:
+          num_consumers: 5
+          queue_size: 1000
+          sizer: items
+        traces_index: "otel-traces"
+        traces_index_time_format: "yyyy-MM-dd"
+
+    extensions:
+      basicauth/opensearch:
+        client_auth:
+          username: ${env:OPENSEARCH_USERNAME}
+          password: ${env:OPENSEARCH_PASSWORD}
+      health_check:
+        endpoint: ${env:MY_POD_IP}:13133
+
+    processors:
+      k8sattributes:
+        auth_type: "serviceAccount"
+        passthrough: false
+
+        extract:
+          labels:
+            - tag_name: $$1
+              key_regex: (.*)
+              from: pod
+
+          metadata:
+            - k8s.pod.name
+            - k8s.pod.uid
+            - k8s.deployment.name
+            - k8s.namespace.name
+            - k8s.node.name
+      tail_sampling:
+        decision_wait: 10s
+        num_traces: 100
+        expected_new_traces_per_sec: 10
+        decision_cache:
+          sampled_cache_size: 10000
+          non_sampled_cache_size: 1000
+        policies: [
+            {
+              name: rate_limiting,
+              type: rate_limiting,
+              rate_limiting: {spans_per_second: 10 }
+            },
+        ]
+
+    service:
+      extensions: [basicauth/opensearch, health_check]
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [k8sattributes, tail_sampling]
+          exporters: [opensearch]
+
+

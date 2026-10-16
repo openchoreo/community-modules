@@ -1,0 +1,39 @@
+# Lets Agent Manager reach the Agent Manager Observer directly.
+#
+# OpenChoreo v1.3.x restricts ingress in the observability plane namespace to
+# pods in that namespace (observability-plane-ingress). Two Agent Manager
+# callers sit outside it and dial amp-observer directly:
+#   - the Agent Manager API (wso2-amp), for build and monitor run logs
+#   - evaluation jobs (workflows-default), to fetch the traces they score
+# Without this policy both fail with "connection refused". NetworkPolicies are
+# additive, so this only adds these two paths. Apply it in the observability
+# plane namespace.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: amp-observer-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app: amp-observer
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: wso2-amp
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/component: agent-manager-service
+              app.kubernetes.io/name: wso2-agent-manager
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: workflows-default
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/component: evaluation-job
+              app.kubernetes.io/name: amp-monitor
+      ports:
+        - port: 9098
+          protocol: TCP

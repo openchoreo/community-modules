@@ -1,0 +1,35 @@
+# Non-secret inputs for scripts/provision-thunder-identities.py.
+# Resolve these from the existing Thunder instance; do not use bootstrap UUIDs.
+organizationUnitId: "<existing-default-ou-id>"
+organizationUnitHandle: default
+authFlowId: "<existing-login-flow-id>"
+# User types that may sign in to AMP's interactive clients. Keep OpenChoreo's
+# existing type, and keep engineer: the AMP console creates users with it.
+allowedUserTypes:
+  - openchoreo-user
+  - engineer
+adminUserIds:
+  - "<existing-user-id-to-grant-amp-admin>"
+systemResourceServerId: "<existing-thunder-system-resource-server-id>"
+
+# Public URLs must match the issuer, redirect URLs, and MCP audiences exactly.
+# The README uses amp. and amp-api. under the control-plane base domain, and
+# amp-observer. under the observability base domain.
+thunderPublicUrl: "https://thunder.openchoreo.example.com"
+consolePublicUrl: "https://amp.openchoreo.example.com"
+apiPublicUrl: "https://amp-api.openchoreo.example.com"
+observerPublicUrl: "https://amp-observer.observability.example.com"
+instrumentationUrl: "https://default-default.apps.example.com/otel"
+
+# Use addresses reachable from the corresponding AMP pods. The public issuer
+# is deliberately separate from these network endpoints. For the Thunder that
+# OpenChoreo v1.3.x installs (release "thunder" in namespace "thunder"):
+thunderTokenUrl: "http://thunder-service.thunder.svc.cluster.local:8090/oauth2/token"
+thunderJwksUrl: "http://thunder-service.thunder.svc.cluster.local:8090/oauth2/jwks"
+# host:port Agent Manager dials for Thunder administration calls instead of the
+# public hostname. Agent Manager then speaks plain HTTP to this address, while
+# still sending the public hostname as the Host header, so point it at
+# Thunder's own in-cluster listener. Leave empty only if the public URL is
+# directly reachable from the Agent Manager pods.
+thunderResolveToHost: "thunder-service.thunder.svc.cluster.local:8090"
+openChoreoApiUrl: "http://openchoreo-api.openchoreo-control-plane.svc.cluster.local:8080"

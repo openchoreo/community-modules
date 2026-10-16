@@ -1,6 +1,8 @@
 # Copyright 2026 The OpenChoreo Authors
 # SPDX-License-Identifier: Apache-2.0
 
-# Module manifest used by the CI workflow.
-# This module has no Docker images to build — only a Helm chart to release.
+# Module manifest used by the CI workflows.
+# This module has no Docker images to build and no Helm chart to release: it
+# installs the upstream WSO2 Agent Manager charts. The manifest registers the
+# module with PR CI, which runs the Makefile's unit-test target.
 images: []

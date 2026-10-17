@@ -1,0 +1,77 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+{{- if .Values.adapter.enabled }}
+{{- $c := .Values.dynatrace.credentials }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: logs-adapter-dynatrace
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: logs-adapter-dynatrace
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: logs-adapter-dynatrace
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/adapter/configmap.yaml") . | sha256sum }}
+      labels:
+        app: logs-adapter-dynatrace
+    spec:
+      securityContext:
+        runAsUser: 10500
+        runAsGroup: 10500
+        runAsNonRoot: true
+      containers:
+      - name: logs-adapter-dynatrace
+        image: "{{ .Values.adapter.image.repository }}:{{ .Values.adapter.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.adapter.image.pullPolicy | default "IfNotPresent" }}
+        ports:
+        - name: http
+          containerPort: 9098
+        envFrom:
+        - configMapRef:
+            name: logs-adapter-dynatrace
+        env:
+{{- if eq .Values.adapter.authMode "oauth" }}
+        - name: DT_OAUTH_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: {{ $c.name | quote }}
+              key: {{ $c.oauthClientIdKey | quote }}
+        - name: DT_OAUTH_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: {{ $c.name | quote }}
+              key: {{ $c.oauthClientSecretKey | quote }}
+{{- else }}
+        - name: DT_PLATFORM_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: {{ $c.name | quote }}
+              key: {{ $c.platformTokenKey | quote }}
+{{- end }}
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 20
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          {{- toYaml .Values.adapter.resources | nindent 10 }}
+{{- end }}

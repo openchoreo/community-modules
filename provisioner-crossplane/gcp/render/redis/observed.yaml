@@ -1,0 +1,27 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# The cache as the provider reports it once GCP has finished. Pass with
+# --observed-resources, with provider-conn.yaml as a required resource, to
+# render a later reconcile, where the RedisInstance gets its address and port
+# and becomes Ready.
+apiVersion: redis.gcp.m.upbound.io/v1beta1
+kind: Instance
+metadata:
+  name: r-orders-cache-development-1a2b3c4d
+  namespace: dp-default-shop-development-5f6e7d8c
+  annotations:
+    crossplane.io/composition-resource-name: cache
+    crossplane.io/external-name: xp-r-orders-cache-development-1-31506d86
+spec:
+  writeConnectionSecretToRef:
+    name: r-orders-cache-development-1a2b3c4d-provider-conn
+status:
+  atProvider:
+    host: 10.123.45.4
+    port: 6379
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: Available
+      lastTransitionTime: "2026-10-16T00:00:00Z"

@@ -18,8 +18,8 @@ changing the ResourceTypes or the Resources that use them.
 
 | Resource | ResourceType | Composite resource | Backings | Guide |
 | :------- | :----------- | :----------------- | :------- | :---- |
-| PostgreSQL | `postgres-crossplane` | `PostgresInstance` | Azure, AWS | [apis/postgres/README.md](apis/postgres/README.md) |
-| Redis | `redis-crossplane` | `RedisInstance` | Azure, AWS | [apis/redis/README.md](apis/redis/README.md) |
+| PostgreSQL | `postgres-crossplane` | `PostgresInstance` | Azure, AWS, GCP | [apis/postgres/README.md](apis/postgres/README.md) |
+| Redis | `redis-crossplane` | `RedisInstance` | Azure, AWS, GCP | [apis/redis/README.md](apis/redis/README.md) |
 
 ## Backings
 
@@ -27,6 +27,7 @@ changing the ResourceTypes or the Resources that use them.
 | :------ | :-------- | :---- |
 | Azure | PostgreSQL, Redis | [azure/README.md](azure/README.md) |
 | AWS | PostgreSQL, Redis | [aws/README.md](aws/README.md) |
+| GCP | PostgreSQL, Redis | [gcp/README.md](gcp/README.md) |
 
 ## Features
 
@@ -178,10 +179,10 @@ backing that should support it. The agent grant already covers the new kind.
 
 ## Adding a backing
 
-A backing is a directory like [`azure/`](azure) or [`aws/`](aws), with a README, the providers and
-credentials it needs, an EnvironmentConfig for per-data-plane settings, and a Composition for each
-resource it supports. Settings shared by every resource go at the top level of the
-EnvironmentConfig, and settings for one resource under its own key.
+A backing is a directory like [`azure/`](azure), [`aws/`](aws) or [`gcp/`](gcp), with a README, the
+providers and credentials it needs, an EnvironmentConfig for per-data-plane settings, and a
+Composition for each resource it supports. Settings shared by every resource go at the top level of
+the EnvironmentConfig, and settings for one resource under its own key.
 
 Install only the Compositions a data plane should use. Crossplane uses the only Composition for a
 type when there is exactly one on the cluster. With more than one, set `spec.defaultCompositionRef`
@@ -227,6 +228,6 @@ kubectl get crd -o name | grep -E 'crossplane\.io$'
 | :-------- | :----------------- | :---- |
 | **Crossplane** | `2.4.x` | Verified against 2.4.2. Requires v2 for namespaced XRs and managed resources. |
 | **Composition functions** | see [`functions.yaml`](functions.yaml) | `function-environment-configs` v0.8.0, `function-go-templating` v0.13.0, `function-auto-ready` v0.6.9 |
-| **OpenChoreo** | `1.3.x` | Verified against 1.3.0 (Azure) and 1.3.1 (AWS). |
+| **OpenChoreo** | `1.3.x` | Verified against 1.3.0 (Azure) and 1.3.1 (AWS, GCP). |
 
 Each backing's guide lists the provider versions it was verified with.

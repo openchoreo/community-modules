@@ -1,0 +1,64 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# The composed resources as they look once GCP has finished. Pass with
+# --observed-resources to render a later reconcile, where the PostgresInstance
+# gets its address and becomes Ready, and the password Secret keeps its value.
+# The password is fake: base64 of "not-a-real-password".
+apiVersion: sql.gcp.m.upbound.io/v1beta1
+kind: DatabaseInstance
+metadata:
+  name: r-orders-db-development-1a2b3c4d
+  namespace: dp-default-shop-development-5f6e7d8c
+  annotations:
+    crossplane.io/composition-resource-name: instance
+    crossplane.io/external-name: xp-r-orders-db-development-1a2b3c4d-a8b59b7c
+status:
+  atProvider:
+    privateIpAddress: 172.27.176.3
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: Available
+      lastTransitionTime: "2026-10-16T00:00:00Z"
+---
+apiVersion: sql.gcp.m.upbound.io/v1beta1
+kind: Database
+metadata:
+  name: r-orders-db-development-1a2b3c4d
+  namespace: dp-default-shop-development-5f6e7d8c
+  annotations:
+    crossplane.io/composition-resource-name: database
+    crossplane.io/external-name: orders
+status:
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: Available
+      lastTransitionTime: "2026-10-16T00:00:00Z"
+---
+apiVersion: sql.gcp.m.upbound.io/v1beta1
+kind: User
+metadata:
+  name: r-orders-db-development-1a2b3c4d
+  namespace: dp-default-shop-development-5f6e7d8c
+  annotations:
+    crossplane.io/composition-resource-name: user
+    crossplane.io/external-name: pgadmin
+status:
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: Available
+      lastTransitionTime: "2026-10-16T00:00:00Z"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: r-orders-db-development-1a2b3c4d-conn
+  namespace: dp-default-shop-development-5f6e7d8c
+  annotations:
+    crossplane.io/composition-resource-name: connection-secret
+type: Opaque
+data:
+  password: bm90LWEtcmVhbC1wYXNzd29yZA==

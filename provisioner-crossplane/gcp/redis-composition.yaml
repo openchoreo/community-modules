@@ -1,0 +1,171 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# Builds a RedisInstance as a Memorystore for Redis instance.
+#
+# For each RedisInstance, in the RedisInstance's own namespace:
+#   Instance   the cache, on a private IP in the data plane's VPC, with AUTH
+#              on. In-transit encryption (TLS) is off: Memorystore's TLS uses
+#              a per-instance certificate authority that clients must be
+#              given, and the RedisInstance API has no output for it
+#   Secret     "<name>-conn", holding the AUTH string as "password". The
+#              provider writes it to its own connection Secret under a
+#              provider-specific name. This copies it to the name the
+#              ResourceType expects
+#
+# Per-data-plane settings come from the `gcp` EnvironmentConfig: the region,
+# network, name prefix and labels shared by every GCP Composition. The network
+# is only referenced, never changed here.
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: redis-gcp
+  labels:
+    app.kubernetes.io/name: provisioner-crossplane
+    app.kubernetes.io/part-of: openchoreo
+spec:
+  compositeTypeRef:
+    apiVersion: crossplane.community.openchoreo.dev/v1alpha1
+    kind: RedisInstance
+  mode: Pipeline
+  pipeline:
+    # 1. Load this data plane's settings into the pipeline context.
+    - step: load-settings
+      functionRef:
+        name: function-environment-configs
+      input:
+        apiVersion: environmentconfigs.fn.crossplane.io/v1beta1
+        kind: Input
+        spec:
+          environmentConfigs:
+            - type: Reference
+              ref:
+                name: gcp
+
+    # 2. Render the cache and the connection Secret, and copy what clients need
+    #    into the RedisInstance's status.
+    - step: render
+      functionRef:
+        name: function-go-templating
+      input:
+        apiVersion: gotemplating.fn.crossplane.io/v1beta1
+        kind: GoTemplate
+        source: Inline
+        inline:
+          template: |
+            {{- $xr := .observed.composite.resource }}
+            {{- $settings := index .context "apiextensions.crossplane.io/environment" }}
+
+            {{- /* Memorystore instance IDs are unique per project and region:
+                   1-40 lowercase letters, digits and hyphens, starting with a
+                   letter and ending with a letter or digit. The RedisInstance
+                   name only covers the Resource and the environment, so add a
+                   hash of its namespace, which differs per OpenChoreo namespace
+                   and project. If the result is too long, or had characters to
+                   replace or hyphens to collapse, keep it unique with a hash
+                   of the full name. A cache that already exists keeps its
+                   ID. */}}
+            {{- $fullName := printf "%s%s-%s" $settings.namePrefix $xr.metadata.name ($xr.metadata.namespace | sha256sum | trunc 8) }}
+            {{- $cacheName := regexReplaceAll "-+" (regexReplaceAll "[^a-z0-9-]" (lower $fullName) "-") "-" }}
+            {{- if or (ne $cacheName $fullName) (gt (len $cacheName) 40) }}
+            {{- $cacheName = printf "%s-%s" ($cacheName | trunc 31 | trimSuffix "-") ($fullName | sha256sum | trunc 8) }}
+            {{- end }}
+            {{- with getComposedResource . "cache" }}
+            {{- with dig "metadata" "annotations" "crossplane.io/external-name" "" . }}
+            {{- $cacheName = . }}
+            {{- end }}
+            {{- end }}
+
+            {{- $tier := index (dict "small" "BASIC" "medium" "STANDARD_HA" "large" "STANDARD_HA") $xr.spec.size }}
+            {{- $memoryGb := index (dict "small" 1 "medium" 2 "large" 5) $xr.spec.size }}
+
+            {{- /* The provider publishes the AUTH string in the cache's
+                   connection details, under a key ending in auth_string.
+                   Values are already base64-encoded. */}}
+            {{- $password := "" }}
+            {{- with index (.observed.resources | default dict) "cache" }}
+            {{- range $key, $value := (.connectionDetails | default dict) }}
+            {{- if hasSuffix "auth_string" $key }}
+            {{- $password = $value }}
+            {{- end }}
+            {{- end }}
+            {{- end }}
+
+            {{- /* If the provider's connection Secret is missing, Crossplane
+                   passes no connection details. Keep the password already in
+                   "<name>-conn" then, rather than dropping it. */}}
+            {{- if not $password }}
+            {{- with getComposedResource . "connection-secret" }}
+            {{- $password = dig "data" "password" "" . }}
+            {{- end }}
+            {{- end }}
+
+            {{- $address := "" }}
+            {{- $port := "" }}
+            {{- with getComposedResource . "cache" }}
+            {{- $address = dig "status" "atProvider" "host" "" . }}
+            {{- $port = dig "status" "atProvider" "port" "" . }}
+            {{- end }}
+            ---
+            apiVersion: redis.gcp.m.upbound.io/v1beta1
+            kind: Instance
+            metadata:
+              name: {{ $xr.metadata.name }}
+              annotations:
+                {{ setResourceNameAnnotation "cache" }}
+                crossplane.io/external-name: {{ $cacheName | quote }}
+            spec:
+              forProvider:
+                region: {{ $settings.region | quote }}
+                tier: {{ $tier }}
+                memorySizeGb: {{ $memoryGb }}
+                authEnabled: true
+                transitEncryptionMode: DISABLED
+                {{- /* The cache gets an address in a range Google peers with
+                       this network; nothing needs creating beforehand. */}}
+                connectMode: DIRECT_PEERING
+                authorizedNetwork: {{ $settings.network | quote }}
+                {{- /* The provider refuses to delete a cache unless this is
+                       false. */}}
+                deletionProtection: false
+                {{- with $settings.labels }}
+                labels:
+                  {{- range $key, $value := . }}
+                  {{ $key | quote }}: {{ $value | toString | quote }}
+                  {{- end }}
+                {{- end }}
+              writeConnectionSecretToRef:
+                name: {{ $xr.metadata.name }}-provider-conn
+            ---
+            {{- /* Not ready until it holds the password, so the RedisInstance
+                   does not report Ready before clients can authenticate. */}}
+            apiVersion: v1
+            kind: Secret
+            metadata:
+              name: {{ $xr.metadata.name }}-conn
+              annotations:
+                {{ setResourceNameAnnotation "connection-secret" }}
+                gotemplating.fn.crossplane.io/ready: {{ if $password }}"True"{{ else }}"False"{{ end }}
+            type: Opaque
+            {{- if $password }}
+            data:
+              password: {{ $password }}
+            {{- end }}
+            {{- if $address }}
+            ---
+            {{- /* No resource-name annotation: this updates the
+                   RedisInstance's own status instead of composing one. */}}
+            apiVersion: crossplane.community.openchoreo.dev/v1alpha1
+            kind: RedisInstance
+            status:
+              address: {{ $address | quote }}
+              {{- if $port }}
+              port: {{ $port }}
+              {{- end }}
+            {{- end }}
+
+    # 3. Mark the cache Ready when GCP reports it Ready, and the RedisInstance
+    #    Ready when the cache and the Secret are.
+    - step: ready
+      functionRef:
+        name: function-auto-ready

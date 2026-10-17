@@ -1,0 +1,21 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# The GCP credentials Crossplane uses on this data plane. Apply after the
+# providers report Healthy, since the provider family installs this type.
+#
+# Namespaced GCP resources use the ClusterProviderConfig named `default` unless
+# they say otherwise, so this one object covers every cell namespace.
+#
+# InjectedIdentity uses Google's default credentials, which on GKE with
+# Workload Identity come from the node's metadata server. Each provider acts
+# as the Google service account its ServiceAccount is annotated with (see
+# provider.yaml). Replace <project> with the GCP project the resources go in.
+apiVersion: gcp.m.upbound.io/v1beta1
+kind: ClusterProviderConfig
+metadata:
+  name: default
+spec:
+  projectID: <project>
+  credentials:
+    source: InjectedIdentity

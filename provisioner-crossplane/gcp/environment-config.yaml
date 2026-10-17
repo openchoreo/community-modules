@@ -1,0 +1,48 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# This data plane's GCP settings, read by every GCP Composition in the module.
+# Keeping them here, rather than in the ResourceTypes, is what lets the
+# ResourceTypes stay cloud-neutral.
+#
+# Settings shared by every resource kind are at the top level. Settings for one
+# kind go under its own key, such as `postgres`.
+#
+# The network must already have Private Service Access set up for Cloud SQL.
+# The Compositions only reference the network by name. Apart from the peering
+# Memorystore adds with its first cache, nothing changes it. The GCP project
+# comes from the ClusterProviderConfig, not from here.
+apiVersion: apiextensions.crossplane.io/v1beta1
+kind: EnvironmentConfig
+metadata:
+  name: gcp
+  labels:
+    app.kubernetes.io/name: provisioner-crossplane
+    app.kubernetes.io/part-of: openchoreo
+data:
+  # GCP region for new resources: the region of the data plane's cluster, for
+  # example us-central1.
+  region: <region>
+
+  # The data plane's VPC network, as a full name:
+  # projects/<project>/global/networks/<network>. Databases and caches get
+  # private addresses in it.
+  network: projects/<project>/global/networks/<network>
+
+  # Prepended to the name of every GCP resource the Compositions create.
+  # Lowercase letters, digits and hyphens, starting with a letter. The provider
+  # takes over an existing instance with the same name, and deleting the
+  # Resource then deletes it, so a distinct prefix keeps it away from instances
+  # it did not create.
+  namePrefix: xp-
+
+  # Optional. Labels added to every GCP resource the Compositions create. Keys
+  # and values use lowercase letters, digits, hyphens and underscores; values
+  # are written as strings.
+  labels: {}
+
+  postgres:
+    # User created for the application on each new instance. Cloud SQL's
+    # system users and roles, such as cloudsqladmin and cloudsqlsuperuser,
+    # cannot be used, and postgres is the instance's default admin user.
+    username: pgadmin

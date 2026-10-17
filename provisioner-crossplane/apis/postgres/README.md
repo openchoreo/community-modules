@@ -11,6 +11,7 @@ For installing the module, see the [module README](../../README.md).
 | :------ | :----------------------------- | :---- |
 | Azure | Azure Database for PostgreSQL Flexible Server | [azure/README.md](../../azure/README.md#postgresql) |
 | AWS | Amazon RDS for PostgreSQL | [aws/README.md](../../aws/README.md#postgresql) |
+| GCP | Cloud SQL for PostgreSQL | [gcp/README.md](../../gcp/README.md#postgresql) |
 
 ## Parameters
 
@@ -91,6 +92,8 @@ is reachable:
 - map `spec.size` to the platform's compute and storage
 
 The Azure Composition,
-[`azure/postgres-composition.yaml`](../../azure/postgres-composition.yaml), and the AWS one,
-[`aws/postgres-composition.yaml`](../../aws/postgres-composition.yaml), are working examples. The
-AWS one has the provider generate the password straight into that Secret.
+[`azure/postgres-composition.yaml`](../../azure/postgres-composition.yaml), the AWS one,
+[`aws/postgres-composition.yaml`](../../aws/postgres-composition.yaml), and the GCP one,
+[`gcp/postgres-composition.yaml`](../../gcp/postgres-composition.yaml), are working examples. The
+AWS one has the provider generate the password straight into that Secret. The GCP one generates the
+password itself, for a provider that cannot, and keeps it in that Secret.

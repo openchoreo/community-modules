@@ -11,6 +11,7 @@ For installing the module, see the [module README](../../README.md).
 | :------ | :-------------------------- | :---- |
 | Azure | Azure Managed Redis | [azure/README.md](../../azure/README.md#redis) |
 | AWS | Amazon ElastiCache for Valkey | [aws/README.md](../../aws/README.md#redis) |
+| GCP | Memorystore for Redis | [gcp/README.md](../../gcp/README.md#redis) |
 
 ## Per-environment settings
 
@@ -34,6 +35,10 @@ spec:
 | `host` | `value` | `RedisInstance` `status.address` |
 | `port` | `value` | `RedisInstance` `status.port` |
 | `password` | `secretKeyRef` | Secret `<RedisInstance name>-conn`, key `password` |
+
+Whether clients connect with TLS depends on the backing, and no output says which. The Azure and AWS
+caches accept only TLS connections; the GCP cache has TLS off. Each backing's guide says how its
+clients connect.
 
 ## Example
 
@@ -75,7 +80,8 @@ reachable:
   the key `password`
 - map `spec.size` to the platform's compute and memory
 
-The Azure Composition, [`azure/redis-composition.yaml`](../../azure/redis-composition.yaml), and the
-AWS one, [`aws/redis-composition.yaml`](../../aws/redis-composition.yaml), are working examples. The
-Azure one composes that Secret, since its provider publishes the password under a different key; the
-AWS one has the provider generate the password straight into it.
+The Azure Composition, [`azure/redis-composition.yaml`](../../azure/redis-composition.yaml), the
+AWS one, [`aws/redis-composition.yaml`](../../aws/redis-composition.yaml), and the GCP one,
+[`gcp/redis-composition.yaml`](../../gcp/redis-composition.yaml), are working examples. The Azure
+and GCP ones compose that Secret, since their providers publish the password under a different key;
+the AWS one has the provider generate the password straight into it.

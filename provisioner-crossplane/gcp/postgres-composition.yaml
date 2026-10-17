@@ -1,0 +1,201 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# Builds a PostgresInstance as a Cloud SQL for PostgreSQL instance.
+#
+# For each PostgresInstance, in the PostgresInstance's own namespace:
+#   DatabaseInstance   the instance, with a private IP in the data plane's VPC
+#                      and no public IP, accepting only encrypted connections
+#   Database           the application database
+#   User               the application user, with its password read from
+#                      "<name>-conn"
+#   Secret             "<name>-conn", holding the password under "password",
+#                      the name and key the ResourceType reads. The provider
+#                      cannot generate a Cloud SQL password, so this
+#                      Composition does, once, and keeps it; it never leaves
+#                      the data plane
+#
+# Per-data-plane settings come from the `gcp` EnvironmentConfig: the region,
+# network, name prefix and labels shared by every GCP Composition, and the
+# PostgreSQL settings under `postgres`. The network is only referenced, never
+# changed here.
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: postgres-gcp
+  labels:
+    app.kubernetes.io/name: provisioner-crossplane
+    app.kubernetes.io/part-of: openchoreo
+spec:
+  compositeTypeRef:
+    apiVersion: crossplane.community.openchoreo.dev/v1alpha1
+    kind: PostgresInstance
+  mode: Pipeline
+  pipeline:
+    # 1. Load this data plane's settings into the pipeline context.
+    - step: load-settings
+      functionRef:
+        name: function-environment-configs
+      input:
+        apiVersion: environmentconfigs.fn.crossplane.io/v1beta1
+        kind: Input
+        spec:
+          environmentConfigs:
+            - type: Reference
+              ref:
+                name: gcp
+
+    # 2. Render the instance, its database and user, and the password Secret,
+    #    and copy what clients need into the PostgresInstance's status.
+    - step: render
+      functionRef:
+        name: function-go-templating
+      input:
+        apiVersion: gotemplating.fn.crossplane.io/v1beta1
+        kind: GoTemplate
+        source: Inline
+        inline:
+          template: |
+            {{- $xr := .observed.composite.resource }}
+            {{- $settings := index .context "apiextensions.crossplane.io/environment" }}
+            {{- $pg := $settings.postgres }}
+
+            {{- /* Cloud SQL instance names are unique per project: lowercase
+                   letters, digits and hyphens, starting with a letter, and
+                   at most 98 characters together with the project ID and a
+                   colon. 63 fits any project ID. The PostgresInstance name
+                   only covers the Resource and the environment, so add a hash
+                   of its namespace, which differs per OpenChoreo namespace and
+                   project. If the result is too long, or had characters to
+                   replace or hyphens to collapse, keep it unique with a hash
+                   of the full name. An instance that already exists keeps its
+                   name. */}}
+            {{- $fullName := printf "%s%s-%s" $settings.namePrefix $xr.metadata.name ($xr.metadata.namespace | sha256sum | trunc 8) }}
+            {{- $instanceName := regexReplaceAll "-+" (regexReplaceAll "[^a-z0-9-]" (lower $fullName) "-") "-" }}
+            {{- if or (ne $instanceName $fullName) (gt (len $instanceName) 63) }}
+            {{- $instanceName = printf "%s-%s" ($instanceName | trunc 54 | trimSuffix "-") ($fullName | sha256sum | trunc 8) }}
+            {{- end }}
+            {{- with getComposedResource . "instance" }}
+            {{- with dig "metadata" "annotations" "crossplane.io/external-name" "" . }}
+            {{- $instanceName = . }}
+            {{- end }}
+            {{- end }}
+
+            {{- /* The provider has no way to generate a Cloud SQL password, so
+                   generate one here the first time, and from then on copy it
+                   back from the Secret this Composition wrote, so it never
+                   changes. Secret data is already base64-encoded. If the
+                   Secret is deleted, a new password is generated and the User
+                   is updated to it. */}}
+            {{- $password := randAlphaNum 32 | b64enc }}
+            {{- with getComposedResource . "connection-secret" }}
+            {{- with dig "data" "password" "" . }}
+            {{- $password = . }}
+            {{- end }}
+            {{- end }}
+
+            {{- $tier := index (dict "small" "db-custom-1-3840" "medium" "db-custom-2-7680" "large" "db-custom-4-15360") $xr.spec.size }}
+            {{- $diskGb := index (dict "small" 32 "medium" 64 "large" 128) $xr.spec.size }}
+
+            ---
+            apiVersion: sql.gcp.m.upbound.io/v1beta1
+            kind: DatabaseInstance
+            metadata:
+              name: {{ $xr.metadata.name }}
+              annotations:
+                {{ setResourceNameAnnotation "instance" }}
+                crossplane.io/external-name: {{ $instanceName | quote }}
+            spec:
+              forProvider:
+                region: {{ $settings.region | quote }}
+                {{- /* A major version: Cloud SQL picks the minor version and
+                       applies minor updates in maintenance. */}}
+                databaseVersion: {{ printf "POSTGRES_%s" $xr.spec.version | quote }}
+                {{- /* The provider refuses to delete an instance unless this
+                       is false. */}}
+                deletionProtection: false
+                settings:
+                  {{- /* Custom machine types need the Enterprise edition.
+                         Left unset, PostgreSQL 16 and later default to
+                         Enterprise Plus, and the create fails. */}}
+                  edition: ENTERPRISE
+                  tier: {{ $tier }}
+                  availabilityType: ZONAL
+                  diskType: PD_SSD
+                  diskSize: {{ $diskGb }}
+                  diskAutoresize: false
+                  ipConfiguration:
+                    ipv4Enabled: false
+                    privateNetwork: {{ $settings.network | quote }}
+                    sslMode: ENCRYPTED_ONLY
+                  {{- with $settings.labels }}
+                  userLabels:
+                    {{- range $key, $value := . }}
+                    {{ $key | quote }}: {{ $value | toString | quote }}
+                    {{- end }}
+                  {{- end }}
+            ---
+            {{- /* No Delete: Cloud SQL removes the database with the instance.
+                   Without it, Crossplane removes this object without asking
+                   GCP, which also works once the instance is gone, or if it
+                   was never created. */}}
+            apiVersion: sql.gcp.m.upbound.io/v1beta1
+            kind: Database
+            metadata:
+              name: {{ $xr.metadata.name }}
+              annotations:
+                {{ setResourceNameAnnotation "database" }}
+                crossplane.io/external-name: {{ $xr.spec.database | quote }}
+            spec:
+              managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
+              forProvider:
+                instance: {{ $instanceName | quote }}
+            ---
+            {{- /* No Delete, as for the database: Cloud SQL removes the user
+                   with the instance, and its API cannot delete a PostgreSQL
+                   user that has been granted SQL roles. */}}
+            apiVersion: sql.gcp.m.upbound.io/v1beta1
+            kind: User
+            metadata:
+              name: {{ $xr.metadata.name }}
+              annotations:
+                {{ setResourceNameAnnotation "user" }}
+                crossplane.io/external-name: {{ $pg.username | quote }}
+            spec:
+              managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
+              forProvider:
+                instance: {{ $instanceName | quote }}
+                passwordSecretRef:
+                  name: {{ $xr.metadata.name }}-conn
+                  key: password
+            ---
+            apiVersion: v1
+            kind: Secret
+            metadata:
+              name: {{ $xr.metadata.name }}-conn
+              annotations:
+                {{ setResourceNameAnnotation "connection-secret" }}
+                gotemplating.fn.crossplane.io/ready: "True"
+            type: Opaque
+            data:
+              password: {{ $password }}
+            ---
+            {{- /* No resource-name annotation: this updates the
+                   PostgresInstance's own status instead of composing one. */}}
+            apiVersion: crossplane.community.openchoreo.dev/v1alpha1
+            kind: PostgresInstance
+            status:
+              port: 5432
+              database: {{ $xr.spec.database | quote }}
+              username: {{ $pg.username | quote }}
+              {{- with getComposedResource . "instance" }}
+              {{- with dig "status" "atProvider" "privateIpAddress" "" . }}
+              address: {{ . | quote }}
+              {{- end }}
+              {{- end }}
+
+    # 3. Mark each resource Ready when GCP reports it Ready, and the
+    #    PostgresInstance Ready when all of them are.
+    - step: ready
+      functionRef:
+        name: function-auto-ready

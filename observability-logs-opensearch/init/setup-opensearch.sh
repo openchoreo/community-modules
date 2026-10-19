@@ -357,6 +357,9 @@ auditLogsIndexTemplate='
             "component": {
               "type": "keyword"
             },
+            "release_line": {
+              "type": "keyword"
+            },
             "resource": {
               "type": "keyword"
             },
@@ -507,6 +510,38 @@ if [ "$httpCode" -ne 200 ]; then
     exit 1
 fi
 echo -e "Existing k8s-events indices updated\n"
+
+# Fields added to the audit-logs template, added to the existing audit indices for the same reason.
+auditLogsAddedFields='
+{
+  "properties": {
+    "resource": {
+      "properties": {
+        "release_line": {
+          "type": "keyword"
+        }
+      }
+    }
+  }
+}'
+
+echo "Adding new fields to existing audit log indices"
+response=$(curl --data "$auditLogsAddedFields" \
+                --header "Authorization: Basic $authnToken" \
+                --header "Content-Type: application/json" \
+                --insecure \
+                --request PUT \
+                --show-error \
+                --silent \
+                --write-out "\n%{http_code}" \
+                "$openSearchHost/$auditLogsIndexPattern/_mapping?allow_no_indices=true&ignore_unavailable=true")
+httpCode=$(echo "$response" | tail -n1)
+if [ "$httpCode" -ne 200 ]; then
+    echo "Response: $(echo "$response" | head -n-1)"
+    echo "Failed to add new fields to existing audit log indices. HTTP response code: $httpCode"
+    exit 1
+fi
+echo -e "Existing audit log indices updated\n"
 
 
 # 3. Add Channel for Notifications

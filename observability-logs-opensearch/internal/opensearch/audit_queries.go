@@ -48,6 +48,7 @@ type AuditLogsQueryParams struct {
 	ResourceEnvironments []string
 	ResourceProjects     []string
 	ResourceComponents   []string
+	ResourceReleaseLines []string
 	ResourceResources    []string
 	ResourceNames        []string
 
@@ -125,6 +126,7 @@ func auditFilters(params AuditLogsQueryParams) []map[string]interface{} {
 	filters = addTermsFilter(filters, "resource.environment", params.ResourceEnvironments)
 	filters = addTermsFilter(filters, "resource.project", params.ResourceProjects)
 	filters = addTermsFilter(filters, "resource.component", params.ResourceComponents)
+	filters = addTermsFilter(filters, "resource.release_line", params.ResourceReleaseLines)
 	filters = addTermsFilter(filters, "resource.resource", params.ResourceResources)
 	filters = addTermsFilter(filters, "resource.name", params.ResourceNames)
 

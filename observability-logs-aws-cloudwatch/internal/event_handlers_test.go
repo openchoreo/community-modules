@@ -13,22 +13,22 @@ import (
 	"github.com/openchoreo/community-modules/observability-logs-aws-cloudwatch/internal/cloudwatch"
 )
 
-func makeComponentEventsScopeBody(t *testing.T, scope gen.ComponentSearchScope) gen.EventsQueryRequest_SearchScope {
+func makeComponentEventsScopeBody(t *testing.T, scope gen.ComponentSearchScope) *gen.EventsQueryRequest_SearchScope {
 	t.Helper()
 	var s gen.EventsQueryRequest_SearchScope
 	if err := s.FromComponentSearchScope(scope); err != nil {
 		t.Fatalf("FromComponentSearchScope: %v", err)
 	}
-	return s
+	return &s
 }
 
-func makeWorkflowEventsScopeBody(t *testing.T, scope gen.WorkflowSearchScope) gen.EventsQueryRequest_SearchScope {
+func makeWorkflowEventsScopeBody(t *testing.T, scope gen.WorkflowSearchScope) *gen.EventsQueryRequest_SearchScope {
 	t.Helper()
 	var s gen.EventsQueryRequest_SearchScope
 	if err := s.FromWorkflowSearchScope(scope); err != nil {
 		t.Fatalf("FromWorkflowSearchScope: %v", err)
 	}
-	return s
+	return &s
 }
 
 func TestQueryEventsRejectsNilBody(t *testing.T) {
@@ -117,13 +117,13 @@ func TestQueryEventsComponentReturnsResults(t *testing.T) {
 	if !isOK {
 		t.Fatalf("expected 200, got %T", resp)
 	}
-	if ok.Total == nil || *ok.Total != 1 {
-		t.Fatalf("unexpected total: %#v", ok.Total)
+	if ok.Body.Total != 1 {
+		t.Fatalf("unexpected total: %#v", ok.Body.Total)
 	}
-	if ok.Events == nil || len(*ok.Events) != 1 {
-		t.Fatalf("expected 1 event, got %#v", ok.Events)
+	if ok.Body.Events == nil || len(*ok.Body.Events) != 1 {
+		t.Fatalf("expected 1 event, got %#v", ok.Body.Events)
 	}
-	got := (*ok.Events)[0]
+	got := (*ok.Body.Events)[0]
 	if got.Type == nil || *got.Type != "Warning" || got.Reason == nil || *got.Reason != "BackOff" {
 		t.Fatalf("unexpected event: %#v", got)
 	}
@@ -216,10 +216,10 @@ func TestQueryEventsComponentEmptyResultReturns200(t *testing.T) {
 	if !isOK {
 		t.Fatalf("expected 200, got %T", resp)
 	}
-	if ok.Total == nil || *ok.Total != 0 {
-		t.Fatalf("expected total 0, got %#v", ok.Total)
+	if ok.Body.Total != 0 {
+		t.Fatalf("expected total 0, got %#v", ok.Body.Total)
 	}
-	if ok.Events == nil || len(*ok.Events) != 0 {
-		t.Fatalf("expected empty events array, got %#v", ok.Events)
+	if ok.Body.Events == nil || len(*ok.Body.Events) != 0 {
+		t.Fatalf("expected empty events array, got %#v", ok.Body.Events)
 	}
 }

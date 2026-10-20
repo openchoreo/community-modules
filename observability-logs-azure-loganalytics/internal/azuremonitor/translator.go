@@ -19,6 +19,7 @@ type RuleInput struct {
 	ComponentUID   string
 	ProjectUID     string
 	EnvironmentUID string
+	ReleaseLineUID string
 
 	Query     string
 	Operator  string // "gt" | "gte" | "lt" | "lte" | "eq"
@@ -74,6 +75,9 @@ func ToScheduledQueryRule(in RuleInput, cfg TranslatorConfig) (*armmonitor.Sched
 	}
 	if uid := normaliseUID(in.EnvironmentUID); uid != "" {
 		customProps["openchoreo-environment-uid"] = to.Ptr(uid)
+	}
+	if uid := normaliseUID(in.ReleaseLineUID); uid != "" {
+		customProps["openchoreo-release-line-uid"] = to.Ptr(uid)
 	}
 
 	res := &armmonitor.ScheduledQueryRuleResource{

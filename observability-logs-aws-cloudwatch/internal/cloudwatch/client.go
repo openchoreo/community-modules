@@ -148,6 +148,7 @@ type ComponentLogsParams struct {
 	ProjectID     string
 	EnvironmentID string
 	ComponentIDs  []string
+	ReleaseLineID string
 	StartTime     time.Time
 	EndTime       time.Time
 	Limit         int

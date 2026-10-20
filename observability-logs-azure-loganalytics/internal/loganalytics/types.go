@@ -21,6 +21,7 @@ type ComponentLogsParams struct {
 	ComponentUID   string
 	ProjectUID     string
 	EnvironmentUID string
+	ReleaseLineUID string
 
 	StartTime time.Time
 	EndTime   time.Time

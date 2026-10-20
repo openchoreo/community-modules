@@ -26,6 +26,7 @@ var (
 	evProjectUID      = evLabelPrefix + labelProjectUID
 	evProjectName     = evLabelPrefix + labelProjectName
 	evNamespaceName   = evLabelPrefix + labelNamespace
+	evReleaseLineUID  = evLabelPrefix + labelReleaseLineUID
 )
 
 // eventField wraps a dotted/slashed field path in backticks for Insights.

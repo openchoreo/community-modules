@@ -54,6 +54,9 @@ func buildComponentEventsQuery(p ComponentEventsParams) string {
 	if p.ComponentID != "" {
 		fmt.Fprintf(&b, "| filter %s = \"%s\"\n", eventField(evComponentUID), escapeInsights(p.ComponentID))
 	}
+	if p.ReleaseLineID != "" {
+		fmt.Fprintf(&b, "| filter %s = \"%s\"\n", eventField(evReleaseLineUID), escapeInsights(p.ReleaseLineID))
+	}
 
 	fmt.Fprintf(&b, "| sort @timestamp %s\n", normaliseSortOrder(p.SortOrder))
 	fmt.Fprintf(&b, "| limit %d", insightsLimit(p.Limit))

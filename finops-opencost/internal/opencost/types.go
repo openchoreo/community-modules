@@ -15,6 +15,7 @@ const (
 	LabelComponentUID   = "openchoreo_dev_component_uid"
 	LabelEnvironment    = "openchoreo_dev_environment"
 	LabelEnvironmentUID = "openchoreo_dev_environment_uid"
+	LabelReleaseLineUID = "openchoreo_dev_release_line_uid"
 )
 
 type AllocationResponse struct {

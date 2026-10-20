@@ -16,6 +16,8 @@ type AllocationQuery struct {
 	EnvironmentUID string
 	ProjectUID     string
 	ComponentUID   string
+	// ReleaseLineUID narrows the query to one release line of the component.
+	ReleaseLineUID string
 	Start          time.Time
 	End            time.Time
 	// Step is a normalized OpenCost step (e.g. "1d"). Empty means accumulate
@@ -27,7 +29,7 @@ type AllocationQuery struct {
 // the legacy filterNamespaces/filterLabels params, so the unified filter
 // language is used: label lookups are label[key]:"value" and clauses are
 // AND-joined with " + ".
-func BuildFilter(namespace, envUID, projectUID, componentUID string) string {
+func BuildFilter(namespace, envUID, projectUID, componentUID, releaseLineUID string) string {
 	clauses := []string{
 		labelClause(LabelNamespace, namespace),
 		labelClause(LabelEnvironmentUID, envUID),
@@ -37,6 +39,9 @@ func BuildFilter(namespace, envUID, projectUID, componentUID string) string {
 	}
 	if componentUID != "" {
 		clauses = append(clauses, labelClause(LabelComponentUID, componentUID))
+	}
+	if releaseLineUID != "" {
+		clauses = append(clauses, labelClause(LabelReleaseLineUID, releaseLineUID))
 	}
 	return strings.Join(clauses, " + ")
 }

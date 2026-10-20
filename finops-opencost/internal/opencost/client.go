@@ -39,7 +39,7 @@ func (c *Client) QueryAllocations(ctx context.Context, q AllocationQuery) ([]map
 	params := url.Values{}
 	params.Set("window", BuildWindow(q.Start, q.End))
 	params.Set("aggregate", "pod")
-	params.Set("filter", BuildFilter(q.Namespace, q.EnvironmentUID, q.ProjectUID, q.ComponentUID))
+	params.Set("filter", BuildFilter(q.Namespace, q.EnvironmentUID, q.ProjectUID, q.ComponentUID, q.ReleaseLineUID))
 	// Always accumulate client-side. OpenCost's server-side accumulation
 	// (accumulate=true) errors with "empty AssetSet in accumulation" when the
 	// window reaches past the data it has, so we request the raw sets and let

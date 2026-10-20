@@ -58,6 +58,9 @@ func (h *CostHandler) GetComponentCosts(ctx context.Context, request gen.GetComp
 	if params.ComponentUid != nil && params.ProjectUid == nil {
 		return gen.GetComponentCosts400JSONResponse{BadRequestJSONResponse: gen.BadRequestJSONResponse{Message: "componentUid requires projectUid"}}, nil
 	}
+	if params.ReleaseLineUid != nil && params.ComponentUid == nil {
+		return gen.GetComponentCosts400JSONResponse{BadRequestJSONResponse: gen.BadRequestJSONResponse{Message: "releaseLineUid requires componentUid"}}, nil
+	}
 
 	step, err := opencost.NormalizeGranularity(derefString(params.Granularity))
 	if err != nil {
@@ -69,6 +72,7 @@ func (h *CostHandler) GetComponentCosts(ctx context.Context, request gen.GetComp
 		EnvironmentUID: request.EnvironmentUid.String(),
 		ProjectUID:     uuidPtrString(params.ProjectUid),
 		ComponentUID:   uuidPtrString(params.ComponentUid),
+		ReleaseLineUID: uuidPtrString(params.ReleaseLineUid),
 		Start:          params.StartTime,
 		End:            params.EndTime,
 		Step:           step,
@@ -85,7 +89,10 @@ func (h *CostHandler) GetComponentCosts(ctx context.Context, request gen.GetComp
 		items = append(items, h.aggregateCosts(set, request.Namespace, request.EnvironmentUid, params.StartTime, params.EndTime)...)
 	}
 
-	return gen.GetComponentCosts200JSONResponse{Items: items}, nil
+	return gen.GetComponentCosts200JSONResponse{
+		Body:    gen.CostResponse{Items: items},
+		Headers: gen.GetComponentCosts200ResponseHeaders{OpenChoreoReleaseLineApplied: releaseLineApplied(params.ReleaseLineUid)},
+	}, nil
 }
 
 type costBucket struct {
@@ -183,12 +190,16 @@ func (h *CostHandler) GetRecommendations(ctx context.Context, request gen.GetRec
 	if params.ComponentUid != nil && params.ProjectUid == nil {
 		return gen.GetRecommendations400JSONResponse{BadRequestJSONResponse: gen.BadRequestJSONResponse{Message: "componentUid requires projectUid"}}, nil
 	}
+	if params.ReleaseLineUid != nil && (params.ComponentUid == nil || derefString(params.ReleaseLine) == "") {
+		return gen.GetRecommendations400JSONResponse{BadRequestJSONResponse: gen.BadRequestJSONResponse{Message: "releaseLineUid requires componentUid and releaseLine"}}, nil
+	}
 
 	query := opencost.AllocationQuery{
 		Namespace:      request.Namespace,
 		EnvironmentUID: request.EnvironmentUid.String(),
 		ProjectUID:     uuidPtrString(params.ProjectUid),
 		ComponentUID:   uuidPtrString(params.ComponentUid),
+		ReleaseLineUID: uuidPtrString(params.ReleaseLineUid),
 		Start:          params.StartTime,
 		End:            params.EndTime,
 	}
@@ -226,7 +237,19 @@ func (h *CostHandler) GetRecommendations(ctx context.Context, request gen.GetRec
 		}
 	}
 
-	return gen.GetRecommendations200JSONResponse{Items: items}, nil
+	return gen.GetRecommendations200JSONResponse{
+		Body:    gen.RecommendationResponse{Items: items},
+		Headers: gen.GetRecommendations200ResponseHeaders{OpenChoreoReleaseLineApplied: releaseLineApplied(params.ReleaseLineUid)},
+	}, nil
+}
+
+// releaseLineApplied is the OpenChoreo-Release-Line-Applied header value: "true" when the
+// response was restricted to the requested release line.
+func releaseLineApplied(releaseLineUID *openapi_types.UUID) string {
+	if releaseLineUID == nil {
+		return ""
+	}
+	return "true"
 }
 
 // recommendComponent fetches usage metrics for a single component and builds its
@@ -244,6 +267,7 @@ func (h *CostHandler) recommendComponent(
 		Project:     comp.project,
 		Component:   comp.component,
 		Environment: params.Environment,
+		ReleaseLine: derefString(params.ReleaseLine),
 	}, params.StartTime, params.EndTime, h.metricsStep)
 	if err != nil {
 		h.logger.Warn("failed to fetch metrics for component, skipping",

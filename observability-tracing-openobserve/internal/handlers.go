@@ -67,7 +67,12 @@ func (h *TracingHandler) QueryTraces(ctx context.Context, request gen.QueryTrace
 		}, nil
 	}
 
-	return gen.QueryTraces200JSONResponse(toTracesListResponse(result)), nil
+	return gen.QueryTraces200JSONResponse{
+		Body: toTracesListResponse(result),
+		Headers: gen.QueryTraces200ResponseHeaders{
+			OpenChoreoReleaseLineApplied: releaseLineApplied(params.Scope.ReleaseLineID),
+		},
+	}, nil
 }
 
 // QuerySpansForTrace implements POST /api/v1alpha1/traces/{traceId}/spans/query.
@@ -103,7 +108,12 @@ func (h *TracingHandler) QuerySpansForTrace(ctx context.Context, request gen.Que
 		}, nil
 	}
 
-	return gen.QuerySpansForTrace200JSONResponse(toSpansListResponse(result)), nil
+	return gen.QuerySpansForTrace200JSONResponse{
+		Body: toSpansListResponse(result),
+		Headers: gen.QuerySpansForTrace200ResponseHeaders{
+			OpenChoreoReleaseLineApplied: releaseLineApplied(params.Scope.ReleaseLineID),
+		},
+	}, nil
 }
 
 // GetSpanDetailsForTrace implements GET /api/v1alpha1/traces/{traceId}/spans/{spanId}.
@@ -150,7 +160,19 @@ func toTracesQueryParams(req *gen.TracesQueryRequest) openobserve.TracesQueryPar
 	if req.SearchScope.Environment != nil {
 		params.Scope.EnvironmentID = *req.SearchScope.Environment
 	}
+	if req.SearchScope.ReleaseLine != nil {
+		params.Scope.ReleaseLineID = *req.SearchScope.ReleaseLine
+	}
 	return params
+}
+
+// releaseLineApplied is the OpenChoreo-Release-Line-Applied header value for a query
+// scoped to the given release line UID: "true" when it was, empty otherwise.
+func releaseLineApplied(releaseLineID string) string {
+	if releaseLineID == "" {
+		return ""
+	}
+	return "true"
 }
 
 // toTracesListResponse converts the internal result to the generated response model.

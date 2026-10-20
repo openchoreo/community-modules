@@ -21,23 +21,36 @@ import (
 // Surfaced as HTTP 400 with body {"code":20002,"message":"Search stream not found: ..."}.
 const openObserveStreamNotFoundCode = 20002
 
+// openObserveUnknownFieldCode is the OpenObserve error code for a query naming a
+// column the stream doesn't have.
+const openObserveUnknownFieldCode = 20004
+
+// releaseLineColumn is the release line UID column, which a stream only has once a
+// span carrying the label was ingested.
+const releaseLineColumn = "service_openchoreo_dev_release_line_uid"
+
 // ErrStreamNotFound is returned by executeSearchQuery when OpenObserve reports
-// the search stream does not yet exist. Callers should treat this as an empty
-// result set, not a retrieval failure.
+// the search stream does not yet exist, or has no release line column yet for a
+// line-scoped query. Callers should treat this as an empty result set, not a
+// retrieval failure.
 var ErrStreamNotFound = errors.New("openobserve stream not found")
 
-// isStreamNotFound parses an OpenObserve error envelope and returns true when
-// code == openObserveStreamNotFoundCode.
+// isStreamNotFound parses an OpenObserve error envelope and returns true when the
+// stream doesn't exist yet or lacks the release line column.
 func isStreamNotFound(body []byte) bool {
 	if len(body) == 0 {
 		return false
 	}
 
 	var envelope struct {
-		Code int `json:"code"`
+		Code    int    `json:"code"`
+		Message string `json:"message"`
 	}
 	if err := json.Unmarshal(body, &envelope); err != nil {
 		return false
+	}
+	if envelope.Code == openObserveUnknownFieldCode && strings.Contains(envelope.Message, releaseLineColumn) {
+		return true
 	}
 	return envelope.Code == openObserveStreamNotFoundCode
 }
@@ -48,6 +61,7 @@ type Scope struct {
 	ProjectID     string `json:"projectId"`
 	ComponentID   string `json:"componentId"`
 	EnvironmentID string `json:"environmentId"`
+	ReleaseLineID string `json:"releaseLineId,omitempty"`
 }
 
 // TracesQueryParams holds parameters for trace queries.

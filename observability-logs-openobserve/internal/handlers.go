@@ -77,7 +77,7 @@ func (h *LogsHandler) QueryLogs(ctx context.Context, request gen.QueryLogsReques
 			}, nil
 		}
 
-		return gen.QueryLogs200JSONResponse(toWorkflowLogsQueryResponse(result)), nil
+		return gen.QueryLogs200JSONResponse{Body: toWorkflowLogsQueryResponse(result)}, nil
 	}
 
 	// Fall back to ComponentSearchScope
@@ -104,7 +104,10 @@ func (h *LogsHandler) QueryLogs(ctx context.Context, request gen.QueryLogsReques
 		}, nil
 	}
 
-	return gen.QueryLogs200JSONResponse(toLogsQueryResponse(result)), nil
+	return gen.QueryLogs200JSONResponse{
+		Body:    toLogsQueryResponse(result),
+		Headers: gen.QueryLogs200ResponseHeaders{OpenChoreoReleaseLineApplied: releaseLineApplied(params.ReleaseLineID)},
+	}, nil
 }
 
 // QueryEvents implements POST /api/v1/events/query.
@@ -164,6 +167,9 @@ func (h *LogsHandler) queryComponentEvents(ctx context.Context, req *gen.EventsQ
 	if scope.ComponentUid != nil {
 		params.ComponentID = *scope.ComponentUid
 	}
+	if scope.ReleaseLineUid != nil {
+		params.ReleaseLineID = *scope.ReleaseLineUid
+	}
 	if req.Limit != nil {
 		params.Limit = *req.Limit
 	}
@@ -184,7 +190,10 @@ func (h *LogsHandler) queryComponentEvents(ctx context.Context, req *gen.EventsQ
 		}, nil
 	}
 
-	return gen.QueryEvents200JSONResponse(toEventsQueryResponse(result)), nil
+	return gen.QueryEvents200JSONResponse{
+		Body:    toEventsQueryResponse(result),
+		Headers: gen.QueryEvents200ResponseHeaders{OpenChoreoReleaseLineApplied: releaseLineApplied(params.ReleaseLineID)},
+	}, nil
 }
 
 func (h *LogsHandler) queryWorkflowEvents(ctx context.Context, req *gen.EventsQueryRequest, scope *gen.WorkflowSearchScope) (gen.QueryEventsResponseObject, error) {
@@ -219,7 +228,7 @@ func (h *LogsHandler) queryWorkflowEvents(ctx context.Context, req *gen.EventsQu
 		}, nil
 	}
 
-	return gen.QueryEvents200JSONResponse(toEventsQueryResponse(result)), nil
+	return gen.QueryEvents200JSONResponse{Body: toEventsQueryResponse(result)}, nil
 }
 
 // toEventsQueryResponse converts the internal events result to the generated response model.
@@ -310,11 +319,16 @@ func (h *LogsHandler) CreateAlertRule(ctx context.Context, request gen.CreateAle
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	return gen.CreateAlertRule201JSONResponse{
-		Action:        ptr(gen.Created),
-		Status:        ptr(gen.Synced),
-		RuleLogicalId: params.Name,
-		RuleBackendId: &alertID,
-		LastSyncedAt:  &now,
+		Body: gen.AlertingRuleSyncResponse{
+			Action:        ptr(gen.Created),
+			Status:        ptr(gen.Synced),
+			RuleLogicalId: params.Name,
+			RuleBackendId: &alertID,
+			LastSyncedAt:  &now,
+		},
+		Headers: gen.CreateAlertRule201ResponseHeaders{
+			OpenChoreoReleaseLineApplied: releaseLineApplied(params.ReleaseLineUID),
+		},
 	}, nil
 }
 
@@ -461,11 +475,16 @@ func (h *LogsHandler) UpdateAlertRule(ctx context.Context, request gen.UpdateAle
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	return gen.UpdateAlertRule200JSONResponse{
-		Action:        ptr(gen.Updated),
-		Status:        ptr(gen.Synced),
-		RuleLogicalId: &request.RuleName,
-		RuleBackendId: &alertID,
-		LastSyncedAt:  &now,
+		Body: gen.AlertingRuleSyncResponse{
+			Action:        ptr(gen.Updated),
+			Status:        ptr(gen.Synced),
+			RuleLogicalId: &request.RuleName,
+			RuleBackendId: &alertID,
+			LastSyncedAt:  &now,
+		},
+		Headers: gen.UpdateAlertRule200ResponseHeaders{
+			OpenChoreoReleaseLineApplied: releaseLineApplied(params.ReleaseLineUID),
+		},
 	}, nil
 }
 
@@ -629,6 +648,9 @@ func toComponentLogsParams(req *gen.LogsQueryRequest, scope *gen.ComponentSearch
 	if scope.ComponentUid != nil {
 		params.ComponentIDs = []string{*scope.ComponentUid}
 	}
+	if scope.ReleaseLineUid != nil {
+		params.ReleaseLineID = *scope.ReleaseLineUid
+	}
 	if req.Limit != nil {
 		params.Limit = *req.Limit
 	}
@@ -663,7 +685,19 @@ func toLogAlertParams(req *gen.AlertRuleRequest) openobserve.LogAlertParams {
 		Interval:       req.Condition.Interval,
 		Enabled:        &req.Condition.Enabled,
 	}
+	if req.Metadata.ReleaseLineUid != nil {
+		params.ReleaseLineUID = req.Metadata.ReleaseLineUid.String()
+	}
 	return params
+}
+
+// releaseLineApplied is the OpenChoreo-Release-Line-Applied header value for a query
+// scoped to the given release line UID: "true" when it was, empty otherwise.
+func releaseLineApplied(releaseLineID string) string {
+	if releaseLineID == "" {
+		return ""
+	}
+	return "true"
 }
 
 // toLogsQueryResponse converts the internal result to the generated response model.

@@ -1,0 +1,6 @@
+package: gen
+output: gen/server.gen.go
+generate:
+  std-http-server: true
+  strict-server: true
+  embedded-spec: true

@@ -3,15 +3,18 @@
 
 VENV ?= .venv
 PYTHON := $(VENV)/bin/python
+# A stamp file, not $(PYTHON): the venv's python is a symlink to the system
+# interpreter, which a non-root user cannot touch.
+INSTALLED := $(VENV)/.requirements-installed
 
 .PHONY: unit-test clean
 
-$(PYTHON): scripts/requirements.txt
+$(INSTALLED): scripts/requirements.txt
 	python3 -m venv $(VENV)
 	$(PYTHON) -m pip install --quiet -r scripts/requirements.txt
-	touch $(PYTHON)
+	touch $(INSTALLED)
 
-unit-test: $(PYTHON)
+unit-test: $(INSTALLED)
 	$(PYTHON) -m unittest discover -s tests -v
 
 clean:

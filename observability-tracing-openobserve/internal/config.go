@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Config struct {
@@ -19,6 +20,7 @@ type Config struct {
 	OpenObserveUser     string
 	OpenObservePassword string
 	LogLevel            slog.Level
+	RawQuery            RawQueryLimits
 }
 
 // LoadConfig loads configuration from environment variables
@@ -65,7 +67,13 @@ func LoadConfig() (*Config, error) {
 		return nil, fmt.Errorf("invalid SERVER_PORT: must be integer in 1..65535")
 	}
 
+	rawQuery, err := loadRawQueryLimits()
+	if err != nil {
+		return nil, err
+	}
+
 	return &Config{
+		RawQuery:            rawQuery,
 		ServerPort:          serverPort,
 		OpenObserveURL:      openObserveURL,
 		OpenObserveOrg:      openObserveOrg,
@@ -81,4 +89,24 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+// loadRawQueryLimits reads RAW_QUERY_TIMEOUT and RAW_QUERY_MAX_RESPONSE_BYTES.
+func loadRawQueryLimits() (RawQueryLimits, error) {
+	limits := DefaultRawQueryLimits
+	if v := os.Getenv("RAW_QUERY_TIMEOUT"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil || d <= 0 {
+			return limits, fmt.Errorf("invalid RAW_QUERY_TIMEOUT %q: must be a positive duration", v)
+		}
+		limits.Timeout = d
+	}
+	if v := os.Getenv("RAW_QUERY_MAX_RESPONSE_BYTES"); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || n <= 0 {
+			return limits, fmt.Errorf("invalid RAW_QUERY_MAX_RESPONSE_BYTES %q: must be a positive integer", v)
+		}
+		limits.MaxResponseBytes = n
+	}
+	return limits, nil
 }

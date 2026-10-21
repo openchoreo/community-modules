@@ -41,6 +41,8 @@ func main() {
 		slog.String("OpenObserve User", cfg.OpenObserveUser),
 		slog.String("OpenObserve Password", string(cfg.OpenObservePassword[0])+"*****"),
 		slog.String("Server Port", cfg.ServerPort),
+		slog.Duration("Raw Query Timeout", cfg.RawQuery.Timeout),
+		slog.Int64("Raw Query Max Response Bytes", cfg.RawQuery.MaxResponseBytes),
 	)
 
 	client := openobserve.NewClient(
@@ -95,7 +97,7 @@ func main() {
 	logger.Info("Successfully connected to OpenObserve")
 
 	// Create handlers and server
-	tracingHandler := app.NewTracingHandler(client, logger)
+	tracingHandler := app.NewTracingHandler(client, logger).WithRawQueryLimits(cfg.RawQuery)
 	srv := app.NewServer(cfg.ServerPort, tracingHandler, logger)
 
 	go func() {

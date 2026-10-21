@@ -94,6 +94,13 @@ type ClientInterface interface {
 
 	QueryTraces(ctx context.Context, body QueryTracesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// QueryRawTracesWithBody request with any body
+	QueryRawTracesWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	QueryRawTraces(ctx context.Context, body QueryRawTracesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	QueryRawTracesWithTextBody(ctx context.Context, body QueryRawTracesTextRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// QuerySpansForTraceWithBody request with any body
 	QuerySpansForTraceWithBody(ctx context.Context, traceId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -120,6 +127,42 @@ func (c *Client) QueryTracesWithBody(ctx context.Context, contentType string, bo
 
 func (c *Client) QueryTraces(ctx context.Context, body QueryTracesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewQueryTracesRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) QueryRawTracesWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewQueryRawTracesRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) QueryRawTraces(ctx context.Context, body QueryRawTracesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewQueryRawTracesRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) QueryRawTracesWithTextBody(ctx context.Context, body QueryRawTracesTextRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewQueryRawTracesRequestWithTextBody(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -199,6 +242,53 @@ func NewQueryTracesRequestWithBody(server string, contentType string, body io.Re
 	}
 
 	operationPath := fmt.Sprintf("/api/v1alpha1/traces/query")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewQueryRawTracesRequest calls the generic QueryRawTraces builder with application/json body
+func NewQueryRawTracesRequest(server string, body QueryRawTracesJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewQueryRawTracesRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewQueryRawTracesRequestWithTextBody calls the generic QueryRawTraces builder with text/plain body
+func NewQueryRawTracesRequestWithTextBody(server string, body QueryRawTracesTextRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	bodyReader = strings.NewReader(string(body))
+	return NewQueryRawTracesRequestWithBody(server, "text/plain", bodyReader)
+}
+
+// NewQueryRawTracesRequestWithBody generates requests for QueryRawTraces with any type of body
+func NewQueryRawTracesRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1alpha1/traces/raw-query")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -381,6 +471,13 @@ type ClientWithResponsesInterface interface {
 
 	QueryTracesWithResponse(ctx context.Context, body QueryTracesJSONRequestBody, reqEditors ...RequestEditorFn) (*QueryTracesResponse, error)
 
+	// QueryRawTracesWithBodyWithResponse request with any body
+	QueryRawTracesWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*QueryRawTracesResponse, error)
+
+	QueryRawTracesWithResponse(ctx context.Context, body QueryRawTracesJSONRequestBody, reqEditors ...RequestEditorFn) (*QueryRawTracesResponse, error)
+
+	QueryRawTracesWithTextBodyWithResponse(ctx context.Context, body QueryRawTracesTextRequestBody, reqEditors ...RequestEditorFn) (*QueryRawTracesResponse, error)
+
 	// QuerySpansForTraceWithBodyWithResponse request with any body
 	QuerySpansForTraceWithBodyWithResponse(ctx context.Context, traceId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*QuerySpansForTraceResponse, error)
 
@@ -413,6 +510,36 @@ func (r QueryTracesResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r QueryTracesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type QueryRawTracesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *RawTracesQueryResponse
+	JSON400      *ErrorResponse
+	JSON401      *ErrorResponse
+	JSON403      *ErrorResponse
+	JSON413      *ErrorResponse
+	JSON415      *ErrorResponse
+	JSON500      *ErrorResponse
+	JSON501      *ErrorResponse
+	JSON504      *ErrorResponse
+}
+
+// Status returns HTTPResponse.Status
+func (r QueryRawTracesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r QueryRawTracesResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -516,6 +643,31 @@ func (c *ClientWithResponses) QueryTracesWithResponse(ctx context.Context, body 
 	return ParseQueryTracesResponse(rsp)
 }
 
+// QueryRawTracesWithBodyWithResponse request with arbitrary body returning *QueryRawTracesResponse
+func (c *ClientWithResponses) QueryRawTracesWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*QueryRawTracesResponse, error) {
+	rsp, err := c.QueryRawTracesWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseQueryRawTracesResponse(rsp)
+}
+
+func (c *ClientWithResponses) QueryRawTracesWithResponse(ctx context.Context, body QueryRawTracesJSONRequestBody, reqEditors ...RequestEditorFn) (*QueryRawTracesResponse, error) {
+	rsp, err := c.QueryRawTraces(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseQueryRawTracesResponse(rsp)
+}
+
+func (c *ClientWithResponses) QueryRawTracesWithTextBodyWithResponse(ctx context.Context, body QueryRawTracesTextRequestBody, reqEditors ...RequestEditorFn) (*QueryRawTracesResponse, error) {
+	rsp, err := c.QueryRawTracesWithTextBody(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseQueryRawTracesResponse(rsp)
+}
+
 // QuerySpansForTraceWithBodyWithResponse request with arbitrary body returning *QuerySpansForTraceResponse
 func (c *ClientWithResponses) QuerySpansForTraceWithBodyWithResponse(ctx context.Context, traceId string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*QuerySpansForTraceResponse, error) {
 	rsp, err := c.QuerySpansForTraceWithBody(ctx, traceId, contentType, body, reqEditors...)
@@ -599,6 +751,88 @@ func ParseQueryTracesResponse(rsp *http.Response) (*QueryTracesResponse, error) 
 			return nil, err
 		}
 		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseQueryRawTracesResponse parses an HTTP response from a QueryRawTracesWithResponse call
+func ParseQueryRawTracesResponse(rsp *http.Response) (*QueryRawTracesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &QueryRawTracesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest RawTracesQueryResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON501 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 504:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON504 = &dest
 
 	}
 

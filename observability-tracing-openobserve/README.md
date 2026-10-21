@@ -164,6 +164,35 @@ helm upgrade --install observability-tracing-openobserve \
   --set opentelemetryCollectorCustomizations.http.observabilityPlaneVirtualHost="opentelemetry.<OBS_BASE_DOMAIN>"
 ```
 
+## Raw trace queries
+
+The adapter serves raw trace queries (`POST /api/v1alpha1/traces/raw-query` on the OpenChoreo Observer). The request
+body is an OpenObserve search body, sent as `application/json`, and the response is OpenObserve's own search response.
+OpenObserve requires `start_time` and `end_time`, in microseconds. Span attributes are columns, with `.` in their names
+replaced by `_`:
+
+```json
+{
+  "query": {
+    "sql": "SELECT trace_id, operation_name, duration FROM \"default\" WHERE db_system_name = 'postgresql' AND span_status = 'ERROR' ORDER BY duration DESC LIMIT 50",
+    "start_time": 1792483200000000,
+    "end_time": 1792486800000000
+  }
+}
+```
+
+How a raw query runs:
+
+- **Read-only, traces only:** the body runs only through OpenObserve's search API, in the adapter's organization,
+  with the search type set to traces, so it can read trace streams and nothing else. Every trace stream in that
+  organization is reachable, not only the configured one. A body that isn't JSON gets 415.
+- **Request as sent:** the body runs as written, including its SQL, its time range and its row limit (`LIMIT` or
+  `size`). The adapter only sets the search `timeout`.
+- **Limits:** a query timeout (default `30s`, `adapter.rawQuery.timeout`) and a maximum response size (default 10 MiB,
+  `adapter.rawQuery.maxResponseBytes`). A query that runs past the timeout, or that OpenObserve answers only
+  partially, gets 504; a larger result is rejected rather than returned partially.
+- **Errors:** a request OpenObserve rejects gets 400 with OpenObserve's message.
+
 ## Dependencies
 
 Bundled upstream Helm charts:

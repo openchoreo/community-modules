@@ -102,6 +102,14 @@ adapter:
     userKey: "ZO_ROOT_USER_EMAIL"
     passwordKey: "ZO_ROOT_USER_PASSWORD"
 
+  # Limits for raw trace queries (POST /api/v1alpha1/traces/raw-query). Keep them in line with the
+  # observability plane's observer.tracingAdapter.rawQuery settings.
+  rawQuery:
+    # Query timeout; also passed to OpenObserve as the search timeout.
+    timeout: "30s"
+    # Largest OpenObserve response passed on, in bytes. A larger result is rejected, never returned partially.
+    maxResponseBytes: 10485760
+
   resources:
     limits:
       cpu: 200m

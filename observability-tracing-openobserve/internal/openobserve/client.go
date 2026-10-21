@@ -138,14 +138,16 @@ type OpenObserveResponse struct {
 }
 
 type Client struct {
-	baseURL     string
-	org         string
-	stream      string
-	user        string
-	token       string
-	httpClient  *http.Client
-	logger      *slog.Logger
-	lineColumns lineColumnsCache
+	baseURL    string
+	org        string
+	stream     string
+	user       string
+	token      string
+	httpClient *http.Client
+	// rawHTTPClient serves raw queries, whose deadline comes from the request context.
+	rawHTTPClient *http.Client
+	logger        *slog.Logger
+	lineColumns   lineColumnsCache
 }
 
 func NewClient(baseURL, org, stream, user, token string, logger *slog.Logger) *Client {
@@ -158,7 +160,8 @@ func NewClient(baseURL, org, stream, user, token string, logger *slog.Logger) *C
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
-		logger: logger,
+		rawHTTPClient: &http.Client{},
+		logger:        logger,
 	}
 }
 

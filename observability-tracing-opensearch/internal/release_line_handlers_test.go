@@ -36,17 +36,14 @@ func newReleaseLineTestHandler(t *testing.T, searchBody *string) *TracingHandler
 func TestTraceHandlers_ReleaseLineHeader(t *testing.T) {
 	const lineUID = "93f65294-926f-475b-98f1-dc4f152f38da"
 	component := "comp-uid"
-	for name, line := range map[string]*string{"with a line": ptr(lineUID), "without a line": nil} {
+	for name, line := range map[string]*string{"one line": ptr(lineUID), "every line": nil} {
 		t.Run(name, func(t *testing.T) {
 			body := &gen.TracesQueryRequest{
 				StartTime:   time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 				EndTime:     time.Date(2026, 1, 1, 1, 0, 0, 0, time.UTC),
 				SearchScope: gen.ComponentSearchScope{Namespace: "default", Component: &component, ReleaseLine: line},
 			}
-			wantHeader := ""
-			if line != nil {
-				wantHeader = "true"
-			}
+			wantHeader := "true"
 
 			var searchBody string
 			handler := newReleaseLineTestHandler(t, &searchBody)

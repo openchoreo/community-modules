@@ -61,9 +61,11 @@ func ParseSpanEntry(hit Hit) Span {
 	// Extract resource fields (component-uid, project-uid, etc.)
 	var componentUID, projectUID string
 	if resource, ok := source["resource"].(map[string]interface{}); ok {
-		if val, ok := resource["openchoreo.dev/component-uid"]; ok {
-			if str, ok := val.(string); ok {
+		// A release line's pods carry the component UID under their own label.
+		for _, key := range []string{"openchoreo.dev/component-uid", "openchoreo.dev/release-line-component-uid"} {
+			if str, ok := resource[key].(string); ok && str != "" {
 				componentUID = str
+				break
 			}
 		}
 		if val, ok := resource["openchoreo.dev/project-uid"]; ok {

@@ -59,13 +59,13 @@ func TestLoadConfig_Defaults(t *testing.T) {
 func TestLoadConfig_CustomValues(t *testing.T) {
 	clearEnvVars(t)
 	setEnvVars(t, map[string]string{
-		"SERVER_PORT":              "8080",
-		"OPENSEARCH_ADDRESS":      "https://my-os:9200",
-		"OPENSEARCH_USERNAME":     "myuser",
-		"OPENSEARCH_PASSWORD":     "mypass",
-		"OPENSEARCH_INDEX_PREFIX": "custom-traces-",
+		"SERVER_PORT":                "8080",
+		"OPENSEARCH_ADDRESS":         "https://my-os:9200",
+		"OPENSEARCH_USERNAME":        "myuser",
+		"OPENSEARCH_PASSWORD":        "mypass",
+		"OPENSEARCH_INDEX_PREFIX":    "custom-traces-",
 		"OPENSEARCH_TLS_SKIP_VERIFY": "false",
-		"LOG_LEVEL":               "DEBUG",
+		"LOG_LEVEL":                  "DEBUG",
 	})
 
 	cfg, err := LoadConfig()

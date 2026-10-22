@@ -105,6 +105,9 @@ otelTracesIndexTemplate='
             "openchoreo.dev/release-line-uid": {
               "type": "keyword"
             },
+            "openchoreo.dev/release-line-component-uid": {
+              "type": "keyword"
+            },
             "service.name": {
               "type": "keyword"
             }
@@ -180,6 +183,9 @@ otelTracesAddedFields='
           "type": "keyword"
         },
         "openchoreo.dev/release-line-uid": {
+          "type": "keyword"
+        },
+        "openchoreo.dev/release-line-component-uid": {
           "type": "keyword"
         }
       }

@@ -12,13 +12,13 @@ import (
 )
 
 type Config struct {
-	ServerPort            string
-	OpenSearchAddress     string
-	OpenSearchUsername    string
-	OpenSearchPassword   string
-	OpenSearchIndexPrefix string
+	ServerPort              string
+	OpenSearchAddress       string
+	OpenSearchUsername      string
+	OpenSearchPassword      string
+	OpenSearchIndexPrefix   string
 	OpenSearchTLSSkipVerify bool
-	LogLevel              slog.Level
+	LogLevel                slog.Level
 }
 
 // LoadConfig loads configuration from environment variables.

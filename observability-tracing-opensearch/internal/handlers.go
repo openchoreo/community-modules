@@ -114,7 +114,7 @@ func (h *TracingHandler) QuerySpansForTrace(ctx context.Context, request gen.Que
 	return gen.QuerySpansForTrace200JSONResponse{
 		Body: toSpansListResponse(spans, total, tookMs, params.IncludeAttributes),
 		Headers: gen.QuerySpansForTrace200ResponseHeaders{
-			OpenChoreoReleaseLineApplied: releaseLineApplied(params.ReleaseLineUID),
+			OpenChoreoReleaseLineApplied: releaseLineApplied(params.ReleaseLineUID, params.ComponentUIDs),
 		},
 	}, nil
 }
@@ -174,15 +174,16 @@ func (h *TracingHandler) queryTracesWithAggregation(ctx context.Context, params 
 	return gen.QueryTraces200JSONResponse{
 		Body: toTracesListResponse(traces, totalCount, response.Took),
 		Headers: gen.QueryTraces200ResponseHeaders{
-			OpenChoreoReleaseLineApplied: releaseLineApplied(params.ReleaseLineUID),
+			OpenChoreoReleaseLineApplied: releaseLineApplied(params.ReleaseLineUID, params.ComponentUIDs),
 		},
 	}, nil
 }
 
-// releaseLineApplied is the OpenChoreo-Release-Line-Applied header value for a query
-// scoped to the given release line UID: "true" when it was, empty otherwise.
-func releaseLineApplied(releaseLineUID string) string {
-	if releaseLineUID == "" {
+// releaseLineApplied is the OpenChoreo-Release-Line-Applied header value for a query scoped to
+// components or one release line, which this adapter matches by line: "true" when it was, empty
+// otherwise.
+func releaseLineApplied(releaseLineUID string, componentUIDs []string) string {
+	if releaseLineUID == "" && len(componentUIDs) == 0 {
 		return ""
 	}
 	return "true"
@@ -320,6 +321,9 @@ func toTracesRequestParams(req *gen.TracesQueryRequest) opensearch.TracesRequest
 	}
 	if req.SearchScope.ReleaseLine != nil {
 		params.ReleaseLineUID = *req.SearchScope.ReleaseLine
+	}
+	if req.SearchScope.MainLineOnly != nil {
+		params.MainLineOnly = *req.SearchScope.MainLineOnly
 	}
 	if req.IncludeAttributes != nil {
 		params.IncludeAttributes = *req.IncludeAttributes

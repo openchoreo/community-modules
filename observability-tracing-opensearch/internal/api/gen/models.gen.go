@@ -32,10 +32,13 @@ const (
 type ComponentSearchScope struct {
 	Component   *string `json:"component,omitempty"`
 	Environment *string `json:"environment,omitempty"`
-	Namespace   string  `json:"namespace"`
-	Project     *string `json:"project,omitempty"`
 
-	// ReleaseLine The UID of the component's release line to restrict the result to, like the other fields here. Adapters that support it filter on the openchoreo.dev/release-line-uid label and set the OpenChoreo-Release-Line-Applied response header to "true".
+	// MainLineOnly Restricts the result to the component's main line: spans with the component UID and without a release line UID. Adapters that support it set the OpenChoreo-Release-Line-Applied response header to "true".
+	MainLineOnly *bool   `json:"mainLineOnly,omitempty"`
+	Namespace    string  `json:"namespace"`
+	Project      *string `json:"project,omitempty"`
+
+	// ReleaseLine The UID of the component's release line to restrict the result to, like the other fields here. Adapters that support it filter on the openchoreo.dev/release-line-uid label alone, since release line pods don't carry the openchoreo.dev/component-uid label, and set the OpenChoreo-Release-Line-Applied response header to "true". Without it, component covers every line of the component: release line spans carry the component UID as openchoreo.dev/release-line-component-uid.
 	ReleaseLine *string `json:"releaseLine,omitempty"`
 }
 

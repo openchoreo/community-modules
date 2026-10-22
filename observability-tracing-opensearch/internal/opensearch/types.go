@@ -94,9 +94,11 @@ type TracesRequestParams struct {
 	Namespace         string   `json:"namespace"`
 	ProjectUID        string   `json:"projectUid"`
 	ReleaseLineUID    string   `json:"releaseLineUid,omitempty"`
-	SortOrder         string   `json:"sortOrder,omitempty"`
-	StartTime         string   `json:"startTime"`
-	TraceID           string   `json:"traceId,omitempty"`
+	// MainLineOnly restricts the query to the components' main lines.
+	MainLineOnly bool   `json:"mainLineOnly,omitempty"`
+	SortOrder    string `json:"sortOrder,omitempty"`
+	StartTime    string `json:"startTime"`
+	TraceID      string `json:"traceId,omitempty"`
 }
 
 // buildSearchBody converts a query map to an io.Reader for the search request.

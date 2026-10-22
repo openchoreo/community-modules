@@ -36,11 +36,11 @@ type EventsQueryParams struct {
 	ComponentID   string `json:"componentId,omitempty"`
 	EnvironmentID string `json:"environmentId,omitempty"`
 	ReleaseLineID string `json:"releaseLineId,omitempty"`
-	// MainLineOnly restricts the query to the component's main line.
-	MainLineOnly bool     `json:"mainLineOnly,omitempty"`
-	Limit        int      `json:"limit"`
-	SortOrder    string   `json:"sortOrder"`
-	Reasons      []string `json:"reasons,omitempty"`
+	// DefaultLineOnly restricts the query to the component's default line.
+	DefaultLineOnly bool     `json:"defaultLineOnly,omitempty"`
+	Limit           int      `json:"limit"`
+	SortOrder       string   `json:"sortOrder"`
+	Reasons         []string `json:"reasons,omitempty"`
 }
 
 // WorkflowEventsQueryParams holds query parameters for the workflow-scoped events query.

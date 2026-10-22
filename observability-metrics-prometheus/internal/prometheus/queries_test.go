@@ -186,12 +186,12 @@ func TestBuildGroupLeftClause(t *testing.T) {
 func TestBuildPodLabels_ReleaseLines(t *testing.T) {
 	const base = `label_openchoreo_dev_namespace="ns",label_openchoreo_dev_project_uid="p",label_openchoreo_dev_environment_uid="e"`
 	tests := []struct {
-		name     string
-		line     string
-		mainOnly bool
-		want     string
+		name        string
+		line        string
+		defaultOnly bool
+		want        string
 	}{
-		{name: "main line", mainOnly: true, want: `kube_pod_labels{job="kube-state-metrics",` + base +
+		{name: "default line", defaultOnly: true, want: `kube_pod_labels{job="kube-state-metrics",` + base +
 			`,label_openchoreo_dev_component_uid="c",label_openchoreo_dev_release_line_uid=""}`},
 		{name: "one release line matches on its UID alone", line: "l1", want: `kube_pod_labels{job="kube-state-metrics",` + base +
 			`,label_openchoreo_dev_release_line_uid="l1"}`},
@@ -201,7 +201,7 @@ func TestBuildPodLabels_ReleaseLines(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := BuildPodLabels("ns", "c", "p", "e", tt.line, tt.mainOnly); got != tt.want {
+			if got := BuildPodLabels("ns", "c", "p", "e", tt.line, tt.defaultOnly); got != tt.want {
 				t.Errorf("BuildPodLabels() =\n %s\nwant\n %s", got, tt.want)
 			}
 		})

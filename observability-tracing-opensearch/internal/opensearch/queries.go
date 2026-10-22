@@ -45,7 +45,7 @@ func BuildTracesQuery(params TracesRequestParams) map[string]interface{} {
 		})
 	}
 
-	if filter := componentScopeFilter(params.ComponentUIDs, params.ReleaseLineUID, params.MainLineOnly); filter != nil {
+	if filter := componentScopeFilter(params.ComponentUIDs, params.ReleaseLineUID, params.DefaultLineOnly); filter != nil {
 		filterConditions = append(filterConditions, filter)
 	}
 
@@ -113,7 +113,7 @@ func BuildTracesAggregationQuery(params TracesRequestParams) map[string]interfac
 		},
 	}
 
-	if filter := componentScopeFilter(params.ComponentUIDs, params.ReleaseLineUID, params.MainLineOnly); filter != nil {
+	if filter := componentScopeFilter(params.ComponentUIDs, params.ReleaseLineUID, params.DefaultLineOnly); filter != nil {
 		filterConditions = append(filterConditions, filter)
 	}
 
@@ -277,17 +277,17 @@ const (
 )
 
 // componentScopeFilter matches spans of components by release line. A release line's pods carry
-// the component UID under another label than the main line's, so the component UIDs alone match
-// either and cover every line. One release line matches on its UID alone, and mainOnly keeps
+// the component UID under another label than the default line's, so the component UIDs alone match
+// either and cover every line. One release line matches on its UID alone, and defaultOnly keeps
 // spans with a component UID and no release line UID. Returns nil without a component or a line.
-func componentScopeFilter(componentUIDs []string, releaseLineUID string, mainOnly bool) map[string]interface{} {
+func componentScopeFilter(componentUIDs []string, releaseLineUID string, defaultOnly bool) map[string]interface{} {
 	if releaseLineUID != "" {
 		return map[string]interface{}{"term": map[string]interface{}{releaseLineUIDAttribute: releaseLineUID}}
 	}
 	if len(componentUIDs) == 0 {
 		return nil
 	}
-	if mainOnly {
+	if defaultOnly {
 		return map[string]interface{}{
 			"bool": map[string]interface{}{
 				"filter":   []map[string]interface{}{{"terms": map[string]interface{}{componentUIDAttribute: componentUIDs}}},

@@ -88,12 +88,12 @@ type ComponentLogsQueryParamsV1 struct {
 	ComponentID   string `json:"componentId,omitempty"`
 	EnvironmentID string `json:"environmentId,omitempty"`
 	ReleaseLineID string `json:"releaseLineId,omitempty"`
-	// MainLineOnly restricts the query to the component's main line.
-	MainLineOnly bool     `json:"mainLineOnly,omitempty"`
-	SearchPhrase string   `json:"searchPhrase,omitempty"`
-	LogLevels    []string `json:"logLevels,omitempty"`
-	Limit        int      `json:"limit"`
-	SortOrder    string   `json:"sortOrder"`
+	// DefaultLineOnly restricts the query to the component's default line.
+	DefaultLineOnly bool     `json:"defaultLineOnly,omitempty"`
+	SearchPhrase    string   `json:"searchPhrase,omitempty"`
+	LogLevels       []string `json:"logLevels,omitempty"`
+	Limit           int      `json:"limit"`
+	SortOrder       string   `json:"sortOrder"`
 }
 
 // WorkflowRunQueryParams holds workflow run-specific query parameters.

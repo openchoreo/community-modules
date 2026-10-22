@@ -136,7 +136,7 @@ func (qb *QueryBuilder) BuildComponentLogsQueryV1(params ComponentLogsQueryParam
 		mustConditions = append(mustConditions, projectFilter)
 	}
 
-	if filter := releaseLineScopeFilter(logReleaseLineFields, params.ComponentID, params.ReleaseLineID, params.MainLineOnly); filter != nil {
+	if filter := releaseLineScopeFilter(logReleaseLineFields, params.ComponentID, params.ReleaseLineID, params.DefaultLineOnly); filter != nil {
 		mustConditions = append(mustConditions, filter)
 	}
 
@@ -421,7 +421,7 @@ func (qb *QueryBuilder) BuildComponentEventsQuery(params EventsQueryParams) (map
 		})
 	}
 
-	if filter := releaseLineScopeFilter(eventReleaseLineFields, params.ComponentID, params.ReleaseLineID, params.MainLineOnly); filter != nil {
+	if filter := releaseLineScopeFilter(eventReleaseLineFields, params.ComponentID, params.ReleaseLineID, params.DefaultLineOnly); filter != nil {
 		mustConditions = append(mustConditions, filter)
 	}
 
@@ -624,17 +624,17 @@ var (
 )
 
 // releaseLineScopeFilter matches a component's documents by release line. A release line's pods
-// carry the component UID under another label than the main line's, so the component UID alone
+// carry the component UID under another label than the default line's, so the component UID alone
 // matches either label and covers every line. One release line matches on its UID alone, and
-// mainOnly keeps documents with the component UID and no release line label. Returns nil without
+// defaultOnly keeps documents with the component UID and no release line label. Returns nil without
 // a component or a line.
-func releaseLineScopeFilter(f releaseLineFields, componentID, lineID string, mainOnly bool) map[string]interface{} {
+func releaseLineScopeFilter(f releaseLineFields, componentID, lineID string, defaultOnly bool) map[string]interface{} {
 	switch {
 	case lineID != "":
 		return map[string]interface{}{"term": map[string]interface{}{f.line: lineID}}
 	case componentID == "":
 		return nil
-	case mainOnly:
+	case defaultOnly:
 		return map[string]interface{}{
 			"bool": map[string]interface{}{
 				"filter":   []map[string]interface{}{{"term": map[string]interface{}{f.component: componentID}}},

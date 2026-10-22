@@ -113,8 +113,8 @@ func (h *LogsHandler) queryComponentLogs(ctx context.Context, req *gen.LogsQuery
 	if scope.ReleaseLineUid != nil {
 		params.ReleaseLineID = *scope.ReleaseLineUid
 	}
-	if scope.MainLineOnly != nil {
-		params.MainLineOnly = *scope.MainLineOnly
+	if scope.DefaultLineOnly != nil {
+		params.DefaultLineOnly = *scope.DefaultLineOnly
 	}
 	if req.Limit != nil {
 		params.Limit = *req.Limit
@@ -402,8 +402,8 @@ func (h *LogsHandler) queryComponentEvents(ctx context.Context, req *gen.EventsQ
 	if scope.ReleaseLineUid != nil {
 		params.ReleaseLineID = *scope.ReleaseLineUid
 	}
-	if scope.MainLineOnly != nil {
-		params.MainLineOnly = *scope.MainLineOnly
+	if scope.DefaultLineOnly != nil {
+		params.DefaultLineOnly = *scope.DefaultLineOnly
 	}
 	if req.SortOrder != nil {
 		params.SortOrder = string(*req.SortOrder)
@@ -1128,7 +1128,7 @@ func parseMonitorToAlertRuleResponse(monitor map[string]interface{}) (gen.AlertR
 var webhookComponentUID = regexp.MustCompile(`"componentUid":"([^"]+)"`)
 
 // componentUIDFromTrigger reads the component UID from a trigger's webhook message. The rule's
-// query does not always name it at the top level: a main line rule nests it in a bool filter, and
+// query does not always name it at the top level: a default line rule nests it in a bool filter, and
 // a release line rule filters on the line alone.
 func componentUIDFromTrigger(qlt map[string]interface{}) string {
 	actions, _ := qlt["actions"].([]interface{})

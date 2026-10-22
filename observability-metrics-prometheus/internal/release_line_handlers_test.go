@@ -71,7 +71,7 @@ func TestQueryMetrics_ReleaseLineHeader(t *testing.T) {
 // An alert rule read back names its component, though a release line's expression does not.
 func TestMapPrometheusRule_ReleaseLineComponentUID(t *testing.T) {
 	const componentUID = "d2108e2c-f912-4cab-a0b4-71afde25c5ac"
-	for name, lineUID := range map[string]string{"main line": "", "release line": "93f65294-926f-475b-98f1-dc4f152f38da"} {
+	for name, lineUID := range map[string]string{"default line": "", "release line": "93f65294-926f-475b-98f1-dc4f152f38da"} {
 		t.Run(name, func(t *testing.T) {
 			pr, err := prometheus.BuildPrometheusRule(prometheus.AlertRuleParams{
 				Name: "rule", Namespace: "ns", ComponentUID: componentUID, ReleaseLineUID: lineUID,

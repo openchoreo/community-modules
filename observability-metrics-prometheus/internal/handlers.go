@@ -112,13 +112,13 @@ func (h *MetricsHandler) QueryMetrics(ctx context.Context, request gen.QueryMetr
 	projectUID := derefString(scope.ProjectUid)
 	environmentUID := derefString(scope.EnvironmentUid)
 	releaseLineUID := derefString(scope.ReleaseLineUid)
-	mainLineOnly := scope.MainLineOnly != nil && *scope.MainLineOnly
+	defaultLineOnly := scope.DefaultLineOnly != nil && *scope.DefaultLineOnly
 
-	labelFilter := prometheus.BuildPodLabels(scope.Namespace, componentUID, projectUID, environmentUID, releaseLineUID, mainLineOnly)
+	labelFilter := prometheus.BuildPodLabels(scope.Namespace, componentUID, projectUID, environmentUID, releaseLineUID, defaultLineOnly)
 	groupedComponentUID := componentUID
-	if !mainLineOnly {
+	if !defaultLineOnly {
 		// Release line pods don't carry the component UID label, so grouping on it would split
-		// the main line's series from the lines'.
+		// the default line's series from the lines'.
 		groupedComponentUID = ""
 	}
 	scopeLabels := prometheus.BuildScopeLabelNames(groupedComponentUID, projectUID, environmentUID)

@@ -20,7 +20,7 @@ func TestPodLabels_ReleaseLine(t *testing.T) {
 	for name, build := range selectors {
 		t.Run(name, func(t *testing.T) {
 			if got := build(""); !strings.Contains(got, `label_openchoreo_dev_release_line_uid=""`) {
-				t.Errorf("the main line's selector must exclude release line pods: %s", got)
+				t.Errorf("the default line's selector must exclude release line pods: %s", got)
 			}
 			got := build(testReleaseLineUID)
 			if !strings.Contains(got, releaseLineMatcher) || strings.Contains(got, "component_uid") {

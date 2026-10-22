@@ -144,7 +144,7 @@ func TestAllocationComponentUID(t *testing.T) {
 		labels map[string]string
 		want   string
 	}{
-		{"main line pod", map[string]string{opencost.LabelComponentUID: "comp-1"}, "comp-1"},
+		{"default line pod", map[string]string{opencost.LabelComponentUID: "comp-1"}, "comp-1"},
 		{"release line pod", map[string]string{opencost.LabelReleaseLineUID: "line-1", opencost.LabelReleaseLineComponentUID: "comp-1"}, "comp-1"},
 		{"pod of no component", map[string]string{}, ""},
 	}

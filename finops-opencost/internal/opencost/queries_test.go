@@ -31,7 +31,7 @@ func TestBuildFilter(t *testing.T) {
 			want:       `label[openchoreo_dev_namespace]:"default" + label[openchoreo_dev_environment_uid]:"3d9d7f27-f0ab-4310-ae0b-4980f4ccd302" + label[openchoreo_dev_project_uid]:"74bd2a7e-4277-4982-9d16-8a41b979a55c"`,
 		},
 		{
-			name:         "with project and component, which covers its main line",
+			name:         "with project and component, which covers its default line",
 			namespace:    "default",
 			envUID:       "3d9d7f27-f0ab-4310-ae0b-4980f4ccd302",
 			projectUID:   "74bd2a7e-4277-4982-9d16-8a41b979a55c",

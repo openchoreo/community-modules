@@ -18,10 +18,10 @@ type AllocationQuery struct {
 	ComponentUID   string
 	// ReleaseLineUID narrows the query to one release line of the component.
 	ReleaseLineUID string
-	// MainLineOnly restricts the query to the component's main line.
-	MainLineOnly bool
-	Start        time.Time
-	End          time.Time
+	// DefaultLineOnly restricts the query to the component's default line.
+	DefaultLineOnly bool
+	Start           time.Time
+	End             time.Time
 	// Step is a normalized OpenCost step (e.g. "1d"). Empty means accumulate
 	// the whole window into a single set.
 	Step string
@@ -33,10 +33,10 @@ type AllocationQuery struct {
 // AND-joined with " + " and OR-joined with " | ".
 //
 // A release line's pods carry the component UID under another label than the
-// main line's, so the component UID alone matches either and covers every line.
-// A release line matches on its UID alone, and mainOnly keeps the main line's
+// default line's, so the component UID alone matches either and covers every line.
+// A release line matches on its UID alone, and defaultOnly keeps the default line's
 // pods, which carry no release line label.
-func BuildFilter(namespace, envUID, projectUID, componentUID, releaseLineUID string, mainOnly bool) string {
+func BuildFilter(namespace, envUID, projectUID, componentUID, releaseLineUID string, defaultOnly bool) string {
 	clauses := []string{
 		labelClause(LabelNamespace, namespace),
 		labelClause(LabelEnvironmentUID, envUID),
@@ -47,7 +47,7 @@ func BuildFilter(namespace, envUID, projectUID, componentUID, releaseLineUID str
 	switch {
 	case releaseLineUID != "":
 		clauses = append(clauses, labelClause(LabelReleaseLineUID, releaseLineUID))
-	case componentUID != "" && mainOnly:
+	case componentUID != "" && defaultOnly:
 		clauses = append(clauses, labelClause(LabelComponentUID, componentUID), labelClause(LabelReleaseLineUID, ""))
 	case componentUID != "":
 		clauses = append(clauses, "("+labelClause(LabelComponentUID, componentUID)+" | "+

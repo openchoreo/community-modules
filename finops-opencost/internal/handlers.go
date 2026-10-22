@@ -58,8 +58,8 @@ func (h *CostHandler) GetComponentCosts(ctx context.Context, request gen.GetComp
 	if params.ComponentUid != nil && params.ProjectUid == nil {
 		return gen.GetComponentCosts400JSONResponse{BadRequestJSONResponse: gen.BadRequestJSONResponse{Message: "componentUid requires projectUid"}}, nil
 	}
-	if (params.ReleaseLineUid != nil || params.MainLineOnly != nil) && params.ComponentUid == nil {
-		return gen.GetComponentCosts400JSONResponse{BadRequestJSONResponse: gen.BadRequestJSONResponse{Message: "releaseLineUid and mainLineOnly require componentUid"}}, nil
+	if (params.ReleaseLineUid != nil || params.DefaultLineOnly != nil) && params.ComponentUid == nil {
+		return gen.GetComponentCosts400JSONResponse{BadRequestJSONResponse: gen.BadRequestJSONResponse{Message: "releaseLineUid and defaultLineOnly require componentUid"}}, nil
 	}
 
 	step, err := opencost.NormalizeGranularity(derefString(params.Granularity))
@@ -68,15 +68,15 @@ func (h *CostHandler) GetComponentCosts(ctx context.Context, request gen.GetComp
 	}
 
 	query := opencost.AllocationQuery{
-		Namespace:      request.Namespace,
-		EnvironmentUID: request.EnvironmentUid.String(),
-		ProjectUID:     uuidPtrString(params.ProjectUid),
-		ComponentUID:   uuidPtrString(params.ComponentUid),
-		ReleaseLineUID: uuidPtrString(params.ReleaseLineUid),
-		MainLineOnly:   params.MainLineOnly != nil && *params.MainLineOnly,
-		Start:          params.StartTime,
-		End:            params.EndTime,
-		Step:           step,
+		Namespace:       request.Namespace,
+		EnvironmentUID:  request.EnvironmentUid.String(),
+		ProjectUID:      uuidPtrString(params.ProjectUid),
+		ComponentUID:    uuidPtrString(params.ComponentUid),
+		ReleaseLineUID:  uuidPtrString(params.ReleaseLineUid),
+		DefaultLineOnly: params.DefaultLineOnly != nil && *params.DefaultLineOnly,
+		Start:           params.StartTime,
+		End:             params.EndTime,
+		Step:            step,
 	}
 
 	sets, err := h.openCost.QueryAllocations(ctx, query)
@@ -189,8 +189,8 @@ func (h *CostHandler) GetRecommendations(ctx context.Context, request gen.GetRec
 	if params.Environment == "" {
 		return gen.GetRecommendations400JSONResponse{BadRequestJSONResponse: gen.BadRequestJSONResponse{Message: "environment is required"}}, nil
 	}
-	if params.MainLineOnly != nil && params.ComponentUid == nil {
-		return gen.GetRecommendations400JSONResponse{BadRequestJSONResponse: gen.BadRequestJSONResponse{Message: "mainLineOnly requires componentUid"}}, nil
+	if params.DefaultLineOnly != nil && params.ComponentUid == nil {
+		return gen.GetRecommendations400JSONResponse{BadRequestJSONResponse: gen.BadRequestJSONResponse{Message: "defaultLineOnly requires componentUid"}}, nil
 	}
 	if params.ComponentUid != nil && params.ProjectUid == nil {
 		return gen.GetRecommendations400JSONResponse{BadRequestJSONResponse: gen.BadRequestJSONResponse{Message: "componentUid requires projectUid"}}, nil
@@ -200,14 +200,14 @@ func (h *CostHandler) GetRecommendations(ctx context.Context, request gen.GetRec
 	}
 
 	query := opencost.AllocationQuery{
-		Namespace:      request.Namespace,
-		EnvironmentUID: request.EnvironmentUid.String(),
-		ProjectUID:     uuidPtrString(params.ProjectUid),
-		ComponentUID:   uuidPtrString(params.ComponentUid),
-		ReleaseLineUID: uuidPtrString(params.ReleaseLineUid),
-		MainLineOnly:   params.MainLineOnly != nil && *params.MainLineOnly,
-		Start:          params.StartTime,
-		End:            params.EndTime,
+		Namespace:       request.Namespace,
+		EnvironmentUID:  request.EnvironmentUid.String(),
+		ProjectUID:      uuidPtrString(params.ProjectUid),
+		ComponentUID:    uuidPtrString(params.ComponentUid),
+		ReleaseLineUID:  uuidPtrString(params.ReleaseLineUid),
+		DefaultLineOnly: params.DefaultLineOnly != nil && *params.DefaultLineOnly,
+		Start:           params.StartTime,
+		End:             params.EndTime,
 	}
 
 	sets, err := h.openCost.QueryAllocations(ctx, query)
@@ -260,7 +260,7 @@ func releaseLineApplied(releaseLineUID, componentUID *openapi_types.UUID) string
 }
 
 // allocationComponentUID is the component an allocation belongs to. A release line's pods carry
-// the component UID under another label than the main line's.
+// the component UID under another label than the default line's.
 func allocationComponentUID(alloc opencost.Allocation) string {
 	if uid := alloc.Label(opencost.LabelComponentUID); uid != "" {
 		return uid

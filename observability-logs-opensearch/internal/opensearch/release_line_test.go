@@ -26,20 +26,20 @@ func TestReleaseLineScopeFilter(t *testing.T) {
 		name        string
 		componentID string
 		lineID      string
-		mainOnly    bool
+		defaultOnly bool
 		want        string
 	}{
 		{name: "no component or line", want: "null"},
 		{name: "one line matches on its UID alone", componentID: "comp-uid", lineID: "next-uid",
 			want: `{"term":{"l.uid":"next-uid"}}`},
-		{name: "main line", componentID: "comp-uid", mainOnly: true,
+		{name: "default line", componentID: "comp-uid", defaultOnly: true,
 			want: `{"bool":{"filter":[{"term":{"c.uid":"comp-uid"}}],"must_not":[{"exists":{"field":"l.uid"}}]}}`},
 		{name: "every line", componentID: "comp-uid",
 			want: `{"bool":{"minimum_should_match":1,"should":[{"term":{"c.uid":"comp-uid"}},{"term":{"lc.uid":"comp-uid"}}]}}`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := queryJSON(t, releaseLineScopeFilter(f, tt.componentID, tt.lineID, tt.mainOnly))
+			got := queryJSON(t, releaseLineScopeFilter(f, tt.componentID, tt.lineID, tt.defaultOnly))
 			if got != tt.want {
 				t.Errorf("got %s, want %s", got, tt.want)
 			}
@@ -66,10 +66,10 @@ func TestBuildComponentLogsQueryV1_ReleaseLine(t *testing.T) {
 		t.Errorf("a component query must cover its release lines' pods: %s", got)
 	}
 
-	params.MainLineOnly = true
+	params.DefaultLineOnly = true
 	if got := build(); !strings.Contains(got, `"must_not":[{"exists":{"field":"kubernetes.labels.openchoreo_dev/release-line-uid"}}]`) ||
 		strings.Contains(got, "release-line-component-uid") {
-		t.Errorf("a main line query must exclude release line pods: %s", got)
+		t.Errorf("a default line query must exclude release line pods: %s", got)
 	}
 
 	params.ReleaseLineID = testReleaseLineID
@@ -114,7 +114,7 @@ func TestBuildLogAlertingRuleQuery_ReleaseLine(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if got := queryJSON(t, query); !strings.Contains(got, `"must_not":[{"exists":{"field":"kubernetes.labels.openchoreo_dev/release-line-uid"}}]`) {
-		t.Errorf("a main line rule must exclude release line documents: %s", got)
+		t.Errorf("a default line rule must exclude release line documents: %s", got)
 	}
 
 	params.Metadata.ReleaseLineUID = testReleaseLineID
@@ -128,11 +128,11 @@ func TestBuildLogAlertingRuleQuery_ReleaseLine(t *testing.T) {
 	}
 }
 
-// A release line's log and event entries are attributed to their component like the main line's.
+// A release line's log and event entries are attributed to their component like the default line's.
 func TestParseEntries_ReleaseLineComponentUID(t *testing.T) {
 	const componentUID = "d2108e2c-f912-4cab-a0b4-71afde25c5ac"
 	tests := map[string]struct{ logLabels, eventLabels map[string]interface{} }{
-		"main line": {
+		"default line": {
 			logLabels:   map[string]interface{}{ReplaceDots(ComponentID): componentUID},
 			eventLabels: map[string]interface{}{strings.TrimPrefix(EvComponentID, "resource."): componentUID},
 		},

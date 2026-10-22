@@ -31,17 +31,17 @@ func TestBuildFilter(t *testing.T) {
 			want:       `label[openchoreo_dev_namespace]:"default" + label[openchoreo_dev_environment_uid]:"3d9d7f27-f0ab-4310-ae0b-4980f4ccd302" + label[openchoreo_dev_project_uid]:"74bd2a7e-4277-4982-9d16-8a41b979a55c"`,
 		},
 		{
-			name:         "with project and component",
+			name:         "with project and component, which covers its main line",
 			namespace:    "default",
 			envUID:       "3d9d7f27-f0ab-4310-ae0b-4980f4ccd302",
 			projectUID:   "74bd2a7e-4277-4982-9d16-8a41b979a55c",
 			componentUID: "14e6fe2a-820a-481e-9a96-018e86a241fa",
-			want:         `label[openchoreo_dev_namespace]:"default" + label[openchoreo_dev_environment_uid]:"3d9d7f27-f0ab-4310-ae0b-4980f4ccd302" + label[openchoreo_dev_project_uid]:"74bd2a7e-4277-4982-9d16-8a41b979a55c" + label[openchoreo_dev_component_uid]:"14e6fe2a-820a-481e-9a96-018e86a241fa"`,
+			want:         `label[openchoreo_dev_namespace]:"default" + label[openchoreo_dev_environment_uid]:"3d9d7f27-f0ab-4310-ae0b-4980f4ccd302" + label[openchoreo_dev_project_uid]:"74bd2a7e-4277-4982-9d16-8a41b979a55c" + label[openchoreo_dev_component_uid]:"14e6fe2a-820a-481e-9a96-018e86a241fa" + label[openchoreo_dev_release_line_uid]:""`,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := BuildFilter(tt.namespace, tt.envUID, tt.projectUID, tt.componentUID, "")
+			got := BuildFilter(tt.namespace, tt.envUID, tt.projectUID, tt.componentUID, "", true)
 			if got != tt.want {
 				t.Errorf("BuildFilter() = %q, want %q", got, tt.want)
 			}

@@ -6,11 +6,26 @@ package opencost
 import "testing"
 
 func TestBuildFilterWithReleaseLine(t *testing.T) {
-	got := BuildFilter("default", "env-1", "proj-1", "comp-1", "line-1")
-	want := `label[openchoreo_dev_namespace]:"default" + label[openchoreo_dev_environment_uid]:"env-1" + ` +
-		`label[openchoreo_dev_project_uid]:"proj-1" + label[openchoreo_dev_component_uid]:"comp-1" + ` +
-		`label[openchoreo_dev_release_line_uid]:"line-1"`
-	if got != want {
-		t.Errorf("BuildFilter() = %q, want %q", got, want)
+	const base = `label[openchoreo_dev_namespace]:"default" + label[openchoreo_dev_environment_uid]:"env-1" + ` +
+		`label[openchoreo_dev_project_uid]:"proj-1"`
+	tests := []struct {
+		name     string
+		line     string
+		mainOnly bool
+		want     string
+	}{
+		{name: "one line matches on its UID alone", line: "line-1",
+			want: base + ` + label[openchoreo_dev_release_line_uid]:"line-1"`},
+		{name: "main line", mainOnly: true,
+			want: base + ` + label[openchoreo_dev_component_uid]:"comp-1" + label[openchoreo_dev_release_line_uid]:""`},
+		{name: "every line",
+			want: base + ` + (label[openchoreo_dev_component_uid]:"comp-1" | label[openchoreo_dev_release_line_component_uid]:"comp-1")`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := BuildFilter("default", "env-1", "proj-1", "comp-1", tt.line, tt.mainOnly); got != tt.want {
+				t.Errorf("BuildFilter() =\n %s\nwant\n %s", got, tt.want)
+			}
+		})
 	}
 }

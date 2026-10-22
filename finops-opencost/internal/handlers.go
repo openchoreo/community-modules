@@ -58,8 +58,8 @@ func (h *CostHandler) GetComponentCosts(ctx context.Context, request gen.GetComp
 	if params.ComponentUid != nil && params.ProjectUid == nil {
 		return gen.GetComponentCosts400JSONResponse{BadRequestJSONResponse: gen.BadRequestJSONResponse{Message: "componentUid requires projectUid"}}, nil
 	}
-	if params.ReleaseLineUid != nil && params.ComponentUid == nil {
-		return gen.GetComponentCosts400JSONResponse{BadRequestJSONResponse: gen.BadRequestJSONResponse{Message: "releaseLineUid requires componentUid"}}, nil
+	if (params.ReleaseLineUid != nil || params.MainLineOnly != nil) && params.ComponentUid == nil {
+		return gen.GetComponentCosts400JSONResponse{BadRequestJSONResponse: gen.BadRequestJSONResponse{Message: "releaseLineUid and mainLineOnly require componentUid"}}, nil
 	}
 
 	step, err := opencost.NormalizeGranularity(derefString(params.Granularity))
@@ -73,6 +73,7 @@ func (h *CostHandler) GetComponentCosts(ctx context.Context, request gen.GetComp
 		ProjectUID:     uuidPtrString(params.ProjectUid),
 		ComponentUID:   uuidPtrString(params.ComponentUid),
 		ReleaseLineUID: uuidPtrString(params.ReleaseLineUid),
+		MainLineOnly:   params.MainLineOnly != nil && *params.MainLineOnly,
 		Start:          params.StartTime,
 		End:            params.EndTime,
 		Step:           step,
@@ -91,7 +92,7 @@ func (h *CostHandler) GetComponentCosts(ctx context.Context, request gen.GetComp
 
 	return gen.GetComponentCosts200JSONResponse{
 		Body:    gen.CostResponse{Items: items},
-		Headers: gen.GetComponentCosts200ResponseHeaders{OpenChoreoReleaseLineApplied: releaseLineApplied(params.ReleaseLineUid)},
+		Headers: gen.GetComponentCosts200ResponseHeaders{OpenChoreoReleaseLineApplied: releaseLineApplied(params.ReleaseLineUid, params.ComponentUid)},
 	}, nil
 }
 
@@ -111,12 +112,13 @@ type costBucket struct {
 	end            time.Time
 }
 
+// aggregateCosts sums allocations per component, the release lines' pods included.
 func (h *CostHandler) aggregateCosts(set map[string]opencost.Allocation, namespace string, environmentUID openapi_types.UUID, reqStart, reqEnd time.Time) []gen.ComponentCost {
 	buckets := make(map[string]*costBucket)
 	order := make([]string, 0)
 
 	for _, alloc := range set {
-		componentUID := alloc.Label(opencost.LabelComponentUID)
+		componentUID := allocationComponentUID(alloc)
 		if componentUID == "" {
 			continue
 		}
@@ -187,6 +189,9 @@ func (h *CostHandler) GetRecommendations(ctx context.Context, request gen.GetRec
 	if params.Environment == "" {
 		return gen.GetRecommendations400JSONResponse{BadRequestJSONResponse: gen.BadRequestJSONResponse{Message: "environment is required"}}, nil
 	}
+	if params.MainLineOnly != nil && params.ComponentUid == nil {
+		return gen.GetRecommendations400JSONResponse{BadRequestJSONResponse: gen.BadRequestJSONResponse{Message: "mainLineOnly requires componentUid"}}, nil
+	}
 	if params.ComponentUid != nil && params.ProjectUid == nil {
 		return gen.GetRecommendations400JSONResponse{BadRequestJSONResponse: gen.BadRequestJSONResponse{Message: "componentUid requires projectUid"}}, nil
 	}
@@ -200,6 +205,7 @@ func (h *CostHandler) GetRecommendations(ctx context.Context, request gen.GetRec
 		ProjectUID:     uuidPtrString(params.ProjectUid),
 		ComponentUID:   uuidPtrString(params.ComponentUid),
 		ReleaseLineUID: uuidPtrString(params.ReleaseLineUid),
+		MainLineOnly:   params.MainLineOnly != nil && *params.MainLineOnly,
 		Start:          params.StartTime,
 		End:            params.EndTime,
 	}
@@ -239,17 +245,27 @@ func (h *CostHandler) GetRecommendations(ctx context.Context, request gen.GetRec
 
 	return gen.GetRecommendations200JSONResponse{
 		Body:    gen.RecommendationResponse{Items: items},
-		Headers: gen.GetRecommendations200ResponseHeaders{OpenChoreoReleaseLineApplied: releaseLineApplied(params.ReleaseLineUid)},
+		Headers: gen.GetRecommendations200ResponseHeaders{OpenChoreoReleaseLineApplied: releaseLineApplied(params.ReleaseLineUid, params.ComponentUid)},
 	}, nil
 }
 
 // releaseLineApplied is the OpenChoreo-Release-Line-Applied header value: "true" when the
-// response was restricted to the requested release line.
-func releaseLineApplied(releaseLineUID *openapi_types.UUID) string {
-	if releaseLineUID == nil {
+// response was scoped to a component or one of its release lines, which this adapter matches by
+// line.
+func releaseLineApplied(releaseLineUID, componentUID *openapi_types.UUID) string {
+	if releaseLineUID == nil && componentUID == nil {
 		return ""
 	}
 	return "true"
+}
+
+// allocationComponentUID is the component an allocation belongs to. A release line's pods carry
+// the component UID under another label than the main line's.
+func allocationComponentUID(alloc opencost.Allocation) string {
+	if uid := alloc.Label(opencost.LabelComponentUID); uid != "" {
+		return uid
+	}
+	return alloc.Label(opencost.LabelReleaseLineComponentUID)
 }
 
 // recommendComponent fetches usage metrics for a single component and builds its
@@ -323,7 +339,7 @@ func collectComponents(sets []map[string]opencost.Allocation) []componentPricing
 	order := make([]string, 0)
 	for _, set := range sets {
 		for _, alloc := range set {
-			uid := alloc.Label(opencost.LabelComponentUID)
+			uid := allocationComponentUID(alloc)
 			if uid == "" {
 				continue
 			}

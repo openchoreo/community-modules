@@ -17,6 +17,7 @@ import (
 
 	"github.com/openchoreo/community-modules/finops-opencost/internal/api/gen"
 	"github.com/openchoreo/community-modules/finops-opencost/internal/observer"
+	"github.com/openchoreo/community-modules/finops-opencost/internal/opencost"
 )
 
 const releaseLineUID = "9f8e7d6c-5b4a-4321-8fed-cba987654321"
@@ -131,5 +132,27 @@ func TestGetRecommendationsForwardsReleaseLine(t *testing.T) {
 	}
 	if metricsReq.SearchScope.ReleaseLine != "next" {
 		t.Errorf("metrics query release line = %q, want next", metricsReq.SearchScope.ReleaseLine)
+	}
+}
+
+func TestAllocationComponentUID(t *testing.T) {
+	alloc := func(labels map[string]string) opencost.Allocation {
+		return opencost.Allocation{Properties: opencost.AllocationProperties{Labels: labels}}
+	}
+	tests := []struct {
+		name   string
+		labels map[string]string
+		want   string
+	}{
+		{"main line pod", map[string]string{opencost.LabelComponentUID: "comp-1"}, "comp-1"},
+		{"release line pod", map[string]string{opencost.LabelReleaseLineUID: "line-1", opencost.LabelReleaseLineComponentUID: "comp-1"}, "comp-1"},
+		{"pod of no component", map[string]string{}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := allocationComponentUID(alloc(tt.labels)); got != tt.want {
+				t.Errorf("allocationComponentUID() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }

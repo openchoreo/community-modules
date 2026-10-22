@@ -130,6 +130,9 @@ type EnvironmentUid = openapi_types.UUID
 // Granularity defines model for Granularity.
 type Granularity = string
 
+// MainLineOnly defines model for MainLineOnly.
+type MainLineOnly = bool
+
 // Namespace defines model for Namespace.
 type Namespace = string
 
@@ -160,15 +163,24 @@ type GetComponentCostsParams struct {
 	// project.
 	ProjectUid *ProjectUid `form:"projectUid,omitempty" json:"projectUid,omitempty"`
 
-	// ComponentUid Component UID. When set, narrows the response to this single component.
+	// ComponentUid Component UID. When set, narrows the response to this single component,
+	// every line of it: the main line's pods carry it as openchoreo.dev/component-uid,
+	// and release line pods as openchoreo.dev/release-line-component-uid.
 	// Requires `projectUid` to also be set.
 	ComponentUid *ComponentUid `form:"componentUid,omitempty" json:"componentUid,omitempty"`
 
 	// ReleaseLineUid Release line UID. When set, narrows the response to that release line of
-	// the component, filtered on the openchoreo.dev/release-line-uid label.
+	// the component, filtered on the openchoreo.dev/release-line-uid label alone,
+	// since release line pods don't carry the openchoreo.dev/component-uid label.
 	// Requires `componentUid`. Adapters that support it set the
 	// OpenChoreo-Release-Line-Applied response header to "true".
 	ReleaseLineUid *ReleaseLineUid `form:"releaseLineUid,omitempty" json:"releaseLineUid,omitempty"`
+
+	// MainLineOnly Narrows the response to the component's main line: openchoreo.dev/component-uid
+	// without an openchoreo.dev/release-line-uid label. Requires `componentUid`.
+	// Adapters that support it set the OpenChoreo-Release-Line-Applied response
+	// header to "true".
+	MainLineOnly *MainLineOnly `form:"mainLineOnly,omitempty" json:"mainLineOnly,omitempty"`
 
 	// StartTime Inclusive lower bound of the cost window. RFC 3339 timestamp with
 	// second precision (sub-second components are not supported and will
@@ -223,10 +235,17 @@ type GetRecommendationsParams struct {
 	Component *string `form:"component,omitempty" json:"component,omitempty"`
 
 	// ReleaseLineUid Release line UID. When set, narrows the response to that release line of
-	// the component, filtered on the openchoreo.dev/release-line-uid label.
+	// the component, filtered on the openchoreo.dev/release-line-uid label alone,
+	// since release line pods don't carry the openchoreo.dev/component-uid label.
 	// Requires `componentUid`. Adapters that support it set the
 	// OpenChoreo-Release-Line-Applied response header to "true".
 	ReleaseLineUid *ReleaseLineUid `form:"releaseLineUid,omitempty" json:"releaseLineUid,omitempty"`
+
+	// MainLineOnly Narrows the response to the component's main line: openchoreo.dev/component-uid
+	// without an openchoreo.dev/release-line-uid label. Requires `componentUid`.
+	// Adapters that support it set the OpenChoreo-Release-Line-Applied response
+	// header to "true".
+	MainLineOnly *MainLineOnly `form:"mainLineOnly,omitempty" json:"mainLineOnly,omitempty"`
 
 	// ReleaseLine Release line name. Required only when `releaseLineUid` is supplied,
 	// since the adapter needs it for the name-based metrics call.

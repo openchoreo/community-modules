@@ -16,6 +16,9 @@ const (
 	LabelEnvironment    = "openchoreo_dev_environment"
 	LabelEnvironmentUID = "openchoreo_dev_environment_uid"
 	LabelReleaseLineUID = "openchoreo_dev_release_line_uid"
+	// LabelReleaseLineComponentUID is the component UID on a release line's pods, which don't
+	// carry LabelComponentUID.
+	LabelReleaseLineComponentUID = "openchoreo_dev_release_line_component_uid"
 )
 
 type AllocationResponse struct {

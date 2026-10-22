@@ -96,7 +96,7 @@ spec:
     # Step 3: terraform init — configure S3 backend at runtime
     - name: init-step
       container:
-        image: hashicorp/terraform:1.9
+        image: hashicorp/terraform:1.16
         command: [sh, -c]
         args:
           - |
@@ -137,7 +137,7 @@ spec:
     # Step 4: terraform plan — dry run for visibility in logs
     - name: plan-step
       container:
-        image: hashicorp/terraform:1.9
+        image: hashicorp/terraform:1.16
         command: [sh, -c]
         args:
           - |
@@ -190,7 +190,7 @@ spec:
     # Step 5: terraform apply — provision the RDS instance and save outputs
     - name: apply-step
       container:
-        image: hashicorp/terraform:1.9
+        image: hashicorp/terraform:1.16
         command: [sh, -c]
         args:
           - |

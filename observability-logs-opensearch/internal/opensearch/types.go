@@ -4,6 +4,7 @@
 package opensearch
 
 import (
+	"cmp"
 	"encoding/json"
 	"io"
 	"regexp"
@@ -80,17 +81,19 @@ type QueryParams struct {
 
 // ComponentLogsQueryParamsV1 holds query parameters for the API component logs query.
 type ComponentLogsQueryParamsV1 struct {
-	StartTime     string   `json:"startTime"`
-	EndTime       string   `json:"endTime"`
-	NamespaceName string   `json:"namespaceName"`
-	ProjectID     string   `json:"projectId,omitempty"`
-	ComponentID   string   `json:"componentId,omitempty"`
-	EnvironmentID string   `json:"environmentId,omitempty"`
-	ReleaseLineID string   `json:"releaseLineId,omitempty"`
-	SearchPhrase  string   `json:"searchPhrase,omitempty"`
-	LogLevels     []string `json:"logLevels,omitempty"`
-	Limit         int      `json:"limit"`
-	SortOrder     string   `json:"sortOrder"`
+	StartTime     string `json:"startTime"`
+	EndTime       string `json:"endTime"`
+	NamespaceName string `json:"namespaceName"`
+	ProjectID     string `json:"projectId,omitempty"`
+	ComponentID   string `json:"componentId,omitempty"`
+	EnvironmentID string `json:"environmentId,omitempty"`
+	ReleaseLineID string `json:"releaseLineId,omitempty"`
+	// MainLineOnly restricts the query to the component's main line.
+	MainLineOnly bool     `json:"mainLineOnly,omitempty"`
+	SearchPhrase string   `json:"searchPhrase,omitempty"`
+	LogLevels    []string `json:"logLevels,omitempty"`
+	Limit        int      `json:"limit"`
+	SortOrder    string   `json:"sortOrder"`
 }
 
 // WorkflowRunQueryParams holds workflow run-specific query parameters.
@@ -262,7 +265,9 @@ func ParseLogEntry(hit Hit) LogEntry {
 
 	if k8s, ok := source["kubernetes"].(map[string]interface{}); ok {
 		if labelMap, ok := k8s["labels"].(map[string]interface{}); ok {
-			entry.ComponentID = getStringValue(labelMap, ReplaceDots(ComponentID))
+			// A release line's pods carry the component UID under their own label.
+			entry.ComponentID = cmp.Or(getStringValue(labelMap, ReplaceDots(ComponentID)),
+				getStringValue(labelMap, ReplaceDots(ReleaseLineComponentID)))
 			entry.EnvironmentID = getStringValue(labelMap, ReplaceDots(EnvironmentID))
 			entry.ProjectID = getStringValue(labelMap, ReplaceDots(ProjectID))
 			entry.Version = getStringValue(labelMap, ReplaceDots(Version))

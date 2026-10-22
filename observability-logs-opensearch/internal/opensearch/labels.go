@@ -13,19 +13,21 @@ func ReplaceDots(s string) string {
 
 // Kubernetes label keys used for log filtering and identification.
 const (
-	ComponentID     = "openchoreo.dev/component-uid"
-	EnvironmentID   = "openchoreo.dev/environment-uid"
-	ProjectID       = "openchoreo.dev/project-uid"
-	ReleaseLineID   = "openchoreo.dev/release-line-uid"
-	ComponentName   = "openchoreo.dev/component"
-	EnvironmentName = "openchoreo.dev/environment"
-	ProjectName     = "openchoreo.dev/project"
-	Version         = "version"
-	VersionID       = "version_id"
-	NamespaceName   = "openchoreo.dev/namespace"
-	BuildID         = "build-name"
-	BuildUUID       = "uuid"
-	Target          = "target"
+	ComponentID   = "openchoreo.dev/component-uid"
+	EnvironmentID = "openchoreo.dev/environment-uid"
+	ProjectID     = "openchoreo.dev/project-uid"
+	ReleaseLineID = "openchoreo.dev/release-line-uid"
+	// ReleaseLineComponentID is the component UID on a release line's pods, which don't carry ComponentID.
+	ReleaseLineComponentID = "openchoreo.dev/release-line-component-uid"
+	ComponentName          = "openchoreo.dev/component"
+	EnvironmentName        = "openchoreo.dev/environment"
+	ProjectName            = "openchoreo.dev/project"
+	Version                = "version"
+	VersionID              = "version_id"
+	NamespaceName          = "openchoreo.dev/namespace"
+	BuildID                = "build-name"
+	BuildUUID              = "uuid"
+	Target                 = "target"
 )
 
 // Target value constants for different log types.
@@ -55,10 +57,12 @@ var (
 	OSEnvironmentID = KubernetesLabelsPrefix + "." + ReplaceDots(EnvironmentID)
 	OSProjectID     = KubernetesLabelsPrefix + "." + ReplaceDots(ProjectID)
 	OSReleaseLineID = KubernetesLabelsPrefix + "." + ReplaceDots(ReleaseLineID)
-	OSVersion       = KubernetesLabelsPrefix + "." + ReplaceDots(Version)
-	OSVersionID     = KubernetesLabelsPrefix + "." + ReplaceDots(VersionID)
-	OSNamespaceName = KubernetesLabelsPrefix + "." + ReplaceDots(NamespaceName)
-	OSBuildID       = KubernetesLabelsPrefix + "." + ReplaceDots(BuildID)
-	OSBuildUUID     = KubernetesLabelsPrefix + "." + ReplaceDots(BuildUUID)
-	OSTarget        = KubernetesLabelsPrefix + "." + ReplaceDots(Target)
+	// OSReleaseLineComponentID is the component UID label path on a release line's pods.
+	OSReleaseLineComponentID = KubernetesLabelsPrefix + "." + ReplaceDots(ReleaseLineComponentID)
+	OSVersion                = KubernetesLabelsPrefix + "." + ReplaceDots(Version)
+	OSVersionID              = KubernetesLabelsPrefix + "." + ReplaceDots(VersionID)
+	OSNamespaceName          = KubernetesLabelsPrefix + "." + ReplaceDots(NamespaceName)
+	OSBuildID                = KubernetesLabelsPrefix + "." + ReplaceDots(BuildID)
+	OSBuildUUID              = KubernetesLabelsPrefix + "." + ReplaceDots(BuildUUID)
+	OSTarget                 = KubernetesLabelsPrefix + "." + ReplaceDots(Target)
 )

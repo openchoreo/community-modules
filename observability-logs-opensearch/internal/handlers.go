@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -112,6 +113,9 @@ func (h *LogsHandler) queryComponentLogs(ctx context.Context, req *gen.LogsQuery
 	if scope.ReleaseLineUid != nil {
 		params.ReleaseLineID = *scope.ReleaseLineUid
 	}
+	if scope.MainLineOnly != nil {
+		params.MainLineOnly = *scope.MainLineOnly
+	}
 	if req.Limit != nil {
 		params.Limit = *req.Limit
 	}
@@ -194,7 +198,7 @@ func (h *LogsHandler) queryComponentLogs(ctx context.Context, req *gen.LogsQuery
 
 	return gen.QueryLogs200JSONResponse{
 		Body:    resp,
-		Headers: gen.QueryLogs200ResponseHeaders{OpenChoreoReleaseLineApplied: releaseLineApplied(params.ReleaseLineID)},
+		Headers: gen.QueryLogs200ResponseHeaders{OpenChoreoReleaseLineApplied: releaseLineApplied(params.ReleaseLineID, params.ComponentID)},
 	}, nil
 }
 
@@ -398,6 +402,9 @@ func (h *LogsHandler) queryComponentEvents(ctx context.Context, req *gen.EventsQ
 	if scope.ReleaseLineUid != nil {
 		params.ReleaseLineID = *scope.ReleaseLineUid
 	}
+	if scope.MainLineOnly != nil {
+		params.MainLineOnly = *scope.MainLineOnly
+	}
 	if req.SortOrder != nil {
 		params.SortOrder = string(*req.SortOrder)
 	}
@@ -414,7 +421,7 @@ func (h *LogsHandler) queryComponentEvents(ctx context.Context, req *gen.EventsQ
 		}, nil
 	}
 
-	return h.executeEventsQuery(ctx, query, startTime, endTime, scope.Namespace, limit, releaseLineApplied(params.ReleaseLineID))
+	return h.executeEventsQuery(ctx, query, startTime, endTime, scope.Namespace, limit, releaseLineApplied(params.ReleaseLineID, params.ComponentID))
 }
 
 func (h *LogsHandler) queryWorkflowEvents(ctx context.Context, req *gen.EventsQueryRequest, scope *gen.WorkflowSearchScope) (gen.QueryEventsResponseObject, error) {
@@ -491,10 +498,11 @@ func (h *LogsHandler) queryUnscopedEvents(ctx context.Context, req *gen.EventsQu
 // limit is the size actually sent to OpenSearch; the query counts one past it, so a total greater
 // than the events returned tells the caller the window holds more than it just read and must be
 // resumed from the last event's timestamp rather than treated as read.
-// releaseLineApplied is the OpenChoreo-Release-Line-Applied header value for a query
-// scoped to the given release line UID: "true" when it was, empty otherwise.
-func releaseLineApplied(releaseLineID string) string {
-	if releaseLineID == "" {
+// releaseLineApplied is the OpenChoreo-Release-Line-Applied header value for a query scoped to a
+// component or one of its release lines, which this adapter matches by line: "true" when it was,
+// empty otherwise.
+func releaseLineApplied(releaseLineID, componentID string) string {
+	if releaseLineID == "" && componentID == "" {
 		return ""
 	}
 	return "true"
@@ -719,7 +727,7 @@ func (h *LogsHandler) CreateAlertRule(ctx context.Context, request gen.CreateAle
 			LastSyncedAt:  &now,
 		},
 		Headers: gen.CreateAlertRule201ResponseHeaders{
-			OpenChoreoReleaseLineApplied: releaseLineApplied(params.Metadata.ReleaseLineUID),
+			OpenChoreoReleaseLineApplied: releaseLineApplied(params.Metadata.ReleaseLineUID, params.Metadata.ComponentUID),
 		},
 	}, nil
 }
@@ -881,7 +889,7 @@ func (h *LogsHandler) UpdateAlertRule(ctx context.Context, request gen.UpdateAle
 			LastSyncedAt:  &now,
 		},
 		Headers: gen.UpdateAlertRule200ResponseHeaders{
-			OpenChoreoReleaseLineApplied: releaseLineApplied(params.Metadata.ReleaseLineUID),
+			OpenChoreoReleaseLineApplied: releaseLineApplied(params.Metadata.ReleaseLineUID, params.Metadata.ComponentUID),
 		},
 	}, nil
 }
@@ -1032,6 +1040,9 @@ func parseMonitorToAlertRuleResponse(monitor map[string]interface{}) (gen.AlertR
 	if triggers, ok := monitor["triggers"].([]interface{}); ok && len(triggers) > 0 {
 		if trigger, ok := triggers[0].(map[string]interface{}); ok {
 			if qlt, ok := trigger["query_level_trigger"].(map[string]interface{}); ok {
+				if componentUID == "" {
+					componentUID = componentUIDFromTrigger(qlt)
+				}
 				if condition, ok := qlt["condition"].(map[string]interface{}); ok {
 					if script, ok := condition["script"].(map[string]interface{}); ok {
 						if source, ok := script["source"].(string); ok {
@@ -1111,6 +1122,24 @@ func parseMonitorToAlertRuleResponse(monitor map[string]interface{}) (gen.AlertR
 	}
 
 	return response, nil
+}
+
+// webhookComponentUID matches the component UID in a trigger's webhook message template.
+var webhookComponentUID = regexp.MustCompile(`"componentUid":"([^"]+)"`)
+
+// componentUIDFromTrigger reads the component UID from a trigger's webhook message. The rule's
+// query does not always name it at the top level: a main line rule nests it in a bool filter, and
+// a release line rule filters on the line alone.
+func componentUIDFromTrigger(qlt map[string]interface{}) string {
+	actions, _ := qlt["actions"].([]interface{})
+	for _, a := range actions {
+		action, _ := a.(map[string]interface{})
+		tmpl, _ := action["message_template"].(map[string]interface{})
+		if m := webhookComponentUID.FindStringSubmatch(getStringFromMap(tmpl, "source")); m != nil {
+			return m[1]
+		}
+	}
+	return ""
 }
 
 // extractQueryMetadata extracts metadata from the monitor's search query.

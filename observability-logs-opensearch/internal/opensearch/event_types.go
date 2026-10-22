@@ -4,6 +4,7 @@
 package opensearch
 
 import (
+	"cmp"
 	"strings"
 	"time"
 )
@@ -28,16 +29,18 @@ type EventEntry struct {
 
 // EventsQueryParams holds query parameters for the component-scoped events query.
 type EventsQueryParams struct {
-	StartTime     string   `json:"startTime"`
-	EndTime       string   `json:"endTime"`
-	NamespaceName string   `json:"namespaceName"`
-	ProjectID     string   `json:"projectId,omitempty"`
-	ComponentID   string   `json:"componentId,omitempty"`
-	EnvironmentID string   `json:"environmentId,omitempty"`
-	ReleaseLineID string   `json:"releaseLineId,omitempty"`
-	Limit         int      `json:"limit"`
-	SortOrder     string   `json:"sortOrder"`
-	Reasons       []string `json:"reasons,omitempty"`
+	StartTime     string `json:"startTime"`
+	EndTime       string `json:"endTime"`
+	NamespaceName string `json:"namespaceName"`
+	ProjectID     string `json:"projectId,omitempty"`
+	ComponentID   string `json:"componentId,omitempty"`
+	EnvironmentID string `json:"environmentId,omitempty"`
+	ReleaseLineID string `json:"releaseLineId,omitempty"`
+	// MainLineOnly restricts the query to the component's main line.
+	MainLineOnly bool     `json:"mainLineOnly,omitempty"`
+	Limit        int      `json:"limit"`
+	SortOrder    string   `json:"sortOrder"`
+	Reasons      []string `json:"reasons,omitempty"`
 }
 
 // WorkflowEventsQueryParams holds query parameters for the workflow-scoped events query.
@@ -98,7 +101,9 @@ func ParseEventHit(hit Hit) EventEntry {
 		entry.ObjectKind = getStringValue(res, strings.TrimPrefix(EvObjectKind, resPrefix))
 		entry.ObjectName = getStringValue(res, strings.TrimPrefix(EvObjectName, resPrefix))
 		entry.ComponentName = getStringValue(res, strings.TrimPrefix(EvComponentName, resPrefix))
-		entry.ComponentID = getStringValue(res, strings.TrimPrefix(EvComponentID, resPrefix))
+		// A release line's objects carry the component UID under their own label.
+		entry.ComponentID = cmp.Or(getStringValue(res, strings.TrimPrefix(EvComponentID, resPrefix)),
+			getStringValue(res, strings.TrimPrefix(EvReleaseLineComponentID, resPrefix)))
 		entry.ProjectName = getStringValue(res, strings.TrimPrefix(EvProjectName, resPrefix))
 		entry.ProjectID = getStringValue(res, strings.TrimPrefix(EvProjectID, resPrefix))
 		entry.EnvironmentName = getStringValue(res, strings.TrimPrefix(EvEnvironmentName, resPrefix))

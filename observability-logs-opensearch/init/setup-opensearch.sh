@@ -196,6 +196,9 @@ k8sEventsIndexTemplate='
                             "dev/release-line-uid": {
                               "type": "keyword"
                             },
+                            "dev/release-line-component-uid": {
+                              "type": "keyword"
+                            },
                             "dev/namespace": {
                               "type": "keyword"
                             }
@@ -478,6 +481,9 @@ k8sEventsAddedFields='
                           "type": "keyword"
                         },
                         "dev/release-line-uid": {
+                          "type": "keyword"
+                        },
+                        "dev/release-line-component-uid": {
                           "type": "keyword"
                         }
                       }

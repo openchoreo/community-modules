@@ -19,7 +19,7 @@ spec:
     # Step 1: Create the repository via the AWS CodeCommit API
     - name: create-step
       container:
-        image: amazon/aws-cli:2.15.0
+        image: amazon/aws-cli:2.38.1
         command: [sh, -c]
         args:
           - |

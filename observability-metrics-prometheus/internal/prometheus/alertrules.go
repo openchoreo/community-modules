@@ -37,6 +37,9 @@ type AlertRuleParams struct {
 	Threshold      float64
 }
 
+// ComponentUIDAnnotation is the alert rule annotation that records the rule's component UID.
+const ComponentUIDAnnotation = "component_uid"
+
 // BuildPrometheusRule builds a PrometheusRule CR from alert rule parameters.
 func BuildPrometheusRule(rule AlertRuleParams, namespace string) (*monitoringv1.PrometheusRule, error) {
 	if rule.Metric != MetricTypeCPUUsage && rule.Metric != MetricTypeMemoryUsage && rule.Metric != MetricTypeBudget {
@@ -62,6 +65,8 @@ func BuildPrometheusRule(rule AlertRuleParams, namespace string) (*monitoringv1.
 		"rule_name":      rule.Name,
 		"rule_namespace": rule.Namespace,
 		"alert_value":    "{{ $value | printf \"%.2f\" }}",
+		// A release line's rule matches on the line alone, so its expression does not name the component.
+		ComponentUIDAnnotation: rule.ComponentUID,
 	}
 
 	alertLabels := map[string]string{
@@ -124,14 +129,14 @@ func buildAlertExpression(rule AlertRuleParams) (string, error) {
 // The window parameter is used for the rate() calculation window. A minimum of 2m is enforced
 // to ensure sufficient data points for rate calculation.
 func buildCPUUsageAlertExpression(componentUID, projectUID, environmentUID, releaseLineUID, operator string, threshold float64, window string) string {
-	labelFilter := BuildComponentLabelFilter(componentUID, projectUID, environmentUID, releaseLineUID)
+	podLabels := BuildComponentPodLabels(componentUID, projectUID, environmentUID, releaseLineUID)
 
 	// Use the provided window, but ensure a minimum of 2m for rate calculation
 	rateWindow := ensureMinimumWindow(window, "2m")
 
 	return fmt.Sprintf(
-		`(sum(rate(container_cpu_usage_seconds_total{container!=""}[%s]) * on (pod) group_left(label_openchoreo_dev_component_uid,label_openchoreo_dev_project_uid,label_openchoreo_dev_environment_uid) kube_pod_labels{job="kube-state-metrics",%s}) / sum(kube_pod_container_resource_limits{resource="cpu",job="kube-state-metrics"} * on (pod) group_left(label_openchoreo_dev_component_uid,label_openchoreo_dev_project_uid,label_openchoreo_dev_environment_uid) kube_pod_labels{job="kube-state-metrics",%s})) * 100 %s %v`,
-		rateWindow, labelFilter, labelFilter, operator, threshold,
+		`(sum(rate(container_cpu_usage_seconds_total{container!=""}[%s]) * on (pod) group_left(label_openchoreo_dev_component_uid,label_openchoreo_dev_project_uid,label_openchoreo_dev_environment_uid) %s) / sum(kube_pod_container_resource_limits{resource="cpu",job="kube-state-metrics"} * on (pod) group_left(label_openchoreo_dev_component_uid,label_openchoreo_dev_project_uid,label_openchoreo_dev_environment_uid) %s)) * 100 %s %v`,
+		rateWindow, podLabels, podLabels, operator, threshold,
 	)
 }
 
@@ -139,11 +144,11 @@ func buildCPUUsageAlertExpression(componentUID, projectUID, environmentUID, rele
 // The window parameter is accepted for API consistency but not used, as memory usage
 // is measured as an instant value rather than a rate over time.
 func buildMemoryUsageAlertExpression(componentUID, projectUID, environmentUID, releaseLineUID, operator string, threshold float64, window string) string {
-	labelFilter := BuildComponentLabelFilter(componentUID, projectUID, environmentUID, releaseLineUID)
+	podLabels := BuildComponentPodLabels(componentUID, projectUID, environmentUID, releaseLineUID)
 
 	return fmt.Sprintf(
-		`(sum(container_memory_working_set_bytes{container!=""} * on (pod) group_left(label_openchoreo_dev_component_uid,label_openchoreo_dev_project_uid,label_openchoreo_dev_environment_uid) kube_pod_labels{job="kube-state-metrics",%s}) / sum(kube_pod_container_resource_limits{resource="memory",job="kube-state-metrics"} * on (pod) group_left(label_openchoreo_dev_component_uid,label_openchoreo_dev_project_uid,label_openchoreo_dev_environment_uid) kube_pod_labels{job="kube-state-metrics",%s})) * 100 %s %v`,
-		labelFilter, labelFilter, operator, threshold,
+		`(sum(container_memory_working_set_bytes{container!=""} * on (pod) group_left(label_openchoreo_dev_component_uid,label_openchoreo_dev_project_uid,label_openchoreo_dev_environment_uid) %s) / sum(kube_pod_container_resource_limits{resource="memory",job="kube-state-metrics"} * on (pod) group_left(label_openchoreo_dev_component_uid,label_openchoreo_dev_project_uid,label_openchoreo_dev_environment_uid) %s)) * 100 %s %v`,
+		podLabels, podLabels, operator, threshold,
 	)
 }
 
@@ -151,7 +156,7 @@ func buildMemoryUsageAlertExpression(componentUID, projectUID, environmentUID, r
 // Cost is calculated from configured CPU and memory requests (reserved capacity)
 // The threshold is in USD and represents the total cost for the window period.
 func buildBudgetAlertExpression(componentUID, projectUID, environmentUID, releaseLineUID, operator string, threshold float64, window string) (string, error) {
-	labelFilter := BuildComponentLabelFilter(componentUID, projectUID, environmentUID, releaseLineUID)
+	podLabels := BuildComponentPodLabels(componentUID, projectUID, environmentUID, releaseLineUID)
 
 	// Scale factor converts hourly cost to the window duration.
 	windowDuration, err := time.ParseDuration(window)
@@ -169,9 +174,9 @@ func buildBudgetAlertExpression(componentUID, projectUID, environmentUID, releas
         * on(node) group_left
         node_cpu_hourly_cost
         * on(pod, namespace) group_left(label_openchoreo_dev_component_uid,label_openchoreo_dev_project_uid,label_openchoreo_dev_environment_uid)
-        kube_pod_labels{job="kube-state-metrics",%s}
+        %s
         * %f
-    )`, window, labelFilter, scale)
+    )`, window, podLabels, scale)
 
 	// RAM Cost = avg(requested bytes over window) in GB * RAM hourly cost * window hours
 	ramCostExpr := fmt.Sprintf(`sum(
@@ -181,9 +186,9 @@ func buildBudgetAlertExpression(componentUID, projectUID, environmentUID, releas
         * on(node) group_left
         node_ram_hourly_cost
         * on(pod, namespace) group_left(label_openchoreo_dev_component_uid,label_openchoreo_dev_project_uid,label_openchoreo_dev_environment_uid)
-        kube_pod_labels{job="kube-state-metrics",%s}
+        %s
         * %f
-    )`, window, labelFilter, scale)
+    )`, window, podLabels, scale)
 
 	return fmt.Sprintf(`(%s + %s) %s %v`, cpuCostExpr, ramCostExpr, operator, threshold), nil
 }

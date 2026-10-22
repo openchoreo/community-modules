@@ -4,6 +4,7 @@
 package app
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -111,9 +112,16 @@ func (h *MetricsHandler) QueryMetrics(ctx context.Context, request gen.QueryMetr
 	projectUID := derefString(scope.ProjectUid)
 	environmentUID := derefString(scope.EnvironmentUid)
 	releaseLineUID := derefString(scope.ReleaseLineUid)
+	mainLineOnly := scope.MainLineOnly != nil && *scope.MainLineOnly
 
-	labelFilter := prometheus.BuildLabelFilter(scope.Namespace, componentUID, projectUID, environmentUID, releaseLineUID)
-	scopeLabels := prometheus.BuildScopeLabelNames(componentUID, projectUID, environmentUID)
+	labelFilter := prometheus.BuildPodLabels(scope.Namespace, componentUID, projectUID, environmentUID, releaseLineUID, mainLineOnly)
+	groupedComponentUID := componentUID
+	if !mainLineOnly {
+		// Release line pods don't carry the component UID label, so grouping on it would split
+		// the main line's series from the lines'.
+		groupedComponentUID = ""
+	}
+	scopeLabels := prometheus.BuildScopeLabelNames(groupedComponentUID, projectUID, environmentUID)
 	groupLeftClause := prometheus.BuildGroupLeftClause(scopeLabels)
 	sumByClause := prometheus.BuildSumByClause("", scopeLabels)
 
@@ -131,7 +139,7 @@ func (h *MetricsHandler) QueryMetrics(ctx context.Context, request gen.QueryMetr
 		return badRequestMetrics(fmt.Sprintf("unknown metric type: %s", request.Body.Metric)), nil
 	}
 	if ok, isOK := resp.(metricsQueryOKResponse); isOK {
-		ok.releaseLineApplied = releaseLineUID != ""
+		ok.releaseLineApplied = releaseLineUID != "" || componentUID != ""
 		resp = ok
 	}
 	return resp, err
@@ -343,7 +351,7 @@ func (h *MetricsHandler) CreateAlertRule(ctx context.Context, request gen.Create
 
 	return gen.CreateAlertRule201JSONResponse{
 		Body:    buildSyncResponse(gen.Created, params.Name, backendID, status),
-		Headers: gen.CreateAlertRule201ResponseHeaders{OpenChoreoReleaseLineApplied: releaseLineApplied(params.ReleaseLineUID)},
+		Headers: gen.CreateAlertRule201ResponseHeaders{OpenChoreoReleaseLineApplied: releaseLineApplied(params.ReleaseLineUID, params.ComponentUID)},
 	}, nil
 }
 
@@ -433,7 +441,7 @@ func (h *MetricsHandler) UpdateAlertRule(ctx context.Context, request gen.Update
 		h.logger.Debug("PrometheusRule unchanged, skipping update", "rule_name", request.RuleName)
 		return gen.UpdateAlertRule200JSONResponse{
 			Body:    buildSyncResponse(gen.Unchanged, request.RuleName, backendID, gen.Synced),
-			Headers: gen.UpdateAlertRule200ResponseHeaders{OpenChoreoReleaseLineApplied: releaseLineApplied(params.ReleaseLineUID)},
+			Headers: gen.UpdateAlertRule200ResponseHeaders{OpenChoreoReleaseLineApplied: releaseLineApplied(params.ReleaseLineUID, params.ComponentUID)},
 		}, nil
 	}
 
@@ -448,7 +456,7 @@ func (h *MetricsHandler) UpdateAlertRule(ctx context.Context, request gen.Update
 	h.logger.Info("PrometheusRule updated", "rule_name", request.RuleName, "backend_id", backendID)
 	return gen.UpdateAlertRule200JSONResponse{
 		Body:    buildSyncResponse(gen.Updated, request.RuleName, backendID, gen.Synced),
-		Headers: gen.UpdateAlertRule200ResponseHeaders{OpenChoreoReleaseLineApplied: releaseLineApplied(params.ReleaseLineUID)},
+		Headers: gen.UpdateAlertRule200ResponseHeaders{OpenChoreoReleaseLineApplied: releaseLineApplied(params.ReleaseLineUID, params.ComponentUID)},
 	}, nil
 }
 
@@ -667,7 +675,11 @@ func mapPrometheusRuleToAlertRuleResponse(pr *monitoringv1.PrometheusRule, ruleN
 
 	// Extract UIDs from the PromQL expression label filters
 	expr := rule.Expr.String()
-	if uid := parseUUID(extractPromLabelValue(expr, "label_openchoreo_dev_component_uid")); uid != nil {
+	// A rule synced before the annotation existed falls back to its expression, which names the
+	// component unless the rule is a release line's.
+	componentUID := cmp.Or(rule.Annotations[prometheus.ComponentUIDAnnotation],
+		extractPromLabelValue(expr, "label_openchoreo_dev_component_uid"))
+	if uid := parseUUID(componentUID); uid != nil {
 		resp.Metadata.ComponentUid = uid
 	}
 	if uid := parseUUID(extractPromLabelValue(expr, "label_openchoreo_dev_project_uid")); uid != nil {
@@ -838,10 +850,11 @@ func derefString(s *string) string {
 // requested release line.
 const releaseLineAppliedHeader = "OpenChoreo-Release-Line-Applied"
 
-// releaseLineApplied is the OpenChoreo-Release-Line-Applied header value for a request
-// scoped to the given release line UID: "true" when it was, empty otherwise.
-func releaseLineApplied(releaseLineUID string) string {
-	if releaseLineUID == "" {
+// releaseLineApplied is the OpenChoreo-Release-Line-Applied header value for a request scoped to a
+// component or one of its release lines, which this adapter matches by line: "true" when it was,
+// empty otherwise.
+func releaseLineApplied(releaseLineUID, componentUID string) string {
+	if releaseLineUID == "" && componentUID == "" {
 		return ""
 	}
 	return "true"

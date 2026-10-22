@@ -18,7 +18,7 @@ import (
 
 func TestQueryMetrics_ReleaseLineHeader(t *testing.T) {
 	const lineUID = "93f65294-926f-475b-98f1-dc4f152f38da"
-	for name, line := range map[string]*string{"with a line": strPtr(lineUID), "without a line": nil} {
+	for name, line := range map[string]*string{"one line": strPtr(lineUID), "every line": nil} {
 		t.Run(name, func(t *testing.T) {
 			var mu sync.Mutex
 			var queries []string
@@ -52,17 +52,41 @@ func TestQueryMetrics_ReleaseLineHeader(t *testing.T) {
 				t.Fatalf("failed to write response: %v", err)
 			}
 
-			wantHeader := ""
+			want := `label_openchoreo_dev_release_line_component_uid="comp-uid"`
 			if line != nil {
-				wantHeader = "true"
-				for _, q := range queries {
-					if !strings.Contains(q, `label_openchoreo_dev_release_line_uid="`+lineUID+`"`) {
-						t.Errorf("query without the release line matcher: %s", q)
-					}
+				want = `label_openchoreo_dev_release_line_uid="` + lineUID + `"`
+			}
+			for _, q := range queries {
+				if !strings.Contains(q, want) {
+					t.Errorf("query without %s: %s", want, q)
 				}
 			}
-			if got := w.Header().Get(releaseLineAppliedHeader); got != wantHeader {
-				t.Errorf("OpenChoreo-Release-Line-Applied = %q, want %q", got, wantHeader)
+			if got := w.Header().Get(releaseLineAppliedHeader); got != "true" {
+				t.Errorf("OpenChoreo-Release-Line-Applied = %q, want true", got)
+			}
+		})
+	}
+}
+
+// An alert rule read back names its component, though a release line's expression does not.
+func TestMapPrometheusRule_ReleaseLineComponentUID(t *testing.T) {
+	const componentUID = "d2108e2c-f912-4cab-a0b4-71afde25c5ac"
+	for name, lineUID := range map[string]string{"main line": "", "release line": "93f65294-926f-475b-98f1-dc4f152f38da"} {
+		t.Run(name, func(t *testing.T) {
+			pr, err := prometheus.BuildPrometheusRule(prometheus.AlertRuleParams{
+				Name: "rule", Namespace: "ns", ComponentUID: componentUID, ReleaseLineUID: lineUID,
+				ProjectUID: "31e18226-49ce-48e7-a09b-d1f764d61a19", EnvironmentUID: "7d1b44c7-d5f5-4bbd-a659-015139e98e0e",
+				Metric: prometheus.MetricTypeCPUUsage, Enabled: true, Window: "5m", Interval: "1m", Operator: "gt", Threshold: 80,
+			}, "monitoring")
+			if err != nil {
+				t.Fatalf("build rule: %v", err)
+			}
+			resp, err := mapPrometheusRuleToAlertRuleResponse(pr, "rule")
+			if err != nil {
+				t.Fatalf("map rule: %v", err)
+			}
+			if resp.Metadata.ComponentUid == nil || resp.Metadata.ComponentUid.String() != componentUID {
+				t.Errorf("component UID = %v, want %s", resp.Metadata.ComponentUid, componentUID)
 			}
 		})
 	}

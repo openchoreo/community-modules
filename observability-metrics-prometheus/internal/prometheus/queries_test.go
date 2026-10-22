@@ -29,7 +29,7 @@ func TestPrometheusLabelName(t *testing.T) {
 	}
 }
 
-func TestBuildLabelFilter(t *testing.T) {
+func TestBuildPodLabels(t *testing.T) {
 	tests := []struct {
 		name           string
 		namespace      string
@@ -79,15 +79,15 @@ func TestBuildLabelFilter(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := BuildLabelFilter(tt.namespace, tt.componentUID, tt.projectUID, tt.environmentUID, "")
+			got := BuildPodLabels(tt.namespace, tt.componentUID, tt.projectUID, tt.environmentUID, "", true)
 			for _, want := range tt.wantContains {
 				if !strings.Contains(got, want) {
-					t.Errorf("BuildLabelFilter() = %q, want to contain %q", got, want)
+					t.Errorf("BuildPodLabels() = %q, want to contain %q", got, want)
 				}
 			}
 			for _, notWant := range tt.wantNotContain {
 				if strings.Contains(got, notWant) {
-					t.Errorf("BuildLabelFilter() = %q, should not contain %q", got, notWant)
+					t.Errorf("BuildPodLabels() = %q, should not contain %q", got, notWant)
 				}
 			}
 		})
@@ -183,22 +183,53 @@ func TestBuildGroupLeftClause(t *testing.T) {
 	}
 }
 
-func TestBuildComponentLabelFilter(t *testing.T) {
-	got := BuildComponentLabelFilter("comp-1", "proj-1", "env-1", "")
+func TestBuildPodLabels_ReleaseLines(t *testing.T) {
+	const base = `label_openchoreo_dev_namespace="ns",label_openchoreo_dev_project_uid="p",label_openchoreo_dev_environment_uid="e"`
+	tests := []struct {
+		name     string
+		line     string
+		mainOnly bool
+		want     string
+	}{
+		{name: "main line", mainOnly: true, want: `kube_pod_labels{job="kube-state-metrics",` + base +
+			`,label_openchoreo_dev_component_uid="c",label_openchoreo_dev_release_line_uid=""}`},
+		{name: "one release line matches on its UID alone", line: "l1", want: `kube_pod_labels{job="kube-state-metrics",` + base +
+			`,label_openchoreo_dev_release_line_uid="l1"}`},
+		{name: "every line", want: `(kube_pod_labels{job="kube-state-metrics",` + base +
+			`,label_openchoreo_dev_component_uid="c"} or ` +
+			`kube_pod_labels{job="kube-state-metrics",` + base + `,label_openchoreo_dev_release_line_component_uid="c"})`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := BuildPodLabels("ns", "c", "p", "e", tt.line, tt.mainOnly); got != tt.want {
+				t.Errorf("BuildPodLabels() =\n %s\nwant\n %s", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestBuildComponentPodLabels(t *testing.T) {
+	got := BuildComponentPodLabels("comp-1", "proj-1", "env-1", "")
 	wantParts := []string{
 		`label_openchoreo_dev_component_uid="comp-1"`,
 		`label_openchoreo_dev_project_uid="proj-1"`,
 		`label_openchoreo_dev_environment_uid="env-1"`,
+		`label_openchoreo_dev_release_line_uid=""`,
 	}
 	for _, want := range wantParts {
 		if !strings.Contains(got, want) {
-			t.Errorf("BuildComponentLabelFilter() = %q, want to contain %q", got, want)
+			t.Errorf("BuildComponentPodLabels() = %q, want to contain %q", got, want)
 		}
+	}
+
+	got = BuildComponentPodLabels("comp-1", "proj-1", "env-1", "line-1")
+	if strings.Contains(got, "component_uid") || !strings.Contains(got, `label_openchoreo_dev_release_line_uid="line-1"`) {
+		t.Errorf("a release line's rule must match its UID alone: %q", got)
 	}
 }
 
 func TestResourceQueryBuilders(t *testing.T) {
-	labelFilter := `label_openchoreo_dev_namespace="test-ns"`
+	labelFilter := BuildPodLabels("test-ns", "", "", "", "", false)
 	sumByClause := "label_openchoreo_dev_component_uid"
 	groupLeftClause := "group_left (label_openchoreo_dev_component_uid)"
 
@@ -228,7 +259,7 @@ func TestResourceQueryBuilders(t *testing.T) {
 }
 
 func TestHTTPQueryBuilders(t *testing.T) {
-	labelFilter := `label_openchoreo_dev_namespace="test-ns"`
+	labelFilter := BuildPodLabels("test-ns", "", "", "", "", false)
 	sumByClause := "label_openchoreo_dev_component_uid"
 	groupLeftClause := "group_left (label_openchoreo_dev_component_uid)"
 

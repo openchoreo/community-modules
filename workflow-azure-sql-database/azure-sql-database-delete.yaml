@@ -45,7 +45,7 @@ spec:
     # Step 2: terraform init — connect to the existing azurerm state
     - name: init-step
       container:
-        image: hashicorp/terraform:1.9
+        image: hashicorp/terraform:1.16
         command: [sh, -c]
         args:
           - |
@@ -97,7 +97,7 @@ spec:
     # Step 3: terraform plan -destroy — dry run showing what will be deleted
     - name: plan-destroy-step
       container:
-        image: hashicorp/terraform:1.9
+        image: hashicorp/terraform:1.16
         command: [sh, -c]
         args:
           - |
@@ -161,7 +161,7 @@ spec:
     # Step 4: terraform destroy — delete the Azure SQL Database and all associated resources
     - name: destroy-step
       container:
-        image: hashicorp/terraform:1.9
+        image: hashicorp/terraform:1.16
         command: [sh, -c]
         args:
           - |

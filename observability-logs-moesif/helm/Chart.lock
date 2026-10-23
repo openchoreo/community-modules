@@ -1,9 +1,9 @@
 dependencies:
 - name: opentelemetry-collector
   repository: https://open-telemetry.github.io/opentelemetry-helm-charts
-  version: 0.172.0
+  version: 0.177.0
 - name: fluent-bit
   repository: https://fluent.github.io/helm-charts
   version: 0.54.0
-digest: sha256:d65844e7ce97db4b028516c376e08be5e219afe19c4f95470855e55c16bc3419
-generated: "2026-09-01T08:39:56.623010612Z"
+digest: sha256:e7b0827b8bc4f7fbfd339168b6f3145db9408c29a87966f78db5f058d1969ea2
+generated: "2026-10-23T15:24:38.645364493Z"

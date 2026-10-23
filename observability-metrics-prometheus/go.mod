@@ -3,7 +3,7 @@ module github.com/openchoreo/community-modules/observability-metrics-prometheus
 go 1.27.3
 
 require (
-	github.com/getkin/kin-openapi v0.149.0
+	github.com/getkin/kin-openapi v0.151.0
 	github.com/google/uuid v1.6.0
 	github.com/oapi-codegen/runtime v1.7.0
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.94.1

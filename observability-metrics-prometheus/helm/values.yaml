@@ -42,6 +42,9 @@ kube-prometheus-stack:
   prometheus:
     enabled: true
     prometheusSpec:
+      # Pinned ahead of the chart default (92.11.0 ships v3.15.0-distroless)
+      image:
+        tag: v3.15.1-distroless
       enableRemoteWriteReceiver: true
       serviceMonitorNamespaceSelector: {}
       serviceMonitorSelector: {}
@@ -220,6 +223,12 @@ prometheusCustomizations:
   remoteWrite:
     tlsInsecureSkipVerify: false # multiClusterExporter: skip TLS verification for self-signed certs on the receiver
   agent:
+    # multiClusterExporter only. The PrometheusAgent CR carries no spec.image by
+    # default, so the operator would spawn it with its compiled-in default
+    # Prometheus image (v3.14.0 for operator v0.94.1). Pinned here for the same
+    # reason as kube-prometheus-stack.prometheus.prometheusSpec.image.tag above.
+    # Empty falls back to the operator default.
+    image: "quay.io/prometheus/prometheus:v3.15.1-distroless"
     # multiClusterExporter only. The PrometheusAgent buffers samples the receiver
     # has not yet acked in a WAL; on an emptyDir those are lost if the pod
     # restarts while the receiver is unreachable. Off by default so exporter

@@ -25,7 +25,7 @@ helm upgrade --install observability-metrics-prometheus \
   oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-metrics-prometheus \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.7.1
+  --version 0.8.0
 ```
 
 ### Multi-cluster topology
@@ -37,7 +37,7 @@ helm upgrade --install observability-metrics-prometheus \
   oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-metrics-prometheus \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.7.1 \
+  --version 0.8.0 \
   --set global.installationMode="multiClusterReceiver" \
   --set-json 'prometheusCustomizations.http.hostnames=["prometheus.observability.example.com"]'
 ```
@@ -51,7 +51,7 @@ helm upgrade --install observability-metrics-prometheus \
   oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-metrics-prometheus \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.7.1 \
+  --version 0.8.0 \
   --set global.installationMode="multiClusterExporter" \
   --set prometheusCustomizations.http.observabilityPlaneUrl=http://prometheus.observability.example.com:9091/api/v1/write \
   --set kube-prometheus-stack.prometheus.enabled=false \
@@ -66,6 +66,7 @@ helm upgrade --install observability-metrics-prometheus \
 | ------------------------------------------------------------ | ---------- | ------------------------------------------------------------------------------------- |
 | `prometheusCustomizations.http.observabilityPlaneUrl`        | (required) | Central receiver URL for remote write. The URL hostname is used as the `Host` header. |
 | `prometheusCustomizations.remoteWrite.tlsInsecureSkipVerify` | `false`    | Skip TLS certificate verification for self-signed certs on the receiver.              |
+| `prometheusCustomizations.agent.image`                       | `quay.io/prometheus/prometheus:v3.15.1-distroless` | Image for the PrometheusAgent. Empty falls back to the operator's compiled-in default. |
 
 ## Storage and retention
 
@@ -86,7 +87,7 @@ In `singleCluster` and `multiClusterReceiver` modes, the Prometheus server store
 ```bash
 helm upgrade --install observability-metrics-prometheus \
   oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-metrics-prometheus \
-  --namespace openchoreo-observability-plane --reuse-values \
+  --namespace openchoreo-observability-plane --reset-then-reuse-values \
   --set kube-prometheus-stack.prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.storageClassName=<your-storage-class> \
   --set kube-prometheus-stack.alertmanager.alertmanagerSpec.storage.volumeClaimTemplate.spec.storageClassName=<your-storage-class>
 ```
@@ -100,7 +101,7 @@ helm upgrade --install observability-metrics-prometheus \
 ```bash
 helm upgrade --install observability-metrics-prometheus \
   oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-metrics-prometheus \
-  --namespace openchoreo-observability-plane --reuse-values \
+  --namespace openchoreo-observability-plane --reset-then-reuse-values \
   --set kube-prometheus-stack.prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.resources.requests.storage=50Gi \
   --set kube-prometheus-stack.prometheus.prometheusSpec.retentionSize=40GiB
 ```
@@ -119,7 +120,7 @@ In `multiClusterExporter` mode there is no TSDB — the PrometheusAgent only for
 ```bash
 helm upgrade --install observability-metrics-prometheus \
   oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-metrics-prometheus \
-  --namespace openchoreo-observability-plane --reuse-values \
+  --namespace openchoreo-observability-plane --reset-then-reuse-values \
   --set prometheusCustomizations.agent.persistence.enabled=true \
   --set prometheusCustomizations.agent.persistence.storageClassName=<your-storage-class>
 ```
@@ -131,7 +132,7 @@ To use ephemeral storage — metrics are then lost on every pod restart — hand
 ```bash
 helm upgrade --install observability-metrics-prometheus \
   oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-metrics-prometheus \
-  --namespace openchoreo-observability-plane --reuse-values \
+  --namespace openchoreo-observability-plane --reset-then-reuse-values \
   --set-json 'kube-prometheus-stack.prometheus.prometheusSpec.storageSpec.emptyDir={}' \
   --set-json 'kube-prometheus-stack.alertmanager.alertmanagerSpec.storage.emptyDir={}'
 ```

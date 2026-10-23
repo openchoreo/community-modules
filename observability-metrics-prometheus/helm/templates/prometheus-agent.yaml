@@ -9,6 +9,9 @@ metadata:
   namespace: {{ .Release.Namespace }}
 spec:
   serviceAccountName: openchoreo-prometheus-agent
+  {{- with .Values.prometheusCustomizations.agent.image }}
+  image: {{ . | quote }}
+  {{- end }}
   serviceMonitorNamespaceSelector: {}
   serviceMonitorSelector: {}
   podMonitorSelector: {}

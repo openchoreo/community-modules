@@ -77,7 +77,8 @@ func buildComponentQuery(p ComponentLogsParams) string {
 	var b strings.Builder
 
 	b.WriteString("fields @timestamp, @message,")
-	b.WriteString(" kubernetes.namespace_name as namespace,")
+	fmt.Fprintf(&b, " %s as namespaceName,", labelField(labelNamespace))
+	b.WriteString(" kubernetes.namespace_name as podNamespace,")
 	b.WriteString(" kubernetes.pod_name as podName,")
 	b.WriteString(" kubernetes.container_name as containerName,")
 	fmt.Fprintf(&b, " %s as componentUid,", labelField(labelComponentUID))

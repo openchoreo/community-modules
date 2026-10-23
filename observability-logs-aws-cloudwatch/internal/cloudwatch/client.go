@@ -224,9 +224,9 @@ func (c *Client) GetComponentLogs(ctx context.Context, params ComponentLogsParam
 	for _, row := range rows {
 		entry := ComponentLogsEntry{
 			Log:             extractInnerLog(row["@message"]),
-			Namespace:       row["namespace"],
+			Namespace:       row["namespaceName"],
 			PodName:         row["podName"],
-			PodNamespace:    row["namespace"],
+			PodNamespace:    row["podNamespace"],
 			ContainerName:   row["containerName"],
 			ComponentUID:    row["componentUid"],
 			ComponentName:   row["componentName"],

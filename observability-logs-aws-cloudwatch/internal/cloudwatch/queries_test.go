@@ -29,6 +29,24 @@ func TestBuildComponentQueryIncludesStructuredLogLevelFields(t *testing.T) {
 	}
 }
 
+func TestBuildComponentQueryProjectsBothNamespaces(t *testing.T) {
+	query := buildComponentQuery(ComponentLogsParams{Namespace: "default"})
+
+	// namespaceName is the OpenChoreo namespace (a pod label); podNamespace is the
+	// pod's Kubernetes namespace. They must come from different fields.
+	for _, expected := range []string{
+		"`kubernetes.labels.openchoreo.dev/namespace` as namespaceName",
+		"kubernetes.namespace_name as podNamespace",
+	} {
+		if !strings.Contains(query, expected) {
+			t.Fatalf("expected query to contain %q, got:\n%s", expected, query)
+		}
+	}
+	if strings.Contains(query, "kubernetes.namespace_name as namespaceName") {
+		t.Fatalf("namespaceName must not come from the pod namespace, got:\n%s", query)
+	}
+}
+
 func TestBuildWorkflowQueryFiltersStructuredLogLevelFields(t *testing.T) {
 	query := buildWorkflowQuery(WorkflowLogsParams{
 		Namespace: "default",

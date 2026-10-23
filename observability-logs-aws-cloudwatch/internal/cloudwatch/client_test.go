@@ -179,7 +179,8 @@ func TestGetComponentLogsHappyPath(t *testing.T) {
 			{
 				{Field: aws.String("@timestamp"), Value: aws.String(now.Format("2006-01-02 15:04:05.000"))},
 				{Field: aws.String("@message"), Value: aws.String("hello world")},
-				{Field: aws.String("namespace"), Value: aws.String("default")},
+				{Field: aws.String("namespaceName"), Value: aws.String("default")},
+				{Field: aws.String("podNamespace"), Value: aws.String("dp-default-project-development-1a2b3c4d")},
 				{Field: aws.String("podName"), Value: aws.String("pod-1")},
 				{Field: aws.String("containerName"), Value: aws.String("c1")},
 				{Field: aws.String("componentUid"), Value: aws.String("33333333-3333-3333-3333-333333333333")},
@@ -202,8 +203,13 @@ func TestGetComponentLogsHappyPath(t *testing.T) {
 		t.Fatalf("expected 1 entry, got %d", len(res.Logs))
 	}
 	got := res.Logs[0]
-	if got.Log != "hello world" || got.PodName != "pod-1" || got.LogLevel != "ERROR" || got.Namespace != "default" {
+	if got.Log != "hello world" || got.PodName != "pod-1" || got.LogLevel != "ERROR" {
 		t.Fatalf("unexpected entry: %#v", got)
+	}
+	// The OpenChoreo namespace and the pod's Kubernetes namespace are different values.
+	if got.Namespace != "default" || got.PodNamespace != "dp-default-project-development-1a2b3c4d" {
+		t.Fatalf("Namespace = %q, PodNamespace = %q; want the OpenChoreo namespace and the pod namespace",
+			got.Namespace, got.PodNamespace)
 	}
 	if !got.Timestamp.Equal(now) {
 		t.Fatalf("unexpected timestamp: %s", got.Timestamp)
@@ -434,7 +440,7 @@ func TestGetComponentLogsExtractsInnerLog(t *testing.T) {
 			{
 				{Field: aws.String("@timestamp"), Value: aws.String(now.Format("2006-01-02 15:04:05.000"))},
 				{Field: aws.String("@message"), Value: aws.String(`{"time":"2026-05-18T11:12:09Z","stream":"stderr","log":"service started","kubernetes":{}}`)},
-				{Field: aws.String("namespace"), Value: aws.String("default")},
+				{Field: aws.String("namespaceName"), Value: aws.String("default")},
 			},
 		},
 	}

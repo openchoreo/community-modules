@@ -1,0 +1,109 @@
+scan:
+  image:
+    repository: docker.io/aquasec/trivy
+    tag: "0.69.3"
+    pullPolicy: IfNotPresent
+  # audit:   report findings, never fail the build.
+  # enforce: fail the build when fixable findings at `severity` remain.
+  # Only fixable vulnerabilities ever fail a build: without a released fix
+  # the component owner has nothing to act on. Grace periods are applied at
+  # admission, not here, because the build cannot know since when a fix exists.
+  mode: audit
+  # Severities that count as findings for the gate and the summary.
+  severity: CRITICAL,HIGH
+  # Path of the ignore file inside the checked-out source, relative to the
+  # repository root. Applied when present. Supports .trivyignore and
+  # .trivyignore.yaml (with per-entry expiry).
+  ignoreFile: .trivyignore
+  scanners: vuln
+  timeout: 10m
+  # Override where Trivy pulls its databases from, e.g. a registry mirror.
+  # Ignored when server.enabled is true (the server owns the databases).
+  dbRepository: ""
+  javaDbRepository: ""
+  # Extra environment for the scan container, e.g. HTTPS_PROXY.
+  extraEnv: []
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 2Gi
+
+signing:
+  enabled: true
+  image:
+    repository: ghcr.io/sigstore/cosign/cosign
+    tag: "v2.6.5"
+    pullPolicy: IfNotPresent
+    # Set explicitly: without a command, Argo's emissary executor looks the
+    # image entrypoint up in the registry, from the workflow controller. If
+    # that registry is unreachable from there (e.g. only through a proxy),
+    # the step stays Pending forever and blocks the build.
+    command: [/ko-app/cosign]
+  # Upper bound per cosign step, including time spent Pending. A step that
+  # hangs then fails, and continueOn in the calling workflow can tolerate it.
+  timeout: 10m
+  # Any key reference cosign understands: a KMS URI such as
+  # hashivault://<transit-key> (also OpenBao), awskms://..., gcpkms://...,
+  # azurekms://..., or k8s://<namespace>/<secret>.
+  key: ""
+  # Upload signatures and attestations to a Rekor transparency log.
+  # Off by default: the public log would disclose image and repository names.
+  tlogUpload: false
+  # Extra cosign arguments, e.g. ["--allow-insecure-registry"].
+  extraArgs: []
+  # Plain environment for cosign, e.g. VAULT_ADDR.
+  extraEnv: []
+  # Environment taken from Secrets in the workflow namespace, e.g. VAULT_TOKEN.
+  #   - name: VAULT_TOKEN
+  #     secretName: image-signing
+  #     key: token
+  secretEnv: []
+  # Attestations attached after publishing.
+  attestations:
+    sbom: true
+    vulnerabilities: true
+    provenance: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+
+# Names and paths shared with the calling OpenChoreo build workflow.
+# The defaults match the workflows shipped with OpenChoreo.
+workflow:
+  templateName: image-security
+  workspaceVolume: workspace
+  imageTarPath: /mnt/vol/app-image.tar
+  sourcePath: /mnt/vol/source
+  reportDir: /mnt/vol/security
+  # Workflow parameter holding the name of the registry push Secret
+  # (a kubernetes.io/dockerconfigjson Secret). Cosign uses it to write
+  # signatures and attestations next to the image.
+  registryPushSecretParameter: registry-push-secret
+  # Identifies this build system in SLSA provenance.
+  builderId: https://github.com/openchoreo/community-modules/tree/main/security-supply-chain
+
+# Optional Trivy server in the workflow plane. Builds then run Trivy in client
+# mode and do not download the vulnerability database on every run.
+server:
+  enabled: false
+  port: 4954
+  replicas: 1
+  # Extra environment, e.g. HTTPS_PROXY to reach the database registry.
+  extraEnv: []
+  dbRepository: ""
+  javaDbRepository: ""
+  persistence:
+    enabled: true
+    size: 5Gi
+    storageClassName: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      memory: 2Gi

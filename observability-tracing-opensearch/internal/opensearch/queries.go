@@ -45,21 +45,8 @@ func BuildTracesQuery(params TracesRequestParams) map[string]interface{} {
 		})
 	}
 
-	// Add ComponentUIDs filter if present
-	if len(params.ComponentUIDs) > 0 {
-		shouldConditions := make([]map[string]interface{}, 0, len(params.ComponentUIDs))
-		for _, componentUID := range params.ComponentUIDs {
-			shouldConditions = append(shouldConditions, map[string]interface{}{
-				"term": map[string]interface{}{
-					"resource.openchoreo.dev/component-uid": componentUID,
-				},
-			})
-		}
-		filterConditions = append(filterConditions, map[string]interface{}{
-			"bool": map[string]interface{}{
-				"should": shouldConditions,
-			},
-		})
+	if filter := componentScopeFilter(params.ComponentUIDs, params.ReleaseLineUID, params.DefaultLineOnly); filter != nil {
+		filterConditions = append(filterConditions, filter)
 	}
 
 	// Add EnvironmentUID filter if present
@@ -126,21 +113,8 @@ func BuildTracesAggregationQuery(params TracesRequestParams) map[string]interfac
 		},
 	}
 
-	// Add ComponentUIDs filter if present
-	if len(params.ComponentUIDs) > 0 {
-		shouldConditions := make([]map[string]interface{}, 0, len(params.ComponentUIDs))
-		for _, componentUID := range params.ComponentUIDs {
-			shouldConditions = append(shouldConditions, map[string]interface{}{
-				"term": map[string]interface{}{
-					"resource.openchoreo.dev/component-uid": componentUID,
-				},
-			})
-		}
-		filterConditions = append(filterConditions, map[string]interface{}{
-			"bool": map[string]interface{}{
-				"should": shouldConditions,
-			},
-		})
+	if filter := componentScopeFilter(params.ComponentUIDs, params.ReleaseLineUID, params.DefaultLineOnly); filter != nil {
+		filterConditions = append(filterConditions, filter)
 	}
 
 	// Add EnvironmentUID filter if present
@@ -294,4 +268,40 @@ func BuildSpanDetailsQuery(traceID string, spanID string) map[string]interface{}
 	}
 
 	return query
+}
+
+const (
+	componentUIDAttribute            = "resource.openchoreo.dev/component-uid"
+	releaseLineUIDAttribute          = "resource.openchoreo.dev/release-line-uid"
+	releaseLineComponentUIDAttribute = "resource.openchoreo.dev/release-line-component-uid"
+)
+
+// componentScopeFilter matches spans of components by release line. A release line's pods carry
+// the component UID under another label than the default line's, so the component UIDs alone match
+// either and cover every line. One release line matches on its UID alone, and defaultOnly keeps
+// spans with a component UID and no release line UID. Returns nil without a component or a line.
+func componentScopeFilter(componentUIDs []string, releaseLineUID string, defaultOnly bool) map[string]interface{} {
+	if releaseLineUID != "" {
+		return map[string]interface{}{"term": map[string]interface{}{releaseLineUIDAttribute: releaseLineUID}}
+	}
+	if len(componentUIDs) == 0 {
+		return nil
+	}
+	if defaultOnly {
+		return map[string]interface{}{
+			"bool": map[string]interface{}{
+				"filter":   []map[string]interface{}{{"terms": map[string]interface{}{componentUIDAttribute: componentUIDs}}},
+				"must_not": []map[string]interface{}{{"exists": map[string]interface{}{"field": releaseLineUIDAttribute}}},
+			},
+		}
+	}
+	return map[string]interface{}{
+		"bool": map[string]interface{}{
+			"should": []map[string]interface{}{
+				{"terms": map[string]interface{}{componentUIDAttribute: componentUIDs}},
+				{"terms": map[string]interface{}{releaseLineComponentUIDAttribute: componentUIDs}},
+			},
+			"minimum_should_match": 1,
+		},
+	}
 }

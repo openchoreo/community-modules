@@ -42,6 +42,10 @@ const (
 	EvEnvironmentName = evLabelPrefix + EnvironmentName
 	// EvEnvironmentID is the OpenChoreo environment UID label field path.
 	EvEnvironmentID = evLabelPrefix + EnvironmentID
+	// EvReleaseLineID is the OpenChoreo release line UID label field path.
+	EvReleaseLineID = evLabelPrefix + ReleaseLineID
+	// EvReleaseLineComponentID is the component UID label field path on a release line's pods.
+	EvReleaseLineComponentID = evLabelPrefix + ReleaseLineComponentID
 	// EvNamespaceName is the OpenChoreo namespace name label field path.
 	EvNamespaceName = evLabelPrefix + NamespaceName
 )

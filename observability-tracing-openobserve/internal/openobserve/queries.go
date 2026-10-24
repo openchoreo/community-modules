@@ -95,9 +95,7 @@ func generateTracesListQuery(params TracesQueryParams, stream string, logger *sl
 
 // generateSpansListQuery generates the OpenObserve query to list spans for a given trace.
 func generateSpansListQuery(params TracesQueryParams, stream string, logger *slog.Logger) ([]byte, error) {
-	conditions := []string{
-		"trace_id = '" + escapeSQLString(params.TraceID) + "'",
-	}
+	conditions := spanConditions(params)
 
 	safeStream, err := validateSQLIdentifier(stream)
 	if err != nil {
@@ -228,9 +226,7 @@ func generateSpansCountQuery(params TracesQueryParams, stream string, logger *sl
 		return nil, fmt.Errorf("invalid stream identifier: %w", err)
 	}
 
-	conditions := []string{
-		"trace_id = '" + escapeSQLString(params.TraceID) + "'",
-	}
+	conditions := spanConditions(params)
 
 	sql := fmt.Sprintf(
 		"SELECT count(*) as total FROM %s WHERE %s",
@@ -273,6 +269,27 @@ func buildFilterConditions(params TracesQueryParams) []string {
 	if params.Scope.ComponentID != "" {
 		conditions = append(conditions, "service_openchoreo_dev_component_uid = '"+escapeSQLString(params.Scope.ComponentID)+"'")
 	}
+	if c := releaseLineCondition(params); c != "" {
+		conditions = append(conditions, c)
+	}
 
 	return conditions
+}
+
+// spanConditions builds the SQL WHERE conditions for the spans of one trace.
+func spanConditions(params TracesQueryParams) []string {
+	conditions := []string{"trace_id = '" + escapeSQLString(params.TraceID) + "'"}
+	if c := releaseLineCondition(params); c != "" {
+		conditions = append(conditions, c)
+	}
+	return conditions
+}
+
+// releaseLineCondition filters on the openchoreo.dev/release-line-uid resource attribute
+// as OpenObserve flattens it; empty when the scope sets no release line.
+func releaseLineCondition(params TracesQueryParams) string {
+	if params.Scope.ReleaseLineID == "" {
+		return ""
+	}
+	return releaseLineColumn + " = '" + escapeSQLString(params.Scope.ReleaseLineID) + "'"
 }

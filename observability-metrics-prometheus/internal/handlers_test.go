@@ -645,11 +645,12 @@ func TestAlertRuleParamsFromRequest(t *testing.T) {
 
 	req := gen.AlertRuleRequest{
 		Metadata: struct {
-			ComponentUid   openapi_types.UUID `json:"componentUid"`
-			EnvironmentUid openapi_types.UUID `json:"environmentUid"`
-			Name           string             `json:"name"`
-			Namespace      string             `json:"namespace"`
-			ProjectUid     openapi_types.UUID `json:"projectUid"`
+			ComponentUid   openapi_types.UUID  `json:"componentUid"`
+			EnvironmentUid openapi_types.UUID  `json:"environmentUid"`
+			Name           string              `json:"name"`
+			Namespace      string              `json:"namespace"`
+			ProjectUid     openapi_types.UUID  `json:"projectUid"`
+			ReleaseLineUid *openapi_types.UUID `json:"releaseLineUid,omitempty"`
 		}{
 			Name:           "test-rule",
 			Namespace:      "test-ns",
@@ -663,11 +664,11 @@ func TestAlertRuleParamsFromRequest(t *testing.T) {
 			Metric: gen.AlertRuleRequestSourceMetricCpuUsage,
 		},
 		Condition: struct {
-			Enabled   bool                                 `json:"enabled"`
-			Interval  string                               `json:"interval"`
+			Enabled   bool                                  `json:"enabled"`
+			Interval  string                                `json:"interval"`
 			Operator  gen.AlertRuleRequestConditionOperator `json:"operator"`
-			Threshold float32                              `json:"threshold"`
-			Window    string                               `json:"window"`
+			Threshold float32                               `json:"threshold"`
+			Window    string                                `json:"window"`
 		}{
 			Enabled:   true,
 			Window:    "5m",

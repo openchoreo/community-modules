@@ -4,6 +4,7 @@
 package opensearch
 
 import (
+	"cmp"
 	"encoding/json"
 	"io"
 	"regexp"
@@ -80,16 +81,19 @@ type QueryParams struct {
 
 // ComponentLogsQueryParamsV1 holds query parameters for the API component logs query.
 type ComponentLogsQueryParamsV1 struct {
-	StartTime     string   `json:"startTime"`
-	EndTime       string   `json:"endTime"`
-	NamespaceName string   `json:"namespaceName"`
-	ProjectID     string   `json:"projectId,omitempty"`
-	ComponentID   string   `json:"componentId,omitempty"`
-	EnvironmentID string   `json:"environmentId,omitempty"`
-	SearchPhrase  string   `json:"searchPhrase,omitempty"`
-	LogLevels     []string `json:"logLevels,omitempty"`
-	Limit         int      `json:"limit"`
-	SortOrder     string   `json:"sortOrder"`
+	StartTime     string `json:"startTime"`
+	EndTime       string `json:"endTime"`
+	NamespaceName string `json:"namespaceName"`
+	ProjectID     string `json:"projectId,omitempty"`
+	ComponentID   string `json:"componentId,omitempty"`
+	EnvironmentID string `json:"environmentId,omitempty"`
+	ReleaseLineID string `json:"releaseLineId,omitempty"`
+	// DefaultLineOnly restricts the query to the component's default line.
+	DefaultLineOnly bool     `json:"defaultLineOnly,omitempty"`
+	SearchPhrase    string   `json:"searchPhrase,omitempty"`
+	LogLevels       []string `json:"logLevels,omitempty"`
+	Limit           int      `json:"limit"`
+	SortOrder       string   `json:"sortOrder"`
 }
 
 // WorkflowRunQueryParams holds workflow run-specific query parameters.
@@ -113,6 +117,7 @@ type AlertingRuleMetadata struct {
 	ComponentUID   string `json:"component-uid"`
 	ProjectUID     string `json:"project-uid"`
 	EnvironmentUID string `json:"environment-uid"`
+	ReleaseLineUID string `json:"release-line-uid,omitempty"`
 }
 
 // AlertingRuleSource defines the source of data for the alerting rule.
@@ -260,7 +265,9 @@ func ParseLogEntry(hit Hit) LogEntry {
 
 	if k8s, ok := source["kubernetes"].(map[string]interface{}); ok {
 		if labelMap, ok := k8s["labels"].(map[string]interface{}); ok {
-			entry.ComponentID = getStringValue(labelMap, ReplaceDots(ComponentID))
+			// A release line's pods carry the component UID under their own label.
+			entry.ComponentID = cmp.Or(getStringValue(labelMap, ReplaceDots(ComponentID)),
+				getStringValue(labelMap, ReplaceDots(ReleaseLineComponentID)))
 			entry.EnvironmentID = getStringValue(labelMap, ReplaceDots(EnvironmentID))
 			entry.ProjectID = getStringValue(labelMap, ReplaceDots(ProjectID))
 			entry.Version = getStringValue(labelMap, ReplaceDots(Version))

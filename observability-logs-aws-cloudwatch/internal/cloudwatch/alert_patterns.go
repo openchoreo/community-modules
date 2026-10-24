@@ -46,7 +46,7 @@ func BuildAlertFilterPattern(p LogAlertParams) (string, error) {
 }
 
 // buildScopeFragment emits an AND-combined list of JSON selectors scoping the
-// alert to a single (environment, component) pair. This matches the
+// alert to a single (environment, component) pair, narrowed to a release line when set. This matches the
 // observability-logs-openobserve adapter, whose generateAlertConfig scopes by
 // environment_uid + component_uid only (see queries.go:229). Namespace and
 // project_uid are intentionally omitted — they're preserved on the alarm tags
@@ -55,7 +55,7 @@ func BuildAlertFilterPattern(p LogAlertParams) (string, error) {
 // CloudWatch stores the Kubernetes labels under keys containing characters
 // such as `/` that metric-filter property selectors cannot address directly.
 // Match the label values through the labels-object wildcard instead. The
-// OpenChoreo environment/component UIDs are UUIDs, so matching by value is
+// OpenChoreo environment/component/release line UIDs are UUIDs, so matching by value is
 // sufficiently specific for alert scoping.
 func buildScopeFragment(p LogAlertParams) string {
 	var conds []string
@@ -64,6 +64,9 @@ func buildScopeFragment(p LogAlertParams) string {
 	}
 	if p.ComponentUID != "" {
 		conds = append(conds, jsonEqStringSelector("$.kubernetes.labels.*", p.ComponentUID))
+	}
+	if p.ReleaseLineUID != "" {
+		conds = append(conds, jsonEqStringSelector("$.kubernetes.labels.*", p.ReleaseLineUID))
 	}
 	if len(conds) == 0 {
 		return ""

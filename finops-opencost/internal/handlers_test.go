@@ -78,10 +78,10 @@ func TestGetComponentCostsAggregatesPods(t *testing.T) {
 	if !is {
 		t.Fatalf("expected 200 response, got %T", resp)
 	}
-	if len(ok.Items) != 1 {
-		t.Fatalf("expected 1 component, got %d", len(ok.Items))
+	if len(ok.Body.Items) != 1 {
+		t.Fatalf("expected 1 component, got %d", len(ok.Body.Items))
 	}
-	item := ok.Items[0]
+	item := ok.Body.Items[0]
 	if item.CpuCost != 4.0 || item.MemoryCost != 2.0 {
 		t.Errorf("costs not summed: cpu=%v mem=%v", item.CpuCost, item.MemoryCost)
 	}
@@ -177,10 +177,10 @@ func TestGetRecommendationsHappyPath(t *testing.T) {
 	if !is {
 		t.Fatalf("expected 200 response, got %T", resp)
 	}
-	if len(ok.Items) != 1 {
-		t.Fatalf("expected 1 recommendation, got %d", len(ok.Items))
+	if len(ok.Body.Items) != 1 {
+		t.Fatalf("expected 1 recommendation, got %d", len(ok.Body.Items))
 	}
-	rec := ok.Items[0]
+	rec := ok.Body.Items[0]
 	if rec.Current.CpuRequest != "1000m" {
 		t.Errorf("current cpu request = %q, want 1000m", rec.Current.CpuRequest)
 	}
@@ -237,7 +237,7 @@ func TestGetRecommendationsScalesCostByRequestRatio(t *testing.T) {
 		t.Fatalf("GetRecommendations error: %v", err)
 	}
 	ok := resp.(gen.GetRecommendations200JSONResponse)
-	rec := ok.Items[0]
+	rec := ok.Body.Items[0]
 
 	if rec.Recommendation.MemoryRequest != rec.Current.MemoryRequest {
 		t.Fatalf("memory request changed: cur=%q rec=%q", rec.Current.MemoryRequest, rec.Recommendation.MemoryRequest)
@@ -348,12 +348,12 @@ func TestGetComponentCostsWithGranularityAndSkipsUnlabeled(t *testing.T) {
 	if !is {
 		t.Fatalf("expected 200 response, got %T", resp)
 	}
-	if len(ok.Items) != 1 {
-		t.Fatalf("expected 1 component (unlabeled skipped), got %d", len(ok.Items))
+	if len(ok.Body.Items) != 1 {
+		t.Fatalf("expected 1 component (unlabeled skipped), got %d", len(ok.Body.Items))
 	}
 	// No cost-weighted efficiency present, so it falls back to totalEfficiency.
-	if ok.Items[0].Efficiency < 0.699 || ok.Items[0].Efficiency > 0.701 {
-		t.Errorf("efficiency = %v, want ~0.7", ok.Items[0].Efficiency)
+	if ok.Body.Items[0].Efficiency < 0.699 || ok.Body.Items[0].Efficiency > 0.701 {
+		t.Errorf("efficiency = %v, want ~0.7", ok.Body.Items[0].Efficiency)
 	}
 }
 
@@ -467,8 +467,8 @@ func TestGetRecommendationsSkipsComponentOnMetricsError(t *testing.T) {
 	if !is {
 		t.Fatalf("expected 200 response, got %T", resp)
 	}
-	if len(ok.Items) != 0 {
-		t.Fatalf("expected 0 recommendations (component skipped), got %d", len(ok.Items))
+	if len(ok.Body.Items) != 0 {
+		t.Fatalf("expected 0 recommendations (component skipped), got %d", len(ok.Body.Items))
 	}
 }
 

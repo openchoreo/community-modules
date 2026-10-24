@@ -4,6 +4,7 @@
 package opensearch
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -128,7 +129,7 @@ func TestBuildComponentEventsQuery(t *testing.T) {
 	if !hasTermFilter(conds, EvProjectID, "proj-uid") {
 		t.Errorf("missing project term on %s", EvProjectID)
 	}
-	if !hasTermFilter(conds, EvComponentID, "comp-uid") {
+	if !strings.Contains(queryJSON(t, query), `{"term":{"`+EvComponentID+`":"comp-uid"}}`) {
 		t.Errorf("missing component term on %s", EvComponentID)
 	}
 	if !hasTermFilter(conds, EvEnvironmentID, "env-uid") {

@@ -111,7 +111,12 @@ func (h *TracingHandler) QuerySpansForTrace(ctx context.Context, request gen.Que
 
 	total := response.Hits.Total.Value
 	tookMs := response.Took
-	return gen.QuerySpansForTrace200JSONResponse(toSpansListResponse(spans, total, tookMs, params.IncludeAttributes)), nil
+	return gen.QuerySpansForTrace200JSONResponse{
+		Body: toSpansListResponse(spans, total, tookMs, params.IncludeAttributes),
+		Headers: gen.QuerySpansForTrace200ResponseHeaders{
+			OpenChoreoReleaseLineApplied: releaseLineApplied(params.ReleaseLineUID, params.ComponentUIDs),
+		},
+	}, nil
 }
 
 // GetSpanDetailsForTrace implements GET /api/v1alpha1/traces/{traceId}/spans/{spanId}.
@@ -166,7 +171,22 @@ func (h *TracingHandler) queryTracesWithAggregation(ctx context.Context, params 
 		totalCount = maxLimit
 	}
 
-	return gen.QueryTraces200JSONResponse(toTracesListResponse(traces, totalCount, response.Took)), nil
+	return gen.QueryTraces200JSONResponse{
+		Body: toTracesListResponse(traces, totalCount, response.Took),
+		Headers: gen.QueryTraces200ResponseHeaders{
+			OpenChoreoReleaseLineApplied: releaseLineApplied(params.ReleaseLineUID, params.ComponentUIDs),
+		},
+	}, nil
+}
+
+// releaseLineApplied is the OpenChoreo-Release-Line-Applied header value for a query scoped to
+// components or one release line, which this adapter matches by line: "true" when it was, empty
+// otherwise.
+func releaseLineApplied(releaseLineUID string, componentUIDs []string) string {
+	if releaseLineUID == "" && len(componentUIDs) == 0 {
+		return ""
+	}
+	return "true"
 }
 
 // traceEntry is an internal representation of a trace for response building.
@@ -298,6 +318,12 @@ func toTracesRequestParams(req *gen.TracesQueryRequest) opensearch.TracesRequest
 	}
 	if req.SearchScope.Environment != nil {
 		params.EnvironmentUID = *req.SearchScope.Environment
+	}
+	if req.SearchScope.ReleaseLine != nil {
+		params.ReleaseLineUID = *req.SearchScope.ReleaseLine
+	}
+	if req.SearchScope.DefaultLineOnly != nil {
+		params.DefaultLineOnly = *req.SearchScope.DefaultLineOnly
 	}
 	if req.IncludeAttributes != nil {
 		params.IncludeAttributes = *req.IncludeAttributes

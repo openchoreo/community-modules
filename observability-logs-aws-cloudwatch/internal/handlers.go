@@ -135,7 +135,7 @@ func (h *LogsHandler) QueryLogs(ctx context.Context, request gen.QueryLogsReques
 			}, nil
 		}
 
-		return gen.QueryLogs200JSONResponse(toWorkflowLogsQueryResponse(result)), nil
+		return gen.QueryLogs200JSONResponse{Body: toWorkflowLogsQueryResponse(result)}, nil
 	}
 
 	scope, err := request.Body.SearchScope.AsComponentSearchScope()
@@ -160,7 +160,10 @@ func (h *LogsHandler) QueryLogs(ctx context.Context, request gen.QueryLogsReques
 		}, nil
 	}
 
-	return gen.QueryLogs200JSONResponse(toComponentLogsQueryResponse(result)), nil
+	return gen.QueryLogs200JSONResponse{
+		Body:    toComponentLogsQueryResponse(result),
+		Headers: gen.QueryLogs200ResponseHeaders{OpenChoreoReleaseLineApplied: releaseLineApplied(params.ReleaseLineID)},
+	}, nil
 }
 
 // QueryEvents implements POST /api/v1/events/query.
@@ -169,6 +172,19 @@ func (h *LogsHandler) QueryEvents(ctx context.Context, request gen.QueryEventsRe
 		return gen.QueryEvents400JSONResponse{
 			Title:   ptr(gen.BadRequest),
 			Message: ptr("request body is required"),
+		}, nil
+	}
+
+	if request.Body.SearchScope == nil {
+		if request.Body.Reasons == nil || len(*request.Body.Reasons) == 0 {
+			return gen.QueryEvents400JSONResponse{
+				Title:   ptr(gen.BadRequest),
+				Message: ptr("searchScope is required unless reasons is set"),
+			}, nil
+		}
+		return gen.QueryEvents501JSONResponse{
+			Title:   ptr(gen.NotImplemented),
+			Message: ptr("unscoped events queries are not supported by this adapter"),
 		}, nil
 	}
 
@@ -196,7 +212,7 @@ func (h *LogsHandler) QueryEvents(ctx context.Context, request gen.QueryEventsRe
 			}, nil
 		}
 
-		return gen.QueryEvents200JSONResponse(toEventsQueryResponse(result)), nil
+		return gen.QueryEvents200JSONResponse{Body: toEventsQueryResponse(result)}, nil
 	}
 
 	scope, err := request.Body.SearchScope.AsComponentSearchScope()
@@ -221,7 +237,10 @@ func (h *LogsHandler) QueryEvents(ctx context.Context, request gen.QueryEventsRe
 		}, nil
 	}
 
-	return gen.QueryEvents200JSONResponse(toEventsQueryResponse(result)), nil
+	return gen.QueryEvents200JSONResponse{
+		Body:    toEventsQueryResponse(result),
+		Headers: gen.QueryEvents200ResponseHeaders{OpenChoreoReleaseLineApplied: releaseLineApplied(params.ReleaseLineID)},
+	}, nil
 }
 
 // CreateAlertRule implements POST /api/v1alpha1/alerts/rules.
@@ -275,11 +294,16 @@ func (h *LogsHandler) CreateAlertRule(ctx context.Context, request gen.CreateAle
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	return gen.CreateAlertRule201JSONResponse{
-		Action:        ptr(gen.Created),
-		Status:        ptr(gen.Synced),
-		RuleLogicalId: &params.Name,
-		RuleBackendId: &arn,
-		LastSyncedAt:  &now,
+		Body: gen.AlertingRuleSyncResponse{
+			Action:        ptr(gen.Created),
+			Status:        ptr(gen.Synced),
+			RuleLogicalId: &params.Name,
+			RuleBackendId: &arn,
+			LastSyncedAt:  &now,
+		},
+		Headers: gen.CreateAlertRule201ResponseHeaders{
+			OpenChoreoReleaseLineApplied: releaseLineApplied(params.ReleaseLineUID),
+		},
 	}, nil
 }
 
@@ -373,11 +397,16 @@ func (h *LogsHandler) UpdateAlertRule(ctx context.Context, request gen.UpdateAle
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	return gen.UpdateAlertRule200JSONResponse{
-		Action:        ptr(gen.Updated),
-		Status:        ptr(gen.Synced),
-		RuleLogicalId: &request.RuleName,
-		RuleBackendId: &arn,
-		LastSyncedAt:  &now,
+		Body: gen.AlertingRuleSyncResponse{
+			Action:        ptr(gen.Updated),
+			Status:        ptr(gen.Synced),
+			RuleLogicalId: &request.RuleName,
+			RuleBackendId: &arn,
+			LastSyncedAt:  &now,
+		},
+		Headers: gen.UpdateAlertRule200ResponseHeaders{
+			OpenChoreoReleaseLineApplied: releaseLineApplied(params.ReleaseLineUID),
+		},
 	}, nil
 }
 
@@ -388,7 +417,7 @@ func (h *LogsHandler) HandleAlertWebhook(ctx context.Context, request gen.Handle
 		h.logger.Warn("Alert webhook received with nil body")
 		return gen.HandleAlertWebhook200JSONResponse{
 			Message: ptr("alert webhook received successfully"),
-			Status:  ptr(gen.Success),
+			Status:  ptr(gen.AlertWebhookResponseStatusSuccess),
 		}, nil
 	}
 
@@ -397,7 +426,7 @@ func (h *LogsHandler) HandleAlertWebhook(ctx context.Context, request gen.Handle
 		h.logger.Warn("Failed to re-marshal webhook body", slog.Any("error", err))
 		return gen.HandleAlertWebhook200JSONResponse{
 			Message: ptr("alert webhook received successfully"),
-			Status:  ptr(gen.Success),
+			Status:  ptr(gen.AlertWebhookResponseStatusSuccess),
 		}, nil
 	}
 
@@ -406,7 +435,7 @@ func (h *LogsHandler) HandleAlertWebhook(ctx context.Context, request gen.Handle
 		h.logger.Warn("Failed to parse webhook body", slog.Any("error", err))
 		return gen.HandleAlertWebhook200JSONResponse{
 			Message: ptr("alert webhook received successfully"),
-			Status:  ptr(gen.Success),
+			Status:  ptr(gen.AlertWebhookResponseStatusSuccess),
 		}, nil
 	}
 
@@ -427,14 +456,14 @@ func (h *LogsHandler) HandleAlertWebhook(ctx context.Context, request gen.Handle
 		}
 		return gen.HandleAlertWebhook200JSONResponse{
 			Message: ptr("subscription confirmation received"),
-			Status:  ptr(gen.Success),
+			Status:  ptr(gen.AlertWebhookResponseStatusSuccess),
 		}, nil
 	}
 
 	if event == nil {
 		return gen.HandleAlertWebhook200JSONResponse{
 			Message: ptr("alert webhook received successfully"),
-			Status:  ptr(gen.Success),
+			Status:  ptr(gen.AlertWebhookResponseStatusSuccess),
 		}, nil
 	}
 
@@ -445,7 +474,7 @@ func (h *LogsHandler) HandleAlertWebhook(ctx context.Context, request gen.Handle
 		)
 		return gen.HandleAlertWebhook200JSONResponse{
 			Message: ptr("alert webhook received successfully"),
-			Status:  ptr(gen.Success),
+			Status:  ptr(gen.AlertWebhookResponseStatusSuccess),
 		}, nil
 	}
 
@@ -455,7 +484,7 @@ func (h *LogsHandler) HandleAlertWebhook(ctx context.Context, request gen.Handle
 		)
 		return gen.HandleAlertWebhook200JSONResponse{
 			Message: ptr("alert webhook received successfully"),
-			Status:  ptr(gen.Success),
+			Status:  ptr(gen.AlertWebhookResponseStatusSuccess),
 		}, nil
 	}
 
@@ -470,7 +499,7 @@ func (h *LogsHandler) HandleAlertWebhook(ctx context.Context, request gen.Handle
 
 	return gen.HandleAlertWebhook200JSONResponse{
 		Message: ptr("alert webhook received successfully"),
-		Status:  ptr(gen.Success),
+		Status:  ptr(gen.AlertWebhookResponseStatusSuccess),
 	}, nil
 }
 
@@ -606,6 +635,9 @@ func toLogAlertParams(req *gen.AlertRuleRequest) cloudwatch.LogAlertParams {
 		Threshold:      float64(req.Condition.Threshold),
 		Enabled:        req.Condition.Enabled,
 	}
+	if req.Metadata.ReleaseLineUid != nil {
+		params.ReleaseLineUID = req.Metadata.ReleaseLineUid.String()
+	}
 	if d, err := cloudwatch.ParseDurationStrict(req.Condition.Window); err == nil {
 		params.Window = d
 	}
@@ -689,6 +721,9 @@ func toComponentLogsParams(req *gen.LogsQueryRequest, scope *gen.ComponentSearch
 	}
 	if scope.ComponentUid != nil {
 		params.ComponentIDs = []string{*scope.ComponentUid}
+	}
+	if scope.ReleaseLineUid != nil {
+		params.ReleaseLineID = *scope.ReleaseLineUid
 	}
 	if req.Limit != nil {
 		params.Limit = *req.Limit
@@ -833,6 +868,9 @@ func toComponentEventsParams(req *gen.EventsQueryRequest, scope *gen.ComponentSe
 	if scope.ComponentUid != nil {
 		params.ComponentID = *scope.ComponentUid
 	}
+	if scope.ReleaseLineUid != nil {
+		params.ReleaseLineID = *scope.ReleaseLineUid
+	}
 	if req.Limit != nil {
 		params.Limit = *req.Limit
 	}
@@ -870,7 +908,7 @@ func toEventsQueryResponse(result *cloudwatch.EventsResult) gen.EventsQueryRespo
 	}
 	return gen.EventsQueryResponse{
 		Events: &entries,
-		Total:  &result.TotalCount,
+		Total:  result.TotalCount,
 		TookMs: &result.Took,
 	}
 }
@@ -929,6 +967,15 @@ func parseUUID(s string) (openapi_types.UUID, bool) {
 		return openapi_types.UUID{}, false
 	}
 	return openapi_types.UUID(parsed), true
+}
+
+// releaseLineApplied is the OpenChoreo-Release-Line-Applied header value: "true" when
+// the query or rule was scoped to a release line, empty otherwise.
+func releaseLineApplied(releaseLineID string) string {
+	if releaseLineID == "" {
+		return ""
+	}
+	return "true"
 }
 
 func ptr[T any](v T) *T {

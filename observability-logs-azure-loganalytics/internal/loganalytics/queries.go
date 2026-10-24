@@ -32,6 +32,10 @@ func BuildComponentLogsKQL(p ComponentLogsParams) string {
 		sb.WriteString("\n| where ")
 		sb.WriteString(podLabelEquals(LabelEnvironmentUID, p.EnvironmentUID))
 	}
+	if p.ReleaseLineUID != "" {
+		sb.WriteString("\n| where ")
+		sb.WriteString(podLabelEquals(LabelReleaseLineUID, p.ReleaseLineUID))
+	}
 
 	if len(p.LogLevels) > 0 {
 		sb.WriteString("\n| where LogLevel in (")

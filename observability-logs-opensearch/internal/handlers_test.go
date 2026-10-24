@@ -125,8 +125,8 @@ func TestQueryLogs_ComponentScope_Success(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected 200 response, got %T", resp)
 	}
-	if queryResp.Total == nil || *queryResp.Total != 1 {
-		t.Errorf("expected total=1, got %v", queryResp.Total)
+	if queryResp.Body.Total == nil || *queryResp.Body.Total != 1 {
+		t.Errorf("expected total=1, got %v", queryResp.Body.Total)
 	}
 }
 
@@ -239,8 +239,8 @@ func TestQueryLogs_WorkflowScope_Success(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected 200 response, got %T", resp)
 	}
-	if queryResp.Total == nil || *queryResp.Total != 1 {
-		t.Errorf("expected total=1, got %v", queryResp.Total)
+	if queryResp.Body.Total == nil || *queryResp.Body.Total != 1 {
+		t.Errorf("expected total=1, got %v", queryResp.Body.Total)
 	}
 }
 
@@ -298,11 +298,12 @@ func TestCreateAlertRule_Success(t *testing.T) {
 
 	body := gen.AlertRuleRequest{
 		Metadata: struct {
-			ComponentUid   openapi_types.UUID `json:"componentUid"`
-			EnvironmentUid openapi_types.UUID `json:"environmentUid"`
-			Name           string             `json:"name"`
-			Namespace      string             `json:"namespace"`
-			ProjectUid     openapi_types.UUID `json:"projectUid"`
+			ComponentUid   openapi_types.UUID  `json:"componentUid"`
+			EnvironmentUid openapi_types.UUID  `json:"environmentUid"`
+			Name           string              `json:"name"`
+			Namespace      string              `json:"namespace"`
+			ProjectUid     openapi_types.UUID  `json:"projectUid"`
+			ReleaseLineUid *openapi_types.UUID `json:"releaseLineUid,omitempty"`
 		}{
 			Name:      "test-rule",
 			Namespace: "test-ns",
@@ -336,8 +337,8 @@ func TestCreateAlertRule_Success(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected 201 response, got %T", resp)
 	}
-	if createResp.RuleBackendId == nil || *createResp.RuleBackendId != "b2c3d4e5-f6a7-8901-bcde-f12345678901" {
-		t.Errorf("expected ruleBackendId 'b2c3d4e5-f6a7-8901-bcde-f12345678901', got %v", createResp.RuleBackendId)
+	if createResp.Body.RuleBackendId == nil || *createResp.Body.RuleBackendId != "b2c3d4e5-f6a7-8901-bcde-f12345678901" {
+		t.Errorf("expected ruleBackendId 'b2c3d4e5-f6a7-8901-bcde-f12345678901', got %v", createResp.Body.RuleBackendId)
 	}
 }
 
@@ -355,11 +356,12 @@ func TestCreateAlertRule_CreateError(t *testing.T) {
 
 	body := gen.AlertRuleRequest{
 		Metadata: struct {
-			ComponentUid   openapi_types.UUID `json:"componentUid"`
-			EnvironmentUid openapi_types.UUID `json:"environmentUid"`
-			Name           string             `json:"name"`
-			Namespace      string             `json:"namespace"`
-			ProjectUid     openapi_types.UUID `json:"projectUid"`
+			ComponentUid   openapi_types.UUID  `json:"componentUid"`
+			EnvironmentUid openapi_types.UUID  `json:"environmentUid"`
+			Name           string              `json:"name"`
+			Namespace      string              `json:"namespace"`
+			ProjectUid     openapi_types.UUID  `json:"projectUid"`
+			ReleaseLineUid *openapi_types.UUID `json:"releaseLineUid,omitempty"`
 		}{Name: "test-rule", Namespace: "test-ns"},
 		Source: struct {
 			Query string `json:"query"`
@@ -641,11 +643,12 @@ func TestUpdateAlertRule_Success(t *testing.T) {
 
 	body := gen.AlertRuleRequest{
 		Metadata: struct {
-			ComponentUid   openapi_types.UUID `json:"componentUid"`
-			EnvironmentUid openapi_types.UUID `json:"environmentUid"`
-			Name           string             `json:"name"`
-			Namespace      string             `json:"namespace"`
-			ProjectUid     openapi_types.UUID `json:"projectUid"`
+			ComponentUid   openapi_types.UUID  `json:"componentUid"`
+			EnvironmentUid openapi_types.UUID  `json:"environmentUid"`
+			Name           string              `json:"name"`
+			Namespace      string              `json:"namespace"`
+			ProjectUid     openapi_types.UUID  `json:"projectUid"`
+			ReleaseLineUid *openapi_types.UUID `json:"releaseLineUid,omitempty"`
 		}{Name: "test-rule", Namespace: "test-ns"},
 		Source: struct {
 			Query string `json:"query"`
@@ -689,11 +692,12 @@ func TestUpdateAlertRule_NotFound(t *testing.T) {
 
 	body := gen.AlertRuleRequest{
 		Metadata: struct {
-			ComponentUid   openapi_types.UUID `json:"componentUid"`
-			EnvironmentUid openapi_types.UUID `json:"environmentUid"`
-			Name           string             `json:"name"`
-			Namespace      string             `json:"namespace"`
-			ProjectUid     openapi_types.UUID `json:"projectUid"`
+			ComponentUid   openapi_types.UUID  `json:"componentUid"`
+			EnvironmentUid openapi_types.UUID  `json:"environmentUid"`
+			Name           string              `json:"name"`
+			Namespace      string              `json:"namespace"`
+			ProjectUid     openapi_types.UUID  `json:"projectUid"`
+			ReleaseLineUid *openapi_types.UUID `json:"releaseLineUid,omitempty"`
 		}{Name: "test-rule", Namespace: "test-ns"},
 		Source: struct {
 			Query string `json:"query"`
@@ -1011,11 +1015,12 @@ func TestParseMonitorToAlertRuleResponse(t *testing.T) {
 func TestToAlertingRuleRequest(t *testing.T) {
 	body := &gen.AlertRuleRequest{
 		Metadata: struct {
-			ComponentUid   openapi_types.UUID `json:"componentUid"`
-			EnvironmentUid openapi_types.UUID `json:"environmentUid"`
-			Name           string             `json:"name"`
-			Namespace      string             `json:"namespace"`
-			ProjectUid     openapi_types.UUID `json:"projectUid"`
+			ComponentUid   openapi_types.UUID  `json:"componentUid"`
+			EnvironmentUid openapi_types.UUID  `json:"environmentUid"`
+			Name           string              `json:"name"`
+			Namespace      string              `json:"namespace"`
+			ProjectUid     openapi_types.UUID  `json:"projectUid"`
+			ReleaseLineUid *openapi_types.UUID `json:"releaseLineUid,omitempty"`
 		}{
 			Name:      "test-rule",
 			Namespace: "test-ns",

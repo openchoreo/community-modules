@@ -28,6 +28,9 @@ func BuildComponentLogsFilter(p ComponentLogsParams) string {
 	if p.EnvironmentUID != "" {
 		clauses = append(clauses, labelEquals(LabelEnvironmentUID, p.EnvironmentUID))
 	}
+	if p.ReleaseLineUID != "" {
+		clauses = append(clauses, labelEquals(LabelReleaseLineUID, p.ReleaseLineUID))
+	}
 
 	clauses = append(clauses, timeRangeClauses(p.StartTime, p.EndTime)...)
 	if c := severityClause(p.LogLevels); c != "" {

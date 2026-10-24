@@ -27,22 +27,23 @@ var auditFilterFields = map[gen.AuditLogFilterValuesRequestFilter]string{
 	"actor.issuer":     "actor.issuer",
 	"actor.session_id": "actor.session_id",
 	// The claim key varies by subject kind, so this reads the index template's copy.
-	"actor.entitlements":   opensearch.AuditEntitlementValuesField,
-	"resource.type":        "resource.type",
-	"resource.namespace":   "resource.namespace",
-	"resource.environment": "resource.environment",
-	"resource.project":     "resource.project",
-	"resource.component":   "resource.component",
-	"resource.resource":    "resource.resource",
-	"resource.name":        "resource.name",
-	"action":               "action",
-	"category":             "category",
-	"result":               "result",
-	"producer":             "producer",
-	"surface":              "surface",
-	"operation_id":         "operation_id",
-	"source_ip":            "source_ip",
-	"user_agent":           "user_agent",
+	"actor.entitlements":    opensearch.AuditEntitlementValuesField,
+	"resource.type":         "resource.type",
+	"resource.namespace":    "resource.namespace",
+	"resource.environment":  "resource.environment",
+	"resource.project":      "resource.project",
+	"resource.component":    "resource.component",
+	"resource.release_line": "resource.release_line",
+	"resource.resource":     "resource.resource",
+	"resource.name":         "resource.name",
+	"action":                "action",
+	"category":              "category",
+	"result":                "result",
+	"producer":              "producer",
+	"surface":               "surface",
+	"operation_id":          "operation_id",
+	"source_ip":             "source_ip",
+	"user_agent":            "user_agent",
 }
 
 // QueryAuditLogs implements POST /api/v1alpha1/audit-logs/query.
@@ -249,6 +250,7 @@ func toAuditLogsQueryParams(body *gen.AuditLogsQueryRequest) opensearch.AuditLog
 		params.ResourceEnvironments = derefSlice(body.Resource.Environment)
 		params.ResourceProjects = derefSlice(body.Resource.Project)
 		params.ResourceComponents = derefSlice(body.Resource.Component)
+		params.ResourceReleaseLines = derefSlice(body.Resource.ReleaseLine)
 		params.ResourceResources = derefSlice(body.Resource.Resource)
 		params.ResourceNames = derefSlice(body.Resource.Name)
 	}
@@ -311,6 +313,8 @@ func clearAuditFilter(
 		params.ResourceProjects = nil
 	case "resource.component":
 		params.ResourceComponents = nil
+	case "resource.release_line":
+		params.ResourceReleaseLines = nil
 	case "resource.resource":
 		params.ResourceResources = nil
 	case "resource.name":
@@ -377,6 +381,7 @@ func toGenAuditLogRecord(r opensearch.AuditRecord) gen.AuditLogRecord {
 			Environment: optional(r.Resource.Environment),
 			Project:     optional(r.Resource.Project),
 			Component:   optional(r.Resource.Component),
+			ReleaseLine: optional(r.Resource.ReleaseLine),
 			Resource:    optional(r.Resource.Resource),
 			Uid:         optional(r.Resource.UID),
 			Name:        optional(r.Resource.Name),

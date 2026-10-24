@@ -19,7 +19,7 @@ const (
 	labelEnvironmentName = "openchoreo.dev/environment"
 	labelProjectUID      = "openchoreo.dev/project-uid"
 	labelProjectName     = "openchoreo.dev/project"
-
+	labelReleaseLineUID  = "openchoreo.dev/release-line-uid"
 )
 
 var logLevelFieldNames = []string{
@@ -108,6 +108,9 @@ func buildComponentQuery(p ComponentLogsParams) string {
 			fmt.Fprintf(&b, "%s = \"%s\"", labelField(labelComponentUID), escapeInsights(id))
 		}
 		b.WriteString("\n")
+	}
+	if p.ReleaseLineID != "" {
+		fmt.Fprintf(&b, "| filter %s = \"%s\"\n", labelField(labelReleaseLineUID), escapeInsights(p.ReleaseLineID))
 	}
 	if p.SearchPhrase != "" {
 		fmt.Fprintf(&b, "| filter @message like \"%s\"\n", escapeInsights(p.SearchPhrase))

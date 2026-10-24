@@ -73,6 +73,7 @@ const (
 	ResourceName        AuditLogFilterValuesRequestFilter = "resource.name"
 	ResourceNamespace   AuditLogFilterValuesRequestFilter = "resource.namespace"
 	ResourceProject     AuditLogFilterValuesRequestFilter = "resource.project"
+	ResourceReleaseLine AuditLogFilterValuesRequestFilter = "resource.release_line"
 	ResourceResource    AuditLogFilterValuesRequestFilter = "resource.resource"
 	ResourceType        AuditLogFilterValuesRequestFilter = "resource.type"
 	Result              AuditLogFilterValuesRequestFilter = "result"
@@ -194,6 +195,9 @@ type AlertRuleRequest struct {
 
 		// ProjectUid The OpenChoreo project UID to query
 		ProjectUid openapi_types.UUID `json:"projectUid"`
+
+		// ReleaseLineUid The UID of the component's release line the rule evaluates, filtered on the openchoreo.dev/release-line-uid label. Absent for components without release lines. Adapters that scope the rule to it set the OpenChoreo-Release-Line-Applied response header to "true".
+		ReleaseLineUid *openapi_types.UUID `json:"releaseLineUid,omitempty"`
 	} `json:"metadata"`
 	Source struct {
 		// Query The query to execute for log based alerts
@@ -515,8 +519,11 @@ type AuditLogResource struct {
 	Name        *string                 `json:"name,omitempty"`
 	Namespace   *string                 `json:"namespace,omitempty"`
 	Project     *string                 `json:"project,omitempty"`
-	Resource    *string                 `json:"resource,omitempty"`
-	Type        *string                 `json:"type,omitempty"`
+
+	// ReleaseLine The component's release line. Absent for components without release lines
+	ReleaseLine *string `json:"release_line,omitempty"`
+	Resource    *string `json:"resource,omitempty"`
+	Type        *string `json:"type,omitempty"`
 
 	// Uid Server-generated identifier that is never reused. Absent when the operation
 	// returned no object — a delete, or a non-CRUD mutation.
@@ -723,9 +730,10 @@ type AuditLogsResourceFilter struct {
 	Name *[]string `json:"name,omitempty"`
 
 	// Namespace OpenChoreo namespaces
-	Namespace *[]string `json:"namespace,omitempty"`
-	Project   *[]string `json:"project,omitempty"`
-	Resource  *[]string `json:"resource,omitempty"`
+	Namespace   *[]string `json:"namespace,omitempty"`
+	Project     *[]string `json:"project,omitempty"`
+	ReleaseLine *[]string `json:"release_line,omitempty"`
+	Resource    *[]string `json:"resource,omitempty"`
 
 	// Type Resource kinds
 	Type *[]string `json:"type,omitempty"`
@@ -817,6 +825,9 @@ type ComponentSearchScope struct {
 	EnvironmentUid *string `json:"environmentUid,omitempty"`
 	Namespace      string  `json:"namespace"`
 	ProjectUid     *string `json:"projectUid,omitempty"`
+
+	// ReleaseLineUid The UID of the component's release line to restrict the result to. Adapters that support it filter on the openchoreo.dev/release-line-uid label and set the OpenChoreo-Release-Line-Applied response header to "true".
+	ReleaseLineUid *string `json:"releaseLineUid,omitempty"`
 }
 
 // ErrorResponse defines model for ErrorResponse.

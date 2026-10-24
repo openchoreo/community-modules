@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -109,6 +110,12 @@ func (h *LogsHandler) queryComponentLogs(ctx context.Context, req *gen.LogsQuery
 	if scope.ComponentUid != nil {
 		params.ComponentID = *scope.ComponentUid
 	}
+	if scope.ReleaseLineUid != nil {
+		params.ReleaseLineID = *scope.ReleaseLineUid
+	}
+	if scope.DefaultLineOnly != nil {
+		params.DefaultLineOnly = *scope.DefaultLineOnly
+	}
 	if req.Limit != nil {
 		params.Limit = *req.Limit
 	}
@@ -189,7 +196,10 @@ func (h *LogsHandler) queryComponentLogs(ctx context.Context, req *gen.LogsQuery
 	}
 	resp.Logs = &logs
 
-	return gen.QueryLogs200JSONResponse(resp), nil
+	return gen.QueryLogs200JSONResponse{
+		Body:    resp,
+		Headers: gen.QueryLogs200ResponseHeaders{OpenChoreoReleaseLineApplied: releaseLineApplied(params.ReleaseLineID, params.ComponentID)},
+	}, nil
 }
 
 func (h *LogsHandler) queryWorkflowLogs(ctx context.Context, req *gen.LogsQueryRequest, scope *gen.WorkflowSearchScope) (gen.QueryLogsResponseObject, error) {
@@ -301,7 +311,7 @@ func (h *LogsHandler) queryWorkflowLogs(ctx context.Context, req *gen.LogsQueryR
 	}
 	resp.Logs = &logs
 
-	return gen.QueryLogs200JSONResponse(resp), nil
+	return gen.QueryLogs200JSONResponse{Body: resp}, nil
 }
 
 // QueryEvents implements POST /api/v1/events/query.
@@ -389,6 +399,12 @@ func (h *LogsHandler) queryComponentEvents(ctx context.Context, req *gen.EventsQ
 	if scope.ComponentUid != nil {
 		params.ComponentID = *scope.ComponentUid
 	}
+	if scope.ReleaseLineUid != nil {
+		params.ReleaseLineID = *scope.ReleaseLineUid
+	}
+	if scope.DefaultLineOnly != nil {
+		params.DefaultLineOnly = *scope.DefaultLineOnly
+	}
 	if req.SortOrder != nil {
 		params.SortOrder = string(*req.SortOrder)
 	}
@@ -405,7 +421,7 @@ func (h *LogsHandler) queryComponentEvents(ctx context.Context, req *gen.EventsQ
 		}, nil
 	}
 
-	return h.executeEventsQuery(ctx, query, startTime, endTime, scope.Namespace, limit)
+	return h.executeEventsQuery(ctx, query, startTime, endTime, scope.Namespace, limit, releaseLineApplied(params.ReleaseLineID, params.ComponentID))
 }
 
 func (h *LogsHandler) queryWorkflowEvents(ctx context.Context, req *gen.EventsQueryRequest, scope *gen.WorkflowSearchScope) (gen.QueryEventsResponseObject, error) {
@@ -442,7 +458,7 @@ func (h *LogsHandler) queryWorkflowEvents(ctx context.Context, req *gen.EventsQu
 		}, nil
 	}
 
-	return h.executeEventsQuery(ctx, query, startTime, endTime, scope.Namespace, limit)
+	return h.executeEventsQuery(ctx, query, startTime, endTime, scope.Namespace, limit, "")
 }
 
 // queryUnscopedEvents runs a reason-filtered sweep across every namespace,
@@ -475,15 +491,26 @@ func (h *LogsHandler) queryUnscopedEvents(ctx context.Context, req *gen.EventsQu
 		}, nil
 	}
 
-	return h.executeEventsQuery(ctx, query, startTime, endTime, "", limit)
+	return h.executeEventsQuery(ctx, query, startTime, endTime, "", limit, "")
 }
 
 // executeEventsQuery runs an events query against the events indices and assembles the response.
 // limit is the size actually sent to OpenSearch; the query counts one past it, so a total greater
 // than the events returned tells the caller the window holds more than it just read and must be
 // resumed from the last event's timestamp rather than treated as read.
+// releaseLineApplied is the OpenChoreo-Release-Line-Applied header value for a query scoped to a
+// component or one of its release lines, which this adapter matches by line: "true" when it was,
+// empty otherwise.
+func releaseLineApplied(releaseLineID, componentID string) string {
+	if releaseLineID == "" && componentID == "" {
+		return ""
+	}
+	return "true"
+}
+
 func (h *LogsHandler) executeEventsQuery(
 	ctx context.Context, query map[string]interface{}, startTime, endTime, namespace string, limit int,
+	releaseLineHeader string,
 ) (gen.QueryEventsResponseObject, error) {
 	indices, err := h.eventsQueryBuilder.GenerateIndices(startTime, endTime)
 	if err != nil {
@@ -569,7 +596,10 @@ func (h *LogsHandler) executeEventsQuery(
 		TookMs: &took,
 	}
 
-	return gen.QueryEvents200JSONResponse(resp), nil
+	return gen.QueryEvents200JSONResponse{
+		Body:    resp,
+		Headers: gen.QueryEvents200ResponseHeaders{OpenChoreoReleaseLineApplied: releaseLineHeader},
+	}, nil
 }
 
 // maxBoundaryGroup bounds how far completeTimestampGroup will page a single
@@ -689,11 +719,16 @@ func (h *LogsHandler) CreateAlertRule(ctx context.Context, request gen.CreateAle
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	return gen.CreateAlertRule201JSONResponse{
-		Action:        ptr(gen.Created),
-		Status:        ptr(gen.Synced),
-		RuleLogicalId: &params.Metadata.Name,
-		RuleBackendId: &alertID,
-		LastSyncedAt:  &now,
+		Body: gen.AlertingRuleSyncResponse{
+			Action:        ptr(gen.Created),
+			Status:        ptr(gen.Synced),
+			RuleLogicalId: &params.Metadata.Name,
+			RuleBackendId: &alertID,
+			LastSyncedAt:  &now,
+		},
+		Headers: gen.CreateAlertRule201ResponseHeaders{
+			OpenChoreoReleaseLineApplied: releaseLineApplied(params.Metadata.ReleaseLineUID, params.Metadata.ComponentUID),
+		},
 	}, nil
 }
 
@@ -846,11 +881,16 @@ func (h *LogsHandler) UpdateAlertRule(ctx context.Context, request gen.UpdateAle
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	return gen.UpdateAlertRule200JSONResponse{
-		Action:        ptr(gen.Updated),
-		Status:        ptr(gen.Synced),
-		RuleLogicalId: &request.RuleName,
-		RuleBackendId: &monitorID,
-		LastSyncedAt:  &now,
+		Body: gen.AlertingRuleSyncResponse{
+			Action:        ptr(gen.Updated),
+			Status:        ptr(gen.Synced),
+			RuleLogicalId: &request.RuleName,
+			RuleBackendId: &monitorID,
+			LastSyncedAt:  &now,
+		},
+		Headers: gen.UpdateAlertRule200ResponseHeaders{
+			OpenChoreoReleaseLineApplied: releaseLineApplied(params.Metadata.ReleaseLineUID, params.Metadata.ComponentUID),
+		},
 	}, nil
 }
 
@@ -939,6 +979,14 @@ func parseAlertWebhookBody(body map[string]interface{}) (ruleName string, ruleNa
 	return ruleName, ruleNamespace, alertValue, alertTimestamp, nil
 }
 
+// uuidString returns the UUID as a string, empty when it is nil.
+func uuidString(id *openapi_types.UUID) string {
+	if id == nil {
+		return ""
+	}
+	return id.String()
+}
+
 // toAlertingRuleRequest converts the generated AlertRuleRequest to the internal type.
 func toAlertingRuleRequest(req *gen.AlertRuleRequest) opensearch.AlertingRuleRequest {
 	return opensearch.AlertingRuleRequest{
@@ -948,6 +996,7 @@ func toAlertingRuleRequest(req *gen.AlertRuleRequest) opensearch.AlertingRuleReq
 			ProjectUID:     req.Metadata.ProjectUid.String(),
 			EnvironmentUID: req.Metadata.EnvironmentUid.String(),
 			ComponentUID:   req.Metadata.ComponentUid.String(),
+			ReleaseLineUID: uuidString(req.Metadata.ReleaseLineUid),
 		},
 		Source: opensearch.AlertingRuleSource{
 			Query: req.Source.Query,
@@ -991,6 +1040,9 @@ func parseMonitorToAlertRuleResponse(monitor map[string]interface{}) (gen.AlertR
 	if triggers, ok := monitor["triggers"].([]interface{}); ok && len(triggers) > 0 {
 		if trigger, ok := triggers[0].(map[string]interface{}); ok {
 			if qlt, ok := trigger["query_level_trigger"].(map[string]interface{}); ok {
+				if componentUID == "" {
+					componentUID = componentUIDFromTrigger(qlt)
+				}
 				if condition, ok := qlt["condition"].(map[string]interface{}); ok {
 					if script, ok := condition["script"].(map[string]interface{}); ok {
 						if source, ok := script["source"].(string); ok {
@@ -1070,6 +1122,24 @@ func parseMonitorToAlertRuleResponse(monitor map[string]interface{}) (gen.AlertR
 	}
 
 	return response, nil
+}
+
+// webhookComponentUID matches the component UID in a trigger's webhook message template.
+var webhookComponentUID = regexp.MustCompile(`"componentUid":"([^"]+)"`)
+
+// componentUIDFromTrigger reads the component UID from a trigger's webhook message. The rule's
+// query does not always name it at the top level: a default line rule nests it in a bool filter, and
+// a release line rule filters on the line alone.
+func componentUIDFromTrigger(qlt map[string]interface{}) string {
+	actions, _ := qlt["actions"].([]interface{})
+	for _, a := range actions {
+		action, _ := a.(map[string]interface{})
+		tmpl, _ := action["message_template"].(map[string]interface{})
+		if m := webhookComponentUID.FindStringSubmatch(getStringFromMap(tmpl, "source")); m != nil {
+			return m[1]
+		}
+	}
+	return ""
 }
 
 // extractQueryMetadata extracts metadata from the monitor's search query.

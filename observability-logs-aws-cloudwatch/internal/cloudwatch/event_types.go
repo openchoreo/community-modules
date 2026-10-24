@@ -11,6 +11,7 @@ type ComponentEventsParams struct {
 	ProjectID     string
 	EnvironmentID string
 	ComponentID   string
+	ReleaseLineID string
 	StartTime     time.Time
 	EndTime       time.Time
 	Limit         int

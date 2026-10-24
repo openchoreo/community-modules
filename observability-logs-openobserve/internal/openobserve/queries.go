@@ -12,6 +12,9 @@ import (
 	"time"
 )
 
+// releaseLineIDColumn is the openchoreo.dev/release-line-uid pod label as OpenObserve flattens it.
+const releaseLineIDColumn = "kubernetes_labels_openchoreo_dev_release_line_uid"
+
 // quoteIdentifier wraps a SQL identifier (e.g. table/stream name) in double
 // quotes and escapes any embedded double-quote characters to prevent SQL injection.
 func quoteIdentifier(identifier string) string {
@@ -143,6 +146,9 @@ func generateComponentLogsCountQuery(params ComponentLogsParams, stream string, 
 		}
 		conditions = append(conditions, "("+strings.Join(componentConditions, " OR ")+")")
 	}
+	if params.ReleaseLineID != "" {
+		conditions = append(conditions, releaseLineIDColumn+" = '"+escapeSQLString(params.ReleaseLineID)+"'")
+	}
 	if params.SearchPhrase != "" {
 		conditions = append(conditions, "log LIKE '%"+escapeSQLString(params.SearchPhrase)+"%'")
 	}
@@ -234,6 +240,9 @@ func generateAlertConfig(params LogAlertParams, streamName string, logger *slog.
 		escapeSQLString(params.EnvironmentUID),
 		escapeSQLString(params.ComponentUID),
 	)
+	if params.ReleaseLineUID != "" {
+		query += " AND " + releaseLineIDColumn + " = '" + escapeSQLString(params.ReleaseLineUID) + "'"
+	}
 
 	sqlOperator, err := mapOperator(params.Operator)
 	if err != nil {
@@ -255,6 +264,16 @@ func generateAlertConfig(params LogAlertParams, streamName string, logger *slog.
 		return nil, fmt.Errorf("invalid alert interval: %w", err)
 	}
 
+	contextAttributes := map[string]interface{}{
+		"namespace":      params.Namespace,
+		"projectUid":     params.ProjectUID,
+		"environmentUid": params.EnvironmentUID,
+		"componentUid":   params.ComponentUID,
+	}
+	if params.ReleaseLineUID != "" {
+		contextAttributes["releaseLineUid"] = params.ReleaseLineUID
+	}
+
 	alertConfig := map[string]interface{}{
 		"name":         alertName,
 		"stream_name":  streamName,
@@ -273,13 +292,8 @@ func generateAlertConfig(params LogAlertParams, streamName string, logger *slog.
 			"operator":  sqlOperator,
 			"silence":   0,
 		},
-		"destinations": []string{"openchoreo"},
-		"context_attributes": map[string]interface{}{
-			"namespace":      params.Namespace,
-			"projectUid":     params.ProjectUID,
-			"environmentUid": params.EnvironmentUID,
-			"componentUid":   params.ComponentUID,
-		},
+		"destinations":       []string{"openchoreo"},
+		"context_attributes": contextAttributes,
 	}
 
 	if logger.Enabled(nil, slog.LevelDebug) {
@@ -390,6 +404,11 @@ func generateComponentLogsQuery(params ComponentLogsParams, stream string, logge
 		conditions = append(conditions, "("+strings.Join(componentConditions, " OR ")+")")
 	}
 
+	// Add release line filter
+	if params.ReleaseLineID != "" {
+		conditions = append(conditions, releaseLineIDColumn+" = '"+escapeSQLString(params.ReleaseLineID)+"'")
+	}
+
 	// Add search phrase filter
 	if params.SearchPhrase != "" {
 		conditions = append(conditions, "log LIKE '%"+escapeSQLString(params.SearchPhrase)+"%'")
@@ -457,6 +476,9 @@ func componentEventsConditions(params EventsQueryParams) []string {
 	}
 	if params.EnvironmentID != "" {
 		conditions = append(conditions, evEnvironmentID+" = '"+escapeSQLString(params.EnvironmentID)+"'")
+	}
+	if params.ReleaseLineID != "" {
+		conditions = append(conditions, evReleaseLineID+" = '"+escapeSQLString(params.ReleaseLineID)+"'")
 	}
 	return conditions
 }

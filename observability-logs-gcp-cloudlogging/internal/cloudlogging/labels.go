@@ -11,6 +11,7 @@ const (
 	LabelComponentUID   = "openchoreo.dev/component-uid"
 	LabelProjectUID     = "openchoreo.dev/project-uid"
 	LabelEnvironmentUID = "openchoreo.dev/environment-uid"
+	LabelReleaseLineUID = "openchoreo.dev/release-line-uid"
 	LabelNamespace      = "openchoreo.dev/namespace"
 
 	LabelComponentName   = "openchoreo.dev/component"

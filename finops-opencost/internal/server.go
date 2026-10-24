@@ -42,8 +42,8 @@ func NewServer(port string, handler *CostHandler, logger *slog.Logger) *Server {
 	apiHandler := gen.HandlerFromMux(strictHandler, mux)
 
 	httpServer := &http.Server{
-		Addr:        ":" + port,
-		Handler:     withBearerToken(apiHandler),
+		Addr:         ":" + port,
+		Handler:      withBearerToken(apiHandler),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: writeTimeout,
 		IdleTimeout:  60 * time.Second,

@@ -344,6 +344,7 @@ func TestBuildCPUUsageAlertExpression_UsesWindow(t *testing.T) {
 				"comp-uid",
 				"proj-uid",
 				"env-uid",
+				"",
 				">",
 				80.0,
 				tt.window,

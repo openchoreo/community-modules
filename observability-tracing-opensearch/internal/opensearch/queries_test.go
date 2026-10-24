@@ -5,6 +5,7 @@ package opensearch
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -79,11 +80,11 @@ func TestBuildTracesQuery_WithTraceID(t *testing.T) {
 
 func TestBuildTracesQuery_WithComponentUIDs(t *testing.T) {
 	params := TracesRequestParams{
-		StartTime:    "2025-06-01T00:00:00Z",
-		EndTime:      "2025-06-02T00:00:00Z",
+		StartTime:     "2025-06-01T00:00:00Z",
+		EndTime:       "2025-06-02T00:00:00Z",
 		ComponentUIDs: []string{"comp-1", "comp-2"},
-		Limit:        10,
-		SortOrder:    "desc",
+		Limit:         10,
+		SortOrder:     "desc",
 	}
 
 	query := BuildTracesQuery(params)
@@ -279,19 +280,13 @@ func TestBuildTracesAggregationQuery_WithComponentUIDs(t *testing.T) {
 
 	found := false
 	for _, f := range filters {
-		filter := f.(map[string]interface{})
-		if boolFilter, ok := filter["bool"]; ok {
-			boolMap := boolFilter.(map[string]interface{})
-			if should, ok := boolMap["should"]; ok {
-				shouldArr := should.([]interface{})
-				if len(shouldArr) == 3 {
-					found = true
-				}
-			}
+		b, _ := json.Marshal(f)
+		if strings.Contains(string(b), `"resource.openchoreo.dev/component-uid":["`+strings.Join(params.ComponentUIDs, `","`)+`"]`) && len(params.ComponentUIDs) == 3 {
+			found = true
 		}
 	}
 	if !found {
-		t.Error("expected bool/should filter with 3 component UIDs")
+		t.Errorf("expected a terms filter with 3 component UIDs, got %s", data)
 	}
 }
 

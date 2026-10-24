@@ -13,10 +13,14 @@ const (
 	LabelComponentUID   = "openchoreo.dev/component-uid"
 	LabelProjectUID     = "openchoreo.dev/project-uid"
 	LabelEnvironmentUID = "openchoreo.dev/environment-uid"
-	LabelNamespace      = "openchoreo.dev/namespace"
-	LabelComponent      = "openchoreo.dev/component"
-	LabelProject        = "openchoreo.dev/project"
-	LabelEnvironment    = "openchoreo.dev/environment"
+	LabelReleaseLineUID = "openchoreo.dev/release-line-uid"
+	// LabelReleaseLineComponentUID is the component UID on a release line's pods, which don't
+	// carry LabelComponentUID.
+	LabelReleaseLineComponentUID = "openchoreo.dev/release-line-component-uid"
+	LabelNamespace               = "openchoreo.dev/namespace"
+	LabelComponent               = "openchoreo.dev/component"
+	LabelProject                 = "openchoreo.dev/project"
+	LabelEnvironment             = "openchoreo.dev/environment"
 )
 
 // prometheusLabelName converts a Kubernetes label name to a Prometheus metric label name.
@@ -28,26 +32,50 @@ func prometheusLabelName(kubernetesLabel string) string {
 	return "label_" + label
 }
 
-// BuildLabelFilter builds a Prometheus label filter string for component identification.
-// If any of the IDs are empty, they are not included in the filter.
-// The namespace is always required and included.
-func BuildLabelFilter(namespace, componentUID, projectUID, environmentUID string) string {
-	namespaceLabel := prometheusLabelName(LabelNamespace)
-	componentLabel := prometheusLabelName(LabelComponentUID)
-	projectLabel := prometheusLabelName(LabelProjectUID)
-	environmentLabel := prometheusLabelName(LabelEnvironmentUID)
-
-	labelFilter := fmt.Sprintf("%s=%q", namespaceLabel, namespace)
-	if componentUID != "" {
-		labelFilter = fmt.Sprintf("%s,%s=%q", labelFilter, componentLabel, componentUID)
-	}
+// BuildPodLabels builds the kube_pod_labels selector a query joins on to pick a scope's pods.
+// IDs that are empty are not matched on; the namespace is always matched.
+//
+// A release line's pods carry the component UID under another label than the default line's, so the
+// component UID alone covers every line, as a union of two selectors. A release line matches on
+// its UID alone, and defaultOnly keeps the default line's pods, which carry no release line label.
+func BuildPodLabels(namespace, componentUID, projectUID, environmentUID, releaseLineUID string, defaultOnly bool) string {
+	base := fmt.Sprintf("%s=%q", prometheusLabelName(LabelNamespace), namespace)
 	if projectUID != "" {
-		labelFilter = fmt.Sprintf("%s,%s=%q", labelFilter, projectLabel, projectUID)
+		base = fmt.Sprintf("%s,%s=%q", base, prometheusLabelName(LabelProjectUID), projectUID)
 	}
 	if environmentUID != "" {
-		labelFilter = fmt.Sprintf("%s,%s=%q", labelFilter, environmentLabel, environmentUID)
+		base = fmt.Sprintf("%s,%s=%q", base, prometheusLabelName(LabelEnvironmentUID), environmentUID)
 	}
-	return labelFilter
+	return podLabelsExpr(lineScopeMatchers(base, componentUID, releaseLineUID, defaultOnly))
+}
+
+// lineScopeMatchers returns one matcher list per kube_pod_labels selector of a component's line scope.
+func lineScopeMatchers(base, componentUID, releaseLineUID string, defaultOnly bool) []string {
+	switch {
+	case releaseLineUID != "":
+		return []string{fmt.Sprintf("%s,%s=%q", base, prometheusLabelName(LabelReleaseLineUID), releaseLineUID)}
+	case componentUID == "":
+		return []string{base}
+	case defaultOnly:
+		return []string{fmt.Sprintf(`%s,%s=%q,%s=""`, base,
+			prometheusLabelName(LabelComponentUID), componentUID, prometheusLabelName(LabelReleaseLineUID))}
+	}
+	return []string{
+		fmt.Sprintf("%s,%s=%q", base, prometheusLabelName(LabelComponentUID), componentUID),
+		fmt.Sprintf("%s,%s=%q", base, prometheusLabelName(LabelReleaseLineComponentUID), componentUID),
+	}
+}
+
+// podLabelsExpr is a kube_pod_labels selector per matcher list, joined with or.
+func podLabelsExpr(matchers []string) string {
+	selectors := make([]string, len(matchers))
+	for i, m := range matchers {
+		selectors[i] = fmt.Sprintf(`kube_pod_labels{job="kube-state-metrics",%s}`, m)
+	}
+	if len(selectors) == 1 {
+		return selectors[0]
+	}
+	return "(" + strings.Join(selectors, " or ") + ")"
 }
 
 // BuildScopeLabelNames returns the Prometheus label names for whichever of
@@ -93,15 +121,12 @@ func BuildGroupLeftClause(scopeLabels []string) string {
 	return fmt.Sprintf("group_left (%s)", strings.Join(scopeLabels, ", "))
 }
 
-// BuildComponentLabelFilter builds a label filter using component/project/environment UIDs
-// without namespace. Used for alert rule expressions.
-func BuildComponentLabelFilter(componentUID, projectUID, environmentUID string) string {
-	componentLabel := prometheusLabelName(LabelComponentUID)
-	projectLabel := prometheusLabelName(LabelProjectUID)
-	environmentLabel := prometheusLabelName(LabelEnvironmentUID)
-
-	return fmt.Sprintf(`%s=%q,%s=%q,%s=%q`,
-		componentLabel, componentUID, projectLabel, projectUID, environmentLabel, environmentUID)
+// BuildComponentPodLabels builds the kube_pod_labels selector of an alert rule's component and
+// release line, without the namespace. An empty release line is the component's default line only.
+func BuildComponentPodLabels(componentUID, projectUID, environmentUID, releaseLineUID string) string {
+	base := fmt.Sprintf(`%s=%q,%s=%q`,
+		prometheusLabelName(LabelProjectUID), projectUID, prometheusLabelName(LabelEnvironmentUID), environmentUID)
+	return podLabelsExpr(lineScopeMatchers(base, componentUID, releaseLineUID, releaseLineUID == ""))
 }
 
 // ----------------------------
@@ -109,13 +134,13 @@ func BuildComponentLabelFilter(componentUID, projectUID, environmentUID string) 
 // ----------------------------
 
 // BuildCPUUsageQuery builds a PromQL query for CPU usage rate.
-func BuildCPUUsageQuery(labelFilter, sumByClause, groupLeftClause string) string {
+func BuildCPUUsageQuery(podLabels, sumByClause, groupLeftClause string) string {
 	return fmt.Sprintf(`sum by (%s) (
-    rate(container_cpu_usage_seconds_total{container!=""}[2m]) * on (pod, namespace) %s kube_pod_labels{job="kube-state-metrics",%s} )`, sumByClause, groupLeftClause, labelFilter)
+    rate(container_cpu_usage_seconds_total{container!=""}[2m]) * on (pod, namespace) %s %s )`, sumByClause, groupLeftClause, podLabels)
 }
 
 // BuildCPURequestsQuery builds a PromQL query for CPU requests.
-func BuildCPURequestsQuery(labelFilter, sumByClause, groupLeftClause string) string {
+func BuildCPURequestsQuery(podLabels, sumByClause, groupLeftClause string) string {
 	return fmt.Sprintf(`sum by (%s) (
             (
                 kube_pod_container_resource_requests{resource="cpu",job="kube-state-metrics"}
@@ -123,12 +148,12 @@ func BuildCPURequestsQuery(labelFilter, sumByClause, groupLeftClause string) str
                 (kube_pod_status_phase{phase="Running"} == 1)
             )
           * ON (pod, namespace) %s
-            kube_pod_labels{job="kube-state-metrics",%s}
-        )`, sumByClause, groupLeftClause, labelFilter)
+            %s
+        )`, sumByClause, groupLeftClause, podLabels)
 }
 
 // BuildCPULimitsQuery builds a PromQL query for CPU limits.
-func BuildCPULimitsQuery(labelFilter, sumByClause, groupLeftClause string) string {
+func BuildCPULimitsQuery(podLabels, sumByClause, groupLeftClause string) string {
 	return fmt.Sprintf(`sum by (%s) (
             (
                 kube_pod_container_resource_limits{resource="cpu",job="kube-state-metrics"}
@@ -136,21 +161,21 @@ func BuildCPULimitsQuery(labelFilter, sumByClause, groupLeftClause string) strin
                 (kube_pod_status_phase{phase="Running"} == 1)
             )
           * ON (pod, namespace) %s
-            kube_pod_labels{job="kube-state-metrics",%s}
-        )`, sumByClause, groupLeftClause, labelFilter)
+            %s
+        )`, sumByClause, groupLeftClause, podLabels)
 }
 
 // BuildMemoryUsageQuery builds a PromQL query for memory usage.
-func BuildMemoryUsageQuery(labelFilter, sumByClause, groupLeftClause string) string {
+func BuildMemoryUsageQuery(podLabels, sumByClause, groupLeftClause string) string {
 	return fmt.Sprintf(`sum by (%s) (
               container_memory_working_set_bytes{container!=""}
               * on (pod, namespace) %s
-                kube_pod_labels{job="kube-state-metrics",%s}
-            )`, sumByClause, groupLeftClause, labelFilter)
+                %s
+            )`, sumByClause, groupLeftClause, podLabels)
 }
 
 // BuildMemoryRequestsQuery builds a PromQL query for memory requests.
-func BuildMemoryRequestsQuery(labelFilter, sumByClause, groupLeftClause string) string {
+func BuildMemoryRequestsQuery(podLabels, sumByClause, groupLeftClause string) string {
 	return fmt.Sprintf(`sum by (%s) (
             (
                 kube_pod_container_resource_requests{resource="memory",job="kube-state-metrics"}
@@ -158,12 +183,12 @@ func BuildMemoryRequestsQuery(labelFilter, sumByClause, groupLeftClause string) 
                 (kube_pod_status_phase{phase="Running"} == 1)
             )
           * ON (pod, namespace) %s
-            kube_pod_labels{job="kube-state-metrics",%s}
-        )`, sumByClause, groupLeftClause, labelFilter)
+            %s
+        )`, sumByClause, groupLeftClause, podLabels)
 }
 
 // BuildMemoryLimitsQuery builds a PromQL query for memory limits.
-func BuildMemoryLimitsQuery(labelFilter, sumByClause, groupLeftClause string) string {
+func BuildMemoryLimitsQuery(podLabels, sumByClause, groupLeftClause string) string {
 	return fmt.Sprintf(`sum by (%s) (
             (
                 kube_pod_container_resource_limits{resource="memory",job="kube-state-metrics"}
@@ -171,8 +196,8 @@ func BuildMemoryLimitsQuery(labelFilter, sumByClause, groupLeftClause string) st
                 (kube_pod_status_phase{phase="Running"} == 1)
             )
           * ON (pod, namespace) %s
-            kube_pod_labels{job="kube-state-metrics",%s}
-        )`, sumByClause, groupLeftClause, labelFilter)
+            %s
+        )`, sumByClause, groupLeftClause, podLabels)
 }
 
 // ----------------------------
@@ -180,22 +205,22 @@ func BuildMemoryLimitsQuery(labelFilter, sumByClause, groupLeftClause string) st
 // ----------------------------
 
 // buildHubblePodMappingExpr returns a PromQL expression that exposes
-// kube_pod_labels (filtered by labelFilter) under Hubble's join keys
+// the podLabels selector under Hubble's join keys
 // (destination_namespace, destination_pod).
-func buildHubblePodMappingExpr(labelFilter string) string {
+func buildHubblePodMappingExpr(podLabels string) string {
 	return fmt.Sprintf(`label_replace(
             label_replace(
-                kube_pod_labels{job="kube-state-metrics",%s},
+                %s,
                 "destination_namespace", "$1", "namespace", "(.*)"
             ),
             "destination_pod", "$1", "pod", "(.*)"
-        )`, labelFilter)
+        )`, podLabels)
 }
 
 // buildHTTPRequestCountQueryWithStatus builds the request-count PromQL,
 // optionally filtered by an extra `status=~...` matcher.
-func buildHTTPRequestCountQueryWithStatus(labelFilter, sumByClause, groupLeftClause, statusMatcher string) string {
-	mapping := buildHubblePodMappingExpr(labelFilter)
+func buildHTTPRequestCountQueryWithStatus(podLabels, sumByClause, groupLeftClause, statusMatcher string) string {
+	mapping := buildHubblePodMappingExpr(podLabels)
 	return fmt.Sprintf(`
     sum by (%s) (
         rate(hubble_http_requests_total{reporter="server"%s}[2m])
@@ -207,25 +232,25 @@ func buildHTTPRequestCountQueryWithStatus(labelFilter, sumByClause, groupLeftCla
 }
 
 // BuildHTTPRequestCountQuery builds a PromQL query for HTTP request count.
-func BuildHTTPRequestCountQuery(labelFilter, sumByClause, groupLeftClause string) string {
-	return buildHTTPRequestCountQueryWithStatus(labelFilter, sumByClause, groupLeftClause, "")
+func BuildHTTPRequestCountQuery(podLabels, sumByClause, groupLeftClause string) string {
+	return buildHTTPRequestCountQueryWithStatus(podLabels, sumByClause, groupLeftClause, "")
 }
 
 // BuildSuccessfulHTTPRequestCountQuery builds a PromQL query for successful HTTP request count
 // (1xx, 2xx, 3xx).
-func BuildSuccessfulHTTPRequestCountQuery(labelFilter, sumByClause, groupLeftClause string) string {
-	return buildHTTPRequestCountQueryWithStatus(labelFilter, sumByClause, groupLeftClause, `, status=~"^[123]..?$"`)
+func BuildSuccessfulHTTPRequestCountQuery(podLabels, sumByClause, groupLeftClause string) string {
+	return buildHTTPRequestCountQueryWithStatus(podLabels, sumByClause, groupLeftClause, `, status=~"^[123]..?$"`)
 }
 
 // BuildUnsuccessfulHTTPRequestCountQuery builds a PromQL query for unsuccessful HTTP request
 // count (4xx, 5xx).
-func BuildUnsuccessfulHTTPRequestCountQuery(labelFilter, sumByClause, groupLeftClause string) string {
-	return buildHTTPRequestCountQueryWithStatus(labelFilter, sumByClause, groupLeftClause, `, status=~"^[45]..?$"`)
+func BuildUnsuccessfulHTTPRequestCountQuery(podLabels, sumByClause, groupLeftClause string) string {
+	return buildHTTPRequestCountQueryWithStatus(podLabels, sumByClause, groupLeftClause, `, status=~"^[45]..?$"`)
 }
 
 // BuildMeanHTTPRequestLatencyQuery builds a PromQL query for mean HTTP request latency.
-func BuildMeanHTTPRequestLatencyQuery(labelFilter, sumByClause, groupLeftClause string) string {
-	mapping := buildHubblePodMappingExpr(labelFilter)
+func BuildMeanHTTPRequestLatencyQuery(podLabels, sumByClause, groupLeftClause string) string {
+	mapping := buildHubblePodMappingExpr(podLabels)
 	return fmt.Sprintf(`
     (
         sum by (%s) (
@@ -246,8 +271,8 @@ func BuildMeanHTTPRequestLatencyQuery(labelFilter, sumByClause, groupLeftClause 
 
 // buildHTTPRequestLatencyPercentileQuery builds a histogram_quantile PromQL
 // expression for the given quantile (e.g. "0.5", "0.9", "0.99").
-func buildHTTPRequestLatencyPercentileQuery(quantile, labelFilter, sumByClause, groupLeftClause string) string {
-	mapping := buildHubblePodMappingExpr(labelFilter)
+func buildHTTPRequestLatencyPercentileQuery(quantile, podLabels, sumByClause, groupLeftClause string) string {
+	mapping := buildHubblePodMappingExpr(podLabels)
 	return fmt.Sprintf(`
     histogram_quantile(
         %s,
@@ -262,18 +287,18 @@ func buildHTTPRequestLatencyPercentileQuery(quantile, labelFilter, sumByClause, 
 }
 
 // Build50thPercentileHTTPRequestLatencyQuery builds a PromQL query for 50th percentile HTTP request latency.
-func Build50thPercentileHTTPRequestLatencyQuery(labelFilter, sumByClause, groupLeftClause string) string {
-	return buildHTTPRequestLatencyPercentileQuery("0.5", labelFilter, sumByClause, groupLeftClause)
+func Build50thPercentileHTTPRequestLatencyQuery(podLabels, sumByClause, groupLeftClause string) string {
+	return buildHTTPRequestLatencyPercentileQuery("0.5", podLabels, sumByClause, groupLeftClause)
 }
 
 // Build90thPercentileHTTPRequestLatencyQuery builds a PromQL query for 90th percentile HTTP request latency.
-func Build90thPercentileHTTPRequestLatencyQuery(labelFilter, sumByClause, groupLeftClause string) string {
-	return buildHTTPRequestLatencyPercentileQuery("0.9", labelFilter, sumByClause, groupLeftClause)
+func Build90thPercentileHTTPRequestLatencyQuery(podLabels, sumByClause, groupLeftClause string) string {
+	return buildHTTPRequestLatencyPercentileQuery("0.9", podLabels, sumByClause, groupLeftClause)
 }
 
 // Build99thPercentileHTTPRequestLatencyQuery builds a PromQL query for 99th percentile HTTP request latency.
-func Build99thPercentileHTTPRequestLatencyQuery(labelFilter, sumByClause, groupLeftClause string) string {
-	return buildHTTPRequestLatencyPercentileQuery("0.99", labelFilter, sumByClause, groupLeftClause)
+func Build99thPercentileHTTPRequestLatencyQuery(podLabels, sumByClause, groupLeftClause string) string {
+	return buildHTTPRequestLatencyPercentileQuery("0.99", podLabels, sumByClause, groupLeftClause)
 }
 
 // ----------------------------
@@ -290,7 +315,7 @@ const (
 )
 
 // BuildRuntimeTopologyLabelFilter builds a Prometheus label filter for runtime
-// topology queries using UID labels (same convention as BuildLabelFilter).
+// topology queries using UID labels.
 func BuildRuntimeTopologyLabelFilter(namespace, componentUID, projectUID, environmentUID string) string {
 	namespaceLabel := prometheusLabelName(LabelNamespace)
 	componentLabel := prometheusLabelName(LabelComponentUID)
@@ -320,7 +345,7 @@ func buildHubblePodMappingExprWithSide(side, outputNameLabel, outputUIDLabel, la
 	podLabel := side + "_pod"
 	componentNameLabel := prometheusLabelName(LabelComponent)
 	componentUIDLabel := prometheusLabelName(LabelComponentUID)
-	return fmt.Sprintf(`label_replace(
+	return withReleaseLineComponentUID(fmt.Sprintf(`label_replace(
             label_replace(
                 label_replace(
                     label_replace(
@@ -332,7 +357,14 @@ func buildHubblePodMappingExprWithSide(side, outputNameLabel, outputUIDLabel, la
                 "%s", "$1", "%s", "(.*)"
             ),
             "%s", "$1", "%s", "(.*)"
-        )`, labelFilter, nsLabel, podLabel, outputNameLabel, componentNameLabel, outputUIDLabel, componentUIDLabel)
+        )`, labelFilter, nsLabel, podLabel, outputNameLabel, componentNameLabel, outputUIDLabel, componentUIDLabel), outputUIDLabel)
+}
+
+// withReleaseLineComponentUID fills outputUIDLabel of a release line pod's series, which has no
+// component UID label, from the label that carries it on release line pods.
+func withReleaseLineComponentUID(expr, outputUIDLabel string) string {
+	return fmt.Sprintf(`label_replace(%s, "%s", "$1", "%s", "(.+)")`,
+		expr, outputUIDLabel, prometheusLabelName(LabelReleaseLineComponentUID))
 }
 
 // buildRuntimeTopologyIncreaseQuery builds a PromQL sum-by expression that

@@ -41,7 +41,7 @@ func TestBuildFilter(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := BuildFilter(tt.namespace, tt.envUID, tt.projectUID, tt.componentUID, "", true)
+			got := BuildFilter(tt.namespace, tt.envUID, tt.projectUID, tt.componentUID, "", false)
 			if got != tt.want {
 				t.Errorf("BuildFilter() = %q, want %q", got, tt.want)
 			}

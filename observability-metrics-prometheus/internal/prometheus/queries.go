@@ -35,10 +35,10 @@ func prometheusLabelName(kubernetesLabel string) string {
 // BuildPodLabels builds the kube_pod_labels selector a query joins on to pick a scope's pods.
 // IDs that are empty are not matched on; the namespace is always matched.
 //
-// A release line's pods carry the component UID under another label than the default line's, so the
-// component UID alone covers every line, as a union of two selectors. A release line matches on
-// its UID alone, and defaultOnly keeps the default line's pods, which carry no release line label.
-func BuildPodLabels(namespace, componentUID, projectUID, environmentUID, releaseLineUID string, defaultOnly bool) string {
+// The component UID alone keeps the default line's pods, which carry no release line label. A release
+// line's pods carry the component UID under another label than the default line's, so allLines covers
+// every line, as a union of two selectors. A release line matches on its UID alone.
+func BuildPodLabels(namespace, componentUID, projectUID, environmentUID, releaseLineUID string, allLines bool) string {
 	base := fmt.Sprintf("%s=%q", prometheusLabelName(LabelNamespace), namespace)
 	if projectUID != "" {
 		base = fmt.Sprintf("%s,%s=%q", base, prometheusLabelName(LabelProjectUID), projectUID)
@@ -46,24 +46,24 @@ func BuildPodLabels(namespace, componentUID, projectUID, environmentUID, release
 	if environmentUID != "" {
 		base = fmt.Sprintf("%s,%s=%q", base, prometheusLabelName(LabelEnvironmentUID), environmentUID)
 	}
-	return podLabelsExpr(lineScopeMatchers(base, componentUID, releaseLineUID, defaultOnly))
+	return podLabelsExpr(lineScopeMatchers(base, componentUID, releaseLineUID, allLines))
 }
 
 // lineScopeMatchers returns one matcher list per kube_pod_labels selector of a component's line scope.
-func lineScopeMatchers(base, componentUID, releaseLineUID string, defaultOnly bool) []string {
+func lineScopeMatchers(base, componentUID, releaseLineUID string, allLines bool) []string {
 	switch {
 	case releaseLineUID != "":
 		return []string{fmt.Sprintf("%s,%s=%q", base, prometheusLabelName(LabelReleaseLineUID), releaseLineUID)}
 	case componentUID == "":
 		return []string{base}
-	case defaultOnly:
-		return []string{fmt.Sprintf(`%s,%s=%q,%s=""`, base,
-			prometheusLabelName(LabelComponentUID), componentUID, prometheusLabelName(LabelReleaseLineUID))}
+	case allLines:
+		return []string{
+			fmt.Sprintf("%s,%s=%q", base, prometheusLabelName(LabelComponentUID), componentUID),
+			fmt.Sprintf("%s,%s=%q", base, prometheusLabelName(LabelReleaseLineComponentUID), componentUID),
+		}
 	}
-	return []string{
-		fmt.Sprintf("%s,%s=%q", base, prometheusLabelName(LabelComponentUID), componentUID),
-		fmt.Sprintf("%s,%s=%q", base, prometheusLabelName(LabelReleaseLineComponentUID), componentUID),
-	}
+	return []string{fmt.Sprintf(`%s,%s=%q,%s=""`, base,
+		prometheusLabelName(LabelComponentUID), componentUID, prometheusLabelName(LabelReleaseLineUID))}
 }
 
 // podLabelsExpr is a kube_pod_labels selector per matcher list, joined with or.
@@ -126,7 +126,7 @@ func BuildGroupLeftClause(scopeLabels []string) string {
 func BuildComponentPodLabels(componentUID, projectUID, environmentUID, releaseLineUID string) string {
 	base := fmt.Sprintf(`%s=%q,%s=%q`,
 		prometheusLabelName(LabelProjectUID), projectUID, prometheusLabelName(LabelEnvironmentUID), environmentUID)
-	return podLabelsExpr(lineScopeMatchers(base, componentUID, releaseLineUID, releaseLineUID == ""))
+	return podLabelsExpr(lineScopeMatchers(base, componentUID, releaseLineUID, false))
 }
 
 // ----------------------------

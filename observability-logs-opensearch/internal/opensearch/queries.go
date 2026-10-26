@@ -136,7 +136,7 @@ func (qb *QueryBuilder) BuildComponentLogsQueryV1(params ComponentLogsQueryParam
 		mustConditions = append(mustConditions, projectFilter)
 	}
 
-	if filter := releaseLineScopeFilter(logReleaseLineFields, params.ComponentID, params.ReleaseLineID, params.DefaultLineOnly); filter != nil {
+	if filter := releaseLineScopeFilter(logReleaseLineFields, params.ComponentID, params.ReleaseLineID, params.AllReleaseLines); filter != nil {
 		mustConditions = append(mustConditions, filter)
 	}
 
@@ -421,7 +421,7 @@ func (qb *QueryBuilder) BuildComponentEventsQuery(params EventsQueryParams) (map
 		})
 	}
 
-	if filter := releaseLineScopeFilter(eventReleaseLineFields, params.ComponentID, params.ReleaseLineID, params.DefaultLineOnly); filter != nil {
+	if filter := releaseLineScopeFilter(eventReleaseLineFields, params.ComponentID, params.ReleaseLineID, params.AllReleaseLines); filter != nil {
 		mustConditions = append(mustConditions, filter)
 	}
 
@@ -623,32 +623,32 @@ var (
 	eventReleaseLineFields = releaseLineFields{EvComponentID, EvReleaseLineID, EvReleaseLineComponentID}
 )
 
-// releaseLineScopeFilter matches a component's documents by release line. A release line's pods
-// carry the component UID under another label than the default line's, so the component UID alone
-// matches either label and covers every line. One release line matches on its UID alone, and
-// defaultOnly keeps documents with the component UID and no release line label. Returns nil without
+// releaseLineScopeFilter matches a component's documents by release line. The component UID alone
+// keeps its default line's documents, those with the UID and no release line label. A release line's
+// pods carry the component UID under another label than the default line's, so allLines matches
+// either label and covers every line. One release line matches on its UID alone. Returns nil without
 // a component or a line.
-func releaseLineScopeFilter(f releaseLineFields, componentID, lineID string, defaultOnly bool) map[string]interface{} {
+func releaseLineScopeFilter(f releaseLineFields, componentID, lineID string, allLines bool) map[string]interface{} {
 	switch {
 	case lineID != "":
 		return map[string]interface{}{"term": map[string]interface{}{f.line: lineID}}
 	case componentID == "":
 		return nil
-	case defaultOnly:
+	case allLines:
 		return map[string]interface{}{
 			"bool": map[string]interface{}{
-				"filter":   []map[string]interface{}{{"term": map[string]interface{}{f.component: componentID}}},
-				"must_not": []map[string]interface{}{{"exists": map[string]interface{}{"field": f.line}}},
+				"should": []map[string]interface{}{
+					{"term": map[string]interface{}{f.component: componentID}},
+					{"term": map[string]interface{}{f.lineComponent: componentID}},
+				},
+				"minimum_should_match": 1,
 			},
 		}
 	}
 	return map[string]interface{}{
 		"bool": map[string]interface{}{
-			"should": []map[string]interface{}{
-				{"term": map[string]interface{}{f.component: componentID}},
-				{"term": map[string]interface{}{f.lineComponent: componentID}},
-			},
-			"minimum_should_match": 1,
+			"filter":   []map[string]interface{}{{"term": map[string]interface{}{f.component: componentID}}},
+			"must_not": []map[string]interface{}{{"exists": map[string]interface{}{"field": f.line}}},
 		},
 	}
 }
@@ -672,7 +672,7 @@ func (qb *QueryBuilder) BuildLogAlertingRuleQuery(params AlertingRuleRequest) (m
 				},
 			},
 		},
-		releaseLineScopeFilter(logReleaseLineFields, params.Metadata.ComponentUID, params.Metadata.ReleaseLineUID, true),
+		releaseLineScopeFilter(logReleaseLineFields, params.Metadata.ComponentUID, params.Metadata.ReleaseLineUID, false),
 		{
 			"term": map[string]interface{}{
 				OSEnvironmentID: map[string]interface{}{

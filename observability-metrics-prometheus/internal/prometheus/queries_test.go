@@ -79,7 +79,7 @@ func TestBuildPodLabels(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := BuildPodLabels(tt.namespace, tt.componentUID, tt.projectUID, tt.environmentUID, "", true)
+			got := BuildPodLabels(tt.namespace, tt.componentUID, tt.projectUID, tt.environmentUID, "", false)
 			for _, want := range tt.wantContains {
 				if !strings.Contains(got, want) {
 					t.Errorf("BuildPodLabels() = %q, want to contain %q", got, want)
@@ -186,22 +186,22 @@ func TestBuildGroupLeftClause(t *testing.T) {
 func TestBuildPodLabels_ReleaseLines(t *testing.T) {
 	const base = `label_openchoreo_dev_namespace="ns",label_openchoreo_dev_project_uid="p",label_openchoreo_dev_environment_uid="e"`
 	tests := []struct {
-		name        string
-		line        string
-		defaultOnly bool
-		want        string
+		name     string
+		line     string
+		allLines bool
+		want     string
 	}{
-		{name: "default line", defaultOnly: true, want: `kube_pod_labels{job="kube-state-metrics",` + base +
+		{name: "default line", want: `kube_pod_labels{job="kube-state-metrics",` + base +
 			`,label_openchoreo_dev_component_uid="c",label_openchoreo_dev_release_line_uid=""}`},
 		{name: "one release line matches on its UID alone", line: "l1", want: `kube_pod_labels{job="kube-state-metrics",` + base +
 			`,label_openchoreo_dev_release_line_uid="l1"}`},
-		{name: "every line", want: `(kube_pod_labels{job="kube-state-metrics",` + base +
+		{name: "every line", allLines: true, want: `(kube_pod_labels{job="kube-state-metrics",` + base +
 			`,label_openchoreo_dev_component_uid="c"} or ` +
 			`kube_pod_labels{job="kube-state-metrics",` + base + `,label_openchoreo_dev_release_line_component_uid="c"})`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := BuildPodLabels("ns", "c", "p", "e", tt.line, tt.defaultOnly); got != tt.want {
+			if got := BuildPodLabels("ns", "c", "p", "e", tt.line, tt.allLines); got != tt.want {
 				t.Errorf("BuildPodLabels() =\n %s\nwant\n %s", got, tt.want)
 			}
 		})

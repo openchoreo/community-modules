@@ -14,7 +14,7 @@ var releaseLineMatcher = `label_openchoreo_dev_release_line_uid="` + testRelease
 
 func TestPodLabels_ReleaseLine(t *testing.T) {
 	selectors := map[string]func(line string) string{
-		"query": func(line string) string { return BuildPodLabels("ns", "comp", "proj", "env", line, line == "") },
+		"query": func(line string) string { return BuildPodLabels("ns", "comp", "proj", "env", line, false) },
 		"alert": func(line string) string { return BuildComponentPodLabels("comp", "proj", "env", line) },
 	}
 	for name, build := range selectors {

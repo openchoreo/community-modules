@@ -18,7 +18,16 @@ import (
 
 func TestQueryMetrics_ReleaseLineHeader(t *testing.T) {
 	const lineUID = "93f65294-926f-475b-98f1-dc4f152f38da"
-	for name, line := range map[string]*string{"one line": strPtr(lineUID), "every line": nil} {
+	allLines := true
+	for name, tt := range map[string]struct {
+		line     *string
+		allLines *bool
+		want     string
+	}{
+		"one line":     {line: strPtr(lineUID), want: `label_openchoreo_dev_release_line_uid="` + lineUID + `"`},
+		"every line":   {allLines: &allLines, want: `label_openchoreo_dev_release_line_component_uid="comp-uid"`},
+		"default line": {want: `label_openchoreo_dev_component_uid="comp-uid",label_openchoreo_dev_release_line_uid=""`},
+	} {
 		t.Run(name, func(t *testing.T) {
 			var mu sync.Mutex
 			var queries []string
@@ -39,10 +48,12 @@ func TestQueryMetrics_ReleaseLineHeader(t *testing.T) {
 
 			component := "comp-uid"
 			resp, err := handler.QueryMetrics(context.Background(), gen.QueryMetricsRequestObject{Body: &gen.MetricsQueryRequest{
-				Metric:      gen.MetricsQueryRequestMetricResource,
-				StartTime:   time.Now().Add(-time.Hour),
-				EndTime:     time.Now(),
-				SearchScope: gen.ComponentSearchScope{Namespace: "default", ComponentUid: &component, ReleaseLineUid: line},
+				Metric:    gen.MetricsQueryRequestMetricResource,
+				StartTime: time.Now().Add(-time.Hour),
+				EndTime:   time.Now(),
+				SearchScope: gen.ComponentSearchScope{
+					Namespace: "default", ComponentUid: &component, ReleaseLineUid: tt.line, AllReleaseLines: tt.allLines,
+				},
 			}})
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
@@ -52,13 +63,9 @@ func TestQueryMetrics_ReleaseLineHeader(t *testing.T) {
 				t.Fatalf("failed to write response: %v", err)
 			}
 
-			want := `label_openchoreo_dev_release_line_component_uid="comp-uid"`
-			if line != nil {
-				want = `label_openchoreo_dev_release_line_uid="` + lineUID + `"`
-			}
 			for _, q := range queries {
-				if !strings.Contains(q, want) {
-					t.Errorf("query without %s: %s", want, q)
+				if !strings.Contains(q, tt.want) {
+					t.Errorf("query without %s: %s", tt.want, q)
 				}
 			}
 			if got := w.Header().Get(releaseLineAppliedHeader); got != "true" {

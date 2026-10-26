@@ -113,8 +113,8 @@ func (h *LogsHandler) queryComponentLogs(ctx context.Context, req *gen.LogsQuery
 	if scope.ReleaseLineUid != nil {
 		params.ReleaseLineID = *scope.ReleaseLineUid
 	}
-	if scope.DefaultLineOnly != nil {
-		params.DefaultLineOnly = *scope.DefaultLineOnly
+	if scope.AllReleaseLines != nil {
+		params.AllReleaseLines = *scope.AllReleaseLines
 	}
 	if req.Limit != nil {
 		params.Limit = *req.Limit
@@ -402,8 +402,8 @@ func (h *LogsHandler) queryComponentEvents(ctx context.Context, req *gen.EventsQ
 	if scope.ReleaseLineUid != nil {
 		params.ReleaseLineID = *scope.ReleaseLineUid
 	}
-	if scope.DefaultLineOnly != nil {
-		params.DefaultLineOnly = *scope.DefaultLineOnly
+	if scope.AllReleaseLines != nil {
+		params.AllReleaseLines = *scope.AllReleaseLines
 	}
 	if req.SortOrder != nil {
 		params.SortOrder = string(*req.SortOrder)

@@ -36,12 +36,22 @@ func newReleaseLineTestHandler(t *testing.T, searchBody *string) *TracingHandler
 func TestTraceHandlers_ReleaseLineHeader(t *testing.T) {
 	const lineUID = "93f65294-926f-475b-98f1-dc4f152f38da"
 	component := "comp-uid"
-	for name, line := range map[string]*string{"one line": ptr(lineUID), "every line": nil} {
+	for name, tt := range map[string]struct {
+		line       *string
+		allLines   *bool
+		wantInBody string
+	}{
+		"one line":     {line: ptr(lineUID), wantInBody: lineUID},
+		"every line":   {allLines: ptr(true), wantInBody: "release-line-component-uid"},
+		"default line": {wantInBody: `"must_not"`},
+	} {
 		t.Run(name, func(t *testing.T) {
 			body := &gen.TracesQueryRequest{
-				StartTime:   time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
-				EndTime:     time.Date(2026, 1, 1, 1, 0, 0, 0, time.UTC),
-				SearchScope: gen.ComponentSearchScope{Namespace: "default", Component: &component, ReleaseLine: line},
+				StartTime: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+				EndTime:   time.Date(2026, 1, 1, 1, 0, 0, 0, time.UTC),
+				SearchScope: gen.ComponentSearchScope{
+					Namespace: "default", Component: &component, ReleaseLine: tt.line, AllReleaseLines: tt.allLines,
+				},
 			}
 			wantHeader := "true"
 
@@ -59,8 +69,8 @@ func TestTraceHandlers_ReleaseLineHeader(t *testing.T) {
 			if got := tracesResp.Headers.OpenChoreoReleaseLineApplied; got != wantHeader {
 				t.Errorf("traces header = %q, want %q", got, wantHeader)
 			}
-			if line != nil && !strings.Contains(searchBody, lineUID) {
-				t.Errorf("the release line did not reach the traces query: %s", searchBody)
+			if !strings.Contains(searchBody, tt.wantInBody) {
+				t.Errorf("the line scope did not reach the traces query, want %s in %s", tt.wantInBody, searchBody)
 			}
 
 			spans, err := handler.QuerySpansForTrace(context.Background(), gen.QuerySpansForTraceRequestObject{TraceId: "trace-1", Body: body})
@@ -74,8 +84,8 @@ func TestTraceHandlers_ReleaseLineHeader(t *testing.T) {
 			if got := spansResp.Headers.OpenChoreoReleaseLineApplied; got != wantHeader {
 				t.Errorf("spans header = %q, want %q", got, wantHeader)
 			}
-			if line != nil && !strings.Contains(searchBody, lineUID) {
-				t.Errorf("the release line did not reach the spans query: %s", searchBody)
+			if !strings.Contains(searchBody, tt.wantInBody) {
+				t.Errorf("the line scope did not reach the spans query, want %s in %s", tt.wantInBody, searchBody)
 			}
 		})
 	}

@@ -97,22 +97,15 @@ func TestBuildTracesQuery_WithComponentUIDs(t *testing.T) {
 	boolObj := queryObj["bool"].(map[string]interface{})
 	filters := boolObj["filter"].([]interface{})
 
-	// Should have time range filters + component UIDs bool/should filter
 	found := false
 	for _, f := range filters {
-		filter := f.(map[string]interface{})
-		if boolFilter, ok := filter["bool"]; ok {
-			boolMap := boolFilter.(map[string]interface{})
-			if should, ok := boolMap["should"]; ok {
-				shouldArr := should.([]interface{})
-				if len(shouldArr) == 2 {
-					found = true
-				}
-			}
+		b, _ := json.Marshal(f)
+		if strings.Contains(string(b), `"resource.openchoreo.dev/component-uid":["comp-1","comp-2"]`) {
+			found = true
 		}
 	}
 	if !found {
-		t.Error("expected bool/should filter with 2 component UIDs")
+		t.Errorf("expected a terms filter with 2 component UIDs, got %s", data)
 	}
 }
 

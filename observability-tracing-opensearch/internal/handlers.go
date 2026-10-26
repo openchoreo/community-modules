@@ -322,8 +322,8 @@ func toTracesRequestParams(req *gen.TracesQueryRequest) opensearch.TracesRequest
 	if req.SearchScope.ReleaseLine != nil {
 		params.ReleaseLineUID = *req.SearchScope.ReleaseLine
 	}
-	if req.SearchScope.DefaultLineOnly != nil {
-		params.DefaultLineOnly = *req.SearchScope.DefaultLineOnly
+	if req.SearchScope.AllReleaseLines != nil {
+		params.AllReleaseLines = *req.SearchScope.AllReleaseLines
 	}
 	if req.IncludeAttributes != nil {
 		params.IncludeAttributes = *req.IncludeAttributes

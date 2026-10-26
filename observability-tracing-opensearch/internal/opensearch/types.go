@@ -94,8 +94,8 @@ type TracesRequestParams struct {
 	Namespace         string   `json:"namespace"`
 	ProjectUID        string   `json:"projectUid"`
 	ReleaseLineUID    string   `json:"releaseLineUid,omitempty"`
-	// DefaultLineOnly restricts the query to the components' default lines.
-	DefaultLineOnly bool   `json:"defaultLineOnly,omitempty"`
+	// AllReleaseLines covers every line of the components instead of their default lines.
+	AllReleaseLines bool   `json:"allReleaseLines,omitempty"`
 	SortOrder       string `json:"sortOrder,omitempty"`
 	StartTime       string `json:"startTime"`
 	TraceID         string `json:"traceId,omitempty"`

@@ -18,8 +18,8 @@ type AllocationQuery struct {
 	ComponentUID   string
 	// ReleaseLineUID narrows the query to one release line of the component.
 	ReleaseLineUID string
-	// DefaultLineOnly restricts the query to the component's default line.
-	DefaultLineOnly bool
+	// AllReleaseLines covers every line of the component instead of its default line.
+	AllReleaseLines bool
 	Start           time.Time
 	End             time.Time
 	// Step is a normalized OpenCost step (e.g. "1d"). Empty means accumulate
@@ -32,11 +32,11 @@ type AllocationQuery struct {
 // language is used: label lookups are label[key]:"value", clauses are
 // AND-joined with " + " and OR-joined with " | ".
 //
-// A release line's pods carry the component UID under another label than the
-// default line's, so the component UID alone matches either and covers every line.
-// A release line matches on its UID alone, and defaultOnly keeps the default line's
-// pods, which carry no release line label.
-func BuildFilter(namespace, envUID, projectUID, componentUID, releaseLineUID string, defaultOnly bool) string {
+// The component UID alone keeps the default line's pods, which carry no release
+// line label. A release line's pods carry the component UID under another label
+// than the default line's, so allLines matches either and covers every line. A
+// release line matches on its UID alone.
+func BuildFilter(namespace, envUID, projectUID, componentUID, releaseLineUID string, allLines bool) string {
 	clauses := []string{
 		labelClause(LabelNamespace, namespace),
 		labelClause(LabelEnvironmentUID, envUID),
@@ -47,11 +47,11 @@ func BuildFilter(namespace, envUID, projectUID, componentUID, releaseLineUID str
 	switch {
 	case releaseLineUID != "":
 		clauses = append(clauses, labelClause(LabelReleaseLineUID, releaseLineUID))
-	case componentUID != "" && defaultOnly:
-		clauses = append(clauses, labelClause(LabelComponentUID, componentUID), labelClause(LabelReleaseLineUID, ""))
-	case componentUID != "":
+	case componentUID != "" && allLines:
 		clauses = append(clauses, "("+labelClause(LabelComponentUID, componentUID)+" | "+
 			labelClause(LabelReleaseLineComponentUID, componentUID)+")")
+	case componentUID != "":
+		clauses = append(clauses, labelClause(LabelComponentUID, componentUID), labelClause(LabelReleaseLineUID, ""))
 	}
 	return strings.Join(clauses, " + ")
 }

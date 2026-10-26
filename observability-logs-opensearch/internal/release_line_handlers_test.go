@@ -20,13 +20,13 @@ import (
 func TestQueryLogs_ReleaseLineHeader(t *testing.T) {
 	const lineUID = "93f65294-926f-475b-98f1-dc4f152f38da"
 	tests := map[string]struct {
-		line        *string
-		defaultOnly *bool
-		wantInBody  string
+		line       *string
+		allLines   *bool
+		wantInBody string
 	}{
-		"one line":          {line: ptr(lineUID), wantInBody: lineUID},
-		"every line":        {wantInBody: "release-line-component-uid"},
-		"default line only": {defaultOnly: ptr(true), wantInBody: `"must_not"`},
+		"one line":     {line: ptr(lineUID), wantInBody: lineUID},
+		"every line":   {allLines: ptr(true), wantInBody: "release-line-component-uid"},
+		"default line": {wantInBody: `"must_not"`},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -42,7 +42,7 @@ func TestQueryLogs_ReleaseLineHeader(t *testing.T) {
 
 			scope := gen.LogsQueryRequest_SearchScope{}
 			_ = scope.FromComponentSearchScope(gen.ComponentSearchScope{
-				Namespace: "default", ComponentUid: ptr("comp-uid"), ReleaseLineUid: tt.line, DefaultLineOnly: tt.defaultOnly,
+				Namespace: "default", ComponentUid: ptr("comp-uid"), ReleaseLineUid: tt.line, AllReleaseLines: tt.allLines,
 			})
 			resp, err := handler.QueryLogs(context.Background(), gen.QueryLogsRequestObject{Body: &gen.LogsQueryRequest{
 				StartTime:   time.Date(2025, 6, 15, 0, 0, 0, 0, time.UTC),

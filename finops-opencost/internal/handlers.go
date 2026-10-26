@@ -58,8 +58,8 @@ func (h *CostHandler) GetComponentCosts(ctx context.Context, request gen.GetComp
 	if params.ComponentUid != nil && params.ProjectUid == nil {
 		return gen.GetComponentCosts400JSONResponse{BadRequestJSONResponse: gen.BadRequestJSONResponse{Message: "componentUid requires projectUid"}}, nil
 	}
-	if (params.ReleaseLineUid != nil || params.DefaultLineOnly != nil) && params.ComponentUid == nil {
-		return gen.GetComponentCosts400JSONResponse{BadRequestJSONResponse: gen.BadRequestJSONResponse{Message: "releaseLineUid and defaultLineOnly require componentUid"}}, nil
+	if (params.ReleaseLineUid != nil || params.AllReleaseLines != nil) && params.ComponentUid == nil {
+		return gen.GetComponentCosts400JSONResponse{BadRequestJSONResponse: gen.BadRequestJSONResponse{Message: "releaseLineUid and allReleaseLines require componentUid"}}, nil
 	}
 
 	step, err := opencost.NormalizeGranularity(derefString(params.Granularity))
@@ -73,7 +73,7 @@ func (h *CostHandler) GetComponentCosts(ctx context.Context, request gen.GetComp
 		ProjectUID:      uuidPtrString(params.ProjectUid),
 		ComponentUID:    uuidPtrString(params.ComponentUid),
 		ReleaseLineUID:  uuidPtrString(params.ReleaseLineUid),
-		DefaultLineOnly: params.DefaultLineOnly != nil && *params.DefaultLineOnly,
+		AllReleaseLines: params.AllReleaseLines != nil && *params.AllReleaseLines,
 		Start:           params.StartTime,
 		End:             params.EndTime,
 		Step:            step,
@@ -189,8 +189,8 @@ func (h *CostHandler) GetRecommendations(ctx context.Context, request gen.GetRec
 	if params.Environment == "" {
 		return gen.GetRecommendations400JSONResponse{BadRequestJSONResponse: gen.BadRequestJSONResponse{Message: "environment is required"}}, nil
 	}
-	if params.DefaultLineOnly != nil && params.ComponentUid == nil {
-		return gen.GetRecommendations400JSONResponse{BadRequestJSONResponse: gen.BadRequestJSONResponse{Message: "defaultLineOnly requires componentUid"}}, nil
+	if params.AllReleaseLines != nil && params.ComponentUid == nil {
+		return gen.GetRecommendations400JSONResponse{BadRequestJSONResponse: gen.BadRequestJSONResponse{Message: "allReleaseLines requires componentUid"}}, nil
 	}
 	if params.ComponentUid != nil && params.ProjectUid == nil {
 		return gen.GetRecommendations400JSONResponse{BadRequestJSONResponse: gen.BadRequestJSONResponse{Message: "componentUid requires projectUid"}}, nil
@@ -205,7 +205,7 @@ func (h *CostHandler) GetRecommendations(ctx context.Context, request gen.GetRec
 		ProjectUID:      uuidPtrString(params.ProjectUid),
 		ComponentUID:    uuidPtrString(params.ComponentUid),
 		ReleaseLineUID:  uuidPtrString(params.ReleaseLineUid),
-		DefaultLineOnly: params.DefaultLineOnly != nil && *params.DefaultLineOnly,
+		AllReleaseLines: params.AllReleaseLines != nil && *params.AllReleaseLines,
 		Start:           params.StartTime,
 		End:             params.EndTime,
 	}
@@ -278,12 +278,16 @@ func (h *CostHandler) recommendComponent(
 	params gen.GetRecommendationsParams,
 	comp componentPricing,
 ) *gen.ComponentRecommendation {
+	// The costs cover every line of each component unless the query named one line, or one
+	// component without asking for every line, so its usage metrics have to as well.
+	allLines := params.ReleaseLineUid == nil && (params.ComponentUid == nil || (params.AllReleaseLines != nil && *params.AllReleaseLines))
 	metrics, err := h.observer.QueryResourceMetrics(ctx, token, observer.ComponentSearchScope{
-		Namespace:   request.Namespace,
-		Project:     comp.project,
-		Component:   comp.component,
-		Environment: params.Environment,
-		ReleaseLine: derefString(params.ReleaseLine),
+		Namespace:       request.Namespace,
+		Project:         comp.project,
+		Component:       comp.component,
+		Environment:     params.Environment,
+		ReleaseLine:     derefString(params.ReleaseLine),
+		AllReleaseLines: allLines,
 	}, params.StartTime, params.EndTime, h.metricsStep)
 	if err != nil {
 		h.logger.Warn("failed to fetch metrics for component, skipping",

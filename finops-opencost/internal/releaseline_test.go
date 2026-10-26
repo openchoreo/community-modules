@@ -135,6 +135,67 @@ func TestGetRecommendationsForwardsReleaseLine(t *testing.T) {
 	}
 }
 
+// A recommendation's usage metrics cover the same lines as its costs.
+func TestGetRecommendationsMetricsCoverTheCostsLines(t *testing.T) {
+	openCostSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, lineAllocations)
+	}))
+	defer openCostSrv.Close()
+
+	all := true
+	line := "next"
+	tests := []struct {
+		name     string
+		params   gen.GetRecommendationsParams
+		wantAll  bool
+		wantLine string
+	}{
+		{name: "project", params: gen.GetRecommendationsParams{ProjectUid: uuidPtr(projectUID)}, wantAll: true},
+		{name: "default line", params: gen.GetRecommendationsParams{ProjectUid: uuidPtr(projectUID), ComponentUid: uuidPtr(componentUID)}},
+		{name: "every line", params: gen.GetRecommendationsParams{
+			ProjectUid: uuidPtr(projectUID), ComponentUid: uuidPtr(componentUID), AllReleaseLines: &all,
+		}, wantAll: true},
+		{name: "one line", params: gen.GetRecommendationsParams{
+			ProjectUid: uuidPtr(projectUID), ComponentUid: uuidPtr(componentUID), ReleaseLineUid: uuidPtr(releaseLineUID), ReleaseLine: &line,
+		}, wantLine: line},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var metricsReq observer.MetricsQueryRequest
+			observerSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_ = json.NewDecoder(r.Body).Decode(&metricsReq)
+				_, _ = io.WriteString(w, `{"cpuUsage":[{"value":0.1}],"cpuRequests":[{"value":1.0}],"cpuLimits":[{"value":2.0}],
+				  "memoryUsage":[{"value":100000000}],"memoryRequests":[{"value":536870912}],"memoryLimits":[{"value":1073741824}]}`)
+			}))
+			defer observerSrv.Close()
+
+			params := tt.params
+			params.StartTime = time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+			params.EndTime = time.Date(2026, 7, 2, 0, 0, 0, 0, time.UTC)
+			params.Environment = "development"
+			h := newTestHandler(openCostSrv.URL, observerSrv.URL)
+			ctx := context.WithValue(context.Background(), bearerTokenKey, "test-token")
+			resp, err := h.GetRecommendations(ctx, gen.GetRecommendationsRequestObject{
+				Namespace:      "default",
+				EnvironmentUid: openapi_types.UUID(mustUUID(environmentUID)),
+				Params:         params,
+			})
+			if err != nil {
+				t.Fatalf("GetRecommendations error: %v", err)
+			}
+			if _, is := resp.(gen.GetRecommendations200JSONResponse); !is {
+				t.Fatalf("expected 200 response, got %T", resp)
+			}
+			if got := metricsReq.SearchScope.AllReleaseLines; got != tt.wantAll {
+				t.Errorf("metrics query allReleaseLines = %v, want %v", got, tt.wantAll)
+			}
+			if got := metricsReq.SearchScope.ReleaseLine; got != tt.wantLine {
+				t.Errorf("metrics query release line = %q, want %q", got, tt.wantLine)
+			}
+		})
+	}
+}
+
 func TestAllocationComponentUID(t *testing.T) {
 	alloc := func(labels map[string]string) opencost.Allocation {
 		return opencost.Allocation{Properties: opencost.AllocationProperties{Labels: labels}}

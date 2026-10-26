@@ -19,6 +19,8 @@ type ComponentSearchScope struct {
 	Component   string `json:"component,omitempty"`
 	Environment string `json:"environment,omitempty"`
 	ReleaseLine string `json:"releaseLine,omitempty"`
+	// AllReleaseLines covers every line of the component instead of its default line.
+	AllReleaseLines bool `json:"allReleaseLines,omitempty"`
 }
 
 type TimeSeriesItem struct {

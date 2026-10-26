@@ -45,7 +45,7 @@ func BuildTracesQuery(params TracesRequestParams) map[string]interface{} {
 		})
 	}
 
-	if filter := componentScopeFilter(params.ComponentUIDs, params.ReleaseLineUID, params.DefaultLineOnly); filter != nil {
+	if filter := componentScopeFilter(params.ComponentUIDs, params.ReleaseLineUID, params.AllReleaseLines); filter != nil {
 		filterConditions = append(filterConditions, filter)
 	}
 
@@ -113,7 +113,7 @@ func BuildTracesAggregationQuery(params TracesRequestParams) map[string]interfac
 		},
 	}
 
-	if filter := componentScopeFilter(params.ComponentUIDs, params.ReleaseLineUID, params.DefaultLineOnly); filter != nil {
+	if filter := componentScopeFilter(params.ComponentUIDs, params.ReleaseLineUID, params.AllReleaseLines); filter != nil {
 		filterConditions = append(filterConditions, filter)
 	}
 
@@ -276,32 +276,33 @@ const (
 	releaseLineComponentUIDAttribute = "resource.openchoreo.dev/release-line-component-uid"
 )
 
-// componentScopeFilter matches spans of components by release line. A release line's pods carry
-// the component UID under another label than the default line's, so the component UIDs alone match
-// either and cover every line. One release line matches on its UID alone, and defaultOnly keeps
-// spans with a component UID and no release line UID. Returns nil without a component or a line.
-func componentScopeFilter(componentUIDs []string, releaseLineUID string, defaultOnly bool) map[string]interface{} {
+// componentScopeFilter matches spans of components by release line. The component UIDs alone keep
+// their default lines' spans, those with a component UID and no release line UID. A release line's
+// pods carry the component UID under another label than the default line's, so allLines matches
+// either and covers every line. One release line matches on its UID alone. Returns nil without a
+// component or a line.
+func componentScopeFilter(componentUIDs []string, releaseLineUID string, allLines bool) map[string]interface{} {
 	if releaseLineUID != "" {
 		return map[string]interface{}{"term": map[string]interface{}{releaseLineUIDAttribute: releaseLineUID}}
 	}
 	if len(componentUIDs) == 0 {
 		return nil
 	}
-	if defaultOnly {
+	if allLines {
 		return map[string]interface{}{
 			"bool": map[string]interface{}{
-				"filter":   []map[string]interface{}{{"terms": map[string]interface{}{componentUIDAttribute: componentUIDs}}},
-				"must_not": []map[string]interface{}{{"exists": map[string]interface{}{"field": releaseLineUIDAttribute}}},
+				"should": []map[string]interface{}{
+					{"terms": map[string]interface{}{componentUIDAttribute: componentUIDs}},
+					{"terms": map[string]interface{}{releaseLineComponentUIDAttribute: componentUIDs}},
+				},
+				"minimum_should_match": 1,
 			},
 		}
 	}
 	return map[string]interface{}{
 		"bool": map[string]interface{}{
-			"should": []map[string]interface{}{
-				{"terms": map[string]interface{}{componentUIDAttribute: componentUIDs}},
-				{"terms": map[string]interface{}{releaseLineComponentUIDAttribute: componentUIDs}},
-			},
-			"minimum_should_match": 1,
+			"filter":   []map[string]interface{}{{"terms": map[string]interface{}{componentUIDAttribute: componentUIDs}}},
+			"must_not": []map[string]interface{}{{"exists": map[string]interface{}{"field": releaseLineUIDAttribute}}},
 		},
 	}
 }

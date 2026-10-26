@@ -23,15 +23,15 @@ func TestTraceQueries_ReleaseLine(t *testing.T) {
 				Namespace: "default", ComponentUIDs: []string{"comp-uid"}, Limit: 10,
 			}
 			b, _ := json.Marshal(build(params))
-			if got := string(b); !strings.Contains(got, `"resource.openchoreo.dev/release-line-component-uid":["comp-uid"]`) {
-				t.Errorf("a component query must cover its release lines' spans: %s", got)
-			}
-
-			params.DefaultLineOnly = true
-			b, _ = json.Marshal(build(params))
 			if got := string(b); !strings.Contains(got, `"must_not":[{"exists":{"field":"resource.openchoreo.dev/release-line-uid"}}]`) ||
 				strings.Contains(got, "release-line-component-uid") {
-				t.Errorf("a default line query must exclude release line spans: %s", got)
+				t.Errorf("a component query must cover its default line only: %s", got)
+			}
+
+			params.AllReleaseLines = true
+			b, _ = json.Marshal(build(params))
+			if got := string(b); !strings.Contains(got, `"resource.openchoreo.dev/release-line-component-uid":["comp-uid"]`) {
+				t.Errorf("an every line query must cover its release lines' spans: %s", got)
 			}
 
 			params.ReleaseLineUID = lineUID

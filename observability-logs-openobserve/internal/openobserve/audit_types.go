@@ -25,7 +25,6 @@ type AuditLogsParams struct {
 	ResourceEnvironments []string
 	ResourceProjects     []string
 	ResourceComponents   []string
-	ResourceReleaseLines []string
 	ResourceResources    []string
 	ResourceNames        []string
 
@@ -94,7 +93,6 @@ type AuditResource struct {
 	Environment string         `json:"environment"`
 	Project     string         `json:"project"`
 	Component   string         `json:"component"`
-	ReleaseLine string         `json:"release_line"`
 	Resource    string         `json:"resource"`
 	UID         string         `json:"uid"`
 	Name        string         `json:"name"`

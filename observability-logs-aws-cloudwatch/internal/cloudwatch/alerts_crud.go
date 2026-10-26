@@ -211,9 +211,6 @@ func (c *Client) putMetricAlarm(ctx context.Context, names AlertResourceNames, m
 		{Key: aws.String(TagSearchPattern), Value: aws.String(truncateTag(p.SearchPattern))},
 		{Key: aws.String(TagOperator), Value: aws.String(strings.ToLower(p.Operator))},
 	}
-	if p.ReleaseLineUID != "" {
-		tags = append(tags, cwtypes.Tag{Key: aws.String(TagReleaseLineUID), Value: aws.String(p.ReleaseLineUID)})
-	}
 
 	input := &cloudwatch.PutMetricAlarmInput{
 		AlarmName:               aws.String(names.AlarmName),

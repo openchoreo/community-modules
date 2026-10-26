@@ -97,8 +97,8 @@ func TestParseAlertWebhookBody(t *testing.T) {
 	t.Run("valid body with float count and microsecond timestamp", func(t *testing.T) {
 		ts := time.Date(2025, 6, 15, 10, 30, 0, 0, time.UTC)
 		body := map[string]interface{}{
-			"alertName":                    "test-alert",
-			"alertCount":                   float64(5),
+			"alertName":                   "test-alert",
+			"alertCount":                  float64(5),
 			"alertTriggerTimeMicroSeconds": float64(ts.UnixMicro()),
 		}
 
@@ -123,8 +123,8 @@ func TestParseAlertWebhookBody(t *testing.T) {
 	t.Run("string count and string timestamp", func(t *testing.T) {
 		ts := time.UnixMicro(1750000200000000)
 		body := map[string]interface{}{
-			"alertName":                    "test-alert",
-			"alertCount":                   "3.14",
+			"alertName":                   "test-alert",
+			"alertCount":                  "3.14",
 			"alertTriggerTimeMicroSeconds": "1750000200000000",
 		}
 
@@ -173,7 +173,7 @@ func TestParseAlertWebhookBody(t *testing.T) {
 
 	t.Run("invalid string timestamp", func(t *testing.T) {
 		body := map[string]interface{}{
-			"alertName":                    "test",
+			"alertName":                   "test",
 			"alertTriggerTimeMicroSeconds": "not-a-number",
 		}
 		_, _, _, _, err := parseAlertWebhookBody(body)
@@ -292,12 +292,11 @@ func TestToLogAlertParams(t *testing.T) {
 
 	req := &gen.AlertRuleRequest{
 		Metadata: struct {
-			ComponentUid   openapi_types.UUID  `json:"componentUid"`
-			EnvironmentUid openapi_types.UUID  `json:"environmentUid"`
-			Name           string              `json:"name"`
-			Namespace      string              `json:"namespace"`
-			ProjectUid     openapi_types.UUID  `json:"projectUid"`
-			ReleaseLineUid *openapi_types.UUID `json:"releaseLineUid,omitempty"`
+			ComponentUid   openapi_types.UUID `json:"componentUid"`
+			EnvironmentUid openapi_types.UUID `json:"environmentUid"`
+			Name           string             `json:"name"`
+			Namespace      string             `json:"namespace"`
+			ProjectUid     openapi_types.UUID `json:"projectUid"`
 		}{
 			Name:           "my-alert",
 			Namespace:      "ns-1",
@@ -311,11 +310,11 @@ func TestToLogAlertParams(t *testing.T) {
 			Query: query,
 		},
 		Condition: struct {
-			Enabled   bool                                  `json:"enabled"`
-			Interval  string                                `json:"interval"`
+			Enabled   bool                                 `json:"enabled"`
+			Interval  string                               `json:"interval"`
 			Operator  gen.AlertRuleRequestConditionOperator `json:"operator"`
-			Threshold float32                               `json:"threshold"`
-			Window    string                                `json:"window"`
+			Threshold float32                              `json:"threshold"`
+			Window    string                               `json:"window"`
 		}{
 			Enabled:   enabled,
 			Operator:  operator,
@@ -566,12 +565,11 @@ func TestCreateAlertRule_Success(t *testing.T) {
 	resp, err := handler.CreateAlertRule(context.Background(), gen.CreateAlertRuleRequestObject{
 		Body: &gen.AlertRuleRequest{
 			Metadata: struct {
-				ComponentUid   openapi_types.UUID  `json:"componentUid"`
-				EnvironmentUid openapi_types.UUID  `json:"environmentUid"`
-				Name           string              `json:"name"`
-				Namespace      string              `json:"namespace"`
-				ProjectUid     openapi_types.UUID  `json:"projectUid"`
-				ReleaseLineUid *openapi_types.UUID `json:"releaseLineUid,omitempty"`
+				ComponentUid   openapi_types.UUID `json:"componentUid"`
+				EnvironmentUid openapi_types.UUID `json:"environmentUid"`
+				Name           string             `json:"name"`
+				Namespace      string             `json:"namespace"`
+				ProjectUid     openapi_types.UUID `json:"projectUid"`
 			}{
 				Name:           "test-alert",
 				Namespace:      "ns-1",
@@ -584,11 +582,11 @@ func TestCreateAlertRule_Success(t *testing.T) {
 				Query: "error",
 			},
 			Condition: struct {
-				Enabled   bool                                  `json:"enabled"`
-				Interval  string                                `json:"interval"`
+				Enabled   bool                                 `json:"enabled"`
+				Interval  string                               `json:"interval"`
 				Operator  gen.AlertRuleRequestConditionOperator `json:"operator"`
-				Threshold float32                               `json:"threshold"`
-				Window    string                                `json:"window"`
+				Threshold float32                              `json:"threshold"`
+				Window    string                               `json:"window"`
 			}{
 				Enabled:   enabled,
 				Operator:  operator,
@@ -606,8 +604,8 @@ func TestCreateAlertRule_Success(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected 201 response, got %T", resp)
 	}
-	if createResp.Body.RuleBackendId == nil || *createResp.Body.RuleBackendId != "alert-123" {
-		t.Errorf("expected ruleBackendId 'alert-123', got %v", createResp.Body.RuleBackendId)
+	if createResp.RuleBackendId == nil || *createResp.RuleBackendId != "alert-123" {
+		t.Errorf("expected ruleBackendId 'alert-123', got %v", createResp.RuleBackendId)
 	}
 }
 
@@ -754,12 +752,11 @@ func TestUpdateAlertRule_Success(t *testing.T) {
 		RuleName: "test-alert",
 		Body: &gen.AlertRuleRequest{
 			Metadata: struct {
-				ComponentUid   openapi_types.UUID  `json:"componentUid"`
-				EnvironmentUid openapi_types.UUID  `json:"environmentUid"`
-				Name           string              `json:"name"`
-				Namespace      string              `json:"namespace"`
-				ProjectUid     openapi_types.UUID  `json:"projectUid"`
-				ReleaseLineUid *openapi_types.UUID `json:"releaseLineUid,omitempty"`
+				ComponentUid   openapi_types.UUID `json:"componentUid"`
+				EnvironmentUid openapi_types.UUID `json:"environmentUid"`
+				Name           string             `json:"name"`
+				Namespace      string             `json:"namespace"`
+				ProjectUid     openapi_types.UUID `json:"projectUid"`
 			}{
 				Name:      "test-alert",
 				Namespace: "ns-1",
@@ -770,11 +767,11 @@ func TestUpdateAlertRule_Success(t *testing.T) {
 				Query: "error",
 			},
 			Condition: struct {
-				Enabled   bool                                  `json:"enabled"`
-				Interval  string                                `json:"interval"`
+				Enabled   bool                                 `json:"enabled"`
+				Interval  string                               `json:"interval"`
 				Operator  gen.AlertRuleRequestConditionOperator `json:"operator"`
-				Threshold float32                               `json:"threshold"`
-				Window    string                                `json:"window"`
+				Threshold float32                              `json:"threshold"`
+				Window    string                               `json:"window"`
 			}{
 				Enabled:   enabled,
 				Operator:  operator,
@@ -792,8 +789,8 @@ func TestUpdateAlertRule_Success(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected 200 response, got %T", resp)
 	}
-	if updateResp.Body.RuleBackendId == nil || *updateResp.Body.RuleBackendId != "alert-upd-1" {
-		t.Errorf("expected ruleBackendId 'alert-upd-1', got %v", updateResp.Body.RuleBackendId)
+	if updateResp.RuleBackendId == nil || *updateResp.RuleBackendId != "alert-upd-1" {
+		t.Errorf("expected ruleBackendId 'alert-upd-1', got %v", updateResp.RuleBackendId)
 	}
 }
 
@@ -817,11 +814,11 @@ func TestUpdateAlertRule_NotFound(t *testing.T) {
 		RuleName: "nonexistent",
 		Body: &gen.AlertRuleRequest{
 			Condition: struct {
-				Enabled   bool                                  `json:"enabled"`
-				Interval  string                                `json:"interval"`
+				Enabled   bool                                 `json:"enabled"`
+				Interval  string                               `json:"interval"`
 				Operator  gen.AlertRuleRequestConditionOperator `json:"operator"`
-				Threshold float32                               `json:"threshold"`
-				Window    string                                `json:"window"`
+				Threshold float32                              `json:"threshold"`
+				Window    string                               `json:"window"`
 			}{
 				Enabled:   enabled,
 				Operator:  operator,
@@ -868,11 +865,11 @@ func TestUpdateAlertRule_InvalidError(t *testing.T) {
 		RuleName: "test-alert",
 		Body: &gen.AlertRuleRequest{
 			Condition: struct {
-				Enabled   bool                                  `json:"enabled"`
-				Interval  string                                `json:"interval"`
+				Enabled   bool                                 `json:"enabled"`
+				Interval  string                               `json:"interval"`
 				Operator  gen.AlertRuleRequestConditionOperator `json:"operator"`
-				Threshold float32                               `json:"threshold"`
-				Window    string                                `json:"window"`
+				Threshold float32                              `json:"threshold"`
+				Window    string                               `json:"window"`
 			}{
 				Enabled:   enabled,
 				Operator:  operator,
@@ -919,11 +916,11 @@ func TestUpdateAlertRule_GenericError(t *testing.T) {
 		RuleName: "test-alert",
 		Body: &gen.AlertRuleRequest{
 			Condition: struct {
-				Enabled   bool                                  `json:"enabled"`
-				Interval  string                                `json:"interval"`
+				Enabled   bool                                 `json:"enabled"`
+				Interval  string                               `json:"interval"`
 				Operator  gen.AlertRuleRequestConditionOperator `json:"operator"`
-				Threshold float32                               `json:"threshold"`
-				Window    string                                `json:"window"`
+				Threshold float32                              `json:"threshold"`
+				Window    string                               `json:"window"`
 			}{
 				Enabled:   enabled,
 				Operator:  operator,
@@ -1118,12 +1115,11 @@ func TestCreateAlertRule_Error(t *testing.T) {
 	resp, err := handler.CreateAlertRule(context.Background(), gen.CreateAlertRuleRequestObject{
 		Body: &gen.AlertRuleRequest{
 			Metadata: struct {
-				ComponentUid   openapi_types.UUID  `json:"componentUid"`
-				EnvironmentUid openapi_types.UUID  `json:"environmentUid"`
-				Name           string              `json:"name"`
-				Namespace      string              `json:"namespace"`
-				ProjectUid     openapi_types.UUID  `json:"projectUid"`
-				ReleaseLineUid *openapi_types.UUID `json:"releaseLineUid,omitempty"`
+				ComponentUid   openapi_types.UUID `json:"componentUid"`
+				EnvironmentUid openapi_types.UUID `json:"environmentUid"`
+				Name           string             `json:"name"`
+				Namespace      string             `json:"namespace"`
+				ProjectUid     openapi_types.UUID `json:"projectUid"`
 			}{
 				Name:           "test-alert",
 				Namespace:      "ns-1",
@@ -1136,11 +1132,11 @@ func TestCreateAlertRule_Error(t *testing.T) {
 				Query: "error",
 			},
 			Condition: struct {
-				Enabled   bool                                  `json:"enabled"`
-				Interval  string                                `json:"interval"`
+				Enabled   bool                                 `json:"enabled"`
+				Interval  string                               `json:"interval"`
 				Operator  gen.AlertRuleRequestConditionOperator `json:"operator"`
-				Threshold float32                               `json:"threshold"`
-				Window    string                                `json:"window"`
+				Threshold float32                              `json:"threshold"`
+				Window    string                               `json:"window"`
 			}{
 				Enabled:   enabled,
 				Operator:  operator,
@@ -1382,8 +1378,8 @@ func TestHandleAlertWebhook_ValidBody(t *testing.T) {
 
 	alertTime := float64(time.Now().UnixMicro())
 	body := &map[string]interface{}{
-		"alertName":                    "test-alert",
-		"alertCount":                   float64(3),
+		"alertName":                   "test-alert",
+		"alertCount":                  float64(3),
 		"alertTriggerTimeMicroSeconds": alertTime,
 	}
 
@@ -1518,18 +1514,18 @@ func TestQueryEvents_ComponentScope(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected 200 response, got %T", resp)
 	}
-	if ok200.Body.Events == nil || len(*ok200.Body.Events) != 1 {
-		t.Fatalf("expected 1 event in response, got %v", ok200.Body.Events)
+	if ok200.Events == nil || len(*ok200.Events) != 1 {
+		t.Fatalf("expected 1 event in response, got %v", ok200.Events)
 	}
-	event := (*ok200.Body.Events)[0]
+	event := (*ok200.Events)[0]
 	if event.Type == nil || *event.Type != "Normal" {
 		t.Errorf("expected type Normal, got %v", event.Type)
 	}
 	if event.Reason == nil || *event.Reason != "Completed" {
 		t.Errorf("expected reason Completed, got %v", event.Reason)
 	}
-	if ok200.Body.Total != 9 {
-		t.Errorf("expected total 9, got %d", ok200.Body.Total)
+	if ok200.Total != 9 {
+		t.Errorf("expected total 9, got %d", ok200.Total)
 	}
 }
 

@@ -124,7 +124,6 @@ func eventsBase(p EventsParams, table, scopeName string) string {
 			{LabelProjectUID, s.ProjectUID},
 			{LabelComponentUID, s.ComponentUID},
 			{LabelEnvironmentUID, s.EnvironmentUID},
-			{LabelReleaseLineUID, s.ReleaseLineUID},
 		} {
 			if f.value == "" {
 				continue

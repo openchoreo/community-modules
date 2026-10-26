@@ -22,7 +22,6 @@ type RuleInput struct {
 	ComponentUID   string
 	ProjectUID     string
 	EnvironmentUID string
-	ReleaseLineUID string
 
 	Query     string  // free-text phrase or a raw Cloud Logging filter
 	Operator  string  // gt|gte|lt|lte|eq|neq

@@ -62,13 +62,10 @@ labels. The **logical** OpenChoreo namespace lives in the
 adapter scopes on — not the synthesised Kubernetes namespace
 (`resource.labels.namespace_name`, e.g. `dp-default-development-4b8b4fdc`).
 
-When a component logs query or an alert rule carries a release line UID, the adapter also filters on `labels."k8s-pod/openchoreo_dev/release-line-uid"` and returns `OpenChoreo-Release-Line-Applied: true`. Alert rules whose `source.query` is a raw Cloud Logging filter are used verbatim, so they are not scoped to the line and the header is omitted.
-
 | Endpoint | Purpose |
 | --- | --- |
 | `POST /api/v1/logs/query` | Runs a Cloud Logging filter against `k8s_container` logs, scoped by OpenChoreo namespace label plus optional component/project/environment UIDs. |
 | `POST /api/v1/events/query` | Not implemented — this adapter is a logs backend and does not serve Kubernetes events; returns `501` with error code `OBS-V1-L-GCP-501`. |
-| `POST /api/v1alpha1/audit-logs/query`, `/audit-logs/filter-values`, `/platform-logs/query`, `/platform-logs/filter-values` | Not implemented; return `501` with error code `OBS-V1-L-GCP-501`. |
 | `POST /api/v1alpha1/alerts/rules` | Creates a log-based metric and a Cloud Monitoring alert policy wired to the configured notification channel. Returns `409` if a rule with the same identity already exists (use `PUT` to replace). |
 | `GET /api/v1alpha1/alerts/rules/{ruleName}` | Looks the policy up by its `openchoreo-rule-name` user label. |
 | `PUT /api/v1alpha1/alerts/rules/{ruleName}` | Updates the rule's metric and policy in place. Returns `404` if the rule does not exist. |

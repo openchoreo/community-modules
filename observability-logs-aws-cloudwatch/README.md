@@ -138,7 +138,6 @@ involved Kubernetes object:
 - `openchoreo.dev/project-uid`
 - `openchoreo.dev/environment-uid`
 - `openchoreo.dev/component-uid`
-- `openchoreo.dev/release-line-uid` (only when the query names a release line)
 
 Workflow-scoped event queries do not require project or component labels. Workflow
 events are matched by Kubernetes namespace and workflow object name:

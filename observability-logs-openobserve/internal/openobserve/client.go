@@ -38,7 +38,6 @@ type ComponentLogsParams struct {
 	ComponentIDs  []string  `json:"componentIds,omitempty"`
 	EnvironmentID string    `json:"environmentId"`
 	ProjectID     string    `json:"projectId"`
-	ReleaseLineID string    `json:"releaseLineId,omitempty"`
 	StartTime     time.Time `json:"startTime"`
 	EndTime       time.Time `json:"endTime"`
 	SearchPhrase  string    `json:"searchPhrase"`
@@ -66,7 +65,6 @@ type LogAlertParams struct {
 	ProjectUID     string  `json:"projectUid"`
 	EnvironmentUID string  `json:"environmentUid"`
 	ComponentUID   string  `json:"componentUid"`
-	ReleaseLineUID string  `json:"releaseLineUid,omitempty"`
 	SearchPattern  string  `json:"searchPattern"`
 	Operator       string  `json:"operator"`
 	ThresholdValue float32 `json:"thresholdValue"`
@@ -122,21 +120,8 @@ type OpenObserveResponse struct {
 // openObserveErrCodeStreamNotFound is OpenObserve's error code for "Search stream not found".
 const openObserveErrCodeStreamNotFound = 20002
 
-// openObserveErrCodeUnknownField is OpenObserve's error code for a query naming a column the stream doesn't have.
-const openObserveErrCodeUnknownField = 20004
-
-// releaseLineColumnSuffix ends every release line UID column (logs, events).
-const releaseLineColumnSuffix = "openchoreo_dev_release_line_uid"
-
 type openObserveErrorBody struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-}
-
-// isMissingReleaseLineColumn reports a query that filters on a release line before any record in the
-// stream carried one. No record has the line yet, so the query matches nothing.
-func isMissingReleaseLineColumn(e openObserveErrorBody) bool {
-	return e.Code == openObserveErrCodeUnknownField && strings.Contains(e.Message, releaseLineColumnSuffix)
+	Code int `json:"code"`
 }
 
 type Client struct {
@@ -199,8 +184,7 @@ func (c *Client) executeSearchQuery(ctx context.Context, queryJSON []byte) (*Ope
 		// received data 400s with this code instead of returning zero hits like an
 		// existing-but-empty index would. Treat it as "no data yet", not a failure.
 		var oErr openObserveErrorBody
-		if json.Unmarshal(body, &oErr) == nil &&
-			(oErr.Code == openObserveErrCodeStreamNotFound || isMissingReleaseLineColumn(oErr)) {
+		if json.Unmarshal(body, &oErr) == nil && oErr.Code == openObserveErrCodeStreamNotFound {
 			return &OpenObserveResponse{Hits: []map[string]interface{}{}}, nil
 		}
 		c.logger.Error("OpenObserve returned error",

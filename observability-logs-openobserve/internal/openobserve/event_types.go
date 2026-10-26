@@ -42,8 +42,6 @@ const (
 	evEnvironmentName = evLabelPrefix + "environment"
 	// evEnvironmentID is the OpenChoreo environment UID label column.
 	evEnvironmentID = evLabelPrefix + "environment_uid"
-	// evReleaseLineID is the OpenChoreo release line UID label column.
-	evReleaseLineID = evLabelPrefix + "release_line_uid"
 	// evNamespaceName is the OpenChoreo namespace name label column.
 	evNamespaceName = evLabelPrefix + "namespace"
 )
@@ -72,7 +70,6 @@ type EventsQueryParams struct {
 	ProjectID     string    `json:"projectId,omitempty"`
 	ComponentID   string    `json:"componentId,omitempty"`
 	EnvironmentID string    `json:"environmentId,omitempty"`
-	ReleaseLineID string    `json:"releaseLineId,omitempty"`
 	StartTime     time.Time `json:"startTime"`
 	EndTime       time.Time `json:"endTime"`
 	Limit         int       `json:"limit"`

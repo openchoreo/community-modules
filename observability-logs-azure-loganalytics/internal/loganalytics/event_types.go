@@ -22,7 +22,6 @@ type ComponentEventScope struct {
 	ComponentUID   string
 	ProjectUID     string
 	EnvironmentUID string
-	ReleaseLineUID string
 }
 
 // WorkflowEventScope selects events of a workflow run's objects, optionally

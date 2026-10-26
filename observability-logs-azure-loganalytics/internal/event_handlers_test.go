@@ -96,7 +96,7 @@ func expectEvents200(t *testing.T, resp gen.QueryEventsResponseObject) gen.Query
 	if !ok {
 		t.Fatalf("got %T, want 200", resp)
 	}
-	if r.Body.Events == nil {
+	if r.Events == nil {
 		t.Fatal("events must always be present")
 	}
 	return r
@@ -199,14 +199,14 @@ func TestQueryEvents_ComponentScope(t *testing.T) {
 	})
 
 	r := expectEvents200(t, queryEvents(t, api, body))
-	if r.Body.Total != 1 || len(*r.Body.Events) != 1 {
-		t.Fatalf("total=%d events=%d", r.Body.Total, len(*r.Body.Events))
+	if r.Total != 1 || len(*r.Events) != 1 {
+		t.Fatalf("total=%d events=%d", r.Total, len(*r.Events))
 	}
-	if r.Body.TookMs == nil {
+	if r.TookMs == nil {
 		t.Error("tookMs must be set")
 	}
 
-	e := (*r.Body.Events)[0]
+	e := (*r.Events)[0]
 	if e.Timestamp == nil || e.Timestamp.Format("15:04:05") != "10:00:00" {
 		t.Errorf("timestamp = %v", e.Timestamp)
 	}
@@ -253,8 +253,8 @@ func TestQueryEvents_WorkflowScope(t *testing.T) {
 	body.SortOrder = &asc
 
 	r := expectEvents200(t, queryEvents(t, api, body))
-	if r.Body.Total != 0 || len(*r.Body.Events) != 0 {
-		t.Errorf("total=%d events=%d", r.Body.Total, len(*r.Body.Events))
+	if r.Total != 0 || len(*r.Events) != 0 {
+		t.Errorf("total=%d events=%d", r.Total, len(*r.Events))
 	}
 	for _, want := range []string{
 		`== "workflows-acme"`,
@@ -274,7 +274,7 @@ func TestQueryEvents_UnscopedReasonSweep(t *testing.T) {
 	body.Reasons = &[]string{"DeploymentSucceeded", "DeploymentFailed"}
 
 	r := expectEvents200(t, queryEvents(t, api, body))
-	if r.Body.Total != 1 || len(*r.Body.Events) != 1 || *(*r.Body.Events)[0].Reason != "DeploymentSucceeded" {
+	if r.Total != 1 || len(*r.Events) != 1 || *(*r.Events)[0].Reason != "DeploymentSucceeded" {
 		t.Errorf("unexpected response %+v", r)
 	}
 	if !strings.Contains(api.lastKQL, `in ("DeploymentSucceeded", "DeploymentFailed")`) {
@@ -307,7 +307,7 @@ func TestQueryEvents_OmitsEmptyAndInvalidFields(t *testing.T) {
 	body := eventsBody()
 	body.Reasons = &[]string{"BackOff"}
 
-	e := (*expectEvents200(t, queryEvents(t, api, body)).Body.Events)[0]
+	e := (*expectEvents200(t, queryEvents(t, api, body)).Events)[0]
 	if e.Message != nil || e.Type != nil || e.Reason != nil {
 		t.Errorf("empty strings should be omitted: %+v", e)
 	}
@@ -330,8 +330,8 @@ func TestQueryEvents_TotalExceedsPageWhenTruncated(t *testing.T) {
 	body.Limit = intPtr(2)
 
 	r := expectEvents200(t, queryEvents(t, api, body))
-	if r.Body.Total != 3 || len(*r.Body.Events) != 2 {
-		t.Errorf("total=%d events=%d, want 3/2", r.Body.Total, len(*r.Body.Events))
+	if r.Total != 3 || len(*r.Events) != 2 {
+		t.Errorf("total=%d events=%d, want 3/2", r.Total, len(*r.Events))
 	}
 }
 
@@ -345,8 +345,8 @@ func TestQueryEvents_TotalMatchesPageWhenWindowRead(t *testing.T) {
 	body.Limit = intPtr(2)
 
 	r := expectEvents200(t, queryEvents(t, api, body))
-	if r.Body.Total != 2 || len(*r.Body.Events) != 2 {
-		t.Errorf("total=%d events=%d, want 2/2", r.Body.Total, len(*r.Body.Events))
+	if r.Total != 2 || len(*r.Events) != 2 {
+		t.Errorf("total=%d events=%d, want 2/2", r.Total, len(*r.Events))
 	}
 }
 
@@ -366,8 +366,8 @@ func TestQueryEvents_DoesNotSplitATimestampGroup(t *testing.T) {
 	body.SortOrder = &asc
 
 	r := expectEvents200(t, queryEvents(t, api, body))
-	if r.Body.Total != 4 || len(*r.Body.Events) != 4 {
-		t.Errorf("total=%d events=%d, want 4/4", r.Body.Total, len(*r.Body.Events))
+	if r.Total != 4 || len(*r.Events) != 4 {
+		t.Errorf("total=%d events=%d, want 4/4", r.Total, len(*r.Events))
 	}
 	if !strings.Contains(api.lastKQL, "| where TimeGenerated <= Boundary") {
 		t.Errorf("page is not extended to its boundary:\n%s", api.lastKQL)

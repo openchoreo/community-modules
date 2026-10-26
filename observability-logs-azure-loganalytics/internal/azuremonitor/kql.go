@@ -13,7 +13,6 @@ const (
 	labelComponentUID   = "openchoreo.dev/component-uid"
 	labelProjectUID     = "openchoreo.dev/project-uid"
 	labelEnvironmentUID = "openchoreo.dev/environment-uid"
-	labelReleaseLineUID = "openchoreo.dev/release-line-uid"
 )
 
 func BuildAlertKQL(in RuleInput) string {
@@ -46,12 +45,6 @@ func BuildAlertKQL(in RuleInput) string {
 		sb.WriteString("]) == ")
 		sb.WriteString(kqlString(uid))
 	}
-	if uid := normaliseUID(in.ReleaseLineUID); uid != "" {
-		sb.WriteString("\n| where tostring(parse_json(tostring(KubernetesMetadata.podLabels))[")
-		sb.WriteString(kqlString(labelReleaseLineUID))
-		sb.WriteString("]) == ")
-		sb.WriteString(kqlString(uid))
-	}
 
 	if phrase := strings.TrimSpace(in.Query); phrase != "" {
 		sb.WriteString("\n| where tostring(LogMessage) contains ")
@@ -59,12 +52,6 @@ func BuildAlertKQL(in RuleInput) string {
 	}
 
 	return sb.String()
-}
-
-// ReleaseLineScoped reports whether BuildAlertKQL filters the rule to its
-// release line. A full KQL statement is passed through unchanged, so it is not.
-func ReleaseLineScoped(in RuleInput) bool {
-	return normaliseUID(in.ReleaseLineUID) != "" && !isKQLStatement(in.Query)
 }
 
 func isKQLStatement(q string) bool {

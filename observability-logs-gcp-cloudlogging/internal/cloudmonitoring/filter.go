@@ -14,7 +14,6 @@ const (
 	labelComponentUID   = "openchoreo.dev/component-uid"
 	labelProjectUID     = "openchoreo.dev/project-uid"
 	labelEnvironmentUID = "openchoreo.dev/environment-uid"
-	labelReleaseLineUID = "openchoreo.dev/release-line-uid"
 
 	// podLabelPrefix is how GKE surfaces pod labels on a LogEntry.
 	podLabelPrefix = "k8s-pod/"
@@ -44,20 +43,11 @@ func BuildAlertFilter(in RuleInput) string {
 	if uid := normalizeUID(in.EnvironmentUID); uid != "" {
 		clauses = append(clauses, labelEquals(labelEnvironmentUID, uid))
 	}
-	if uid := normalizeUID(in.ReleaseLineUID); uid != "" {
-		clauses = append(clauses, labelEquals(labelReleaseLineUID, uid))
-	}
 	if phrase := strings.TrimSpace(in.Query); phrase != "" {
 		clauses = append(clauses, fmt.Sprintf(`(textPayload:%s OR jsonPayload.message:%s)`, quote(phrase), quote(phrase)))
 	}
 
 	return strings.Join(clauses, "\n")
-}
-
-// ReleaseLineScoped reports whether BuildAlertFilter restricts the rule to its
-// release line. A raw filter is used verbatim, so it is never scoped.
-func ReleaseLineScoped(in RuleInput) bool {
-	return normalizeUID(in.ReleaseLineUID) != "" && !isRawFilter(in.Query)
 }
 
 func isRawFilter(q string) bool {

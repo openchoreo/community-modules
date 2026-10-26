@@ -55,7 +55,7 @@ metadata through `KubernetesMetadata.podLabels`:
 - Container name (`ContainerName`)
 - The OpenChoreo pod labels (`openchoreo.dev/namespace`,
   `openchoreo.dev/component-uid`, `openchoreo.dev/project-uid`,
-  `openchoreo.dev/environment-uid`, `openchoreo.dev/release-line-uid`)
+  `openchoreo.dev/environment-uid`)
 
 | Endpoint                                         | Purpose                                                                                                                                                            |
 | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |

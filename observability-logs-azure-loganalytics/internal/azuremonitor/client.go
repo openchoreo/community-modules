@@ -42,22 +42,17 @@ type Config struct {
 }
 
 func NewClient(cred azcore.TokenCredential, cfg Config, logger *slog.Logger) (*Client, error) {
-	return NewClientWithOptions(cred, cfg, nil, logger)
-}
-
-// NewClientWithOptions is NewClient with ARM client options, e.g. a test transport.
-func NewClientWithOptions(cred azcore.TokenCredential, cfg Config, opts *arm.ClientOptions, logger *slog.Logger) (*Client, error) {
 	if cfg.SubscriptionID == "" {
 		return nil, errors.New("subscriptionID is required")
 	}
 	if cfg.ResourceGroup == "" {
 		return nil, errors.New("resourceGroup is required")
 	}
-	rules, err := armmonitor.NewScheduledQueryRulesClient(cfg.SubscriptionID, cred, opts)
+	rules, err := armmonitor.NewScheduledQueryRulesClient(cfg.SubscriptionID, cred, nil)
 	if err != nil {
 		return nil, fmt.Errorf("scheduledQueryRulesClient: %w", err)
 	}
-	groups, err := armmonitor.NewActionGroupsClient(cfg.SubscriptionID, cred, opts)
+	groups, err := armmonitor.NewActionGroupsClient(cfg.SubscriptionID, cred, nil)
 	if err != nil {
 		return nil, fmt.Errorf("actionGroupsClient: %w", err)
 	}

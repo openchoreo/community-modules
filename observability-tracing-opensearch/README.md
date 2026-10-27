@@ -157,6 +157,12 @@ If you are upgrading from a version before 0.4.0, reindex the older tracing data
 curl -fsSL https://raw.githubusercontent.com/openchoreo/community-modules/refs/heads/main/observability-tracing-opensearch/scripts/upgrade-to-0-4-1.sh | bash
 ```
 
+If you are upgrading from 0.8.x, add the release line fields to the existing trace indices, so spans written to them can be filtered by release line
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/openchoreo/community-modules/refs/heads/main/observability-tracing-opensearch/scripts/upgrade-to-0-9.sh | bash
+```
+
 ## Dependencies
 
 Bundled upstream Helm charts:

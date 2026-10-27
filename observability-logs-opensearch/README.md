@@ -346,6 +346,16 @@ Needing a different retention is the reason audit is a separate stream rather th
 filter over the container logs, so the two are not expected to match. Changing the value
 and upgrading reconciles the policy onto the indices that already exist.
 
+## Upgrading from 0.7.x
+
+0.8.0 maps the release line labels of Kubernetes events and the release line of audit records. Daily indices created after the upgrade get these fields from the index templates. Existing `k8s-events-*` and audit indices, including the indices for the day of the upgrade, keep the 0.7.x mapping, so records written to them can't be filtered by release line. Records written before the upgrade carry no release line, so no action is needed for them.
+
+To filter records by release line from the day of the upgrade, add the fields to the existing indices after the `helm upgrade` to 0.8.0, before creating release lines:
+
+```bash
+./scripts/upgrade-to-0-8.sh
+```
+
 ## Upgrading from 0.5.x
 
 0.6.0 maps `kubernetes.labels` as a `flat_object`, so every pod label is searchable, and

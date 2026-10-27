@@ -171,46 +171,6 @@ done
 
 echo -e "Index template creation complete\n"
 
-# A template only shapes indices created after it changes. Fields added to the otel-traces
-# template are also added to the existing indices, so spans ingested from now on are
-# filterable without waiting for the next index. Adding fields to a mapping is always allowed.
-otelTracesAddedFields='
-{
-  "properties": {
-    "resource": {
-      "properties": {
-        "openchoreo.dev/release-line": {
-          "type": "keyword"
-        },
-        "openchoreo.dev/release-line-uid": {
-          "type": "keyword"
-        },
-        "openchoreo.dev/release-line-component-uid": {
-          "type": "keyword"
-        }
-      }
-    }
-  }
-}'
-
-echo "Adding new fields to existing otel-traces indices"
-response=$(curl --data "$otelTracesAddedFields" \
-                --header "Authorization: Basic $authnToken" \
-                --header "Content-Type: application/json" \
-                --insecure \
-                --request PUT \
-                --show-error \
-                --silent \
-                --write-out "\n%{http_code}" \
-                "$openSearchHost/otel-traces-*/_mapping?allow_no_indices=true&ignore_unavailable=true")
-httpCode=$(echo "$response" | tail -n1)
-if [ "$httpCode" -eq 200 ]; then
-    echo -e "Existing otel-traces indices updated\n"
-else
-    echo "Response: $(echo "$response" | head -n-1)"
-    echo "Failed to add new fields to existing otel-traces indices. HTTP response code: $httpCode"
-fi
-
 
 # 3. Add/Update ISM Policies
 # Reference: https://docs.opensearch.org/latest/im-plugin/ism/api/

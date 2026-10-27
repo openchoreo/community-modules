@@ -35,6 +35,11 @@ cleanup() {
 trap cleanup EXIT
 
 step "Port-forwarding $OS_SERVICE -> localhost:$LOCAL_PORT"
+# The port-forward takes seconds to fail on a taken port, so the probe below would reach that listener first.
+if curl -sS -k "https://localhost:$LOCAL_PORT" >/dev/null 2>&1; then
+  fail "localhost:$LOCAL_PORT is already in use; set LOCAL_PORT to a free port"
+  exit 1
+fi
 kubectl port-forward -n "$NS" "$OS_SERVICE" "$LOCAL_PORT:9200" >/dev/null 2>&1 &
 PF_PID=$!
 PF_READY=0

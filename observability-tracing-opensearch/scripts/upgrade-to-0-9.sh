@@ -24,6 +24,11 @@ cleanup() {
 trap cleanup EXIT
 
 step "Port-forwarding svc/opensearch -> localhost:$LOCAL_PORT"
+# If the port is taken, the port-forward fails and the probe below would reach that listener instead.
+if curl -sS -k "https://localhost:$LOCAL_PORT" >/dev/null 2>&1; then
+  fail "localhost:$LOCAL_PORT is already in use"
+  exit 1
+fi
 kubectl port-forward -n "$NS" svc/opensearch "$LOCAL_PORT:9200" >/dev/null 2>&1 &
 PF_PID=$!
 PF_READY=0

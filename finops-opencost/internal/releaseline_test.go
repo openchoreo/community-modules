@@ -90,6 +90,58 @@ func TestGetComponentCostsRejectsReleaseLineWithoutComponent(t *testing.T) {
 	}
 }
 
+// allReleaseLines needs a component only when it is true.
+func TestAllReleaseLinesWithoutComponent(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"code":200,"data":[]}`)
+	}))
+	defer srv.Close()
+
+	h := newTestHandler(srv.URL, "http://unused")
+	ctx := context.WithValue(context.Background(), bearerTokenKey, "test-token")
+	start := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 7, 2, 0, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name string
+		all  bool
+	}{
+		{"false is accepted", false},
+		{"true is rejected", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			all := tt.all
+			costs, err := h.GetComponentCosts(ctx, gen.GetComponentCostsRequestObject{
+				Namespace:      "default",
+				EnvironmentUid: openapi_types.UUID(mustUUID(environmentUID)),
+				Params: gen.GetComponentCostsParams{
+					ProjectUid: uuidPtr(projectUID), AllReleaseLines: &all, StartTime: start, EndTime: end,
+				},
+			})
+			if err != nil {
+				t.Fatalf("GetComponentCosts error: %v", err)
+			}
+			if _, rejected := costs.(gen.GetComponentCosts400JSONResponse); rejected != tt.all {
+				t.Errorf("costs rejected = %v, want %v", rejected, tt.all)
+			}
+
+			recs, err := h.GetRecommendations(ctx, gen.GetRecommendationsRequestObject{
+				Namespace:      "default",
+				EnvironmentUid: openapi_types.UUID(mustUUID(environmentUID)),
+				Params: gen.GetRecommendationsParams{
+					ProjectUid: uuidPtr(projectUID), AllReleaseLines: &all, StartTime: start, EndTime: end, Environment: "development",
+				},
+			})
+			if err != nil {
+				t.Fatalf("GetRecommendations error: %v", err)
+			}
+			if _, rejected := recs.(gen.GetRecommendations400JSONResponse); rejected != tt.all {
+				t.Errorf("recommendations rejected = %v, want %v", rejected, tt.all)
+			}
+		})
+	}
+}
+
 func TestGetRecommendationsForwardsReleaseLine(t *testing.T) {
 	openCostSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, lineAllocations)

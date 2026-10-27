@@ -356,6 +356,12 @@ To filter records by release line from the day of the upgrade, add the fields to
 ./scripts/upgrade-to-0-8.sh
 ```
 
+If you set `auditLogs.indexPrefix`, pass the same prefix to the script:
+
+```bash
+AUDIT_INDEX_PREFIX=<your-prefix> ./scripts/upgrade-to-0-8.sh
+```
+
 ## Upgrading from 0.5.x
 
 0.6.0 maps `kubernetes.labels` as a `flat_object`, so every pod label is searchable, and

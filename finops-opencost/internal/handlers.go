@@ -58,7 +58,7 @@ func (h *CostHandler) GetComponentCosts(ctx context.Context, request gen.GetComp
 	if params.ComponentUid != nil && params.ProjectUid == nil {
 		return gen.GetComponentCosts400JSONResponse{BadRequestJSONResponse: gen.BadRequestJSONResponse{Message: "componentUid requires projectUid"}}, nil
 	}
-	if (params.ReleaseLineUid != nil || params.AllReleaseLines != nil) && params.ComponentUid == nil {
+	if (params.ReleaseLineUid != nil || (params.AllReleaseLines != nil && *params.AllReleaseLines)) && params.ComponentUid == nil {
 		return gen.GetComponentCosts400JSONResponse{BadRequestJSONResponse: gen.BadRequestJSONResponse{Message: "releaseLineUid and allReleaseLines require componentUid"}}, nil
 	}
 
@@ -189,7 +189,7 @@ func (h *CostHandler) GetRecommendations(ctx context.Context, request gen.GetRec
 	if params.Environment == "" {
 		return gen.GetRecommendations400JSONResponse{BadRequestJSONResponse: gen.BadRequestJSONResponse{Message: "environment is required"}}, nil
 	}
-	if params.AllReleaseLines != nil && params.ComponentUid == nil {
+	if params.AllReleaseLines != nil && *params.AllReleaseLines && params.ComponentUid == nil {
 		return gen.GetRecommendations400JSONResponse{BadRequestJSONResponse: gen.BadRequestJSONResponse{Message: "allReleaseLines requires componentUid"}}, nil
 	}
 	if params.ComponentUid != nil && params.ProjectUid == nil {

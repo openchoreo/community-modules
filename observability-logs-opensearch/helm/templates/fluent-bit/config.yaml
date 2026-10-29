@@ -2,6 +2,10 @@
 {{- if not .Values.fluentBitCustomizations.clusterInstance }}
 {{- fail "fluentBitCustomizations.clusterInstance is required. It names the cluster these records came from and cannot be defaulted. Set fluent-bit.enabled=false to install without log collection." }}
 {{- end }}
+{{- /* Fluent Bit 5.x answers /api/v1/health with 404, so pods probed there never become Ready. */}}
+{{- if eq (dig "readinessProbe" "httpGet" "path" "" (index .Values "fluent-bit")) "/api/v1/health" }}
+{{- fail "fluent-bit.readinessProbe.httpGet.path is /api/v1/health, which Fluent Bit 5.x does not serve. This usually means the upgrade used --reuse-values, which keeps the previous chart's defaults. Upgrade with --reset-then-reuse-values instead, or set fluent-bit.readinessProbe.httpGet.path=/api/v2/health." }}
+{{- end }}
 apiVersion: v1
 kind: ConfigMap
 metadata:

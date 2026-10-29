@@ -56,6 +56,10 @@ done
 
 # 2. Create index templates
 
+# Wildcard fields set "doc_values": false explicitly. OpenSearch 3.4 changed the default to
+# true, which grows each daily index by roughly half for values the adapter never sorts or
+# aggregates on.
+
 # Template for indices which hold container logs
 containerLogsIndexTemplate='
 {
@@ -97,7 +101,8 @@ containerLogsIndexTemplate='
           }
         },
         "log": {
-          "type": "wildcard"
+          "type": "wildcard",
+          "doc_values": false
         },
         "openchoreo_cluster_instance": {
           "type": "keyword"
@@ -125,7 +130,8 @@ k8sEventsIndexTemplate='
           "type": "date"
         },
         "body": {
-          "type": "wildcard"
+          "type": "wildcard",
+          "doc_values": false
         },
         "severity": {
           "properties": {
@@ -402,7 +408,8 @@ auditLogsIndexTemplate='
           "type": "keyword"
         },
         "log": {
-          "type": "wildcard"
+          "type": "wildcard",
+          "doc_values": false
         }
       }
     }

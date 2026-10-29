@@ -69,7 +69,7 @@ helm upgrade --install observability-logs-opensearch \
   oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-logs-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.7.0 \
+  --version 0.7.1 \
   --set adapter.openSearchSecretName="opensearch-admin-credentials" \
   --set openSearchSetup.openSearchSecretName="opensearch-admin-credentials" \
   --set fluentBitCustomizations.clusterInstance=singleCluster
@@ -86,7 +86,7 @@ clusters, see [Multi-cluster topology](#multi-cluster-topology).
 >   oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-logs-opensearch \
 >   --create-namespace \
 >   --namespace openchoreo-observability-plane \
->   --version 0.7.0 \
+>   --version 0.7.1 \
 >   --set adapter.openSearchSecretName="opensearch-admin-credentials" \
 >   --set openSearch.enabled=false \
 >   --set openSearchSetup.openSearchSecretName="opensearch-admin-credentials" \
@@ -141,7 +141,7 @@ helm upgrade --install observability-logs-opensearch \
   oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-logs-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.7.0 \
+  --version 0.7.1 \
   --set adapter.openSearchSecretName="opensearch-admin-credentials" \
   --set openSearch.enabled=false \
   --set openSearchCluster.enabled=true \
@@ -173,7 +173,7 @@ helm upgrade --install observability-logs-opensearch \
   oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-logs-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.7.0 \
+  --version 0.7.1 \
   --set adapter.enabled=false \
   --set openSearch.enabled=false \
   --set openSearchCluster.enabled=false \
@@ -206,7 +206,7 @@ helm upgrade observability-logs-opensearch \
   oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-logs-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.7.0 \
+  --version 0.7.1 \
   --reset-then-reuse-values \
   --set fluentBitCustomizations.clusterInstance=singleCluster \
   --set auditLogs.enabled=true
@@ -228,7 +228,7 @@ On the **observability plane cluster**, Fluent Bit ships to the in-cluster OpenS
 helm upgrade observability-logs-opensearch \
   oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-logs-opensearch \
   --namespace openchoreo-observability-plane \
-  --version 0.7.0 \
+  --version 0.7.1 \
   --reset-then-reuse-values \
   --set fluentBitCustomizations.clusterInstance=<op-cluster-name> \
   --set auditLogs.enabled=true
@@ -241,7 +241,7 @@ helm upgrade --install observability-logs-opensearch \
   oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-logs-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.7.0 \
+  --version 0.7.1 \
   --set adapter.enabled=false \
   --set openSearch.enabled=false \
   --set openSearchCluster.enabled=false \
@@ -345,6 +345,18 @@ Audit defaults to **365 days**, against 30 for container logs and Kubernetes eve
 Needing a different retention is the reason audit is a separate stream rather than a
 filter over the container logs, so the two are not expected to match. Changing the value
 and upgrading reconciles the policy onto the indices that already exist.
+
+## Upgrading to OpenSearch 3.9.0
+
+Module versions 0.5.5, 0.7.1, 0.8.1 and later bundle OpenSearch 3.9.0. Earlier versions, including 0.6.x, 0.7.0 and 0.8.0, bundle 3.3.0. Before the first upgrade to a version with 3.9.0:
+
+- **Take a snapshot of OpenSearch.** Once OpenSearch 3.9.0 has opened the data, it cannot be rolled back to 3.3.0; `helm rollback` succeeds but OpenSearch fails to start. Restoring a [snapshot](https://docs.opensearch.org/latest/tuning-your-cluster/availability-and-recovery/snapshots/index/) is the only way back. For the same reason, never move from a version with 3.9.0 to one with 3.3.0: from 0.5.5 or 0.7.1, upgrade to 0.7.1, 0.8.1 or later, not to 0.6.x, 0.7.0 or 0.8.0.
+- **Expect OpenSearch to restart.** With the subchart OpenSearch (`openSearch.enabled=true`), its single pod restarts, and logs written while it is down (about 20 seconds) are dropped. With the operator (`openSearchCluster.enabled=true`), the operator upgrades the nodes one at a time and then restarts the data nodes once more. OpenSearch 3.9.0 uses about twice the CPU of 3.3.0 while starting, so upgrade when the nodes have spare CPU.
+
+> **Note:**
+>
+> - Upgrade with `--reset-then-reuse-values` (Helm 3.14 or later), as in the commands above. `--reuse-values` keeps the previous chart's defaults, so OpenSearch stays on 3.3.0, and when upgrading from a version with Fluent Bit 4.x, Fluent Bit 5.x is probed on a readiness path it no longer serves. The chart refuses to render in that case.
+> - With Helm 4 and the operator-based OpenSearch, add `--server-side=false`. The operator updates fields of the `OpenSearchCluster` resource after it is created, and Helm 4's server-side apply rejects any upgrade that sets them again.
 
 ## Upgrading from 0.5.x
 

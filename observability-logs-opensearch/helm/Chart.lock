@@ -1,9 +1,9 @@
 dependencies:
 - name: opensearch
   repository: https://opensearch-project.github.io/helm-charts/
-  version: 3.3.0
+  version: 3.9.0
 - name: fluent-bit
   repository: https://fluent.github.io/helm-charts
   version: 0.58.3
-digest: sha256:67b33ad7db2c8d237d25a37e11bbce2c0e038dfec6989c40bcdd7b21cdf15fed
-generated: "2026-10-23T12:50:39.98789+05:30"
+digest: sha256:1b6ae23f233f9acb3f8f26a1ae5cbea7beeade5f7821539421490b2115e96e00
+generated: "2026-10-28T12:56:35.531937+05:30"

@@ -127,6 +127,8 @@ func auditProjection() []string {
 		ColActorEntitlementsJSON+" = tostring("+ColActorEntitlements+")",
 		ColMetadataJSON+" = tostring("+ColMetadata+")",
 		ColResourceMetadataJSON+" = tostring("+ColResourceMetadata+")",
+		ColRequestJSON+" = tostring("+ColRequest+")",
+		ColReturnedJSON+" = tostring("+ColReturned+")",
 	)
 }
 
@@ -233,6 +235,17 @@ func auditBase(p AuditParams, table string, skip AuditFilter, keep []string) str
 	sb.WriteString(ColEventTime)
 	sb.WriteString(")")
 
+	// A table set up before schema 1.1 has neither column, and naming one that
+	// does not exist fails the whole query. Upgrading the adapter must not take
+	// audit down until the operator re-runs setup-audit.sh.
+	for _, col := range []string{ColRequest, ColReturned} {
+		sb.WriteString("\n| extend ")
+		sb.WriteString(col)
+		sb.WriteString(" = column_ifexists(")
+		sb.WriteString(kqlString(col))
+		sb.WriteString(", dynamic(null))")
+	}
+
 	// An absent or empty multi-value filter is not a filter. Getting this wrong
 	// turns an unfiltered audit query into one matching nothing.
 	for _, f := range []struct {
@@ -273,6 +286,7 @@ func auditBase(p AuditParams, table string, skip AuditFilter, keep []string) str
 	if skip != AuditFilterActorEntitlements {
 		writeEntitlementsFilter(&sb, p.ActorEntitlements)
 	}
+	writeReturnedItemNamesFilter(&sb, p.ReturnedItemNames)
 
 	if p.SearchPhrase != "" {
 		// The raw line, so field names and punctuation match too.
@@ -310,6 +324,7 @@ func auditRecordSourceColumns() []string {
 		ColResourceComponent, ColResourceResource, ColResourceUID, ColResourceName,
 		ColCollectorNamespace, ColCollectorPod, ColCollectorContainer,
 		ColActorEntitlements, ColMetadata, ColResourceMetadata,
+		ColRequest, ColReturned,
 	}
 }
 
@@ -340,6 +355,22 @@ func writeEntitlementsFilter(sb *strings.Builder, values []string) {
 	}
 	sb.WriteString(", 1, 0))\n)")
 	sb.WriteString("\n| where _entMatch == 1")
+}
+
+// writeReturnedItemNamesFilter matches a record when one entry of
+// returned.items carries any of the given names. Each entry's name is compared
+// on its own, so a match never spans two entries, and the subquery's summarize
+// keeps one row per record for the same reason as writeEntitlementsFilter.
+func writeReturnedItemNamesFilter(sb *strings.Builder, names []string) {
+	if len(names) == 0 {
+		return
+	}
+	sb.WriteString("\n| where isnotnull(" + ColReturned + ")")
+	sb.WriteString("\n| mv-apply _retItem = " + ColReturned + "[\"items\"] on (\n" +
+		"    summarize _retMatch = max(iff(tostring(_retItem[\"name\"]) in (")
+	writeKQLList(sb, names)
+	sb.WriteString("), 1, 0))\n)")
+	sb.WriteString("\n| where _retMatch == 1")
 }
 
 // timelineUnits is the coarsening ladder, finest first.

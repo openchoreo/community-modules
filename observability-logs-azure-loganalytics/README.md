@@ -575,6 +575,7 @@ Basic caps a query at the last 30 days. For how the plans otherwise differ, see
 | `ResourceEnvironment`                                                                 | `string`   | `{namespace}/{name}` — see below    |
 | `ResourceComponent`, `ResourceResource`, `ResourceUid`, `ResourceName`                | `string`   | the record's `resource` group       |
 | `ResourceMetadata`, `Metadata`                                                        | `dynamic`  | the metadata objects                |
+| `Request`, `Returned`                                                                 | `dynamic`  | the `request` and `returned` groups |
 | `CollectorNamespace`, `CollectorPod`, `CollectorContainer`                            | `string`   | stamped by the collector            |
 | `ClusterInstance`                                                                     | `string`   | a per-cluster literal               |
 | `RawRecord`                                                                           | `string`   | the producer's line, as emitted     |
@@ -603,6 +604,12 @@ Four of these are load-bearing and easy to get wrong:
   Azure's closed table schema — a field a later `schema_version` adds is dropped
   at ingestion rather than stored unindexed, and this is where it survives.
 
+`Request` and `Returned` hold the schema 1.1 groups whole, as emitted, on the
+sensitive reads audited under `access`. `request.parameters` is returned and
+never filtered on. The `returned.items.name` filter walks `Returned` at query
+time and matches one entry's name exactly, so `db-creds` does not match
+`db-creds-old`.
+
 Azure reserves `Type`, `id`, `TenantId`, `UniqueId`, `Title`, `_ResourceId` and
 `_SubscriptionId`, which is why `actor.type` and `resource.type` are stored
 under prefixed names.
@@ -626,12 +633,27 @@ az monitor log-analytics workspace table create \
     ResourceType=string ResourceNamespace=string ResourceEnvironment=string \
     ResourceProject=string ResourceComponent=string ResourceResource=string \
     ResourceUid=string ResourceName=string ResourceMetadata=dynamic \
-    Metadata=dynamic \
+    Metadata=dynamic Request=dynamic Returned=dynamic \
     CollectorNamespace=string CollectorPod=string CollectorContainer=string \
     ClusterInstance=string RawRecord=string
 ```
 
 The name must end in `_CL`, and `TimeGenerated` must be declared explicitly.
+
+#### Tables created before schema 1.1
+
+A table set up by an earlier release has no `Request` or `Returned` column. The
+adapter still queries it, serving records without those groups, and the
+`returned.items.name` filter matches nothing there. To add them, re-run
+`scripts/setup-audit.sh --apply --skip-preflight`. It updates the columns of an
+existing table and installs the transform that fills them. Done by hand, the
+same table command with `update` in place of `create`, without the plan and
+retention flags, does it. `update --columns` replaces the custom column set
+rather than adding to it, so pass the whole list.
+
+Records ingested before the re-run keep these groups only in `RawRecord`. They
+are still returned, and `searchPhrase` still finds them, but without `request` or
+`returned`, and the `returned.items.name` filter does not match them.
 
 ### Retention
 

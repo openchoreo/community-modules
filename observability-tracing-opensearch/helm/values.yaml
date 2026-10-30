@@ -28,7 +28,7 @@ openSearch:
   nameOverride: "opensearch"
 
   image:
-    tag: "3.3.0"
+    tag: "3.9.0"
 
   masterService: opensearch
 
@@ -115,12 +115,12 @@ openSearchCluster:
 
   general:
     setVMMaxMapCount: true
-    version: 3.3.0
+    version: 3.9.0
 
   dashboards:
     enable: false
     replicas: 1
-    version: 3.3.0
+    version: 3.9.0
 
   nodePools:
     data:

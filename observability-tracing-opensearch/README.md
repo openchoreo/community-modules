@@ -157,6 +157,18 @@ If you are upgrading from a version before 0.4.0, reindex the older tracing data
 curl -fsSL https://raw.githubusercontent.com/openchoreo/community-modules/refs/heads/main/observability-tracing-opensearch/scripts/upgrade-to-0-4-1.sh | bash
 ```
 
+### Upgrading to OpenSearch 3.9.0
+
+Module versions 0.8.1, 0.9.1 and later bundle OpenSearch 3.9.0. Earlier versions, including 0.8.0 and 0.9.0, bundle 3.3.0. This applies when the module runs its own OpenSearch (`openSearch.enabled=true`, the default, or `openSearchCluster.enabled=true`). When traces are stored in an OpenSearch installed by another module, such as `observability-logs-opensearch`, follow that module's upgrade notes instead. Before the first upgrade to a version with 3.9.0:
+
+- **Take a snapshot of OpenSearch.** Once OpenSearch 3.9.0 has opened the data, it cannot be rolled back to 3.3.0; `helm rollback` succeeds but OpenSearch fails to start. Restoring a [snapshot](https://docs.opensearch.org/latest/tuning-your-cluster/availability-and-recovery/snapshots/index/) is the only way back. For the same reason, never move from a version with 3.9.0 to one with 3.3.0: from 0.8.1, upgrade to 0.9.1 or later, not to 0.9.0.
+- **Expect OpenSearch to restart.** With the subchart OpenSearch (`openSearch.enabled=true`), its single pod restarts. With the operator (`openSearchCluster.enabled=true`), the operator upgrades the nodes one at a time and then restarts the data nodes once more. OpenSearch 3.9.0 uses about twice the CPU of 3.3.0 while starting, so upgrade when the nodes have spare CPU.
+
+> **Note:**
+>
+> - Upgrade with `--reset-then-reuse-values` (Helm 3.14 or later). `--reuse-values` keeps the previous chart's defaults, so OpenSearch stays on 3.3.0.
+> - With Helm 4 and the operator-based OpenSearch, add `--server-side=false`. The operator updates fields of the `OpenSearchCluster` resource after it is created, and Helm 4's server-side apply rejects any upgrade that sets them again.
+
 ## Dependencies
 
 Bundled upstream Helm charts:
@@ -172,6 +184,7 @@ Bundled upstream Helm charts:
 
 | OpenChoreo Version | Module Version |
 | ------------------ |----------------|
-| 1.2.0 and later    | 0.6.x, 0.8.x   |
+| 1.4.0 and later    | 0.9.x          |
+| 1.2.x - 1.3.x      | 0.6.x, 0.8.x   |
 | 1.1.x              | 0.4.x          |
 | 1.0.x              | 0.3.x          |

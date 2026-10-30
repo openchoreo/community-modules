@@ -42,9 +42,6 @@ kube-prometheus-stack:
   prometheus:
     enabled: true
     prometheusSpec:
-      # Pinned ahead of the chart default (92.11.0 ships v3.15.0-distroless)
-      image:
-        tag: v3.15.1-distroless
       enableRemoteWriteReceiver: true
       serviceMonitorNamespaceSelector: {}
       serviceMonitorSelector: {}
@@ -176,6 +173,15 @@ kube-prometheus-stack:
 
   kubelet:
     enabled: true
+    serviceMonitor:
+      # In multiClusterExporter mode the chart's Prometheus (and the token
+      # Secret it creates) is disabled, so the PrometheusAgent scrapes the
+      # kubelet with its own service account token instead.
+      authorization:
+        type: Bearer
+        credentials:
+          name: '{{ if eq .Values.global.installationMode "multiClusterExporter" }}openchoreo-prometheus-agent-token{{ else }}{{ include "kube-prometheus-stack.prometheus.tokenSecretName" . }}{{ end }}'
+          key: token
 
   kubeApiServer:
     enabled: false
@@ -225,8 +231,8 @@ prometheusCustomizations:
   agent:
     # multiClusterExporter only. The PrometheusAgent CR carries no spec.image by
     # default, so the operator would spawn it with its compiled-in default
-    # Prometheus image (v3.14.0 for operator v0.94.1). Pinned here for the same
-    # reason as kube-prometheus-stack.prometheus.prometheusSpec.image.tag above.
+    # Prometheus image (v3.14.0 for operator v0.94.2). Pinned here to match the
+    # Prometheus image kube-prometheus-stack deploys for the server.
     # Empty falls back to the operator default.
     image: "quay.io/prometheus/prometheus:v3.15.1-distroless"
     # multiClusterExporter only. The PrometheusAgent buffers samples the receiver

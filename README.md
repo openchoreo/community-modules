@@ -34,6 +34,28 @@ Alongside any release, every merge to `main` that touches a file under `<module>
 Use the `latest-dev` tags for tracking `main`, the SHA-suffixed tags when you need a reproducible reference to a specific commit, and the `VERSION`-valued tags for released versions. The chart's `appVersion` always matches an image tag published in the same run.
 
 
+### Patch releases
+
+When a fix is needed for an already-released version whose line has since moved on in `main`, create the patch from a temporary branch created off the release tag.
+
+1. Branch from the release tag using a `release-` prefix:
+
+   ```bash
+   git fetch --tags
+   git checkout -b release-<module>-<minor> <module>-<version>
+   # e.g. git checkout -b release-observability-metrics-prometheus-0.7 observability-metrics-prometheus-0.7.0
+   ```
+
+2. Apply the fix - either commit it directly, or cherry-pick the commit from `main` (`git cherry-pick <sha>`). Open a PR against the `release-*` branch.
+
+3. Bump only the patch component of that module's `VERSION` file (e.g. `0.7.0` to `0.7.1`) and push. This triggers the same release flow as `main`, publishing the formal artifacts and the `<module>-<version>` tag:
+
+   - `ghcr.io/openchoreo/<image>:<VERSION>` and `<chart>:<VERSION>` (`appVersion=<VERSION>`).
+   - A git tag `<module>-<VERSION>` on the release commit.
+
+4. You may delete the temporary branch once the release completes
+
+
 ## Reporting Issues
 
 Please open issues in the main [openchoreo/openchoreo](https://github.com/openchoreo/openchoreo) repository.

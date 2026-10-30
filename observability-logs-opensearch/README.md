@@ -63,7 +63,7 @@ helm upgrade --install observability-logs-opensearch \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.5.3 \
+  --version 0.5.5 \
   --set adapter.openSearchSecretName="opensearch-admin-credentials" \
   --set openSearchSetup.openSearchSecretName="opensearch-admin-credentials"
 ```
@@ -75,7 +75,7 @@ helm upgrade --install observability-logs-opensearch \
 >   oci://ghcr.io/openchoreo/helm-charts/observability-logs-opensearch \
 >   --create-namespace \
 >   --namespace openchoreo-observability-plane \
->   --version 0.5.3 \
+>   --version 0.5.5 \
 >   --set adapter.openSearchSecretName="opensearch-admin-credentials" \
 >   --set openSearch.enabled=false \
 >   --set openSearchSetup.openSearchSecretName="opensearch-admin-credentials"
@@ -94,8 +94,8 @@ helm upgrade observability-logs-opensearch \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.5.3 \
-  --reuse-values \
+  --version 0.5.5 \
+  --reset-then-reuse-values \
   --set fluent-bit.enabled=true
 ```
 
@@ -116,7 +116,7 @@ helm upgrade --install observability-logs-opensearch \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.5.3 \
+  --version 0.5.5 \
   --set adapter.openSearchSecretName="opensearch-admin-credentials" \
   --set openSearch.enabled=false \
   --set openSearchCluster.enabled=true \
@@ -144,7 +144,7 @@ helm upgrade --install observability-logs-opensearch \
   oci://ghcr.io/openchoreo/helm-charts/observability-logs-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.5.3 \
+  --version 0.5.5 \
   --set adapter.enabled=false \
   --set openSearch.enabled=false \
   --set openSearchCluster.enabled=false \
@@ -161,6 +161,29 @@ helm upgrade --install observability-logs-opensearch \
 > - `fluent-bit.openSearchHost` and `fluent-bit.openSearchVHost` should match the TLS passthrough hostname on the obs gateway.
 > - `fluent-bit.openSearchPort` should match the passthrough listener port (commonly `11443` if the obs gateway uses non-standard ports).
 > - The adapter and setup job are disabled because they only need to run on the observability plane cluster.
+
+## Upgrading to 0.5.5
+
+0.5.5 upgrades the bundled OpenSearch from 3.3.0 to 3.9.0 and Fluent Bit from 4.2.3 to 5.1.5 (fluent-bit chart 0.58.3). Before upgrading:
+
+- **Take a snapshot of OpenSearch.** Once OpenSearch 3.9.0 has opened the data, it cannot be rolled back to 3.3.0; `helm rollback` succeeds but OpenSearch fails to start. Restoring a [snapshot](https://docs.opensearch.org/latest/tuning-your-cluster/availability-and-recovery/snapshots/index/) is the only way back. For the same reason, when moving on to OpenChoreo v1.3 or later, upgrade to 0.7.1, 0.8.1 or later, not to 0.6.x, 0.7.0 or 0.8.0, which bundle OpenSearch 3.3.0.
+- **Expect OpenSearch to restart.** With the subchart OpenSearch (`openSearch.enabled=true`), its single pod restarts, and logs written while it is down (about 20 seconds) are dropped. With the operator (`openSearchCluster.enabled=true`), the operator upgrades the nodes one at a time and then restarts the data nodes once more. OpenSearch 3.9.0 uses about twice the CPU of 3.3.0 while starting, so upgrade when the nodes have spare CPU.
+
+Upgrade with `--reset-then-reuse-values` (Helm 3.14 or later), in every cluster where the release is installed:
+
+```bash
+helm upgrade observability-logs-opensearch \
+  oci://ghcr.io/openchoreo/helm-charts/observability-logs-opensearch \
+  --namespace openchoreo-observability-plane \
+  --version 0.5.5 \
+  --reset-then-reuse-values
+```
+
+> **Note:**
+>
+> - Do not use `--reuse-values`. It keeps the previous chart's defaults, so OpenSearch stays on 3.3.0 and Fluent Bit 5.x is probed on a readiness path it no longer serves. The chart refuses to render in that case.
+> - With Helm 4 and the operator-based OpenSearch, add `--server-side=false`. The operator updates fields of the `OpenSearchCluster` resource after it is created, and Helm 4's server-side apply rejects any upgrade that sets them again.
+> - Indices created before the upgrade keep their mappings. New daily indices use the same mappings as in 0.5.4.
 
 ## Troubleshooting
 

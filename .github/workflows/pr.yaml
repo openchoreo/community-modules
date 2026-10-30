@@ -5,7 +5,9 @@ name: Validate PR
 
 on:
   pull_request:
-    branches: [main]
+    branches:
+      - main
+      - 'release-*'
     paths:
       - "**/init/**"
       - "**/helm/**"
@@ -15,6 +17,7 @@ on:
       - "**/go.sum"
       - "**/Dockerfile"
       - "**/Makefile"
+      - "**/VERSION"
 
 permissions:
   contents: read

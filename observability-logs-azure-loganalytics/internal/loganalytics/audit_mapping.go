@@ -78,6 +78,17 @@ func auditRecordFromRow(row azlogs.Row, idx map[string]int) (AuditRecord, error)
 	}
 	rec.Metadata = unmarshalDynamic(rowString(row, idx, ColMetadataJSON))
 
+	var request AuditRequest
+	if unmarshalGroup(rowString(row, idx, ColRequestJSON), &request) {
+		rec.Request = &request
+	}
+	// A returned group is kept even with a count of 0 and no items: that is a
+	// read that found nothing, unlike an absent group.
+	var returned AuditReturned
+	if unmarshalGroup(rowString(row, idx, ColReturnedJSON), &returned) {
+		rec.Returned = &returned
+	}
+
 	if method, path := rowString(row, idx, ColHTTPMethod), rowString(row, idx, ColHTTPPath); method != "" || path != "" {
 		rec.HTTP = &AuditHTTPInfo{Method: method, Path: path}
 	}
@@ -123,6 +134,16 @@ func unmarshalDynamic(s string) map[string]any {
 		return nil
 	}
 	return m
+}
+
+// unmarshalGroup decodes a dynamic column projected with tostring() into out,
+// reporting whether the group was present. Absent or malformed leaves the
+// record without it; the record is still valid.
+func unmarshalGroup(s string, out any) bool {
+	if s == "" || s == "null" {
+		return false
+	}
+	return json.Unmarshal([]byte(s), out) == nil
 }
 
 // toStringSlices drops a claim that is neither a string nor an array of them,

@@ -15,14 +15,15 @@
 # What it does:
 #   1. Resolves the cluster's Log Analytics workspace from the monitoring addon.
 #   2. Checks the producers' audit lines are reaching ContainerLogV2 at all.
-#   3. Creates the custom table with its schema and retention.
+#   3. Creates the custom table with its schema and retention, or brings an
+#      existing table's columns up to the current schema.
 #   4. Finds the Container Insights DCR by association, not by name convention.
 #   5. Rewrites its Microsoft-ContainerLogV2 data flow into two complementary
 #      flows: audit records to the audit table, everything else unchanged.
 #
 # Dry run by default for the DCR: nothing is written to it without --apply. The
-# table in step 3 is created either way, since the rule cannot reference a table
-# that does not exist.
+# table in step 3 is created or updated either way, since the rule cannot
+# reference a table or column that does not exist.
 #
 # Things to know before running:
 # - The DCR governs ALL log collection for the cluster, and step 5 replaces the
@@ -194,27 +195,46 @@ ContainerLogV2
   fi
 fi
 
-say "Creating table $TABLE"
-az monitor log-analytics workspace table create \
-  --resource-group "$WS_RG" --workspace-name "$WS" \
-  --name "$TABLE" \
-  --plan Analytics \
-  --retention-time "$RETENTION_DAYS" --total-retention-time "$TOTAL_RETENTION_DAYS" \
-  --columns \
-    TimeGenerated=datetime EventTime=datetime CollectedTime=datetime \
-    SchemaVersion=string EventId=string Action=string Category=string Result=string \
-    RequestId=string SourceIP=string UserAgent=string Producer=string \
-    Surface=string OperationId=string \
-    ActorType=string ActorId=string ActorIssuer=string ActorSessionId=string \
-    ActorEntitlements=dynamic \
-    HttpMethod=string HttpPath=string \
-    ResourceType=string ResourceNamespace=string ResourceEnvironment=string \
-    ResourceProject=string ResourceComponent=string ResourceResource=string \
-    ResourceUid=string ResourceName=string ResourceMetadata=dynamic \
-    Metadata=dynamic \
-    CollectorNamespace=string CollectorPod=string CollectorContainer=string \
-    ClusterInstance=string RawRecord=string \
-  --output none
+COLUMNS=(
+  TimeGenerated=datetime EventTime=datetime CollectedTime=datetime
+  SchemaVersion=string EventId=string Action=string Category=string Result=string
+  RequestId=string SourceIP=string UserAgent=string Producer=string
+  Surface=string OperationId=string
+  ActorType=string ActorId=string ActorIssuer=string ActorSessionId=string
+  ActorEntitlements=dynamic
+  HttpMethod=string HttpPath=string
+  ResourceType=string ResourceNamespace=string ResourceEnvironment=string
+  ResourceProject=string ResourceComponent=string ResourceResource=string
+  ResourceUid=string ResourceName=string ResourceMetadata=dynamic
+  Metadata=dynamic Request=dynamic Returned=dynamic
+  CollectorNamespace=string CollectorPod=string CollectorContainer=string
+  ClusterInstance=string RawRecord=string
+)
+
+# An existing table is brought up to the current schema rather than created
+# again, which is how a table from an earlier release gains the columns a later
+# schema_version needs. update --columns replaces the custom column set, so the
+# full list goes every time. Retention is left alone on update: the operator may
+# have changed it since.
+if az monitor log-analytics workspace table show \
+     --resource-group "$WS_RG" --workspace-name "$WS" --name "$TABLE" \
+     --output none 2>/dev/null; then
+  say "Updating the columns of table $TABLE"
+  az monitor log-analytics workspace table update \
+    --resource-group "$WS_RG" --workspace-name "$WS" \
+    --name "$TABLE" \
+    --columns "${COLUMNS[@]}" \
+    --output none
+else
+  say "Creating table $TABLE"
+  az monitor log-analytics workspace table create \
+    --resource-group "$WS_RG" --workspace-name "$WS" \
+    --name "$TABLE" \
+    --plan Analytics \
+    --retention-time "$RETENTION_DAYS" --total-retention-time "$TOTAL_RETENTION_DAYS" \
+    --columns "${COLUMNS[@]}" \
+    --output none
+fi
 echo "$TABLE ready"
 
 say "Finding the Container Insights DCR"

@@ -239,6 +239,10 @@ func auditParamsFromRequest(body gen.AuditLogsQueryRequest) (loganalytics.AuditP
 		p.ResourceNames = derefSlice(r.Name)
 	}
 
+	if r := body.Returned; r != nil && r.Items != nil {
+		p.ReturnedItemNames = derefSlice(r.Items.Name)
+	}
+
 	return p, ""
 }
 
@@ -294,6 +298,30 @@ func toGenAuditRecord(r loganalytics.AuditRecord) gen.AuditLogRecord {
 			res.Metadata = &m
 		}
 		out.Resource = res
+	}
+	if r.Request != nil {
+		req := &gen.AuditLogRequest{}
+		if r.Request.Parameters != nil {
+			p := r.Request.Parameters
+			req.Parameters = &p
+		}
+		out.Request = req
+	}
+	if r.Returned != nil {
+		ret := &gen.AuditLogReturned{Count: r.Returned.Count}
+		if r.Returned.Items != nil {
+			items := make([]gen.AuditLogReturnedItem, 0, len(r.Returned.Items))
+			for _, item := range r.Returned.Items {
+				items = append(items, gen.AuditLogReturnedItem{
+					Type:      item.Type,
+					Namespace: ptrStringNonEmpty(item.Namespace),
+					Name:      item.Name,
+					Uid:       ptrStringNonEmpty(item.UID),
+				})
+			}
+			ret.Items = &items
+		}
+		out.Returned = ret
 	}
 	if r.Collector != nil {
 		out.Collector = &gen.AuditLogCollectorInfo{

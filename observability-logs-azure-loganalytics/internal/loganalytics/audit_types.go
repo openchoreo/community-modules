@@ -65,6 +65,8 @@ type AuditParams struct {
 	ResourceResources    []string
 	ResourceNames        []string
 
+	ReturnedItemNames []string
+
 	IncludeTimeline bool
 
 	// TimelineInterval is "<count><unit>", unit m|h|d|w. The width used may be
@@ -107,6 +109,27 @@ func (r AuditResource) isEmpty() bool {
 		r.UID == "" && r.Name == "" && len(r.Metadata) == 0
 }
 
+// AuditRequest is what the operation was asked for. Stored and returned, never
+// filtered on.
+type AuditRequest struct {
+	Parameters map[string]any `json:"parameters"`
+}
+
+// AuditReturned is what the operation handed back. Count can exceed len(Items)
+// when the producer cut the list.
+type AuditReturned struct {
+	Count int                 `json:"count"`
+	Items []AuditReturnedItem `json:"items"`
+}
+
+// AuditReturnedItem is one object the operation returned.
+type AuditReturnedItem struct {
+	Type      string `json:"type"`
+	Namespace string `json:"namespace"`
+	Name      string `json:"name"`
+	UID       string `json:"uid"`
+}
+
 // AuditCollectorInfo is stamped by the collector, not claimed by the emitting
 // service. Carried alongside Producer so the two can be compared; this adapter
 // never does.
@@ -132,6 +155,8 @@ type AuditRecord struct {
 	OperationID   string
 	HTTP          *AuditHTTPInfo
 	Resource      *AuditResource
+	Request       *AuditRequest
+	Returned      *AuditReturned
 	Metadata      map[string]any
 	Collector     *AuditCollectorInfo
 }

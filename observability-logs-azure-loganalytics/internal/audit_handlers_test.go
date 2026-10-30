@@ -5,7 +5,9 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
+	"reflect"
 	"testing"
 	"time"
 
@@ -225,6 +227,87 @@ func TestAuditParamsFromRequest_CarriesEveryFilterGroup(t *testing.T) {
 	}
 	if len(got.ResourceProjects) != 1 {
 		t.Errorf("resource filters = %+v", got.ResourceProjects)
+	}
+}
+
+func TestAuditParamsFromRequest_CarriesReturnedItemNames(t *testing.T) {
+	body := auditQueryBody()
+	body.Returned = &gen.AuditLogsReturnedFilter{
+		Items: &gen.AuditLogsReturnedItemsFilter{Name: &[]string{"db-creds"}},
+	}
+
+	got, msg := auditParamsFromRequest(body)
+	if msg != "" {
+		t.Fatalf("unexpected rejection: %s", msg)
+	}
+	if !reflect.DeepEqual(got.ReturnedItemNames, []string{"db-creds"}) {
+		t.Errorf("returned item names = %v, want [db-creds]", got.ReturnedItemNames)
+	}
+}
+
+// publishedAuditGroups are a 1.1 record's request and returned groups as the
+// producer writes them.
+const publishedAuditGroups = `{` +
+	`"request":{"parameters":{"container":"api","sinceSeconds":3600,` +
+	`"actor":{"id":["alice"]},"search_scope":{"namespace":"acme"}}},` +
+	`"returned":{"count":2,"items":[` +
+	`{"type":"secret","namespace":"acme","name":"db-creds","uid":"uid-a"},` +
+	`{"type":"secret","namespace":"acme","name":"api-key","uid":"uid-b"}]}}`
+
+func TestToGenAuditRecord_ReturnsRequestAndReturnedAsPublished(t *testing.T) {
+	var groups struct {
+		Request  *loganalytics.AuditRequest  `json:"request"`
+		Returned *loganalytics.AuditReturned `json:"returned"`
+	}
+	if err := json.Unmarshal([]byte(publishedAuditGroups), &groups); err != nil {
+		t.Fatalf("parse published groups: %v", err)
+	}
+
+	served, err := json.Marshal(toGenAuditRecord(loganalytics.AuditRecord{
+		SchemaVersion: "1.1",
+		Request:       groups.Request,
+		Returned:      groups.Returned,
+	}))
+	if err != nil {
+		t.Fatalf("marshal record: %v", err)
+	}
+
+	var got, want map[string]any
+	if err := json.Unmarshal(served, &got); err != nil {
+		t.Fatalf("parse served record: %v", err)
+	}
+	if err := json.Unmarshal([]byte(publishedAuditGroups), &want); err != nil {
+		t.Fatalf("parse published groups: %v", err)
+	}
+	for _, group := range []string{"request", "returned"} {
+		if !reflect.DeepEqual(got[group], want[group]) {
+			t.Errorf("%s = %v, want %v", group, got[group], want[group])
+		}
+	}
+}
+
+func TestToGenAuditRecord_LeavesAbsentGroupsOut(t *testing.T) {
+	got := toGenAuditRecord(loganalytics.AuditRecord{SchemaVersion: "1.0"})
+
+	if got.Request != nil {
+		t.Errorf("request = %+v, want nil", got.Request)
+	}
+	if got.Returned != nil {
+		t.Errorf("returned = %+v, want nil", got.Returned)
+	}
+}
+
+func TestToGenAuditRecord_KeepsAReturnedCountOfZero(t *testing.T) {
+	got := toGenAuditRecord(loganalytics.AuditRecord{
+		SchemaVersion: "1.1",
+		Returned:      &loganalytics.AuditReturned{Count: 0},
+	})
+
+	if got.Returned == nil {
+		t.Fatal("returned = nil, want a count of 0")
+	}
+	if got.Returned.Count != 0 || got.Returned.Items != nil {
+		t.Errorf("returned = %+v, want count 0 and no items", got.Returned)
 	}
 }
 

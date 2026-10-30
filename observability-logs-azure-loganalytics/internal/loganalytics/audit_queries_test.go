@@ -252,6 +252,77 @@ func TestBuildAuditLogsKQL_OrsEveryEntitlementValue(t *testing.T) {
 	}
 }
 
+// A table set up before schema 1.1 has neither column, and a bare reference
+// fails every audit query against it.
+func TestAuditQueries_ReadRequestAndReturnedOnlyIfTheyExist(t *testing.T) {
+	p := auditTestParams()
+	p.ReturnedItemNames = []string{"db-creds"}
+
+	for name, kql := range map[string]string{
+		"records":       BuildAuditLogsKQL(p, auditTestTable),
+		"filter values": BuildAuditFilterValuesKQL(AuditFilterValuesParams{Query: p, Filter: AuditFilterActorID}, auditTestTable),
+	} {
+		t.Run(name, func(t *testing.T) {
+			for _, guard := range []string{
+				`| extend Request = column_ifexists("Request", dynamic(null))`,
+				`| extend Returned = column_ifexists("Returned", dynamic(null))`,
+			} {
+				i := strings.Index(kql, guard)
+				if i < 0 {
+					t.Fatalf("missing %q in:\n%s", guard, kql)
+				}
+				if j := strings.Index(kql, "mv-apply _retItem"); j >= 0 && j < i {
+					t.Errorf("%q must come before the returned filter reads the column:\n%s", guard, kql)
+				}
+			}
+		})
+	}
+}
+
+func TestBuildAuditLogsKQL_ProjectsRequestAndReturned(t *testing.T) {
+	kql := BuildAuditLogsKQL(auditTestParams(), auditTestTable)
+
+	for _, want := range []string{
+		"RequestJson = tostring(Request)",
+		"ReturnedJson = tostring(Returned)",
+	} {
+		if !strings.Contains(kql, want) {
+			t.Errorf("missing %q in:\n%s", want, kql)
+		}
+	}
+}
+
+func TestBuildAuditLogsKQL_MatchesReturnedItemNamesWithinOneEntry(t *testing.T) {
+	p := auditTestParams()
+	p.ReturnedItemNames = []string{"db-creds", "api-key"}
+
+	kql := BuildAuditLogsKQL(p, auditTestTable)
+
+	for _, want := range []string{
+		`| where isnotnull(Returned)`,
+		`| mv-apply _retItem = Returned["items"] on (`,
+		// Each entry's own name, so "db-creds" never matches across two entries.
+		`summarize _retMatch = max(iff(tostring(_retItem["name"]) in ("db-creds", "api-key"), 1, 0))`,
+		// Collapsed to one row, so a record returning two matches is counted once.
+		`| where _retMatch == 1`,
+	} {
+		if !strings.Contains(kql, want) {
+			t.Errorf("missing %q in:\n%s", want, kql)
+		}
+	}
+	if strings.Count(kql, "mv-apply _retItem") != 1 {
+		t.Errorf("expected exactly one walk over returned.items:\n%s", kql)
+	}
+}
+
+func TestBuildAuditLogsKQL_NoReturnedFilterWithoutNames(t *testing.T) {
+	kql := BuildAuditLogsKQL(auditTestParams(), auditTestTable)
+
+	if strings.Contains(kql, "_retItem") {
+		t.Errorf("an absent returned filter must not narrow the query:\n%s", kql)
+	}
+}
+
 func TestBuildAuditLogsKQL_KeepsRawRecordOutOfTheMaterialisedBase(t *testing.T) {
 	p := auditTestParams()
 	p.SearchPhrase = "denied"

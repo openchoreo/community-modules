@@ -6,6 +6,7 @@ package loganalytics
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -27,6 +28,85 @@ func auditRow(eventID string) azlogs.Row {
 		"api", "", "uid-1", "shop",
 		"openchoreo-control-plane", "api-server-7d9f", "api-server",
 		`{"groups":["platform","dev"]}`, "", "",
+		"", "",
+	}
+}
+
+// auditRowWithGroups is auditRow carrying a 1.1 record's request and returned
+// groups, as tostring() renders the dynamic columns.
+func auditRowWithGroups(eventID, request, returned string) azlogs.Row {
+	row := auditRow(eventID)
+	row[1] = "1.1"
+	row[len(row)-2] = request
+	row[len(row)-1] = returned
+	return row
+}
+
+func getOneAuditRecord(t *testing.T, row azlogs.Row) AuditRecord {
+	t.Helper()
+	api := &stubAPI{resp: azlogs.QueryWorkspaceResponse{QueryResults: azlogs.QueryResults{Tables: []azlogs.Table{
+		table(auditRecordColumns, row),
+		table([]string{"Total"}, azlogs.Row{float64(1)}),
+	}}}}
+	got, err := newAuditClient(t, api).GetAuditLogs(context.Background(), auditTestParams())
+	if err != nil {
+		t.Fatalf("GetAuditLogs: %v", err)
+	}
+	if len(got.Records) != 1 {
+		t.Fatalf("got %d records, want 1", len(got.Records))
+	}
+	return got.Records[0]
+}
+
+func TestGetAuditLogs_ReadsRequestAndReturned(t *testing.T) {
+	r := getOneAuditRecord(t, auditRowWithGroups("evt-1",
+		`{"parameters":{"sinceSeconds":3600,"actor":{"id":["alice"]}}}`,
+		`{"count":3,"items":[`+
+			`{"type":"secret","namespace":"acme","name":"db-creds","uid":"uid-a"},`+
+			`{"type":"secret","namespace":"acme","name":"api-key","uid":"uid-b"}]}`))
+
+	if r.Request == nil {
+		t.Fatal("request = nil, want the stored parameters")
+	}
+	wantParameters := map[string]any{
+		"sinceSeconds": float64(3600),
+		"actor":        map[string]any{"id": []any{"alice"}},
+	}
+	if !reflect.DeepEqual(r.Request.Parameters, wantParameters) {
+		t.Errorf("request.parameters = %v, want %v", r.Request.Parameters, wantParameters)
+	}
+
+	wantReturned := &AuditReturned{
+		Count: 3,
+		Items: []AuditReturnedItem{
+			{Type: "secret", Namespace: "acme", Name: "db-creds", UID: "uid-a"},
+			{Type: "secret", Namespace: "acme", Name: "api-key", UID: "uid-b"},
+		},
+	}
+	if !reflect.DeepEqual(r.Returned, wantReturned) {
+		t.Errorf("returned = %+v, want %+v", r.Returned, wantReturned)
+	}
+}
+
+func TestGetAuditLogs_LeavesAbsentGroupsNil(t *testing.T) {
+	r := getOneAuditRecord(t, auditRow("evt-1"))
+
+	if r.Request != nil {
+		t.Errorf("request = %+v, want nil", r.Request)
+	}
+	if r.Returned != nil {
+		t.Errorf("returned = %+v, want nil", r.Returned)
+	}
+}
+
+func TestGetAuditLogs_KeepsAReturnedCountOfZero(t *testing.T) {
+	r := getOneAuditRecord(t, auditRowWithGroups("evt-1", "", `{"count":0}`))
+
+	if r.Returned == nil {
+		t.Fatal("returned = nil, want a count of 0")
+	}
+	if r.Returned.Count != 0 || r.Returned.Items != nil {
+		t.Errorf("returned = %+v, want count 0 and no items", r.Returned)
 	}
 }
 

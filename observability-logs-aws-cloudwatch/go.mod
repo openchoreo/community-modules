@@ -11,7 +11,7 @@ require (
 	github.com/aws/smithy-go v1.28.5
 	github.com/getkin/kin-openapi v0.152.0
 	github.com/google/uuid v1.6.0
-	github.com/oapi-codegen/runtime v1.7.0
+	github.com/oapi-codegen/runtime v1.8.0
 )
 
 require (

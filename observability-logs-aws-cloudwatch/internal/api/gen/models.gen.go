@@ -39,8 +39,8 @@ const (
 
 // Defines values for AlertWebhookResponseStatus.
 const (
-	Error   AlertWebhookResponseStatus = "error"
-	Success AlertWebhookResponseStatus = "success"
+	AlertWebhookResponseStatusError   AlertWebhookResponseStatus = "error"
+	AlertWebhookResponseStatusSuccess AlertWebhookResponseStatus = "success"
 )
 
 // Defines values for AlertingRuleSyncResponseAction.
@@ -57,13 +57,66 @@ const (
 	Synced AlertingRuleSyncResponseStatus = "synced"
 )
 
+// Defines values for AuditLogFilterValuesRequestFilter.
+const (
+	Action              AuditLogFilterValuesRequestFilter = "action"
+	ActorEntitlements   AuditLogFilterValuesRequestFilter = "actor.entitlements"
+	ActorId             AuditLogFilterValuesRequestFilter = "actor.id"
+	ActorIssuer         AuditLogFilterValuesRequestFilter = "actor.issuer"
+	ActorSessionId      AuditLogFilterValuesRequestFilter = "actor.session_id"
+	ActorType           AuditLogFilterValuesRequestFilter = "actor.type"
+	Category            AuditLogFilterValuesRequestFilter = "category"
+	OperationId         AuditLogFilterValuesRequestFilter = "operation_id"
+	Producer            AuditLogFilterValuesRequestFilter = "producer"
+	ResourceComponent   AuditLogFilterValuesRequestFilter = "resource.component"
+	ResourceEnvironment AuditLogFilterValuesRequestFilter = "resource.environment"
+	ResourceName        AuditLogFilterValuesRequestFilter = "resource.name"
+	ResourceNamespace   AuditLogFilterValuesRequestFilter = "resource.namespace"
+	ResourceProject     AuditLogFilterValuesRequestFilter = "resource.project"
+	ResourceReleaseLine AuditLogFilterValuesRequestFilter = "resource.release_line"
+	ResourceResource    AuditLogFilterValuesRequestFilter = "resource.resource"
+	ResourceType        AuditLogFilterValuesRequestFilter = "resource.type"
+	Result              AuditLogFilterValuesRequestFilter = "result"
+	SourceIp            AuditLogFilterValuesRequestFilter = "source_ip"
+	Surface             AuditLogFilterValuesRequestFilter = "surface"
+	UserAgent           AuditLogFilterValuesRequestFilter = "user_agent"
+)
+
+// Defines values for AuditLogsQueryRequestCategory.
+const (
+	Access        AuditLogsQueryRequestCategory = "access"
+	Authorization AuditLogsQueryRequestCategory = "authorization"
+	Management    AuditLogsQueryRequestCategory = "management"
+)
+
+// Defines values for AuditLogsQueryRequestResult.
+const (
+	AuditLogsQueryRequestResultDenied  AuditLogsQueryRequestResult = "denied"
+	AuditLogsQueryRequestResultFailure AuditLogsQueryRequestResult = "failure"
+	AuditLogsQueryRequestResultSuccess AuditLogsQueryRequestResult = "success"
+)
+
+// Defines values for AuditLogsQueryRequestSortOrder.
+const (
+	AuditLogsQueryRequestSortOrderAsc  AuditLogsQueryRequestSortOrder = "asc"
+	AuditLogsQueryRequestSortOrderDesc AuditLogsQueryRequestSortOrder = "desc"
+)
+
+// Defines values for AuditLogsQueryRequestSurface.
+const (
+	Mcp  AuditLogsQueryRequestSurface = "mcp"
+	Rest AuditLogsQueryRequestSurface = "rest"
+)
+
 // Defines values for ErrorResponseTitle.
 const (
 	BadRequest          ErrorResponseTitle = "badRequest"
 	Conflict            ErrorResponseTitle = "conflict"
 	Forbidden           ErrorResponseTitle = "forbidden"
+	Gone                ErrorResponseTitle = "gone"
 	InternalServerError ErrorResponseTitle = "internalServerError"
 	NotFound            ErrorResponseTitle = "notFound"
+	NotImplemented      ErrorResponseTitle = "notImplemented"
 	Unauthorized        ErrorResponseTitle = "unauthorized"
 )
 
@@ -75,16 +128,38 @@ const (
 
 // Defines values for LogsQueryRequestLogLevels.
 const (
-	DEBUG LogsQueryRequestLogLevels = "DEBUG"
-	ERROR LogsQueryRequestLogLevels = "ERROR"
-	INFO  LogsQueryRequestLogLevels = "INFO"
-	WARN  LogsQueryRequestLogLevels = "WARN"
+	LogsQueryRequestLogLevelsDEBUG LogsQueryRequestLogLevels = "DEBUG"
+	LogsQueryRequestLogLevelsERROR LogsQueryRequestLogLevels = "ERROR"
+	LogsQueryRequestLogLevelsINFO  LogsQueryRequestLogLevels = "INFO"
+	LogsQueryRequestLogLevelsWARN  LogsQueryRequestLogLevels = "WARN"
 )
 
 // Defines values for LogsQueryRequestSortOrder.
 const (
 	LogsQueryRequestSortOrderAsc  LogsQueryRequestSortOrder = "asc"
 	LogsQueryRequestSortOrderDesc LogsQueryRequestSortOrder = "desc"
+)
+
+// Defines values for PlatformLogFilterValuesRequestFilter.
+const (
+	ClusterInstance PlatformLogFilterValuesRequestFilter = "clusterInstance"
+	ContainerName   PlatformLogFilterValuesRequestFilter = "containerName"
+	Namespace       PlatformLogFilterValuesRequestFilter = "namespace"
+	PodName         PlatformLogFilterValuesRequestFilter = "podName"
+)
+
+// Defines values for PlatformLogsQueryRequestLogLevels.
+const (
+	PlatformLogsQueryRequestLogLevelsDEBUG PlatformLogsQueryRequestLogLevels = "DEBUG"
+	PlatformLogsQueryRequestLogLevelsERROR PlatformLogsQueryRequestLogLevels = "ERROR"
+	PlatformLogsQueryRequestLogLevelsINFO  PlatformLogsQueryRequestLogLevels = "INFO"
+	PlatformLogsQueryRequestLogLevelsWARN  PlatformLogsQueryRequestLogLevels = "WARN"
+)
+
+// Defines values for PlatformLogsQueryRequestSortOrder.
+const (
+	PlatformLogsQueryRequestSortOrderAsc  PlatformLogsQueryRequestSortOrder = "asc"
+	PlatformLogsQueryRequestSortOrderDesc PlatformLogsQueryRequestSortOrder = "desc"
 )
 
 // AlertRuleRequest defines model for AlertRuleRequest.
@@ -120,6 +195,9 @@ type AlertRuleRequest struct {
 
 		// ProjectUid The OpenChoreo project UID to query
 		ProjectUid openapi_types.UUID `json:"projectUid"`
+
+		// ReleaseLineUid The UID of the component's release line the rule evaluates, filtered on the openchoreo.dev/release-line-uid label alone. Absent for the component's main line, which componentUid covers. Adapters that scope the rule to it set the OpenChoreo-Release-Line-Applied response header to "true".
+		ReleaseLineUid *openapi_types.UUID `json:"releaseLineUid,omitempty"`
 	} `json:"metadata"`
 	Source struct {
 		// Query The query to execute for log based alerts
@@ -215,6 +293,487 @@ type AlertingRuleSyncResponseAction string
 // AlertingRuleSyncResponseStatus The status of the alert rule
 type AlertingRuleSyncResponseStatus string
 
+// AuditLogActor Who performed the action. `id` is unique only within `issuer` — the same `sub`
+// from two identity providers is two different subjects.
+type AuditLogActor struct {
+	Entitlements *map[string][]string `json:"entitlements,omitempty"`
+
+	// Id A validated token claim: the one named by the subject's own auth mechanism
+	// (`readable_id_claim`), else the producer's `audit.actor.id_claim`, else `sub`.
+	// `unknown` when the token carries none of them, or `anonymous`.
+	//
+	// Because the claim is resolved per subject type, two actors of different
+	// types may have their `id` drawn from different claims
+	Id string `json:"id"`
+
+	// Issuer The token's `iss` claim; the namespace `id` is unique within
+	Issuer *string `json:"issuer,omitempty"`
+
+	// SessionId The token's `sid` claim, joining this event to an identity-provider login
+	SessionId *string `json:"session_id,omitempty"`
+
+	// Type e.g. `user`, `service_account`, `anonymous`
+	Type string `json:"type"`
+}
+
+// AuditLogCollectorInfo Where the record was collected from, as stamped by the collector rather than by
+// the emitting service.
+//
+// Returned so a caller can compare it against `producer` — a record whose claimed
+// origin and collected origin disagree is worth looking at. Neither this adapter
+// nor the observer performs that comparison; both values are carried and the
+// judgement is left to whoever is investigating.
+type AuditLogCollectorInfo struct {
+	ContainerName *string `json:"containerName,omitempty"`
+	NamespaceName *string `json:"namespaceName,omitempty"`
+	PodName       *string `json:"podName,omitempty"`
+}
+
+// AuditLogFilterValue One value a filter takes, with how many records carry it.
+type AuditLogFilterValue struct {
+	// Count Matching records carrying this value. May be approximate on a
+	// high-cardinality filter answered from a partial term count, so it is an
+	// ordering hint and a sense of scale rather than a total.
+	Count int64 `json:"count"`
+
+	// Value The value, exactly as it would be sent back as a filter
+	Value string `json:"value"`
+}
+
+// AuditLogFilterValuesRequest Which filter to list values for, and the query to list them under.
+//
+// **The time window lives in `query`, and it is required** — `startTime` and
+// `endTime` are mandatory on `AuditLogsQueryRequest`, so every call is scoped to
+// a period and there is no way to ask for distinct values across all of
+// retention.
+//
+// The other filters in `query` narrow which records the values are drawn from,
+// except the one named by `filter`, whose own selections are ignored.
+type AuditLogFilterValuesRequest struct {
+	// Filter The filter to list values for, named by its path in
+	// `AuditLogsQueryRequest`.
+	//
+	// `event_id` and `request_id` are absent: near-unique per record, so a list
+	// of them is not something a caller picks from. `actor.session_id` is present
+	// because `valueSearch` makes it reachable.
+	Filter AuditLogFilterValuesRequestFilter `json:"filter"`
+
+	// MaxValues Maximum values to return, ordered by `count` descending then `value`
+	// ascending, so a truncated list holds the busiest. Named to stay distinct
+	// from `query.limit`, which is a record page size and is ignored here.
+	MaxValues *int `json:"maxValues,omitempty"`
+
+	// Query A filter set over the audit trail, shaped like the record it filters. Every
+	// filter is named and nested exactly as the field it matches in `AuditLogRecord`,
+	// so an adapter maps a filter onto a stored field without a lookup table.
+	//
+	// Record-derived filters keep the record's snake_case spelling (`operation_id`,
+	// `source_ip`); the query's own controls stay camelCase (`startTime`, `limit`,
+	// `includeTimeline`). The casing marks which of the two a field is.
+	//
+	// Multi-value fields OR within a field; fields AND with each other. An absent
+	// field is not a filter.
+	//
+	// The tenancy filters under `resource` filter the record's own `resource` group.
+	// They are filters, not scopes — the observer authorizes the query at cluster
+	// scope before it reaches this adapter, so an adapter must not treat them as a
+	// permission.
+	//
+	// `resource.uid` has no filter; see the observer spec for why.
+	Query AuditLogsQueryRequest `json:"query"`
+
+	// ValueSearch Return only values containing this text, case-insensitively. Narrows the
+	// **values** returned, unlike `query.searchPhrase`, which narrows the records
+	// considered.
+	ValueSearch *string `json:"valueSearch,omitempty"`
+}
+
+// AuditLogFilterValuesRequestFilter The filter to list values for, named by its path in
+// `AuditLogsQueryRequest`.
+//
+// `event_id` and `request_id` are absent: near-unique per record, so a list
+// of them is not something a caller picks from. `actor.session_id` is present
+// because `valueSearch` makes it reachable.
+type AuditLogFilterValuesRequestFilter string
+
+// AuditLogFilterValuesResponse defines model for AuditLogFilterValuesResponse.
+type AuditLogFilterValuesResponse struct {
+	// Filter The filter these values belong to, echoed from the request
+	Filter string `json:"filter"`
+
+	// TookMs The time taken to compute the values in milliseconds
+	TookMs int64 `json:"tookMs"`
+
+	// TotalValues How many distinct values match, of which at most `maxValues` were returned.
+	TotalValues int64 `json:"totalValues"`
+
+	// Values Distinct values, ordered by `count` descending then `value` ascending.
+	// Records on which the field is absent are not represented: no empty-string
+	// entry, because no filter value would select one.
+	Values []AuditLogFilterValue `json:"values"`
+}
+
+// AuditLogHTTPInfo The request line, for an event that arrived over HTTP. Absent for an MCP
+// `tools/call`, which has none.
+type AuditLogHTTPInfo struct {
+	Method *string `json:"method,omitempty"`
+
+	// Path Route path only; query strings are not recorded
+	Path *string `json:"path,omitempty"`
+}
+
+// AuditLogRecord One audit event, in the field names and nesting it was published with. Keys are
+// snake_case here while the surrounding envelope is camelCase, and that is
+// deliberate: this is the frozen, versioned record a SIEM already consumes, so a
+// response body can be compared against an exported log line key for key rather
+// than through a translation table.
+//
+// `category` and `result` are plain strings rather than enums, unlike their
+// request-side counterparts: a filter is a closed input the server validates,
+// while a record's vocabulary grows with `schema_version`, and a closed enum here
+// would make an older client reject a newer record.
+type AuditLogRecord struct {
+	// Action Semantic action name, e.g. `create_project`
+	Action string `json:"action"`
+
+	// Actor Who performed the action. `id` is unique only within `issuer` — the same `sub`
+	// from two identity providers is two different subjects.
+	Actor AuditLogActor `json:"actor"`
+
+	// Category Event category. `management`, `authorization` or `access` at schema 1.0.
+	Category string `json:"category"`
+
+	// Collector Where the record was collected from, as stamped by the collector rather than by
+	// the emitting service.
+	//
+	// Returned so a caller can compare it against `producer` — a record whose claimed
+	// origin and collected origin disagree is worth looking at. Neither this adapter
+	// nor the observer performs that comparison; both values are carried and the
+	// judgement is left to whoever is investigating.
+	Collector *AuditLogCollectorInfo `json:"collector,omitempty"`
+
+	// EventId UUID v7, unique per record
+	EventId string `json:"event_id"`
+
+	// EventTime When the audited request was received
+	EventTime time.Time `json:"event_time"`
+
+	// Http The request line, for an event that arrived over HTTP. Absent for an MCP
+	// `tools/call`, which has none.
+	Http     *AuditLogHTTPInfo       `json:"http,omitempty"`
+	Metadata *map[string]interface{} `json:"metadata,omitempty"`
+
+	// OperationId Canonical operation identifier, e.g. `CreateProject`
+	OperationId *string `json:"operation_id,omitempty"`
+
+	// Producer Emitting service, e.g. `openchoreo-api`
+	Producer *string `json:"producer,omitempty"`
+
+	// Request What the operation was asked for, on reads audited under `access`. Stored but
+	// not indexed; an adapter returns it and needs no filter on it.
+	Request *AuditLogRequest `json:"request,omitempty"`
+
+	// RequestId Correlates this record with the access log line for the same request
+	RequestId *string `json:"request_id,omitempty"`
+
+	// Resource The target resource, and the point in OpenChoreo's tree the decision was
+	// authorized at. Absent on a rejection that resolved no operation.
+	Resource *AuditLogResource `json:"resource,omitempty"`
+
+	// Result Outcome. `success`, `failure` or `denied` (an authenticated subject refused by
+	// policy) at schema 1.0.
+	Result string `json:"result"`
+
+	// Returned What the operation handed back, never the content. Present only on success.
+	Returned *AuditLogReturned `json:"returned,omitempty"`
+
+	// SchemaVersion Schema of this record. `major.minor`; major on a field removal or a changed value representation, minor on an addition. Served as stored, so an adapter that doesn't know a group added since still returns the producer's version.
+	SchemaVersion string  `json:"schema_version"`
+	SourceIp      *string `json:"source_ip,omitempty"`
+
+	// Surface Which surface of the API the call arrived through. `rest` or `mcp` at
+	// schema 1.0 — MCP wraps the same API, so the REST value is not `api`.
+	Surface *string `json:"surface,omitempty"`
+
+	// UserAgent Client-supplied and unverifiable, like `source_ip`. The only field that
+	// separates a portal session from occ, CI or an agent.
+	UserAgent *string `json:"user_agent,omitempty"`
+}
+
+// AuditLogRequest What the operation was asked for, on reads audited under `access`. Stored but
+// not indexed; an adapter returns it and needs no filter on it.
+type AuditLogRequest struct {
+	// Parameters The operation's own parameters under the API's names, nested where the API
+	// nests them. Returned with the same keys and nesting it was published with.
+	Parameters *map[string]interface{} `json:"parameters,omitempty"`
+}
+
+// AuditLogResource The target resource, and the point in OpenChoreo's tree the decision was
+// authorized at. Absent on a rejection that resolved no operation.
+type AuditLogResource struct {
+	Component *string `json:"component,omitempty"`
+
+	// Environment Dual-scoped `{namespace}/{name}`, as authorization evaluated it
+	Environment *string                 `json:"environment,omitempty"`
+	Metadata    *map[string]interface{} `json:"metadata,omitempty"`
+	Name        *string                 `json:"name,omitempty"`
+	Namespace   *string                 `json:"namespace,omitempty"`
+	Project     *string                 `json:"project,omitempty"`
+
+	// ReleaseLine The component's release line. Absent for its main line
+	ReleaseLine *string `json:"release_line,omitempty"`
+	Resource    *string `json:"resource,omitempty"`
+	Type        *string `json:"type,omitempty"`
+
+	// Uid Server-generated identifier that is never reused. Absent when the operation
+	// returned no object — a delete, or a non-CRUD mutation.
+	Uid *string `json:"uid,omitempty"`
+}
+
+// AuditLogReturned What the operation handed back, never the content. Present only on success.
+type AuditLogReturned struct {
+	// Count Entries returned. Greater than the number of `items` when the list was cut.
+	Count int                     `json:"count"`
+	Items *[]AuditLogReturnedItem `json:"items,omitempty"`
+}
+
+// AuditLogReturnedItem defines model for AuditLogReturnedItem.
+type AuditLogReturnedItem struct {
+	Name      string  `json:"name"`
+	Namespace *string `json:"namespace,omitempty"`
+	Type      string  `json:"type"`
+	Uid       *string `json:"uid,omitempty"`
+}
+
+// AuditLogTimeline Per-interval counts across the queried window, broken down by `result`. Returned
+// only when the request set `includeTimeline`, and omitted rather than empty when
+// this adapter cannot compute it.
+type AuditLogTimeline struct {
+	// Buckets One entry per interval, in ascending `startTime` order regardless of the
+	// query's `sortOrder`.
+	//
+	// **Buckets with no records are present with zero counts, not omitted.** The
+	// array covers the window from `startTime` to `endTime` contiguously; a
+	// sparse array would let a caller draw a continuous chart across a gap in
+	// activity. The final bucket may be shorter than `interval` where the window
+	// does not divide evenly.
+	Buckets []AuditLogTimelineBucket `json:"buckets"`
+
+	// Interval The bucket width actually used, which is not necessarily the requested
+	// `timelineInterval` — a width exceeding 500 buckets is coarsened.
+	Interval string `json:"interval"`
+}
+
+// AuditLogTimelineBucket One interval of the timeline.
+type AuditLogTimelineBucket struct {
+	// Counts Records in this bucket by `result`, keyed by the value itself. An open map
+	// so a `result` value added in a later schema needs no spec bump.
+	//
+	// **A result with no records in this bucket may be omitted, and an absent key
+	// means zero.**
+	Counts *map[string]int64 `json:"counts,omitempty"`
+
+	// StartTime Inclusive lower bound of the bucket; its width is `interval`
+	StartTime time.Time `json:"startTime"`
+
+	// Total Records in this bucket. Equals the sum of `counts`, carried separately so a
+	// bucket whose breakdown could not be produced still reports a height.
+	Total int64 `json:"total"`
+}
+
+// AuditLogsActorFilter Filters on the record's `actor` group, named and nested as the record is.
+type AuditLogsActorFilter struct {
+	// Entitlements Entitlement values, matched against the values of **every** claim in the
+	// record's `actor.entitlements` map rather than one named claim — the claim
+	// key varies by subject kind (`groups` for a user, `sub` for a service
+	// account) and a caller should not have to know which.
+	Entitlements *[]string `json:"entitlements,omitempty"`
+
+	// Id Subject identifiers. Unique only within `issuer`, so on a multi-issuer
+	// deployment an `id` filter is meaningful only paired with one.
+	Id *[]string `json:"id,omitempty"`
+
+	// Issuer Token issuers — the namespace an `id` is unique within
+	Issuer *[]string `json:"issuer,omitempty"`
+
+	// SessionId Identity-provider session identifiers, from the token's `sid` claim. Absent
+	// on client-credentials tokens, so a session filter excludes service accounts.
+	SessionId *[]string `json:"session_id,omitempty"`
+
+	// Type Kinds of subject, e.g. `user`, `service_account`, `anonymous`
+	Type *[]string `json:"type,omitempty"`
+}
+
+// AuditLogsQueryRequest A filter set over the audit trail, shaped like the record it filters. Every
+// filter is named and nested exactly as the field it matches in `AuditLogRecord`,
+// so an adapter maps a filter onto a stored field without a lookup table.
+//
+// Record-derived filters keep the record's snake_case spelling (`operation_id`,
+// `source_ip`); the query's own controls stay camelCase (`startTime`, `limit`,
+// `includeTimeline`). The casing marks which of the two a field is.
+//
+// Multi-value fields OR within a field; fields AND with each other. An absent
+// field is not a filter.
+//
+// The tenancy filters under `resource` filter the record's own `resource` group.
+// They are filters, not scopes — the observer authorizes the query at cluster
+// scope before it reaches this adapter, so an adapter must not treat them as a
+// permission.
+//
+// `resource.uid` has no filter; see the observer spec for why.
+type AuditLogsQueryRequest struct {
+	// Action Semantic action names, e.g. `create_project`
+	Action *[]string `json:"action,omitempty"`
+
+	// Actor Filters on the record's `actor` group, named and nested as the record is.
+	Actor *AuditLogsActorFilter `json:"actor,omitempty"`
+
+	// Category Event categories. A closed set: the observer rejects an unknown value with
+	// a `400` rather than forwarding a filter that would silently match nothing.
+	//
+	// `access` covers reads that disclose without changing anything — reading the
+	// trail itself is recorded under it.
+	Category *[]AuditLogsQueryRequestCategory `json:"category,omitempty"`
+
+	// EndTime Exclusive upper bound of the event window
+	EndTime time.Time `json:"endTime"`
+
+	// EventId Record identifiers, matched exactly
+	EventId *[]string `json:"event_id,omitempty"`
+
+	// IncludeTimeline Also return per-interval counts across the queried window, broken down by
+	// `result`. Costs one aggregation pass on top of the search, which is why it
+	// is opt-in; the observer requests it only for a first page.
+	//
+	// An adapter that cannot compute it answers normally and omits `timeline`
+	// rather than failing the query.
+	//
+	// This is the only aggregation on this operation. Per-filter distinct values
+	// are deliberately not requested here — one aggregation per filter rather
+	// than one in total is enough load to matter on a busy trail. They have their
+	// own operation, `POST /api/v1alpha1/audit-logs/filter-values`.
+	IncludeTimeline *bool `json:"includeTimeline,omitempty"`
+
+	// Limit The maximum number of records to return
+	Limit *int `json:"limit,omitempty"`
+
+	// OperationId Canonical operation identifiers, e.g. `CreateProject`
+	OperationId *[]string `json:"operation_id,omitempty"`
+
+	// Producer Emitting services, e.g. `openchoreo-api`
+	Producer *[]string `json:"producer,omitempty"`
+
+	// RequestId Correlation IDs shared with the access log, matched exactly
+	RequestId *[]string `json:"request_id,omitempty"`
+
+	// Resource Filters on the record's `resource` group, named and nested as the record is.
+	// Filters, not scopes — see `AuditLogsQueryRequest`.
+	Resource *AuditLogsResourceFilter `json:"resource,omitempty"`
+
+	// Result Outcomes. Closed, for the same reason as `category`.
+	Result *[]AuditLogsQueryRequestResult `json:"result,omitempty"`
+
+	// Returned Filters on the record's `returned` group, named and nested as the record is.
+	Returned *AuditLogsReturnedFilter `json:"returned,omitempty"`
+
+	// SearchPhrase Free text to match within the record
+	SearchPhrase *string `json:"searchPhrase,omitempty"`
+
+	// SortOrder Sort direction on the event time
+	SortOrder *AuditLogsQueryRequestSortOrder `json:"sortOrder,omitempty"`
+
+	// SourceIp Client addresses, matched exactly rather than by network range
+	SourceIp *[]string `json:"source_ip,omitempty"`
+
+	// StartTime Inclusive lower bound of the event window
+	StartTime time.Time `json:"startTime"`
+
+	// Surface Surfaces of the API the call arrived through. Closed. MCP wraps the same
+	// API, so the REST value is `rest` rather than `api`.
+	Surface *[]AuditLogsQueryRequestSurface `json:"surface,omitempty"`
+
+	// TimelineInterval Requested bucket width for `timeline`, in `<count><unit>` notation where
+	// unit is one of `m`, `h`, `d` or `w`. Ignored unless `includeTimeline` is
+	// true; when omitted the adapter chooses a width from the window.
+	//
+	// A width that would produce more than 500 buckets must be **coarsened, not
+	// rejected**, and the width actually used reported in `timeline.interval`.
+	TimelineInterval *string `json:"timelineInterval,omitempty"`
+
+	// UserAgent Client identifications, matched exactly
+	UserAgent *[]string `json:"user_agent,omitempty"`
+}
+
+// AuditLogsQueryRequestCategory defines model for AuditLogsQueryRequest.Category.
+type AuditLogsQueryRequestCategory string
+
+// AuditLogsQueryRequestResult defines model for AuditLogsQueryRequest.Result.
+type AuditLogsQueryRequestResult string
+
+// AuditLogsQueryRequestSortOrder Sort direction on the event time
+type AuditLogsQueryRequestSortOrder string
+
+// AuditLogsQueryRequestSurface defines model for AuditLogsQueryRequest.Surface.
+type AuditLogsQueryRequestSurface string
+
+// AuditLogsResourceFilter Filters on the record's `resource` group, named and nested as the record is.
+// Filters, not scopes — see `AuditLogsQueryRequest`.
+type AuditLogsResourceFilter struct {
+	Component *[]string `json:"component,omitempty"`
+
+	// Environment Environments in the dual-scoped `{namespace}/{name}` form, because that is
+	// how the value is stored — recorded exactly as authorization evaluated it.
+	// A bare name will not match.
+	Environment *[]string `json:"environment,omitempty"`
+
+	// Name Resource names, as the handler recorded them
+	Name *[]string `json:"name,omitempty"`
+
+	// Namespace OpenChoreo namespaces
+	Namespace   *[]string `json:"namespace,omitempty"`
+	Project     *[]string `json:"project,omitempty"`
+	ReleaseLine *[]string `json:"release_line,omitempty"`
+	Resource    *[]string `json:"resource,omitempty"`
+
+	// Type Resource kinds
+	Type *[]string `json:"type,omitempty"`
+}
+
+// AuditLogsResponse defines model for AuditLogsResponse.
+type AuditLogsResponse struct {
+	// Records Audit records matching the query, in `sortOrder` of `event_time`
+	Records []AuditLogRecord `json:"records"`
+
+	// Timeline Per-interval counts across the queried window, broken down by `result`. Returned
+	// only when the request set `includeTimeline`, and omitted rather than empty when
+	// this adapter cannot compute it.
+	Timeline *AuditLogTimeline `json:"timeline,omitempty"`
+
+	// TookMs The time taken to query the audit logs in milliseconds
+	TookMs int64 `json:"tookMs"`
+
+	// Total Exact number of records matching the query across the whole window, not the
+	// number returned — `records` holds at most `limit`. A backend that caps hit
+	// counting by default must be configured to count fully: an audit consumer
+	// reading an understated total draws the wrong conclusion about how much
+	// happened.
+	Total int64 `json:"total"`
+}
+
+// AuditLogsReturnedFilter Filters on the record's `returned` group, named and nested as the record is.
+type AuditLogsReturnedFilter struct {
+	Items *AuditLogsReturnedItemsFilter `json:"items,omitempty"`
+}
+
+// AuditLogsReturnedItemsFilter defines model for AuditLogsReturnedItemsFilter.
+type AuditLogsReturnedItemsFilter struct {
+	// Name Names of objects a read returned, matched exactly. A record matches when
+	// any entry of its `returned.items` carries one of them. An adapter stores
+	// `returned.items` however its backend can search an array of objects, and
+	// must match on the name of one entry, never across two.
+	Name *[]string `json:"name,omitempty"`
+}
+
 // ComponentLogEntry defines model for ComponentLogEntry.
 type ComponentLogEntry struct {
 	// Level The log level
@@ -262,10 +821,17 @@ type ComponentLogEntry struct {
 
 // ComponentSearchScope defines model for ComponentSearchScope.
 type ComponentSearchScope struct {
+	// AllReleaseLines Covers every line of the component, its main line and its release lines: openchoreo.dev/component-uid, or openchoreo.dev/release-line-component-uid, which release line pods carry instead. Has no effect without componentUid, and releaseLineUid takes precedence. Adapters that support it set the OpenChoreo-Release-Line-Applied response header to "true".
+	AllReleaseLines *bool `json:"allReleaseLines,omitempty"`
+
+	// ComponentUid The UID of the component. On its own it covers the component's main line: openchoreo.dev/component-uid without an openchoreo.dev/release-line-uid label.
 	ComponentUid   *string `json:"componentUid,omitempty"`
 	EnvironmentUid *string `json:"environmentUid,omitempty"`
 	Namespace      string  `json:"namespace"`
 	ProjectUid     *string `json:"projectUid,omitempty"`
+
+	// ReleaseLineUid The UID of one of the component's release lines to restrict the result to. Adapters that support it filter on the openchoreo.dev/release-line-uid label alone, since release line pods don't carry the openchoreo.dev/component-uid label, and set the OpenChoreo-Release-Line-Applied response header to "true".
+	ReleaseLineUid *string `json:"releaseLineUid,omitempty"`
 }
 
 // ErrorResponse defines model for ErrorResponse.
@@ -336,9 +902,14 @@ type EventsQueryRequest struct {
 	// EndTime The end time of the query
 	EndTime time.Time `json:"endTime"`
 
-	// Limit The maximum number of items to return
-	Limit       *int                           `json:"limit,omitempty"`
-	SearchScope EventsQueryRequest_SearchScope `json:"searchScope"`
+	// Limit The maximum number of items to return. This is a soft cap at the page boundary: an adapter MUST NOT split events sharing a single timestamp across pages, so a page that would otherwise end mid-timestamp is extended to include every event bearing that timestamp, even where the result exceeds `limit`. That is what lets a caller resume by timestamp without stalling; see the rules on `queryEvents`.
+	Limit *int `json:"limit,omitempty"`
+
+	// Reasons Optional server-side filter on the event reason field. The adapter returns only events whose reason exactly matches one of the supplied values. Used by machine consumers such as the delivery insights aggregator to sweep specific controller-emitted events (e.g. DeploymentSucceeded). The list is bounded so that the filter stays cheap for the adapter to evaluate.
+	Reasons *[]string `json:"reasons,omitempty"`
+
+	// SearchScope Scope of the query. Omitting it requests an unscoped sweep, which is permitted only together with `reasons` (machine consumers reading controller-emitted events across all namespaces). Interactive queries must always be scoped. Unscoped sweeps are an OPTIONAL adapter capability; see the queryEvents description for the rules that apply.
+	SearchScope *EventsQueryRequest_SearchScope `json:"searchScope,omitempty"`
 
 	// SortOrder The sort order of the query
 	SortOrder *EventsQueryRequestSortOrder `json:"sortOrder,omitempty"`
@@ -347,7 +918,7 @@ type EventsQueryRequest struct {
 	StartTime time.Time `json:"startTime"`
 }
 
-// EventsQueryRequest_SearchScope defines model for EventsQueryRequest.SearchScope.
+// EventsQueryRequest_SearchScope Scope of the query. Omitting it requests an unscoped sweep, which is permitted only together with `reasons` (machine consumers reading controller-emitted events across all namespaces). Interactive queries must always be scoped. Unscoped sweeps are an OPTIONAL adapter capability; see the queryEvents description for the rules that apply.
 type EventsQueryRequest_SearchScope struct {
 	union json.RawMessage
 }
@@ -363,8 +934,12 @@ type EventsQueryResponse struct {
 	// TookMs The time taken to query the events in milliseconds
 	TookMs *int `json:"tookMs,omitempty"`
 
-	// Total The total number of matching events, capped at 1000
-	Total *int `json:"total,omitempty"`
+	// Total How many events matched the query, independent of `limit`.
+	//
+	// This is how a caller learns whether it read the whole window: `total` equal to the number of returned events means it did, and a greater value means the read stopped short and must be resumed. The adapter MUST therefore count at least as far as `limit + 1`, so that "exactly a full page" and "more than a page" are distinguishable. A backend that caps its match counting must raise that cap above `limit` -- OpenSearch stops at 10000 by default and needs `track_total_hits` set accordingly.
+	//
+	// An adapter that cannot count that far cannot report whether a sweep was truncated, and so cannot serve one safely: it MUST reject an unscoped request with 501 rather than return a total it cannot stand behind. Understating `total` makes a caller treat a truncated read as complete and advance past events it never saw.
+	Total int `json:"total"`
 }
 
 // LogsQueryRequest defines model for LogsQueryRequest.
@@ -419,6 +994,149 @@ type LogsQueryResponse_Logs struct {
 	union json.RawMessage
 }
 
+// PlatformLog defines model for PlatformLog.
+type PlatformLog struct {
+	ClusterInstance *string `json:"clusterInstance,omitempty"`
+	ContainerImage  *string `json:"containerImage,omitempty"`
+	ContainerName   *string `json:"containerName,omitempty"`
+
+	// Labels Pod labels carried on the record, as the backend stores them, with any
+	// backend-specific key mangling already undone by the adapter.
+	Labels *map[string]string `json:"labels,omitempty"`
+
+	// Level Log severity. Derived from the message text where the backend does not supply
+	// one; omitted when it cannot be determined.
+	Level *string `json:"level,omitempty"`
+
+	// Log The log message
+	Log           string  `json:"log"`
+	NamespaceName *string `json:"namespaceName,omitempty"`
+
+	// NodeName Node the pod was scheduled on.
+	NodeName *string `json:"nodeName,omitempty"`
+	PodIp    *string `json:"podIp,omitempty"`
+	PodName  *string `json:"podName,omitempty"`
+
+	// Timestamp The timestamp of the log entry
+	Timestamp time.Time `json:"timestamp"`
+}
+
+// PlatformLogFilterValue One value a filter takes, with how many records carry it.
+type PlatformLogFilterValue struct {
+	// Count Matching records carrying this value. May be approximate on a
+	// high-cardinality filter where the backend answers from a partial term
+	// count, so it is an ordering hint rather than a total.
+	Count int64 `json:"count"`
+
+	// Value The value, exactly as it would be sent back as a filter
+	Value string `json:"value"`
+}
+
+// PlatformLogFilterValuesRequest Which filter to list values for, and the query to list them under.
+//
+// `query` is a full `PlatformLogsQueryRequest`, in the same shape as a record
+// query - so the observer passes the query it already holds rather than
+// rebuilding it. Its `startTime` and `endTime` are required, so every call here
+// is scoped to a period.
+//
+// The other filters in `query` narrow which records the values are drawn from,
+// except the one named by `filter`, whose own selections are ignored.
+//
+// `query.limit` and `query.sortOrder` carry no meaning here: no records are
+// returned, so there is nothing to page or order. They are accepted and ignored
+// rather than rejected.
+type PlatformLogFilterValuesRequest struct {
+	// Filter The filter to list values for, named as the request field that accepts it.
+	Filter PlatformLogFilterValuesRequestFilter `json:"filter"`
+
+	// MaxValues The maximum number of values to return, ordered by `count` descending then
+	// `value` ascending, so a truncated list holds the busiest. Named to stay
+	// distinct from `query.limit`, which is a record page size and is ignored
+	// here.
+	MaxValues *int `json:"maxValues,omitempty"`
+
+	// Query A flat set of Kubernetes coordinates. Multi-value fields OR within a field; fields
+	// AND with each other. An absent field is not a filter.
+	Query PlatformLogsQueryRequest `json:"query"`
+
+	// ValueSearch Return only values containing this text, case-insensitively. Narrows the
+	// *values* returned, where `query.searchPhrase` narrows the *records* they
+	// are drawn from.
+	ValueSearch *string `json:"valueSearch,omitempty"`
+}
+
+// PlatformLogFilterValuesRequestFilter The filter to list values for, named as the request field that accepts it.
+type PlatformLogFilterValuesRequestFilter string
+
+// PlatformLogFilterValuesResponse defines model for PlatformLogFilterValuesResponse.
+type PlatformLogFilterValuesResponse struct {
+	// Filter The filter these values belong to, echoed from the request
+	Filter string `json:"filter"`
+
+	// TookMs The time taken to compute the values in milliseconds
+	TookMs int `json:"tookMs"`
+
+	// TotalValues How many distinct values match, of which at most `maxValues` were returned.
+	// Counting distinct values exactly is an expensive aggregation on a
+	// high-cardinality field, so this is a sense of scale rather than a
+	// guaranteed total.
+	TotalValues int64 `json:"totalValues"`
+
+	// Values Distinct values, ordered by `count` descending then `value` ascending.
+	// Records on which the field is absent are not represented: no empty-string
+	// entry, because no filter value would select one.
+	Values []PlatformLogFilterValue `json:"values"`
+}
+
+// PlatformLogsQueryRequest A flat set of Kubernetes coordinates. Multi-value fields OR within a field; fields
+// AND with each other. An absent field is not a filter.
+type PlatformLogsQueryRequest struct {
+	// ClusterInstance Clusters the records were collected from, as stamped by the collector
+	ClusterInstance *[]string `json:"clusterInstance,omitempty"`
+	ContainerName   *[]string `json:"containerName,omitempty"`
+
+	// EndTime Exclusive upper bound of the log window
+	EndTime time.Time `json:"endTime"`
+
+	// Labels Pod labels every returned record must carry, ANDed. The observer parses the
+	// equality-based selector it receives and passes the resulting pairs, so the
+	// adapter does not implement selector syntax. Plane attribution arrives here.
+	Labels *map[string]string `json:"labels,omitempty"`
+
+	// Limit The maximum number of entries to return
+	Limit     *int                                 `json:"limit,omitempty"`
+	LogLevels *[]PlatformLogsQueryRequestLogLevels `json:"logLevels,omitempty"`
+
+	// Namespace Kubernetes namespaces of the pods
+	Namespace    *[]string `json:"namespace,omitempty"`
+	PodName      *[]string `json:"podName,omitempty"`
+	SearchPhrase *string   `json:"searchPhrase,omitempty"`
+
+	// SortOrder Sort direction on the log timestamp
+	SortOrder *PlatformLogsQueryRequestSortOrder `json:"sortOrder,omitempty"`
+
+	// StartTime Inclusive lower bound of the log window
+	StartTime time.Time `json:"startTime"`
+}
+
+// PlatformLogsQueryRequestLogLevels defines model for PlatformLogsQueryRequest.LogLevels.
+type PlatformLogsQueryRequestLogLevels string
+
+// PlatformLogsQueryRequestSortOrder Sort direction on the log timestamp
+type PlatformLogsQueryRequestSortOrder string
+
+// PlatformLogsResponse defines model for PlatformLogsResponse.
+type PlatformLogsResponse struct {
+	// Logs The logs queried successfully
+	Logs []PlatformLog `json:"logs"`
+
+	// TookMs The time taken to query the logs in milliseconds
+	TookMs int `json:"tookMs"`
+
+	// Total The total number of matching log entries, capped at 1000
+	Total int `json:"total"`
+}
+
 // WorkflowLogEntry defines model for WorkflowLogEntry.
 type WorkflowLogEntry struct {
 	// Log The log message
@@ -454,6 +1172,18 @@ type UpdateAlertRuleJSONRequestBody = AlertRuleRequest
 
 // HandleAlertWebhookJSONRequestBody defines body for HandleAlertWebhook for application/json ContentType.
 type HandleAlertWebhookJSONRequestBody = HandleAlertWebhookJSONBody
+
+// QueryAuditLogFilterValuesJSONRequestBody defines body for QueryAuditLogFilterValues for application/json ContentType.
+type QueryAuditLogFilterValuesJSONRequestBody = AuditLogFilterValuesRequest
+
+// QueryAuditLogsJSONRequestBody defines body for QueryAuditLogs for application/json ContentType.
+type QueryAuditLogsJSONRequestBody = AuditLogsQueryRequest
+
+// QueryPlatformLogFilterValuesJSONRequestBody defines body for QueryPlatformLogFilterValues for application/json ContentType.
+type QueryPlatformLogFilterValuesJSONRequestBody = PlatformLogFilterValuesRequest
+
+// QueryPlatformLogsJSONRequestBody defines body for QueryPlatformLogs for application/json ContentType.
+type QueryPlatformLogsJSONRequestBody = PlatformLogsQueryRequest
 
 // AsComponentSearchScope returns the union data inside the EventsQueryRequest_SearchScope as a ComponentSearchScope
 func (t EventsQueryRequest_SearchScope) AsComponentSearchScope() (ComponentSearchScope, error) {

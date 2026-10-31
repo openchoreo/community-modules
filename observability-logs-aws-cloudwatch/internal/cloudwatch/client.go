@@ -6,6 +6,7 @@
 package cloudwatch
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -148,15 +149,19 @@ type ComponentLogsParams struct {
 	ProjectID     string
 	EnvironmentID string
 	ComponentIDs  []string
-	StartTime     time.Time
-	EndTime       time.Time
-	Limit         int
-	SortOrder     string
-	SearchPhrase  string
-	LogLevels     []string
+	ReleaseLineID string
+	// AllReleaseLines covers every line of the components instead of their main line.
+	AllReleaseLines bool
+	StartTime       time.Time
+	EndTime         time.Time
+	Limit           int
+	SortOrder       string
+	SearchPhrase    string
+	LogLevels       []string
 }
 
-// ComponentLogsEntry is one CloudWatch record normalised for the Observer response.
+// ComponentLogsEntry is one CloudWatch record normalised for the Observer response. ComponentUID
+// falls back to the release line component UID label, which a release line's pods carry instead.
 type ComponentLogsEntry struct {
 	Timestamp       time.Time
 	Log             string
@@ -228,7 +233,7 @@ func (c *Client) GetComponentLogs(ctx context.Context, params ComponentLogsParam
 			PodName:         row["podName"],
 			PodNamespace:    row["podNamespace"],
 			ContainerName:   row["containerName"],
-			ComponentUID:    row["componentUid"],
+			ComponentUID:    cmp.Or(row["componentUid"], row["releaseLineComponentUid"]),
 			ComponentName:   row["componentName"],
 			EnvironmentUID:  row["environmentUid"],
 			EnvironmentName: row["environmentName"],

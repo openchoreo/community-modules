@@ -20,12 +20,19 @@ var eventResultFields = []struct {
 	{evObjectName, "objectName"},
 	{evObjectNamespace, "objectNamespace"},
 	{evComponentUID, "componentUid"},
+	{evReleaseLineComponentUID, "releaseLineComponentUid"},
 	{evComponentName, "componentName"},
 	{evEnvironmentUID, "environmentUid"},
 	{evEnvironmentName, "environmentName"},
 	{evProjectUID, "projectUid"},
 	{evProjectName, "projectName"},
 	{evNamespaceName, "namespaceName"},
+}
+
+var eventReleaseLineFields = releaseLineFields{
+	component:     eventField(evComponentUID),
+	line:          eventField(evReleaseLineUID),
+	lineComponent: eventField(evReleaseLineComponentUID),
 }
 
 // writeEventFields writes the shared `fields @timestamp, <event columns>` projection.
@@ -51,9 +58,8 @@ func buildComponentEventsQuery(p ComponentEventsParams) string {
 	if p.EnvironmentID != "" {
 		fmt.Fprintf(&b, "| filter %s = \"%s\"\n", eventField(evEnvironmentUID), escapeInsights(p.EnvironmentID))
 	}
-	if p.ComponentID != "" {
-		fmt.Fprintf(&b, "| filter %s = \"%s\"\n", eventField(evComponentUID), escapeInsights(p.ComponentID))
-	}
+	writeReleaseLineScopeFilter(&b, eventReleaseLineFields, p.ReleaseLineID, p.AllReleaseLines, p.ComponentID)
+	writeEventReasonsFilter(&b, p.Reasons)
 
 	fmt.Fprintf(&b, "| sort @timestamp %s\n", normaliseSortOrder(p.SortOrder))
 	fmt.Fprintf(&b, "| limit %d", insightsLimit(p.Limit))
@@ -92,11 +98,24 @@ func buildWorkflowEventsQuery(p WorkflowEventsParams) string {
 			b.WriteString("\n")
 		}
 	}
+	writeEventReasonsFilter(&b, p.Reasons)
 
 	fmt.Fprintf(&b, "| sort @timestamp %s\n", normaliseSortOrder(p.SortOrder))
 	fmt.Fprintf(&b, "| limit %d", insightsLimit(p.Limit))
 
 	return b.String()
+}
+
+// writeEventReasonsFilter keeps only events whose reason exactly matches one of reasons.
+func writeEventReasonsFilter(b *strings.Builder, reasons []string) {
+	if len(reasons) == 0 {
+		return
+	}
+	quoted := make([]string, len(reasons))
+	for i, reason := range reasons {
+		quoted[i] = "\"" + escapeInsights(reason) + "\""
+	}
+	fmt.Fprintf(b, "| filter %s in [%s]\n", eventField(evReason), strings.Join(quoted, ", "))
 }
 
 func workflowTaskObjectPrefixes(taskName string) []string {

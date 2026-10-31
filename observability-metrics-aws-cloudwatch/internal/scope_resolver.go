@@ -33,6 +33,8 @@ type ScopeResolutionParams struct {
 	ComponentUID   string
 	ProjectUID     string
 	EnvironmentUID string
+	// ReleaseLineUID selects the line's pods instead of the component's main line.
+	ReleaseLineUID string
 }
 
 type ScopeResolutionResult struct {
@@ -48,6 +50,7 @@ type scopeResolver interface {
 
 type KubernetesScopeResolver struct {
 	baseURL    string
+	tokenPath  string
 	httpClient *http.Client
 	logger     *slog.Logger
 }
@@ -70,7 +73,8 @@ func NewKubernetesScopeResolver(logger *slog.Logger) (*KubernetesScopeResolver, 
 		return nil, fmt.Errorf("parse service account CA")
 	}
 	return &KubernetesScopeResolver{
-		baseURL: "https://" + host + ":" + port,
+		baseURL:   "https://" + host + ":" + port,
+		tokenPath: k8sSATokenPath,
 		httpClient: &http.Client{
 			Timeout: 5 * time.Second,
 			Transport: &http.Transport{
@@ -95,14 +99,19 @@ func (r *KubernetesScopeResolver) Resolve(ctx context.Context, p ScopeResolution
 	addSelector("openchoreo.dev/component", p.Component)
 	addSelector("openchoreo.dev/project", p.Project)
 	addSelector("openchoreo.dev/environment", p.Environment)
-	addSelector(cloudwatchmetrics.LabelComponentUID, p.ComponentUID)
+	// A release line's pods don't carry the component UID label.
+	if strings.TrimSpace(p.ReleaseLineUID) != "" {
+		addSelector(cloudwatchmetrics.LabelReleaseLineUID, p.ReleaseLineUID)
+	} else {
+		addSelector(cloudwatchmetrics.LabelComponentUID, p.ComponentUID)
+	}
 	addSelector(cloudwatchmetrics.LabelProjectUID, p.ProjectUID)
 	addSelector(cloudwatchmetrics.LabelEnvironmentUID, p.EnvironmentUID)
 	if len(selectorParts) == 0 {
 		return ScopeResolutionResult{}, false, nil
 	}
 
-	tokenBytes, err := os.ReadFile(k8sSATokenPath)
+	tokenBytes, err := os.ReadFile(r.tokenPath)
 	if err != nil {
 		return ScopeResolutionResult{}, false, fmt.Errorf("read service account token: %w", err)
 	}
@@ -131,6 +140,9 @@ func (r *KubernetesScopeResolver) Resolve(ctx context.Context, p ScopeResolution
 	for _, pod := range pods.Items {
 		labels := pod.Metadata.Labels
 		componentUID := firstNonEmpty(p.ComponentUID, labels[cloudwatchmetrics.LabelComponentUID])
+		if strings.TrimSpace(p.ReleaseLineUID) != "" {
+			componentUID = firstNonEmpty(componentUID, labels[cloudwatchmetrics.LabelReleaseLineComponentUID])
+		}
 		environmentUID := firstNonEmpty(p.EnvironmentUID, labels[cloudwatchmetrics.LabelEnvironmentUID])
 		ocNamespace := firstNonEmpty(p.Namespace, labels[cloudwatchmetrics.LabelNamespace])
 		if componentUID == "" || environmentUID == "" || ocNamespace == "" {

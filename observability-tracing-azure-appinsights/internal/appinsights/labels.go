@@ -12,6 +12,9 @@ const (
 	LabelComponentUID   = "openchoreo.dev/component-uid"
 	LabelProjectUID     = "openchoreo.dev/project-uid"
 	LabelEnvironmentUID = "openchoreo.dev/environment-uid"
+	LabelReleaseLineUID = "openchoreo.dev/release-line-uid"
+	// LabelReleaseLineComponentUID is the component UID on a release line's pods, which don't carry LabelComponentUID.
+	LabelReleaseLineComponentUID = "openchoreo.dev/release-line-component-uid"
 )
 
 // resourceAttributePrefixes identifies Properties keys that originate from

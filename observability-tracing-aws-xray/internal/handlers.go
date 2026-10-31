@@ -66,7 +66,10 @@ func (h *TracingHandler) QueryTraces(ctx context.Context, request gen.QueryTrace
 		}, nil
 	}
 
-	return gen.QueryTraces200JSONResponse(toTracesListResponse(result)), nil
+	return gen.QueryTraces200JSONResponse{
+		Body:    toTracesListResponse(result),
+		Headers: gen.QueryTraces200ResponseHeaders{OpenChoreoReleaseLineApplied: releaseLineApplied(params.Scope)},
+	}, nil
 }
 
 func (h *TracingHandler) QuerySpansForTrace(ctx context.Context, request gen.QuerySpansForTraceRequestObject) (gen.QuerySpansForTraceResponseObject, error) {
@@ -101,7 +104,20 @@ func (h *TracingHandler) QuerySpansForTrace(ctx context.Context, request gen.Que
 		}, nil
 	}
 
-	return gen.QuerySpansForTrace200JSONResponse(toSpansListResponse(result)), nil
+	return gen.QuerySpansForTrace200JSONResponse{
+		Body:    toSpansListResponse(result),
+		Headers: gen.QuerySpansForTrace200ResponseHeaders{OpenChoreoReleaseLineApplied: releaseLineApplied(params.Scope)},
+	}, nil
+}
+
+// releaseLineApplied is the OpenChoreo-Release-Line-Applied header value for a query scoped to a
+// component or one of its release lines, which this adapter matches by line: "true" when it was,
+// empty otherwise.
+func releaseLineApplied(scope xray.Scope) string {
+	if scope.ReleaseLineID == "" && scope.ComponentID == "" {
+		return ""
+	}
+	return "true"
 }
 
 func (h *TracingHandler) GetSpanDetailsForTrace(ctx context.Context, request gen.GetSpanDetailsForTraceRequestObject) (gen.GetSpanDetailsForTraceResponseObject, error) {
@@ -162,6 +178,12 @@ func toTracesQueryParams(req *gen.TracesQueryRequest) xray.TracesQueryParams {
 	}
 	if req.SearchScope.Environment != nil {
 		params.Scope.EnvironmentID = *req.SearchScope.Environment
+	}
+	if req.SearchScope.ReleaseLine != nil {
+		params.Scope.ReleaseLineID = *req.SearchScope.ReleaseLine
+	}
+	if req.SearchScope.AllReleaseLines != nil {
+		params.Scope.AllReleaseLines = *req.SearchScope.AllReleaseLines
 	}
 	if req.IncludeAttributes != nil {
 		params.IncludeAttributes = *req.IncludeAttributes

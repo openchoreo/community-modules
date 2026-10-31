@@ -21,7 +21,7 @@ func TestBuildAlertFilterPattern(t *testing.T) {
 
 	for _, expected := range []string{
 		`($.kubernetes.labels.* = "env-1")`,
-		`($.kubernetes.labels.* = "comp-1")`,
+		`($.kubernetes.labels.['openchoreo.dev/component-uid'] = "comp-1")`,
 		`($.log = "*ERROR*")`,
 		"&&",
 	} {

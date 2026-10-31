@@ -96,7 +96,8 @@ amazon-cloudwatch-observability:
           # Override the upstream application-log.conf to:
           #   1. Flip `Labels` to `On` in the kubernetes filter (the adapter
           #      scopes queries by openchoreo.dev/{component,environment,
-          #      project}-uid pod labels — not emitted with upstream `Off`).
+          #      project,release-line,release-line-component}-uid pod labels —
+          #      not emitted with upstream `Off`).
           #   2. Drop the `[FILTER] aws` block, set `Use_Pod_Association Off`,
           #      and `add_entity false`. All three rely on AWS Application
           #      Signals "entity" enrichment, which queries IMDS at

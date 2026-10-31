@@ -20,9 +20,9 @@ func BuildComponentLogsKQL(p ComponentLogsParams) string {
 	sb.WriteString("\n| where ")
 	sb.WriteString(podLabelEquals(LabelNamespace, p.Namespace))
 
-	if p.ComponentUID != "" {
+	if scope := releaseLineScope(podLabel, p.ComponentUID, p.ReleaseLineUID, p.AllReleaseLines); scope != "" {
 		sb.WriteString("\n| where ")
-		sb.WriteString(podLabelEquals(LabelComponentUID, p.ComponentUID))
+		sb.WriteString(scope)
 	}
 	if p.ProjectUID != "" {
 		sb.WriteString("\n| where ")
@@ -58,7 +58,8 @@ func BuildComponentLogsKQL(p ComponentLogsParams) string {
 
 	// Project the columns the handler will map onto ComponentLogEntry.
 	// Pod labels live inside KubernetesMetadata.podLabels (a dynamic blob);
-	// extract them as top-level columns for the handler.
+	// extract them as top-level columns for the handler. A release line's pods
+	// carry the component UID under their own label.
 	sb.WriteString(`
 | extend _labels = parse_json(tostring(KubernetesMetadata.podLabels))
 | project
@@ -68,7 +69,7 @@ func BuildComponentLogsKQL(p ComponentLogsParams) string {
     PodName,
     ContainerName,
     PodNamespace,
-    ComponentUID        = tostring(_labels["openchoreo.dev/component-uid"]),
+    ComponentUID        = coalesce(tostring(_labels["openchoreo.dev/component-uid"]), tostring(_labels["openchoreo.dev/release-line-component-uid"])),
     ProjectUID          = tostring(_labels["openchoreo.dev/project-uid"]),
     EnvironmentUID      = tostring(_labels["openchoreo.dev/environment-uid"]),
     OpenChoreoNamespace = tostring(_labels["openchoreo.dev/namespace"])`)
@@ -138,12 +139,37 @@ func sortOrderOrDefault(s SortOrder) SortOrder {
 	return SortDesc
 }
 
-// podLabelEquals renders an equality predicate against one pod label.
+// podLabel renders the value of one pod label, empty when the pod lacks it.
 // Pod labels live inside KubernetesMetadata.podLabels, a dynamic blob, so the
 // key is an index expression rather than a column.
+func podLabel(key string) string {
+	return "tostring(parse_json(tostring(KubernetesMetadata.podLabels))[" + kqlString(key) + "])"
+}
+
+// podLabelEquals renders an equality predicate against one pod label.
 func podLabelEquals(key, value string) string {
-	return "tostring(parse_json(tostring(KubernetesMetadata.podLabels))[" +
-		kqlString(key) + "]) == " + kqlString(value)
+	return podLabel(key) + " == " + kqlString(value)
+}
+
+// releaseLineScope renders the predicate placing a record on a component's
+// release lines, label rendering the value of one of the record's labels. The
+// component UID alone keeps its main line's records, those with the UID and no
+// release line label. A release line's pods carry the component UID under
+// another label than the main line's, so allLines matches either label and
+// covers every line. One release line matches on its UID alone. Empty without a
+// component or a line.
+func releaseLineScope(label func(string) string, componentUID, lineUID string, allLines bool) string {
+	switch {
+	case lineUID != "":
+		return label(LabelReleaseLineUID) + " == " + kqlString(lineUID)
+	case componentUID == "":
+		return ""
+	case allLines:
+		return "(" + label(LabelComponentUID) + " == " + kqlString(componentUID) +
+			" or " + label(LabelReleaseLineComponentUID) + " == " + kqlString(componentUID) + ")"
+	}
+	return label(LabelComponentUID) + " == " + kqlString(componentUID) +
+		" and isempty(" + label(LabelReleaseLineUID) + ")"
 }
 
 func kqlString(s string) string {

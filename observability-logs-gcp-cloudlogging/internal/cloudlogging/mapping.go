@@ -4,6 +4,7 @@
 package cloudlogging
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -14,6 +15,8 @@ import (
 func mapComponentEntry(e *logging.Entry) ComponentLogEntry {
 	msg := payloadString(e.Payload)
 	res := resourceLabels(e)
+	// A release line's pods carry the component UID under their own label.
+	componentUID := cmp.Or(e.Labels[podLabelKey(LabelComponentUID)], e.Labels[podLabelKey(LabelReleaseLineComponentUID)])
 	return ComponentLogEntry{
 		Timestamp:           e.Timestamp.UTC(),
 		LogMessage:          msg,
@@ -21,7 +24,7 @@ func mapComponentEntry(e *logging.Entry) ComponentLogEntry {
 		PodName:             res["pod_name"],
 		ContainerName:       res["container_name"],
 		PodNamespace:        res["namespace_name"],
-		ComponentUID:        e.Labels[podLabelKey(LabelComponentUID)],
+		ComponentUID:        componentUID,
 		ProjectUID:          e.Labels[podLabelKey(LabelProjectUID)],
 		EnvironmentUID:      e.Labels[podLabelKey(LabelEnvironmentUID)],
 		OpenChoreoNamespace: e.Labels[podLabelKey(LabelNamespace)],

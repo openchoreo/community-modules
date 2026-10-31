@@ -136,10 +136,10 @@ func TestQueryTracesSuccess(t *testing.T) {
 	if client.tracesParams.ComponentUID != componentUID || client.tracesParams.Limit != 7 {
 		t.Errorf("params = %+v", client.tracesParams)
 	}
-	if *ok.Total != 1 || len(*ok.Traces) != 1 {
+	if *ok.Body.Total != 1 || len(*ok.Body.Traces) != 1 {
 		t.Fatalf("response = %+v", ok)
 	}
-	got := (*ok.Traces)[0]
+	got := (*ok.Body.Traces)[0]
 	if *got.TraceId != "t1" || *got.SpanCount != 3 || !*got.HasErrors {
 		t.Errorf("trace = %+v", got)
 	}
@@ -214,7 +214,7 @@ func TestQuerySpansForTrace(t *testing.T) {
 	if client.spansParams.TraceID != "0123456789abcdef0123456789abcdef" {
 		t.Errorf("TraceID = %q", client.spansParams.TraceID)
 	}
-	span := (*ok.Spans)[0]
+	span := (*ok.Body.Spans)[0]
 	if span.Attributes == nil {
 		t.Error("attributes missing despite includeAttributes")
 	}

@@ -54,11 +54,18 @@ func (h *LogsHandler) QueryEvents(
 	}
 	took := result.TookMs
 
-	return gen.QueryEvents200JSONResponse(gen.EventsQueryResponse{
-		Events: &events,
-		Total:  result.Total,
-		TookMs: &took,
-	}), nil
+	var lineApplied string
+	if c := params.Component; c != nil {
+		lineApplied = releaseLineApplied(c.ReleaseLineUID, c.ComponentUID)
+	}
+	return gen.QueryEvents200JSONResponse{
+		Body: gen.EventsQueryResponse{
+			Events: &events,
+			Total:  result.Total,
+			TookMs: &took,
+		},
+		Headers: gen.QueryEvents200ResponseHeaders{OpenChoreoReleaseLineApplied: lineApplied},
+	}, nil
 }
 
 // eventsQueryParams maps the wire request onto query params, returning a
@@ -146,6 +153,10 @@ func eventsQueryParams(body gen.EventsQueryRequest) (loganalytics.EventsParams, 
 		ComponentUID:   strings.TrimSpace(derefString(scope.ComponentUid)),
 		ProjectUID:     strings.TrimSpace(derefString(scope.ProjectUid)),
 		EnvironmentUID: strings.TrimSpace(derefString(scope.EnvironmentUid)),
+		ReleaseLineUID: strings.TrimSpace(derefString(scope.ReleaseLineUid)),
+	}
+	if scope.AllReleaseLines != nil {
+		params.Component.AllReleaseLines = *scope.AllReleaseLines
 	}
 	return params, ""
 }

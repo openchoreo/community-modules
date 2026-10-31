@@ -26,6 +26,64 @@ func escapeSQLString(value string) string {
 	return value
 }
 
+// Pod label columns that place a log record on a component's release lines.
+const (
+	colComponentID   = "kubernetes_labels_openchoreo_dev_component_uid"
+	colReleaseLineID = "kubernetes_labels_openchoreo_dev_release_line_uid"
+	// colReleaseLineComponentID is the component UID on a release line's pods, which don't carry colComponentID.
+	colReleaseLineComponentID = "kubernetes_labels_openchoreo_dev_release_line_component_uid"
+)
+
+// releaseLineFields are the label columns that place a record on a component's lines.
+type releaseLineFields struct {
+	component, line, lineComponent string
+}
+
+var (
+	logReleaseLineFields   = releaseLineFields{colComponentID, colReleaseLineID, colReleaseLineComponentID}
+	eventReleaseLineFields = releaseLineFields{evComponentID, evReleaseLineID, evReleaseLineComponentID}
+)
+
+// lineColumns reports which release line label columns a stream has stored. OpenObserve adds a
+// column only once a record carries the label, and rejects a query naming a column it lacks.
+type lineColumns struct {
+	line, lineComponent bool
+}
+
+// releaseLineConditions matches a component's records by release line. The component UIDs alone
+// keep their main lines' records, those with a component UID and no release line UID. A release
+// line's pods carry the component UID under another label than the main line's, so allLines
+// matches either and covers every line. One release line matches on its UID alone. A label column
+// the stream has not stored is left out of the main and every line match, since no record carries
+// that label. Returns nil without a component or a line.
+func releaseLineConditions(f releaseLineFields, stored lineColumns, componentIDs []string, lineID string, allLines bool) []string {
+	if lineID != "" {
+		return []string{f.line + " = '" + escapeSQLString(lineID) + "'"}
+	}
+	if len(componentIDs) == 0 {
+		return nil
+	}
+
+	matches := make([]string, 0, 2*len(componentIDs))
+	for _, id := range componentIDs {
+		matches = append(matches, f.component+" = '"+escapeSQLString(id)+"'")
+	}
+	if allLines && stored.lineComponent {
+		for _, id := range componentIDs {
+			matches = append(matches, f.lineComponent+" = '"+escapeSQLString(id)+"'")
+		}
+	}
+	match := matches[0]
+	if len(matches) > 1 {
+		match = "(" + strings.Join(matches, " OR ") + ")"
+	}
+
+	if !allLines && stored.line {
+		return []string{match, f.line + " IS NULL"}
+	}
+	return []string{match}
+}
+
 // mapOperator maps the API operator string to the OpenObserve SQL operator.
 func mapOperator(op string) (string, error) {
 	switch op {
@@ -136,13 +194,7 @@ func generateComponentLogsCountQuery(params ComponentLogsParams, stream string, 
 	if params.EnvironmentID != "" {
 		conditions = append(conditions, "kubernetes_labels_openchoreo_dev_environment_uid = '"+escapeSQLString(params.EnvironmentID)+"'")
 	}
-	if len(params.ComponentIDs) > 0 {
-		componentConditions := make([]string, len(params.ComponentIDs))
-		for i, id := range params.ComponentIDs {
-			componentConditions[i] = "kubernetes_labels_openchoreo_dev_component_uid = '" + escapeSQLString(id) + "'"
-		}
-		conditions = append(conditions, "("+strings.Join(componentConditions, " OR ")+")")
-	}
+	conditions = append(conditions, releaseLineConditions(logReleaseLineFields, params.stored, params.ComponentIDs, params.ReleaseLineID, params.AllReleaseLines)...)
 	if params.SearchPhrase != "" {
 		conditions = append(conditions, "log LIKE '%"+escapeSQLString(params.SearchPhrase)+"%'")
 	}
@@ -227,12 +279,14 @@ func generateWorkflowLogsCountQuery(params WorkflowLogsParams, stream string, lo
 
 // generateAlertConfig generates an OpenObserve alert configuration as JSON
 func generateAlertConfig(params LogAlertParams, streamName string, logger *slog.Logger) ([]byte, error) {
+	// A rule without a release line covers the component's main line.
+	scope := releaseLineConditions(logReleaseLineFields, params.stored, []string{params.ComponentUID}, params.ReleaseLineUID, false)
 	query := fmt.Sprintf(
-		"SELECT _timestamp FROM %s WHERE str_match(log, '%s') AND kubernetes_labels_openchoreo_dev_environment_uid = '%s' AND kubernetes_labels_openchoreo_dev_component_uid = '%s'",
+		"SELECT _timestamp FROM %s WHERE str_match(log, '%s') AND kubernetes_labels_openchoreo_dev_environment_uid = '%s' AND %s",
 		quoteIdentifier(streamName),
 		escapeSQLString(params.SearchPattern),
 		escapeSQLString(params.EnvironmentUID),
-		escapeSQLString(params.ComponentUID),
+		strings.Join(scope, " AND "),
 	)
 
 	sqlOperator, err := mapOperator(params.Operator)
@@ -255,6 +309,16 @@ func generateAlertConfig(params LogAlertParams, streamName string, logger *slog.
 		return nil, fmt.Errorf("invalid alert interval: %w", err)
 	}
 
+	contextAttributes := map[string]interface{}{
+		"namespace":      params.Namespace,
+		"projectUid":     params.ProjectUID,
+		"environmentUid": params.EnvironmentUID,
+		"componentUid":   params.ComponentUID,
+	}
+	if params.ReleaseLineUID != "" {
+		contextAttributes["releaseLineUid"] = params.ReleaseLineUID
+	}
+
 	alertConfig := map[string]interface{}{
 		"name":         alertName,
 		"stream_name":  streamName,
@@ -273,13 +337,8 @@ func generateAlertConfig(params LogAlertParams, streamName string, logger *slog.
 			"operator":  sqlOperator,
 			"silence":   0,
 		},
-		"destinations": []string{"openchoreo"},
-		"context_attributes": map[string]interface{}{
-			"namespace":      params.Namespace,
-			"projectUid":     params.ProjectUID,
-			"environmentUid": params.EnvironmentUID,
-			"componentUid":   params.ComponentUID,
-		},
+		"destinations":       []string{"openchoreo"},
+		"context_attributes": contextAttributes,
 	}
 
 	if logger.Enabled(nil, slog.LevelDebug) {
@@ -381,14 +440,8 @@ func generateComponentLogsQuery(params ComponentLogsParams, stream string, logge
 		conditions = append(conditions, "kubernetes_labels_openchoreo_dev_environment_uid = '"+escapeSQLString(params.EnvironmentID)+"'")
 	}
 
-	// Add optional component IDs filter
-	if len(params.ComponentIDs) > 0 {
-		componentConditions := make([]string, len(params.ComponentIDs))
-		for i, id := range params.ComponentIDs {
-			componentConditions[i] = "kubernetes_labels_openchoreo_dev_component_uid = '" + escapeSQLString(id) + "'"
-		}
-		conditions = append(conditions, "("+strings.Join(componentConditions, " OR ")+")")
-	}
+	// Add optional component and release line filter
+	conditions = append(conditions, releaseLineConditions(logReleaseLineFields, params.stored, params.ComponentIDs, params.ReleaseLineID, params.AllReleaseLines)...)
 
 	// Add search phrase filter
 	if params.SearchPhrase != "" {
@@ -452,9 +505,11 @@ func componentEventsConditions(params EventsQueryParams) []string {
 	if params.ProjectID != "" {
 		conditions = append(conditions, evProjectID+" = '"+escapeSQLString(params.ProjectID)+"'")
 	}
+	var componentIDs []string
 	if params.ComponentID != "" {
-		conditions = append(conditions, evComponentID+" = '"+escapeSQLString(params.ComponentID)+"'")
+		componentIDs = []string{params.ComponentID}
 	}
+	conditions = append(conditions, releaseLineConditions(eventReleaseLineFields, params.stored, componentIDs, params.ReleaseLineID, params.AllReleaseLines)...)
 	if params.EnvironmentID != "" {
 		conditions = append(conditions, evEnvironmentID+" = '"+escapeSQLString(params.EnvironmentID)+"'")
 	}

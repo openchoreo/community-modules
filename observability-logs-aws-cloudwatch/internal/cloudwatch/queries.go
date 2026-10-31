@@ -19,7 +19,9 @@ const (
 	labelEnvironmentName = "openchoreo.dev/environment"
 	labelProjectUID      = "openchoreo.dev/project-uid"
 	labelProjectName     = "openchoreo.dev/project"
-
+	labelReleaseLineUID  = "openchoreo.dev/release-line-uid"
+	// labelReleaseLineComponentUID is the component UID on a release line's pods, which don't carry labelComponentUID.
+	labelReleaseLineComponentUID = "openchoreo.dev/release-line-component-uid"
 )
 
 var logLevelFieldNames = []string{
@@ -82,6 +84,7 @@ func buildComponentQuery(p ComponentLogsParams) string {
 	b.WriteString(" kubernetes.pod_name as podName,")
 	b.WriteString(" kubernetes.container_name as containerName,")
 	fmt.Fprintf(&b, " %s as componentUid,", labelField(labelComponentUID))
+	fmt.Fprintf(&b, " %s as releaseLineComponentUid,", labelField(labelReleaseLineComponentUID))
 	fmt.Fprintf(&b, " %s as componentName,", labelField(labelComponentName))
 	fmt.Fprintf(&b, " %s as environmentUid,", labelField(labelEnvironmentUID))
 	fmt.Fprintf(&b, " %s as environmentName,", labelField(labelEnvironmentName))
@@ -100,16 +103,7 @@ func buildComponentQuery(p ComponentLogsParams) string {
 	if p.EnvironmentID != "" {
 		fmt.Fprintf(&b, "| filter %s = \"%s\"\n", labelField(labelEnvironmentUID), escapeInsights(p.EnvironmentID))
 	}
-	if len(p.ComponentIDs) > 0 {
-		b.WriteString("| filter ")
-		for i, id := range p.ComponentIDs {
-			if i > 0 {
-				b.WriteString(" or ")
-			}
-			fmt.Fprintf(&b, "%s = \"%s\"", labelField(labelComponentUID), escapeInsights(id))
-		}
-		b.WriteString("\n")
-	}
+	writeReleaseLineScopeFilter(&b, logReleaseLineFields, p.ReleaseLineID, p.AllReleaseLines, p.ComponentIDs...)
 	if p.SearchPhrase != "" {
 		fmt.Fprintf(&b, "| filter @message like \"%s\"\n", escapeInsights(p.SearchPhrase))
 	}
@@ -144,6 +138,46 @@ func buildWorkflowQuery(p WorkflowLogsParams) string {
 	fmt.Fprintf(&b, "| limit %d", insightsLimit(p.Limit))
 
 	return b.String()
+}
+
+// releaseLineFields are the Insights fields that place a record on a component's lines.
+type releaseLineFields struct {
+	component, line, lineComponent string
+}
+
+var logReleaseLineFields = releaseLineFields{
+	component:     labelField(labelComponentUID),
+	line:          labelField(labelReleaseLineUID),
+	lineComponent: labelField(labelReleaseLineComponentUID),
+}
+
+// writeReleaseLineScopeFilter filters a component's records by release line. The component UIDs
+// alone keep their main line's records, those with the UID and no release line label. A release
+// line's pods carry the component UID under another label than the main line's, so allLines
+// matches either label and covers every line. One release line matches on its UID alone. Writes
+// nothing without a component or a line.
+func writeReleaseLineScopeFilter(b *strings.Builder, f releaseLineFields, lineID string, allLines bool, componentIDs ...string) {
+	if lineID != "" {
+		fmt.Fprintf(b, "| filter %s = \"%s\"\n", f.line, escapeInsights(lineID))
+		return
+	}
+	var conds []string
+	for _, id := range componentIDs {
+		if id == "" {
+			continue
+		}
+		conds = append(conds, fmt.Sprintf("%s = \"%s\"", f.component, escapeInsights(id)))
+		if allLines {
+			conds = append(conds, fmt.Sprintf("%s = \"%s\"", f.lineComponent, escapeInsights(id)))
+		}
+	}
+	if len(conds) == 0 {
+		return
+	}
+	fmt.Fprintf(b, "| filter %s\n", strings.Join(conds, " or "))
+	if !allLines {
+		fmt.Fprintf(b, "| filter not ispresent(%s)\n", f.line)
+	}
 }
 
 func normaliseSortOrder(s string) string {

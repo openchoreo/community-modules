@@ -18,7 +18,8 @@ const minBin = time.Minute
 //
 // Shape:
 //   - Filter KubePodInventory to pods whose PodLabel carries the requested
-//     OpenChoreo namespace (required) plus optional component/project/env UIDs.
+//     OpenChoreo namespace (required) plus optional component/project/env UIDs
+//     and release line scope.
 //   - Derive the Perf join key: InstanceName = strcat(ClusterId, '/', ContainerName).
 //     (Verified against Microsoft's Container Insights visualization queries.)
 //   - Join to Perf rows for ObjectName == 'K8SContainer' carrying the six
@@ -38,8 +39,11 @@ func BuildResourceMetricsKQL(p MetricsQueryParams) string {
 
 	// Optional UID filters; only the namespace label is always present.
 	var scopeFilters strings.Builder
+	if scope := releaseLineScope(p.ComponentUID, p.ReleaseLineUID, p.AllReleaseLines); scope != "" {
+		scopeFilters.WriteString("\n    | where ")
+		scopeFilters.WriteString(scope)
+	}
 	for _, f := range []struct{ label, value string }{
-		{LabelComponentUID, p.ComponentUID},
 		{LabelProjectUID, p.ProjectUID},
 		{LabelEnvironmentUID, p.EnvironmentUID},
 	} {
@@ -86,8 +90,32 @@ func allCounters() []string {
 	}
 }
 
+// podLabel renders the value of one pod label, empty when the pod lacks it.
+func podLabel(label string) string {
+	return fmt.Sprintf("tostring(_labels[%s])", kqlString(label))
+}
+
 func podLabelEquals(label, value string) string {
-	return fmt.Sprintf("tostring(_labels[%s]) == %s", kqlString(label), kqlString(value))
+	return podLabel(label) + " == " + kqlString(value)
+}
+
+// releaseLineScope renders the predicate placing a pod on a component's release
+// lines. The component UID alone keeps its main line's pods, those with the UID
+// and no release line label. A release line's pods carry the component UID
+// under another label than the main line's, so allLines matches either label
+// and covers every line. One release line matches on its UID alone. Empty
+// without a component or a line.
+func releaseLineScope(componentUID, lineUID string, allLines bool) string {
+	switch {
+	case lineUID != "":
+		return podLabelEquals(LabelReleaseLineUID, lineUID)
+	case componentUID == "":
+		return ""
+	case allLines:
+		return "(" + podLabelEquals(LabelComponentUID, componentUID) +
+			" or " + podLabelEquals(LabelReleaseLineComponentUID, componentUID) + ")"
+	}
+	return podLabelEquals(LabelComponentUID, componentUID) + " and isempty(" + podLabel(LabelReleaseLineUID) + ")"
 }
 
 func binOrDefault(d time.Duration) time.Duration {

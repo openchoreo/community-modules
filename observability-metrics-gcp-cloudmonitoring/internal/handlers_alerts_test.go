@@ -109,14 +109,14 @@ func TestCreateAlertRuleSuccess(t *testing.T) {
 	if !ok {
 		t.Fatalf("resp = %T, want 201", resp)
 	}
-	if r.Action == nil || *r.Action != gen.Created {
-		t.Errorf("action = %v, want created", r.Action)
+	if r.Body.Action == nil || *r.Body.Action != gen.Created {
+		t.Errorf("action = %v, want created", r.Body.Action)
 	}
-	if r.Status == nil || *r.Status != gen.Synced {
-		t.Errorf("status = %v, want synced", r.Status)
+	if r.Body.Status == nil || *r.Body.Status != gen.Synced {
+		t.Errorf("status = %v, want synced", r.Body.Status)
 	}
-	if r.RuleBackendId == nil || *r.RuleBackendId != "projects/p/alertPolicies/1" {
-		t.Errorf("backend ID = %v", r.RuleBackendId)
+	if r.Body.RuleBackendId == nil || *r.Body.RuleBackendId != "projects/p/alertPolicies/1" {
+		t.Errorf("backend ID = %v", r.Body.RuleBackendId)
 	}
 }
 

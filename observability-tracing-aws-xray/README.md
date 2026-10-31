@@ -45,6 +45,8 @@ OpenChoreo labels are stored as filterable X-Ray annotations:
 | `openchoreo.dev/component-uid` | `openchoreo.dev_component_uid` |
 | `openchoreo.dev/project-uid` | `openchoreo.dev_project_uid` |
 | `openchoreo.dev/environment-uid` | `openchoreo.dev_environment_uid` |
+| `openchoreo.dev/release-line-uid` | `openchoreo.dev_release_line_uid` |
+| `openchoreo.dev/release-line-component-uid` | `openchoreo.dev_release_line_component_uid` |
 
 X-Ray preserves dots in annotation keys and converts `/` and `-` to `_`.
 Because the keys contain dots, the adapter builds filter expressions with
@@ -58,6 +60,20 @@ trace retrieval.
 | `POST /api/v1alpha1/traces/{traceId}/spans/query` | Fetches a trace via `BatchGetTraces`, flattens the segment tree and returns only the spans (segments + subsegments) that match the search scope and time window. |
 | `GET /api/v1alpha1/traces/{traceId}/spans/{spanId}` | Returns full detail for a specific span within a trace, including attributes and resource attributes. Returns `404` when the trace or span is missing, or the span has no OpenChoreo namespace. |
 | `GET /healthz` | Readiness and liveness check. Returns `200` once the adapter is ready. |
+
+### Release lines
+
+The spans of a component's main line carry the `openchoreo.dev_component_uid` annotation. The spans of its release lines carry `openchoreo.dev_release_line_uid` and `openchoreo.dev_release_line_component_uid` instead. Component-scoped queries match them as follows:
+
+| Scope | Trace query filter | Span query match |
+| --- | --- | --- |
+| Component UID alone (main line) | `annotation[openchoreo.dev_component_uid] = "<uid>"` | `openchoreo.dev_component_uid` equals the UID and `openchoreo.dev_release_line_uid` is absent |
+| Component UID with `allReleaseLines` | Two `GetTraceSummaries` queries, one on `openchoreo.dev_component_uid` and one on `openchoreo.dev_release_line_component_uid`, merged by trace ID | Either annotation equals the UID |
+| Release line UID | `annotation[openchoreo.dev_release_line_uid] = "<uid>"` | `openchoreo.dev_release_line_uid` equals the UID |
+
+A filter expression matches a whole trace, which may hold spans of other components and their release lines, so the trace query for the main line does not exclude traces carrying a release line annotation. Only main line spans carry `openchoreo.dev_component_uid`, so it already matches traces holding a span of the main line. The span query checks each span on its own. A release line span's resource attributes carry `openchoreo.dev/release-line-uid` and `openchoreo.dev/release-line-component-uid` in place of `openchoreo.dev/component-uid`.
+
+X-Ray indexes annotations when it records a span. Spans recorded by a collector from an earlier chart version have no release line annotations and can't be matched by release line, so upgrade the chart on every data-plane cluster before creating release lines.
 
 ### Span status
 
@@ -117,6 +133,7 @@ Before installing this module, make sure the following are available.
   - `openchoreo.dev/component-uid`
   - `openchoreo.dev/environment-uid`
   - `openchoreo.dev/project-uid`
+  - `openchoreo.dev/release-line-uid` and `openchoreo.dev/release-line-component-uid`, in place of `openchoreo.dev/component-uid`, on a release line's pods
 - Applications are instrumented with OpenTelemetry and configured to send
   OTLP traces to the collector endpoint.
 

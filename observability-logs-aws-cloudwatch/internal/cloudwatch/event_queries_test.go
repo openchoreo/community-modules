@@ -117,3 +117,33 @@ func TestBuildWorkflowEventsQueryWithoutRunName(t *testing.T) {
 		t.Errorf("query should not add an object-name filter when run name is empty\nquery:\n%s", query)
 	}
 }
+
+func TestBuildEventsQueriesFilterReasons(t *testing.T) {
+	reasons := []string{"DeploymentSucceeded", `Back"Off\`}
+	want := "| filter `attributes.k8s.event.reason` in [\"DeploymentSucceeded\", \"Back\\\"Off\\\\\"]\n"
+
+	queries := map[string]string{
+		"component": buildComponentEventsQuery(ComponentEventsParams{Namespace: "default", ComponentID: "comp-1", Reasons: reasons}),
+		"workflow":  buildWorkflowEventsQuery(WorkflowEventsParams{Namespace: "default", WorkflowRunName: "build-123", Reasons: reasons}),
+	}
+	for name, query := range queries {
+		if !strings.Contains(query, want) {
+			t.Errorf("%s query missing reasons filter %q\nquery:\n%s", name, want, query)
+		}
+		if strings.Index(query, want) > strings.Index(query, "| sort @timestamp") {
+			t.Errorf("%s query must filter reasons before sorting\nquery:\n%s", name, query)
+		}
+	}
+}
+
+func TestBuildEventsQueriesOmitReasonsFilterWhenEmpty(t *testing.T) {
+	queries := map[string]string{
+		"component": buildComponentEventsQuery(ComponentEventsParams{Namespace: "default", Reasons: []string{}}),
+		"workflow":  buildWorkflowEventsQuery(WorkflowEventsParams{Namespace: "default"}),
+	}
+	for name, query := range queries {
+		if strings.Contains(query, "| filter `attributes.k8s.event.reason`") {
+			t.Errorf("%s query should not filter on reason when none are set\nquery:\n%s", name, query)
+		}
+	}
+}

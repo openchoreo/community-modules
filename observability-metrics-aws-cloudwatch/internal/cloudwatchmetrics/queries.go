@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -21,9 +22,12 @@ type MetricsQueryParams struct {
 	ComponentUID   string
 	ProjectUID     string
 	EnvironmentUID string
-	StartTime      time.Time
-	EndTime        time.Time
-	StepSeconds    int32
+	ReleaseLineUID string
+	// AllReleaseLines covers every line of the component instead of its main line.
+	AllReleaseLines bool
+	StartTime       time.Time
+	EndTime         time.Time
+	StepSeconds     int32
 }
 
 // TimeValuePoint is a single (timestamp, value) pair.
@@ -66,6 +70,12 @@ func (c *Client) GetResourceMetrics(ctx context.Context, p MetricsQueryParams) (
 	p.StepSeconds = normalizeStandardMetricPeriod(p.StepSeconds, p.StartTime, p.EndTime)
 
 	dims := c.buildScopeDimensions(p.Namespace, p.ComponentUID, p.ProjectUID, p.EnvironmentUID)
+	switch {
+	case p.ReleaseLineUID != "":
+		dims = scopeDimensions(p.Namespace, DimensionReleaseLineUID, p.ReleaseLineUID, p.EnvironmentUID)
+	case p.ComponentUID != "" && p.AllReleaseLines:
+		return c.getAllLinesResourceMetrics(ctx, p)
+	}
 	queries := make([]cwtypes.MetricDataQuery, 0, len(resourceQuerySpecs))
 	for _, spec := range resourceQuerySpecs {
 		queries = append(queries, cwtypes.MetricDataQuery{
@@ -90,21 +100,100 @@ func (c *Client) GetResourceMetrics(ctx context.Context, p MetricsQueryParams) (
 
 	res := &ResourceMetricsResult{}
 	for _, r := range out {
-		points := toAscendingPoints(r.Timestamps, r.Values)
-		switch aws.ToString(r.Id) {
-		case "q_cpu_usage":
-			res.CPUUsage = points
-		case "q_cpu_request":
-			res.CPURequests = points
-		case "q_cpu_limit":
-			res.CPULimits = points
-		case "q_mem_usage":
-			res.MemoryUsage = points
-		case "q_mem_request":
-			res.MemoryRequests = points
-		case "q_mem_limit":
-			res.MemoryLimits = points
+		res.setSeries(aws.ToString(r.Id), toAscendingPoints(r.Timestamps, r.Values))
+	}
+	return res, nil
+}
+
+// setSeries stores the points of the resourceQuerySpecs series with the given id.
+func (r *ResourceMetricsResult) setSeries(id string, points []TimeValuePoint) {
+	switch id {
+	case "q_cpu_usage":
+		r.CPUUsage = points
+	case "q_cpu_request":
+		r.CPURequests = points
+	case "q_cpu_limit":
+		r.CPULimits = points
+	case "q_mem_usage":
+		r.MemoryUsage = points
+	case "q_mem_request":
+		r.MemoryRequests = points
+	case "q_mem_limit":
+		r.MemoryLimits = points
+	}
+}
+
+// getAllLinesResourceMetrics covers every line of the component. The main line's pods publish
+// under ComponentUID and its release lines' pods under ReleaseLineComponentUID, so each series
+// averages the samples of both, from their sums and sample counts.
+func (c *Client) getAllLinesResourceMetrics(ctx context.Context, p MetricsQueryParams) (*ResourceMetricsResult, error) {
+	dimSets := [][]cwtypes.Dimension{
+		scopeDimensions(p.Namespace, DimensionComponentUID, p.ComponentUID, p.EnvironmentUID),
+		scopeDimensions(p.Namespace, DimensionReleaseLineComponentUID, p.ComponentUID, p.EnvironmentUID),
+	}
+	type part struct {
+		series string
+		count  bool
+	}
+	parts := map[string]part{}
+	queries := make([]cwtypes.MetricDataQuery, 0, len(resourceQuerySpecs)*len(dimSets)*2)
+	for _, spec := range resourceQuerySpecs {
+		for i, dims := range dimSets {
+			for _, stat := range []cwtypes.Statistic{cwtypes.StatisticSum, cwtypes.StatisticSampleCount} {
+				id := fmt.Sprintf("%s_%d_%s", spec.id, i, strings.ToLower(string(stat)))
+				parts[id] = part{series: spec.id, count: stat == cwtypes.StatisticSampleCount}
+				queries = append(queries, cwtypes.MetricDataQuery{
+					Id: aws.String(id),
+					MetricStat: &cwtypes.MetricStat{
+						Metric: &cwtypes.Metric{
+							Namespace:  aws.String(c.metricNamespace),
+							MetricName: aws.String(spec.metric),
+							Dimensions: dims,
+						},
+						Period: aws.Int32(p.StepSeconds),
+						Stat:   aws.String(string(stat)),
+					},
+					ReturnData: aws.Bool(true),
+				})
+			}
 		}
+	}
+
+	out, err := c.getMetricDataAll(ctx, queries, p.StartTime, p.EndTime)
+	if err != nil {
+		return nil, err
+	}
+
+	sums := map[string]map[time.Time]float64{}
+	counts := map[string]map[time.Time]float64{}
+	for _, r := range out {
+		pt, ok := parts[aws.ToString(r.Id)]
+		if !ok {
+			continue
+		}
+		acc := sums
+		if pt.count {
+			acc = counts
+		}
+		if acc[pt.series] == nil {
+			acc[pt.series] = map[time.Time]float64{}
+		}
+		for _, point := range toAscendingPoints(r.Timestamps, r.Values) {
+			acc[pt.series][point.Timestamp] += point.Value
+		}
+	}
+
+	res := &ResourceMetricsResult{}
+	for _, spec := range resourceQuerySpecs {
+		var timestamps []time.Time
+		var values []float64
+		for ts, n := range counts[spec.id] {
+			if n > 0 {
+				timestamps = append(timestamps, ts)
+				values = append(values, sums[spec.id][ts]/n)
+			}
+		}
+		res.setSeries(spec.id, toAscendingPoints(timestamps, values))
 	}
 	return res, nil
 }
@@ -152,17 +241,23 @@ func (c *Client) getMetricDataAll(ctx context.Context, queries []cwtypes.MetricD
 
 // ResolveNamespaceDimension discovers the Namespace dimension value that the
 // OTel collector emitted for the given ComponentUID and EnvironmentUID by
-// querying CloudWatch ListMetrics. This works in both single-cluster and
-// multi-cluster topologies because CloudWatch is the shared backend.
-func (c *Client) ResolveNamespaceDimension(ctx context.Context, componentUID, environmentUID string) (string, error) {
-	if componentUID == "" && environmentUID == "" {
+// querying CloudWatch ListMetrics. A releaseLineUID matches that line's
+// ReleaseLineUID dimension in place of ComponentUID. This works in both
+// single-cluster and multi-cluster topologies because CloudWatch is the shared
+// backend.
+func (c *Client) ResolveNamespaceDimension(ctx context.Context, componentUID, environmentUID, releaseLineUID string) (string, error) {
+	lineDimension, lineValue := DimensionComponentUID, componentUID
+	if releaseLineUID != "" {
+		lineDimension, lineValue = DimensionReleaseLineUID, releaseLineUID
+	}
+	if lineValue == "" && environmentUID == "" {
 		return "", nil
 	}
 	dims := make([]cwtypes.DimensionFilter, 0, 2)
-	if componentUID != "" {
+	if lineValue != "" {
 		dims = append(dims, cwtypes.DimensionFilter{
-			Name:  aws.String(DimensionComponentUID),
-			Value: aws.String(componentUID),
+			Name:  aws.String(lineDimension),
+			Value: aws.String(lineValue),
 		})
 	}
 	if environmentUID != "" {
@@ -193,12 +288,20 @@ func (c *Client) ResolveNamespaceDimension(ctx context.Context, componentUID, en
 // buildScopeDimensions returns the EMF dimensions for the requested scope.
 // The dimension set must match what awsemfexporter is configured to emit so
 // CloudWatch matches the alarm/series identity. The EMF declaration emits
-// ComponentUID, EnvironmentUID, and Namespace only. ProjectUID is
+// ComponentUID, EnvironmentUID, and Namespace only, with a release line's
+// dimensions in place of ComponentUID on its pods. ProjectUID is
 // intentionally accepted by the API but not used as a CloudWatch dimension.
 func (c *Client) buildScopeDimensions(namespace, componentUID, _ string, environmentUID string) []cwtypes.Dimension {
+	return scopeDimensions(namespace, DimensionComponentUID, componentUID, environmentUID)
+}
+
+// scopeDimensions returns the EMF dimensions of the pods whose lineDimension is lineValue. The main
+// line's pods carry ComponentUID, and a release line's pods ReleaseLineUID and
+// ReleaseLineComponentUID in its place, so a component UID alone covers its main line.
+func scopeDimensions(namespace, lineDimension, lineValue, environmentUID string) []cwtypes.Dimension {
 	dims := make([]cwtypes.Dimension, 0, 3)
-	if componentUID != "" {
-		dims = append(dims, cwtypes.Dimension{Name: aws.String(DimensionComponentUID), Value: aws.String(componentUID)})
+	if lineValue != "" {
+		dims = append(dims, cwtypes.Dimension{Name: aws.String(lineDimension), Value: aws.String(lineValue)})
 	}
 	if environmentUID != "" {
 		dims = append(dims, cwtypes.Dimension{Name: aws.String(DimensionEnvironmentUID), Value: aws.String(environmentUID)})

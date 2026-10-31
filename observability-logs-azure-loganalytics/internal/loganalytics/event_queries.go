@@ -4,6 +4,7 @@
 package loganalytics
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"strings"
@@ -86,7 +87,7 @@ func BuildEventsKQL(p EventsParams, table, scopeName string) (string, error) {
 		resAttr(resObjectName),
 		eventLabel(LabelNamespace),
 		eventLabel(LabelComponentName),
-		eventLabel(LabelComponentUID),
+		eventComponentUID,
 		eventLabel(LabelProjectName),
 		eventLabel(LabelProjectUID),
 		eventLabel(LabelEnvironmentName),
@@ -122,7 +123,6 @@ func eventsBase(p EventsParams, table, scopeName string) string {
 		sb.WriteString(dynEquals("ResourceAttributes", eventLabel(LabelNamespace), s.Namespace))
 		for _, f := range []struct{ label, value string }{
 			{LabelProjectUID, s.ProjectUID},
-			{LabelComponentUID, s.ComponentUID},
 			{LabelEnvironmentUID, s.EnvironmentUID},
 		} {
 			if f.value == "" {
@@ -130,6 +130,11 @@ func eventsBase(p EventsParams, table, scopeName string) string {
 			}
 			sb.WriteString("\n| where ")
 			sb.WriteString(dynEquals("ResourceAttributes", eventLabel(f.label), f.value))
+		}
+		if scope := releaseLineScope(eventLabel, s.ComponentUID, s.ReleaseLineUID, s.AllReleaseLines); scope != "" {
+			// Every case matches the line UID, else the component UID, as a label value.
+			sb.WriteString("\n| where ")
+			sb.WriteString(dynMatch("ResourceAttributes", cmp.Or(s.ReleaseLineUID, s.ComponentUID), scope))
 		}
 
 	case p.Workflow != nil:

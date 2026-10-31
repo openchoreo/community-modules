@@ -3,7 +3,10 @@
 
 package openobserve
 
-import "time"
+import (
+	"cmp"
+	"time"
+)
 
 // OpenObserve column names for querying Kubernetes events.
 //
@@ -42,6 +45,10 @@ const (
 	evEnvironmentName = evLabelPrefix + "environment"
 	// evEnvironmentID is the OpenChoreo environment UID label column.
 	evEnvironmentID = evLabelPrefix + "environment_uid"
+	// evReleaseLineID is the OpenChoreo release line UID label column.
+	evReleaseLineID = evLabelPrefix + "release_line_uid"
+	// evReleaseLineComponentID is the component UID label column on a release line's objects.
+	evReleaseLineComponentID = evLabelPrefix + "release_line_component_uid"
 	// evNamespaceName is the OpenChoreo namespace name label column.
 	evNamespaceName = evLabelPrefix + "namespace"
 )
@@ -66,14 +73,20 @@ type EventEntry struct {
 
 // EventsQueryParams holds parameters for the component-scoped events query.
 type EventsQueryParams struct {
-	Namespace     string    `json:"namespace"`
-	ProjectID     string    `json:"projectId,omitempty"`
-	ComponentID   string    `json:"componentId,omitempty"`
-	EnvironmentID string    `json:"environmentId,omitempty"`
-	StartTime     time.Time `json:"startTime"`
-	EndTime       time.Time `json:"endTime"`
-	Limit         int       `json:"limit"`
-	SortOrder     string    `json:"sortOrder"`
+	Namespace     string `json:"namespace"`
+	ProjectID     string `json:"projectId,omitempty"`
+	ComponentID   string `json:"componentId,omitempty"`
+	EnvironmentID string `json:"environmentId,omitempty"`
+	ReleaseLineID string `json:"releaseLineId,omitempty"`
+	// AllReleaseLines covers every line of the component instead of its main line.
+	AllReleaseLines bool      `json:"allReleaseLines,omitempty"`
+	StartTime       time.Time `json:"startTime"`
+	EndTime         time.Time `json:"endTime"`
+	Limit           int       `json:"limit"`
+	SortOrder       string    `json:"sortOrder"`
+
+	// stored is set by the client from the events stream's schema.
+	stored lineColumns
 }
 
 // WorkflowEventsQueryParams holds parameters for the workflow-scoped events query.
@@ -107,7 +120,8 @@ func parseEventEntry(timestamp int64, source map[string]interface{}) EventEntry 
 	entry.ObjectName = stringField(source, evObjectName)
 	entry.ObjectNamespace = stringField(source, evObjectNamespace)
 	entry.ComponentName = stringField(source, evComponentName)
-	entry.ComponentID = stringField(source, evComponentID)
+	// A release line's objects carry the component UID under their own label.
+	entry.ComponentID = cmp.Or(stringField(source, evComponentID), stringField(source, evReleaseLineComponentID))
 	entry.ProjectName = stringField(source, evProjectName)
 	entry.ProjectID = stringField(source, evProjectID)
 	entry.EnvironmentName = stringField(source, evEnvironmentName)

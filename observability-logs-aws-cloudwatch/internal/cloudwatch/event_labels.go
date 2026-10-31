@@ -26,6 +26,9 @@ var (
 	evProjectUID      = evLabelPrefix + labelProjectUID
 	evProjectName     = evLabelPrefix + labelProjectName
 	evNamespaceName   = evLabelPrefix + labelNamespace
+	evReleaseLineUID  = evLabelPrefix + labelReleaseLineUID
+	// evReleaseLineComponentUID is the component UID label path on a release line's objects.
+	evReleaseLineComponentUID = evLabelPrefix + labelReleaseLineComponentUID
 )
 
 // eventField wraps a dotted/slashed field path in backticks for Insights.

@@ -254,6 +254,10 @@ func TestGetWorkflowLogs(t *testing.T) {
 
 func TestCreateAlert(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" && r.URL.Path == "/api/default/streams/default/schema" {
+			json.NewEncoder(w).Encode(map[string]interface{}{"schema": []interface{}{}})
+			return
+		}
 		if r.URL.Path != "/api/v2/default/alerts" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
@@ -288,6 +292,10 @@ func TestCreateAlert(t *testing.T) {
 
 func TestCreateAlert_ServerError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" && r.URL.Path == "/api/default/streams/default/schema" {
+			json.NewEncoder(w).Encode(map[string]interface{}{"schema": []interface{}{}})
+			return
+		}
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("bad request"))
 	}))
@@ -366,6 +374,8 @@ func TestUpdateAlert(t *testing.T) {
 			}
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(resp)
+		case r.Method == "GET" && r.URL.Path == "/api/default/streams/default/schema":
+			json.NewEncoder(w).Encode(map[string]interface{}{"schema": []interface{}{}})
 		case r.Method == "PUT" && r.URL.Path == "/api/v2/default/alerts/alert-789":
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)

@@ -147,10 +147,10 @@ func TestQueryTraces_Success(t *testing.T) {
 	if !isOK {
 		t.Fatalf("got %T, want 200", resp)
 	}
-	if ok.Total == nil || *ok.Total != 1 {
-		t.Errorf("Total = %v", ok.Total)
+	if ok.Body.Total == nil || *ok.Body.Total != 1 {
+		t.Errorf("Total = %v", ok.Body.Total)
 	}
-	traces := *ok.Traces
+	traces := *ok.Body.Traces
 	if len(traces) != 1 || *traces[0].TraceId != "4372fc01295900a9" {
 		t.Errorf("unexpected traces payload: %+v", traces)
 	}
@@ -219,7 +219,7 @@ func TestQuerySpansForTrace_Success(t *testing.T) {
 	if !isOK {
 		t.Fatalf("got %T, want 200", resp)
 	}
-	spans := *ok.Spans
+	spans := *ok.Body.Spans
 	if len(spans) != 1 || *spans[0].SpanId != "2419e7552dfbe055" {
 		t.Errorf("unexpected spans payload: %+v", spans)
 	}

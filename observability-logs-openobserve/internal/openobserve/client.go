@@ -5,6 +5,7 @@ package openobserve
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -34,16 +36,22 @@ func extractLogLevel(log string) string {
 
 // ComponentLogsParams holds parameters for component log queries.
 type ComponentLogsParams struct {
-	Namespace     string    `json:"namespace"`
-	ComponentIDs  []string  `json:"componentIds,omitempty"`
-	EnvironmentID string    `json:"environmentId"`
-	ProjectID     string    `json:"projectId"`
-	StartTime     time.Time `json:"startTime"`
-	EndTime       time.Time `json:"endTime"`
-	SearchPhrase  string    `json:"searchPhrase"`
-	LogLevels     []string  `json:"logLevels"`
-	Limit         int       `json:"limit"`
-	SortOrder     string    `json:"sortOrder"`
+	Namespace     string   `json:"namespace"`
+	ComponentIDs  []string `json:"componentIds,omitempty"`
+	EnvironmentID string   `json:"environmentId"`
+	ProjectID     string   `json:"projectId"`
+	ReleaseLineID string   `json:"releaseLineId,omitempty"`
+	// AllReleaseLines covers every line of the components instead of their main lines.
+	AllReleaseLines bool      `json:"allReleaseLines,omitempty"`
+	StartTime       time.Time `json:"startTime"`
+	EndTime         time.Time `json:"endTime"`
+	SearchPhrase    string    `json:"searchPhrase"`
+	LogLevels       []string  `json:"logLevels"`
+	Limit           int       `json:"limit"`
+	SortOrder       string    `json:"sortOrder"`
+
+	// stored is set by the client from the logs stream's schema.
+	stored lineColumns
 }
 
 // WorkflowLogsParams holds parameters for workflow log queries.
@@ -65,12 +73,16 @@ type LogAlertParams struct {
 	ProjectUID     string  `json:"projectUid"`
 	EnvironmentUID string  `json:"environmentUid"`
 	ComponentUID   string  `json:"componentUid"`
+	ReleaseLineUID string  `json:"releaseLineUid,omitempty"`
 	SearchPattern  string  `json:"searchPattern"`
 	Operator       string  `json:"operator"`
 	ThresholdValue float32 `json:"thresholdValue"`
 	Window         string  `json:"window"`
 	Interval       string  `json:"interval"`
 	Enabled        *bool   `json:"enabled"`
+
+	// stored is set by the client from the logs stream's schema.
+	stored lineColumns
 }
 
 // ComponentLogsEntry represents a parsed log entry.
@@ -134,6 +146,7 @@ type Client struct {
 	token        string
 	httpClient   *http.Client
 	logger       *slog.Logger
+	lineColumns  lineColumnsCache
 }
 
 func NewClient(baseURL, org, stream, eventsStream, user, token string, logger *slog.Logger) *Client {
@@ -215,7 +228,92 @@ func extractTotalCount(resp *OpenObserveResponse) int {
 	return 0
 }
 
+// storedLineColumns reports which of the release line label columns a stream has stored. The
+// answer is cached, and a failed lookup falls back to the last one.
+func (c *Client) storedLineColumns(ctx context.Context, stream string, f releaseLineFields) (lineColumns, error) {
+	cached, ok, fresh := c.lineColumns.get(stream)
+	if fresh {
+		return cached, nil
+	}
+	columns, err := c.streamColumns(ctx, stream)
+	if err != nil {
+		if ok {
+			c.logger.Warn("Using the last known release line columns", slog.String("stream", stream), slog.Any("error", err))
+			return cached, nil
+		}
+		return lineColumns{}, err
+	}
+	stored := lineColumns{line: columns[f.line], lineComponent: columns[f.lineComponent]}
+	c.lineColumns.put(stream, stored)
+	return stored, nil
+}
+
+const (
+	// lineColumnsRecheck is how long a stream that lacks a release line column goes before it is
+	// asked again, so a new line's first records are picked up quickly.
+	lineColumnsRecheck = 30 * time.Second
+	// lineColumnsRefresh is how long a stream with both columns goes before it is asked again.
+	// OpenObserve keeps a stored column, so this only guards against a deleted stream.
+	lineColumnsRefresh = 10 * time.Minute
+)
+
+// lineColumnsCache remembers the release line columns of each stream. The zero value is ready.
+type lineColumnsCache struct {
+	mu      sync.Mutex
+	entries map[string]lineColumnsEntry
+	now     func() time.Time
+}
+
+type lineColumnsEntry struct {
+	stored    lineColumns
+	checkedAt time.Time
+}
+
+// get returns the cached columns of a stream, whether there are any, and whether they are recent
+// enough to use without asking OpenObserve.
+func (l *lineColumnsCache) get(stream string) (lineColumns, bool, bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	e, ok := l.entries[stream]
+	if !ok {
+		return lineColumns{}, false, false
+	}
+	maxAge := lineColumnsRecheck
+	if e.stored.line && e.stored.lineComponent {
+		maxAge = lineColumnsRefresh
+	}
+	return e.stored, true, l.clock().Sub(e.checkedAt) < maxAge
+}
+
+func (l *lineColumnsCache) put(stream string, stored lineColumns) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.entries == nil {
+		l.entries = make(map[string]lineColumnsEntry)
+	}
+	l.entries[stream] = lineColumnsEntry{stored: stored, checkedAt: l.clock()}
+}
+
+func (l *lineColumnsCache) clock() time.Time {
+	if l.now != nil {
+		return l.now()
+	}
+	return time.Now()
+}
+
 func (c *Client) GetComponentLogs(ctx context.Context, params ComponentLogsParams) (*ComponentLogsResult, error) {
+	if len(params.ComponentIDs) > 0 || params.ReleaseLineID != "" {
+		stored, err := c.storedLineColumns(ctx, c.stream, logReleaseLineFields)
+		if err != nil {
+			return nil, err
+		}
+		// No record carries a release line yet.
+		if params.ReleaseLineID != "" && !stored.line {
+			return &ComponentLogsResult{Logs: []ComponentLogsEntry{}}, nil
+		}
+		params.stored = stored
+	}
+
 	queryJSON, err := generateComponentLogsQuery(params, c.stream, c.logger)
 	if err != nil {
 		c.logger.Error("Failed to marshal query", slog.Any("error", err))
@@ -300,6 +398,18 @@ func (c *Client) GetWorkflowLogs(ctx context.Context, params WorkflowLogsParams)
 // GetComponentEvents queries OpenObserve for Kubernetes events scoped to a component,
 // project, or environment within an OpenChoreo namespace.
 func (c *Client) GetComponentEvents(ctx context.Context, params EventsQueryParams) (*EventsResult, error) {
+	if params.ComponentID != "" || params.ReleaseLineID != "" {
+		stored, err := c.storedLineColumns(ctx, c.eventsStream, eventReleaseLineFields)
+		if err != nil {
+			return nil, err
+		}
+		// No event carries a release line yet.
+		if params.ReleaseLineID != "" && !stored.line {
+			return &EventsResult{Events: []EventEntry{}}, nil
+		}
+		params.stored = stored
+	}
+
 	queryJSON, err := generateComponentEventsQuery(params, c.eventsStream, c.logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate component events query: %w", err)
@@ -382,6 +492,10 @@ func parseWorkflowLogEntry(timestamp int64, source map[string]interface{}) Workf
 
 // CreateAlert creates an alert in OpenObserve and returns the backend alert ID.
 func (c *Client) CreateAlert(ctx context.Context, params LogAlertParams) (string, error) {
+	if err := c.setAlertLineColumns(ctx, &params); err != nil {
+		return "", err
+	}
+
 	// Generate alert configuration JSON
 	alertJSON, err := generateAlertConfig(params, c.stream, c.logger)
 	if err != nil {
@@ -435,6 +549,21 @@ func (c *Client) CreateAlert(ctx context.Context, params LogAlertParams) (string
 	}
 
 	return "", fmt.Errorf("openobserve create alert response missing id")
+}
+
+// setAlertLineColumns looks up the release line column a main line rule excludes. A rule created
+// before any record carried a release line matches the component UID alone, which release line
+// pods don't carry.
+func (c *Client) setAlertLineColumns(ctx context.Context, params *LogAlertParams) error {
+	if params.ReleaseLineUID != "" {
+		return nil
+	}
+	stored, err := c.storedLineColumns(ctx, c.stream, logReleaseLineFields)
+	if err != nil {
+		return fmt.Errorf("failed to read the logs stream schema: %w", err)
+	}
+	params.stored = stored
+	return nil
 }
 
 // DeleteAlert deletes an alert from OpenObserve by name and returns the backend alert ID.
@@ -556,6 +685,10 @@ func (c *Client) UpdateAlert(ctx context.Context, alertName string, params LogAl
 
 	// Ensure the canonical alertName from the path is used, not the one from the request body
 	params.Name = &alertName
+
+	if err := c.setAlertLineColumns(ctx, &params); err != nil {
+		return "", err
+	}
 
 	// Generate alert configuration JSON
 	alertJSON, err := generateAlertConfig(params, c.stream, c.logger)
@@ -713,9 +846,8 @@ func (c *Client) parseApplicationLogEntry(timestamp int64, source map[string]int
 	} else {
 		entry.LogLevel = extractLogLevel(entry.Log)
 	}
-	if v, ok := source["kubernetes_labels_openchoreo_dev_component_uid"].(string); ok {
-		entry.ComponentUID = v
-	}
+	// A release line's pods carry the component UID under their own label.
+	entry.ComponentUID = cmp.Or(stringField(source, colComponentID), stringField(source, colReleaseLineComponentID))
 	if v, ok := source["kubernetes_labels_openchoreo_dev_component"].(string); ok {
 		entry.ComponentName = v
 	}

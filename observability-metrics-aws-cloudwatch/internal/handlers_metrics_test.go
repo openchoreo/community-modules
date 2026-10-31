@@ -43,7 +43,7 @@ type stubMetricsClient struct {
 	updateAlertFn               func(context.Context, string, string, cloudwatchmetrics.MetricAlertParams) (string, error)
 	deleteAlertFn               func(context.Context, string, string) (string, error)
 	getAlarmTagsByName          func(context.Context, string) (map[string]string, error)
-	resolveNamespaceDimensionFn func(context.Context, string, string) (string, error)
+	resolveNamespaceDimensionFn func(context.Context, string, string, string) (string, error)
 }
 
 func (s *stubMetricsClient) Ping(context.Context) error { return s.pingErr }
@@ -104,11 +104,11 @@ func (s *stubMetricsClient) GetAlarmTagsByName(ctx context.Context, name string)
 	return s.getAlarmTagsByName(ctx, name)
 }
 
-func (s *stubMetricsClient) ResolveNamespaceDimension(ctx context.Context, componentUID, environmentUID string) (string, error) {
+func (s *stubMetricsClient) ResolveNamespaceDimension(ctx context.Context, componentUID, environmentUID, releaseLineUID string) (string, error) {
 	if s.resolveNamespaceDimensionFn == nil {
 		return "", nil
 	}
-	return s.resolveNamespaceDimensionFn(ctx, componentUID, environmentUID)
+	return s.resolveNamespaceDimensionFn(ctx, componentUID, environmentUID, releaseLineUID)
 }
 
 func newTestHandler(client metricsClient, observer observerForwarder) *MetricsHandler {
@@ -781,7 +781,7 @@ func TestCreateAlertRuleResolvesDimensionNamespace(t *testing.T) {
 			capturedParams = p
 			return "arn:test", nil
 		},
-		resolveNamespaceDimensionFn: func(_ context.Context, componentUID, environmentUID string) (string, error) {
+		resolveNamespaceDimensionFn: func(context.Context, string, string, string) (string, error) {
 			return "resolved-oc-namespace", nil
 		},
 	}, nil)
@@ -810,7 +810,7 @@ func TestUpdateAlertRuleResolvesDimensionNamespace(t *testing.T) {
 			capturedParams = p
 			return "arn:test", nil
 		},
-		resolveNamespaceDimensionFn: func(_ context.Context, _, _ string) (string, error) {
+		resolveNamespaceDimensionFn: func(context.Context, string, string, string) (string, error) {
 			return "resolved-ns", nil
 		},
 	}, nil)

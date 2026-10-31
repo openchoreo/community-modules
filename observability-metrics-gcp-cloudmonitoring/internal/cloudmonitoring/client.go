@@ -100,14 +100,15 @@ func (c *Client) Ping(ctx context.Context) error {
 	return nil
 }
 
-// GetResourceMetrics runs the six per-metric ListTimeSeries queries in
-// parallel and assembles the result. The first error wins and cancels the
-// remaining queries.
+// GetResourceMetrics runs the per-metric ListTimeSeries queries in parallel,
+// six or, for every line of a component, twelve, and assembles the result.
+// The series of a metric's queries add up. The first error wins and cancels
+// the remaining queries.
 func (c *Client) GetResourceMetrics(ctx context.Context, p MetricsQueryParams) (*ResourceMetricsResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.queryTimeout)
 	defer cancel()
 
-	results := make(map[string][]TimeValuePoint, len(resourceMetricSpecs))
+	results := make(map[string][]*monitoringpb.TimeSeries, len(resourceMetricSpecs))
 	var (
 		mu       sync.Mutex
 		wg       sync.WaitGroup
@@ -115,21 +116,23 @@ func (c *Client) GetResourceMetrics(ctx context.Context, p MetricsQueryParams) (
 	)
 
 	for _, spec := range resourceMetricSpecs {
-		wg.Add(1)
-		go func(spec metricSpec) {
-			defer wg.Done()
-			series, err := c.list(ctx, buildListRequest(c.projectID, spec, p))
-			mu.Lock()
-			defer mu.Unlock()
-			if err != nil {
-				if firstErr == nil {
-					firstErr = fmt.Errorf("query %s: %w", spec.key, err)
-					cancel()
+		for _, req := range buildListRequests(c.projectID, spec, p) {
+			wg.Add(1)
+			go func(key string, req *monitoringpb.ListTimeSeriesRequest) {
+				defer wg.Done()
+				series, err := c.list(ctx, req)
+				mu.Lock()
+				defer mu.Unlock()
+				if err != nil {
+					if firstErr == nil {
+						firstErr = fmt.Errorf("query %s: %w", key, err)
+						cancel()
+					}
+					return
 				}
-				return
-			}
-			results[spec.key] = timeSeriesToPoints(series)
-		}(spec)
+				results[key] = append(results[key], series...)
+			}(spec.key, req)
+		}
 	}
 	wg.Wait()
 
@@ -138,11 +141,11 @@ func (c *Client) GetResourceMetrics(ctx context.Context, p MetricsQueryParams) (
 	}
 
 	return &ResourceMetricsResult{
-		CPUUsage:       results["cpuUsage"],
-		CPURequests:    results["cpuRequests"],
-		CPULimits:      results["cpuLimits"],
-		MemoryUsage:    results["memoryUsage"],
-		MemoryRequests: results["memoryRequests"],
-		MemoryLimits:   results["memoryLimits"],
+		CPUUsage:       timeSeriesToPoints(results["cpuUsage"]),
+		CPURequests:    timeSeriesToPoints(results["cpuRequests"]),
+		CPULimits:      timeSeriesToPoints(results["cpuLimits"]),
+		MemoryUsage:    timeSeriesToPoints(results["memoryUsage"]),
+		MemoryRequests: timeSeriesToPoints(results["memoryRequests"]),
+		MemoryLimits:   timeSeriesToPoints(results["memoryLimits"]),
 	}, nil
 }

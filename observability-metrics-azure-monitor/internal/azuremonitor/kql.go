@@ -13,6 +13,7 @@ const (
 	labelComponentUID   = "openchoreo.dev/component-uid"
 	labelProjectUID     = "openchoreo.dev/project-uid"
 	labelEnvironmentUID = "openchoreo.dev/environment-uid"
+	labelReleaseLineUID = "openchoreo.dev/release-line-uid"
 )
 
 const (
@@ -67,7 +68,8 @@ func BuildAlertKQL(in RuleInput, counter string) string {
 	sb.WriteString("\n    | extend _labels = parse_json(PodLabel)[0]")
 	hasUID := normaliseUID(in.ComponentUID) != "" ||
 		normaliseUID(in.ProjectUID) != "" ||
-		normaliseUID(in.EnvironmentUID) != ""
+		normaliseUID(in.EnvironmentUID) != "" ||
+		normaliseUID(in.ReleaseLineUID) != ""
 	if !hasUID {
 		if ns := strings.TrimSpace(in.Namespace); ns != "" {
 			sb.WriteString("\n    | where tostring(_labels[")
@@ -76,11 +78,9 @@ func BuildAlertKQL(in RuleInput, counter string) string {
 			sb.WriteString(kqlString(ns))
 		}
 	}
-	if uid := normaliseUID(in.ComponentUID); uid != "" {
-		sb.WriteString("\n    | where tostring(_labels[")
-		sb.WriteString(kqlString(labelComponentUID))
-		sb.WriteString("]) == ")
-		sb.WriteString(kqlString(uid))
+	if scope := releaseLineScope(normaliseUID(in.ComponentUID), normaliseUID(in.ReleaseLineUID)); scope != "" {
+		sb.WriteString("\n    | where ")
+		sb.WriteString(scope)
 	}
 	if uid := normaliseUID(in.ProjectUID); uid != "" {
 		sb.WriteString("\n    | where tostring(_labels[")
@@ -115,6 +115,35 @@ func BuildAlertKQL(in RuleInput, counter string) string {
 	sb.WriteString("\n| summarize AggregatedValue = avg(_u) / avg(_l) * 100")
 
 	return sb.String()
+}
+
+// ReleaseLineScoped reports whether BuildAlertKQL scopes the rule by release
+// line, to its line or else to its component's main line. A full KQL statement
+// is sent as is, so it is not.
+func ReleaseLineScoped(in RuleInput) bool {
+	if isKQLStatement(in.Query) {
+		return false
+	}
+	return normaliseUID(in.ReleaseLineUID) != "" || normaliseUID(in.ComponentUID) != ""
+}
+
+// releaseLineScope renders the predicate scoping a rule by release line. One
+// line matches on its UID alone, and the component UID alone keeps its main
+// line, the pods with the UID and no release line label. Empty without either.
+func releaseLineScope(componentUID, lineUID string) string {
+	switch {
+	case lineUID != "":
+		return podLabel(labelReleaseLineUID) + " == " + kqlString(lineUID)
+	case componentUID != "":
+		return podLabel(labelComponentUID) + " == " + kqlString(componentUID) +
+			" and isempty(" + podLabel(labelReleaseLineUID) + ")"
+	}
+	return ""
+}
+
+// podLabel renders the value of one pod label, empty when the pod lacks it.
+func podLabel(key string) string {
+	return "tostring(_labels[" + kqlString(key) + "])"
 }
 
 func isKQLStatement(q string) bool {

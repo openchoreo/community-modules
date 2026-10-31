@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -86,8 +87,6 @@ const MaxQueryLimit = 1000
 func (c *Client) GetTraces(ctx context.Context, params TracesQueryParams) (*TracesResult, error) {
 	startedAt := time.Now()
 
-	filterExpr := buildFilterExpression(params.Scope)
-
 	limit := params.Limit
 	if limit <= 0 {
 		limit = 100
@@ -95,38 +94,21 @@ func (c *Client) GetTraces(ctx context.Context, params TracesQueryParams) (*Trac
 		limit = MaxQueryLimit
 	}
 
-	input := &xray.GetTraceSummariesInput{
-		StartTime:     aws.Time(params.StartTime),
-		EndTime:       aws.Time(params.EndTime),
-		TimeRangeType: xraytypes.TimeRangeTypeTraceId,
-	}
-	if filterExpr != "" {
-		input.FilterExpression = aws.String(filterExpr)
-	}
-
+	filterExprs := traceFilterExpressions(params.Scope)
 	var allSummaries []xraytypes.TraceSummary
-	var nextToken *string
-
-	for {
-		if nextToken != nil {
-			input.NextToken = nextToken
-		}
-
-		output, err := c.xray.GetTraceSummaries(ctx, input)
+	for _, filterExpr := range filterExprs {
+		summaries, err := c.getTraceSummaries(ctx, params, filterExpr, limit)
 		if err != nil {
-			c.logger.Error("Failed to get trace summaries from X-Ray", slog.Any("error", err))
-			return nil, fmt.Errorf("failed to get trace summaries: %w", err)
+			return nil, err
 		}
-
-		allSummaries = append(allSummaries, output.TraceSummaries...)
-
-		if output.NextToken == nil || len(allSummaries) >= limit {
-			break
-		}
-		nextToken = output.NextToken
+		allSummaries = appendNewTraceSummaries(allSummaries, summaries)
+	}
+	if len(filterExprs) > 1 {
+		sortTraceSummariesDesc(allSummaries)
 	}
 
-	total := len(allSummaries)
+	// Every line's merged queries can return up to twice MaxQueryLimit traces.
+	total := min(len(allSummaries), MaxQueryLimit)
 	if len(allSummaries) > limit {
 		allSummaries = allSummaries[:limit]
 	}
@@ -149,6 +131,57 @@ func (c *Client) GetTraces(ctx context.Context, params TracesQueryParams) (*Trac
 		Total:  total,
 		TookMs: tookMs,
 	}, nil
+}
+
+// getTraceSummaries pages through the trace summaries matching filterExpr until it has read limit
+// of them or there are no more.
+func (c *Client) getTraceSummaries(ctx context.Context, params TracesQueryParams, filterExpr string, limit int) ([]xraytypes.TraceSummary, error) {
+	input := &xray.GetTraceSummariesInput{
+		StartTime:     aws.Time(params.StartTime),
+		EndTime:       aws.Time(params.EndTime),
+		TimeRangeType: xraytypes.TimeRangeTypeTraceId,
+	}
+	if filterExpr != "" {
+		input.FilterExpression = aws.String(filterExpr)
+	}
+
+	var summaries []xraytypes.TraceSummary
+	var nextToken *string
+
+	for {
+		if nextToken != nil {
+			input.NextToken = nextToken
+		}
+
+		output, err := c.xray.GetTraceSummaries(ctx, input)
+		if err != nil {
+			c.logger.Error("Failed to get trace summaries from X-Ray", slog.Any("error", err))
+			return nil, fmt.Errorf("failed to get trace summaries: %w", err)
+		}
+
+		summaries = append(summaries, output.TraceSummaries...)
+
+		if output.NextToken == nil || len(summaries) >= limit {
+			break
+		}
+		nextToken = output.NextToken
+	}
+	return summaries, nil
+}
+
+// appendNewTraceSummaries appends the summaries of traces not already in to.
+func appendNewTraceSummaries(to, summaries []xraytypes.TraceSummary) []xraytypes.TraceSummary {
+	seen := make(map[string]bool, len(to))
+	for _, s := range to {
+		seen[aws.ToString(s.Id)] = true
+	}
+	for _, s := range summaries {
+		if id := aws.ToString(s.Id); !seen[id] {
+			seen[id] = true
+			to = append(to, s)
+		}
+	}
+	return to
 }
 
 // GetSpans queries X-Ray for the spans (segments + subsegments) of a given trace
@@ -365,19 +398,26 @@ const (
 	annotationProjectUID     = "openchoreo.dev_project_uid"
 	annotationComponentUID   = "openchoreo.dev_component_uid"
 	annotationEnvironmentUID = "openchoreo.dev_environment_uid"
+	annotationReleaseLineUID = "openchoreo.dev_release_line_uid"
+	// annotationReleaseLineComponentUID is the component UID on a release line's spans, which
+	// don't carry annotationComponentUID.
+	annotationReleaseLineComponentUID = "openchoreo.dev_release_line_component_uid"
 )
 
 // OpenChoreo resource attribute keys, as the collector's k8sattributes
 // processor sets them from the workload pod labels.
 const (
-	resourceNamespace      = "openchoreo.dev/namespace"
-	resourceProjectUID     = "openchoreo.dev/project-uid"
-	resourceComponentUID   = "openchoreo.dev/component-uid"
-	resourceEnvironmentUID = "openchoreo.dev/environment-uid"
+	resourceNamespace               = "openchoreo.dev/namespace"
+	resourceProjectUID              = "openchoreo.dev/project-uid"
+	resourceComponentUID            = "openchoreo.dev/component-uid"
+	resourceEnvironmentUID          = "openchoreo.dev/environment-uid"
+	resourceReleaseLineUID          = "openchoreo.dev/release-line-uid"
+	resourceReleaseLineComponentUID = "openchoreo.dev/release-line-component-uid"
 )
 
 // identityKeys pairs each indexed annotation with the resource attribute the
 // collector copied it from. Together they are the OpenChoreo identity of a span.
+// A release line's spans carry the release line keys in place of the component UID.
 var identityKeys = []struct {
 	annotation string
 	resource   string
@@ -386,6 +426,8 @@ var identityKeys = []struct {
 	{annotationProjectUID, resourceProjectUID},
 	{annotationComponentUID, resourceComponentUID},
 	{annotationEnvironmentUID, resourceEnvironmentUID},
+	{annotationReleaseLineUID, resourceReleaseLineUID},
+	{annotationReleaseLineComponentUID, resourceReleaseLineComponentUID},
 }
 
 // otelResourceMetadataPrefix is the prefix the awsxray exporter gives the
@@ -395,6 +437,12 @@ const otelResourceMetadataPrefix = "otel.resource."
 // buildFilterExpression constructs an X-Ray filter expression from the search scope.
 // Keys containing dots must use annotation[key] filter syntax.
 func buildFilterExpression(scope Scope) string {
+	return filterExpression(scope, annotationComponentUID)
+}
+
+// filterExpression builds the filter expression of the scope, matching its component UID on
+// componentAnnotation. A release line matches on its UID alone, in place of the component.
+func filterExpression(scope Scope, componentAnnotation string) string {
 	var parts []string
 
 	if scope.Namespace != "" {
@@ -403,14 +451,29 @@ func buildFilterExpression(scope Scope) string {
 	if scope.ProjectID != "" {
 		parts = append(parts, fmt.Sprintf("annotation[%s] = %q", annotationProjectUID, scope.ProjectID))
 	}
-	if scope.ComponentID != "" {
-		parts = append(parts, fmt.Sprintf("annotation[%s] = %q", annotationComponentUID, scope.ComponentID))
+	if scope.ReleaseLineID != "" {
+		parts = append(parts, fmt.Sprintf("annotation[%s] = %q", annotationReleaseLineUID, scope.ReleaseLineID))
+	} else if scope.ComponentID != "" {
+		parts = append(parts, fmt.Sprintf("annotation[%s] = %q", componentAnnotation, scope.ComponentID))
 	}
 	if scope.EnvironmentID != "" {
 		parts = append(parts, fmt.Sprintf("annotation[%s] = %q", annotationEnvironmentUID, scope.EnvironmentID))
 	}
 
 	return strings.Join(parts, " AND ")
+}
+
+// traceFilterExpressions returns the filter expressions whose traces together match the scope. A
+// filter expression tests a whole trace, which may hold spans of other release lines, so the main
+// line matches on the component UID annotation alone, which only its spans carry. Every line adds
+// an expression on the release line component UID annotation, since filter expressions document no
+// grouping to OR the two in one.
+func traceFilterExpressions(scope Scope) []string {
+	exprs := []string{buildFilterExpression(scope)}
+	if scope.ReleaseLineID == "" && scope.ComponentID != "" && scope.AllReleaseLines {
+		exprs = append(exprs, filterExpression(scope, annotationReleaseLineComponentUID))
+	}
+	return exprs
 }
 
 // matchesScope reports whether a span's own annotations satisfy the search
@@ -423,8 +486,27 @@ func matchesScope(annotations map[string]interface{}, scope Scope) bool {
 	}
 	return annotationEquals(annotations, annotationNamespace, scope.Namespace) &&
 		annotationEquals(annotations, annotationProjectUID, scope.ProjectID) &&
-		annotationEquals(annotations, annotationComponentUID, scope.ComponentID) &&
+		matchesReleaseLine(annotations, scope) &&
 		annotationEquals(annotations, annotationEnvironmentUID, scope.EnvironmentID)
+}
+
+// matchesReleaseLine reports whether a span is on the scope's lines of its component. The
+// component UID alone keeps its main line, whose spans carry no release line UID. A release line's
+// spans carry the component UID under another annotation than the main line's, so AllReleaseLines
+// matches either and covers every line. One release line matches on its UID alone. Without a
+// component or a line every span matches.
+func matchesReleaseLine(annotations map[string]interface{}, scope Scope) bool {
+	switch {
+	case scope.ReleaseLineID != "":
+		return annotationEquals(annotations, annotationReleaseLineUID, scope.ReleaseLineID)
+	case scope.ComponentID == "":
+		return true
+	case scope.AllReleaseLines:
+		return annotationEquals(annotations, annotationComponentUID, scope.ComponentID) ||
+			annotationEquals(annotations, annotationReleaseLineComponentUID, scope.ComponentID)
+	}
+	_, onReleaseLine := annotations[annotationReleaseLineUID]
+	return annotationEquals(annotations, annotationComponentUID, scope.ComponentID) && !onReleaseLine
 }
 
 // annotationEquals reports whether the annotation matches want. An empty want
@@ -452,20 +534,23 @@ func spanIdentity(annotations map[string]interface{}) map[string]string {
 	return identity
 }
 
-// completeIdentity reports whether an identity carries the namespace and all
-// three UIDs. Only a complete identity pins a span to a single component in a
-// single environment, so only a complete identity can have names attributed to it.
+// completeIdentity reports whether an identity carries the namespace, the
+// project and environment UIDs and the UIDs of its line: the component UID on
+// the main line, or the release line and its component's UIDs on a release line.
+// Only a complete identity pins a span to a single component line in a single
+// environment, so only a complete identity can have names attributed to it.
 func completeIdentity(id map[string]string) bool {
-	for _, k := range identityKeys {
-		if id[k.resource] == "" {
+	for _, k := range []string{resourceNamespace, resourceProjectUID, resourceEnvironmentUID} {
+		if id[k] == "" {
 			return false
 		}
 	}
-	return true
+	return id[resourceComponentUID] != "" ||
+		(id[resourceReleaseLineUID] != "" && id[resourceReleaseLineComponentUID] != "")
 }
 
 // sameIdentity reports whether two complete identities agree on the namespace
-// and all three UIDs. An incomplete identity never matches.
+// and all their UIDs. An incomplete identity never matches.
 func sameIdentity(a, b map[string]string) bool {
 	if !completeIdentity(a) || !completeIdentity(b) {
 		return false
@@ -511,7 +596,7 @@ func newSegmentResource(seg *xraySegment) segmentResource {
 	}
 
 	for _, k := range identityKeys {
-		if v, ok := lifted[k.resource].(string); !ok || v != res.identity[k.resource] {
+		if v, _ := lifted[k.resource].(string); v != res.identity[k.resource] {
 			return res
 		}
 	}
@@ -625,6 +710,22 @@ func extractStartTimeFromXRayID(id *string) time.Time {
 		return time.Time{}
 	}
 	return time.Unix(epoch, 0)
+}
+
+// sortTraceSummariesDesc sorts trace summaries by start time descending (in-place), the order
+// X-Ray returns them in.
+func sortTraceSummariesDesc(summaries []xraytypes.TraceSummary) {
+	sort.SliceStable(summaries, func(i, j int) bool {
+		return traceSummaryStartTime(summaries[i]).After(traceSummaryStartTime(summaries[j]))
+	})
+}
+
+// traceSummaryStartTime returns the start time of a trace summary, or of its trace ID without one.
+func traceSummaryStartTime(summary xraytypes.TraceSummary) time.Time {
+	if summary.StartTime != nil {
+		return *summary.StartTime
+	}
+	return extractStartTimeFromXRayID(summary.Id)
 }
 
 // sortTraceSummariesAsc sorts trace summaries by start time ascending (in-place).

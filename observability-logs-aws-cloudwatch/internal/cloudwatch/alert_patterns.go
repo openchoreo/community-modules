@@ -52,23 +52,35 @@ func BuildAlertFilterPattern(p LogAlertParams) (string, error) {
 // project_uid are intentionally omitted — they're preserved on the alarm tags
 // for round-tripping on GET, but are not part of the match predicate.
 //
-// CloudWatch stores the Kubernetes labels under keys containing characters
-// such as `/` that metric-filter property selectors cannot address directly.
-// Match the label values through the labels-object wildcard instead. The
-// OpenChoreo environment/component UIDs are UUIDs, so matching by value is
-// sufficiently specific for alert scoping.
+// The environment UID is matched by value through the labels-object wildcard.
+// The component and release line UIDs are matched by label key, since a release
+// line's pods carry the component UID too, as
+// openchoreo.dev/release-line-component-uid. A rule without a line covers its
+// component's main line: the component UID label and no release line UID label.
+// A release line rule matches the line's UID alone.
 func buildScopeFragment(p LogAlertParams) string {
 	var conds []string
 	if p.EnvironmentUID != "" {
 		conds = append(conds, jsonEqStringSelector("$.kubernetes.labels.*", p.EnvironmentUID))
 	}
-	if p.ComponentUID != "" {
-		conds = append(conds, jsonEqStringSelector("$.kubernetes.labels.*", p.ComponentUID))
+	switch {
+	case p.ReleaseLineUID != "":
+		conds = append(conds, jsonEqStringSelector(labelSelector(labelReleaseLineUID), p.ReleaseLineUID))
+	case p.ComponentUID != "":
+		conds = append(conds,
+			jsonEqStringSelector(labelSelector(labelComponentUID), p.ComponentUID),
+			"("+labelSelector(labelReleaseLineUID)+" NOT EXISTS)")
 	}
 	if len(conds) == 0 {
 		return ""
 	}
 	return strings.Join(conds, " && ")
+}
+
+// labelSelector selects one Kubernetes label of the log record by its key. Bracket
+// notation addresses keys containing `.` and `/`.
+func labelSelector(key string) string {
+	return "$.kubernetes.labels.['" + key + "']"
 }
 
 func jsonEqStringSelector(path, value string) string {

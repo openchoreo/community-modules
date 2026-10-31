@@ -10,7 +10,10 @@ const (
 	LabelComponentUID   = "openchoreo.dev/component-uid"
 	LabelProjectUID     = "openchoreo.dev/project-uid"
 	LabelEnvironmentUID = "openchoreo.dev/environment-uid"
-	LabelNamespace      = "openchoreo.dev/namespace"
+	LabelReleaseLineUID = "openchoreo.dev/release-line-uid"
+	// LabelReleaseLineComponentUID is the component UID on a release line's pods, which don't carry LabelComponentUID.
+	LabelReleaseLineComponentUID = "openchoreo.dev/release-line-component-uid"
+	LabelNamespace               = "openchoreo.dev/namespace"
 )
 
 // Container Insights table names.

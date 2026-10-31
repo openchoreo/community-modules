@@ -59,9 +59,17 @@ the data-plane runtime namespace (`dp-<project>-<env>-…`) as the rule
 namespace, whereas the pod's `openchoreo.dev/namespace` metadata label carries
 the *control-plane* namespace, so filtering on it would match zero series.
 
+Release lines are scoped on the same metadata labels, which reach Cloud Monitoring like every other pod label, so nothing changes on the cluster:
+
+- A release line UID matches `metadata.user_labels."openchoreo.dev/release-line-uid"` alone, since release line pods don't carry the component UID label.
+- `allReleaseLines` covers every line of the component. Each metric is queried twice, once on `openchoreo.dev/component-uid` and once on `openchoreo.dev/release-line-component-uid`, which release line pods carry instead, and the two series are added up.
+- A component UID on its own matches `openchoreo.dev/component-uid`, which only the main line's pods carry. Cloud Monitoring filters have no negation outside group definitions, so the filter cannot also exclude series that carry a release line label.
+
+The adapter returns `OpenChoreo-Release-Line-Applied: true` for the first two, and for alert rules scoped to a release line. It leaves the header off for the main line, for main line alert rules, and for HTTP metrics, which it does not serve. Rules scoped to a release line also carry an `openchoreo_release_line_uid` policy user label.
+
 | Endpoint | Purpose |
 | --- | --- |
-| `POST /api/v1/metrics/query` (`metric: resource`) | Six parallel `ListTimeSeries` calls (CPU/memory usage, requests, limits) scoped by UID; returns per-metric aggregated series. |
+| `POST /api/v1/metrics/query` (`metric: resource`) | Six parallel `ListTimeSeries` calls (CPU/memory usage, requests, limits) scoped by UID, twelve for every release line of a component; returns per-metric aggregated series. |
 | `POST /api/v1/metrics/query` (`metric: http`) | HTTP RED metrics not implemented; returns an empty series with the `X-OpenChoreo-Adapter-Notice: http-metrics-not-implemented` header. |
 | `POST /api/v1alpha1/metrics/runtime-topology` | Not supported — GKE system metrics carry no pod-to-pod traffic data; returns `501` with error code `OBS-V1-M-GCP-501`. |
 | `POST /api/v1alpha1/alerts/rules` | Creates a Cloud Monitoring alert policy (a usage÷limit ratio MetricThreshold) wired to the configured notification channel. Returns `409` if a rule with the same identity already exists (use `PUT` to replace). |

@@ -30,6 +30,10 @@ const (
 	LabelProjectUID     = "openchoreo.dev/project-uid"
 	LabelEnvironmentUID = "openchoreo.dev/environment-uid"
 	LabelNamespace      = "openchoreo.dev/namespace"
+	// LabelReleaseLineUID and LabelReleaseLineComponentUID take LabelComponentUID's place on a
+	// release line's pods.
+	LabelReleaseLineUID          = "openchoreo.dev/release-line-uid"
+	LabelReleaseLineComponentUID = "openchoreo.dev/release-line-component-uid"
 )
 
 // EMF dimension names emitted by the OpenTelemetry collector. They must stay in sync
@@ -39,6 +43,10 @@ const (
 	DimensionProjectUID     = "ProjectUID"
 	DimensionEnvironmentUID = "EnvironmentUID"
 	DimensionNamespace      = "Namespace"
+	// DimensionReleaseLineUID and DimensionReleaseLineComponentUID take DimensionComponentUID's
+	// place on a release line's pods, which don't carry the component UID label.
+	DimensionReleaseLineUID          = "ReleaseLineUID"
+	DimensionReleaseLineComponentUID = "ReleaseLineComponentUID"
 )
 
 // Logical metric names the EMF exporter writes (set by metricstransform).

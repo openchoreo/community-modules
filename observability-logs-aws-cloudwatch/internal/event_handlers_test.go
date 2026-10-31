@@ -6,6 +6,7 @@ package app
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -13,22 +14,22 @@ import (
 	"github.com/openchoreo/community-modules/observability-logs-aws-cloudwatch/internal/cloudwatch"
 )
 
-func makeComponentEventsScopeBody(t *testing.T, scope gen.ComponentSearchScope) gen.EventsQueryRequest_SearchScope {
+func makeComponentEventsScopeBody(t *testing.T, scope gen.ComponentSearchScope) *gen.EventsQueryRequest_SearchScope {
 	t.Helper()
 	var s gen.EventsQueryRequest_SearchScope
 	if err := s.FromComponentSearchScope(scope); err != nil {
 		t.Fatalf("FromComponentSearchScope: %v", err)
 	}
-	return s
+	return &s
 }
 
-func makeWorkflowEventsScopeBody(t *testing.T, scope gen.WorkflowSearchScope) gen.EventsQueryRequest_SearchScope {
+func makeWorkflowEventsScopeBody(t *testing.T, scope gen.WorkflowSearchScope) *gen.EventsQueryRequest_SearchScope {
 	t.Helper()
 	var s gen.EventsQueryRequest_SearchScope
 	if err := s.FromWorkflowSearchScope(scope); err != nil {
 		t.Fatalf("FromWorkflowSearchScope: %v", err)
 	}
-	return s
+	return &s
 }
 
 func TestQueryEventsRejectsNilBody(t *testing.T) {
@@ -117,13 +118,13 @@ func TestQueryEventsComponentReturnsResults(t *testing.T) {
 	if !isOK {
 		t.Fatalf("expected 200, got %T", resp)
 	}
-	if ok.Total == nil || *ok.Total != 1 {
-		t.Fatalf("unexpected total: %#v", ok.Total)
+	if ok.Body.Total != 1 {
+		t.Fatalf("unexpected total: %#v", ok.Body.Total)
 	}
-	if ok.Events == nil || len(*ok.Events) != 1 {
-		t.Fatalf("expected 1 event, got %#v", ok.Events)
+	if ok.Body.Events == nil || len(*ok.Body.Events) != 1 {
+		t.Fatalf("expected 1 event, got %#v", ok.Body.Events)
 	}
-	got := (*ok.Events)[0]
+	got := (*ok.Body.Events)[0]
 	if got.Type == nil || *got.Type != "Warning" || got.Reason == nil || *got.Reason != "BackOff" {
 		t.Fatalf("unexpected event: %#v", got)
 	}
@@ -216,10 +217,58 @@ func TestQueryEventsComponentEmptyResultReturns200(t *testing.T) {
 	if !isOK {
 		t.Fatalf("expected 200, got %T", resp)
 	}
-	if ok.Total == nil || *ok.Total != 0 {
-		t.Fatalf("expected total 0, got %#v", ok.Total)
+	if ok.Body.Total != 0 {
+		t.Fatalf("expected total 0, got %#v", ok.Body.Total)
 	}
-	if ok.Events == nil || len(*ok.Events) != 0 {
-		t.Fatalf("expected empty events array, got %#v", ok.Events)
+	if ok.Body.Events == nil || len(*ok.Body.Events) != 0 {
+		t.Fatalf("expected empty events array, got %#v", ok.Body.Events)
 	}
+}
+
+func TestQueryEventsPassesReasonsThrough(t *testing.T) {
+	reasons := []string{"DeploymentSucceeded", "BackOff"}
+	componentUID := "33333333-3333-3333-3333-333333333333"
+	runName := "build-123"
+
+	t.Run("component", func(t *testing.T) {
+		client := &queryStubClient{componentEventsResult: &cloudwatch.EventsResult{}}
+		handler := newTestHandler(client, nil)
+		body := &gen.EventsQueryRequest{
+			StartTime:   time.Now().Add(-time.Hour),
+			EndTime:     time.Now(),
+			SearchScope: makeComponentEventsScopeBody(t, gen.ComponentSearchScope{Namespace: "default", ComponentUid: &componentUID}),
+			Reasons:     &reasons,
+		}
+		resp, err := handler.QueryEvents(context.Background(), gen.QueryEventsRequestObject{Body: body})
+		if err != nil {
+			t.Fatalf("QueryEvents() error = %v", err)
+		}
+		if _, ok := resp.(gen.QueryEvents200JSONResponse); !ok {
+			t.Fatalf("expected 200, got %T", resp)
+		}
+		if client.lastComponentEvents == nil || !reflect.DeepEqual(client.lastComponentEvents.Reasons, reasons) {
+			t.Fatalf("component params reasons = %#v, want %v", client.lastComponentEvents, reasons)
+		}
+	})
+
+	t.Run("workflow", func(t *testing.T) {
+		client := &queryStubClient{workflowEventsResult: &cloudwatch.EventsResult{}}
+		handler := newTestHandler(client, nil)
+		body := &gen.EventsQueryRequest{
+			StartTime:   time.Now().Add(-time.Hour),
+			EndTime:     time.Now(),
+			SearchScope: makeWorkflowEventsScopeBody(t, gen.WorkflowSearchScope{Namespace: "default", WorkflowRunName: &runName}),
+			Reasons:     &reasons,
+		}
+		resp, err := handler.QueryEvents(context.Background(), gen.QueryEventsRequestObject{Body: body})
+		if err != nil {
+			t.Fatalf("QueryEvents() error = %v", err)
+		}
+		if _, ok := resp.(gen.QueryEvents200JSONResponse); !ok {
+			t.Fatalf("expected 200, got %T", resp)
+		}
+		if client.lastWorkflowEvents == nil || !reflect.DeepEqual(client.lastWorkflowEvents.Reasons, reasons) {
+			t.Fatalf("workflow params reasons = %#v, want %v", client.lastWorkflowEvents, reasons)
+		}
+	})
 }

@@ -6,6 +6,7 @@ package app
 import (
 	"context"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -237,4 +238,95 @@ func TestAuditParamsFromRequest_DefaultsSortToDescending(t *testing.T) {
 	if got.SortOrder != loganalytics.SortDesc {
 		t.Errorf("SortOrder = %s, want desc", got.SortOrder)
 	}
+}
+
+// auditOnHandler has an audit workspace, so only the handler itself declines.
+// The stub records whether a query reached the workspace.
+func auditOnHandler() (*LogsHandler, *stubQueryAPI) {
+	api := &stubQueryAPI{}
+	c := loganalytics.NewClientWithQueryAPI(api,
+		loganalytics.Config{WorkspaceID: "logs-ws", AuditWorkspaceID: "audit-ws"}, nil)
+	return auditHandler(c), api
+}
+
+func wantReleaseLineDeclined(t *testing.T, got gen.ErrorResponse, api *stubQueryAPI) {
+	t.Helper()
+	if got.Message == nil || !strings.Contains(*got.Message, "release line") {
+		t.Errorf("501 message = %v, want it to name the release line filter", got.Message)
+	}
+	if api.lastKQL != "" {
+		t.Errorf("a release line filter reached the workspace:\n%s", api.lastKQL)
+	}
+}
+
+func releaseLineFilter() *gen.AuditLogsResourceFilter {
+	return &gen.AuditLogsResourceFilter{ReleaseLine: &[]string{"canary"}}
+}
+
+// The audit table has no release line column, so the filter is declined
+// rather than answered with every line's records.
+func TestQueryAuditLogs_DeclinesAReleaseLineFilter(t *testing.T) {
+	h, api := auditOnHandler()
+	body := auditQueryBody()
+	body.Resource = releaseLineFilter()
+
+	resp, err := h.QueryAuditLogs(context.Background(), gen.QueryAuditLogsRequestObject{Body: &body})
+	if err != nil {
+		t.Fatalf("QueryAuditLogs: %v", err)
+	}
+	got, ok := resp.(gen.QueryAuditLogs501JSONResponse)
+	if !ok {
+		t.Fatalf("got %T, want 501", resp)
+	}
+	wantReleaseLineDeclined(t, gen.ErrorResponse(got), api)
+}
+
+func TestQueryAuditLogs_AnEmptyReleaseLineFilterIsNoFilter(t *testing.T) {
+	h, api := auditOnHandler()
+	body := auditQueryBody()
+	body.Resource = &gen.AuditLogsResourceFilter{ReleaseLine: &[]string{}}
+
+	resp, err := h.QueryAuditLogs(context.Background(), gen.QueryAuditLogsRequestObject{Body: &body})
+	if err != nil {
+		t.Fatalf("QueryAuditLogs: %v", err)
+	}
+	if _, ok := resp.(gen.QueryAuditLogs200JSONResponse); !ok {
+		t.Fatalf("got %T, want 200", resp)
+	}
+	if api.lastKQL == "" {
+		t.Error("the query never reached the workspace")
+	}
+}
+
+func TestQueryAuditLogFilterValues_DeclinesTheReleaseLineFilter(t *testing.T) {
+	h, api := auditOnHandler()
+	body := gen.AuditLogFilterValuesRequest{Filter: gen.ResourceReleaseLine, Query: auditQueryBody()}
+
+	resp, err := h.QueryAuditLogFilterValues(context.Background(),
+		gen.QueryAuditLogFilterValuesRequestObject{Body: &body})
+	if err != nil {
+		t.Fatalf("QueryAuditLogFilterValues: %v", err)
+	}
+	got, ok := resp.(gen.QueryAuditLogFilterValues501JSONResponse)
+	if !ok {
+		t.Fatalf("got %T, want 501", resp)
+	}
+	wantReleaseLineDeclined(t, gen.ErrorResponse(got), api)
+}
+
+func TestQueryAuditLogFilterValues_DeclinesAReleaseLineQuery(t *testing.T) {
+	h, api := auditOnHandler()
+	body := gen.AuditLogFilterValuesRequest{Filter: gen.ActorId, Query: auditQueryBody()}
+	body.Query.Resource = releaseLineFilter()
+
+	resp, err := h.QueryAuditLogFilterValues(context.Background(),
+		gen.QueryAuditLogFilterValuesRequestObject{Body: &body})
+	if err != nil {
+		t.Fatalf("QueryAuditLogFilterValues: %v", err)
+	}
+	got, ok := resp.(gen.QueryAuditLogFilterValues501JSONResponse)
+	if !ok {
+		t.Fatalf("got %T, want 501", resp)
+	}
+	wantReleaseLineDeclined(t, gen.ErrorResponse(got), api)
 }

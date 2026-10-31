@@ -105,15 +105,15 @@ func TestQuerySpansForTrace_AppliesEveryScopeField(t *testing.T) {
 		t.Fatalf("expected 200 response, got %T", resp)
 	}
 	var got []string
-	for _, s := range *ok.Spans {
+	for _, s := range *ok.Body.Spans {
 		got = append(got, *s.SpanId)
 	}
 	sort.Strings(got)
 	if len(got) != 1 || got[0] != "match" {
 		t.Errorf("expected only span 'match', got %v", got)
 	}
-	if *ok.Total != 1 {
-		t.Errorf("expected total 1, got %d", *ok.Total)
+	if *ok.Body.Total != 1 {
+		t.Errorf("expected total 1, got %d", *ok.Body.Total)
 	}
 	if len(fake.requested) != 1 || len(fake.requested[0]) != 1 || fake.requested[0][0] != "1-5759e988-bd862e3fe1be46a994272793" {
 		t.Errorf("expected one BatchGetTraces call for the trace, got %v", fake.requested)

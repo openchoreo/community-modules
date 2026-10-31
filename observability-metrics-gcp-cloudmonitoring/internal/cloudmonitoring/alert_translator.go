@@ -43,6 +43,7 @@ type RuleInput struct {
 	ComponentUID   string
 	ProjectUID     string
 	EnvironmentUID string
+	ReleaseLineUID string  // empty for the component's main line
 	Metric         string  // cpu_usage | memory_usage
 	Operator       string  // gt | lt (the only MetricThreshold comparisons)
 	Threshold      float64 // cores (cpu) or bytes (memory)
@@ -107,6 +108,7 @@ func ToAlertPolicy(in RuleInput, cfg TranslatorConfig) (*monitoringpb.AlertPolic
 		ComponentUID:   in.ComponentUID,
 		ProjectUID:     in.ProjectUID,
 		EnvironmentUID: in.EnvironmentUID,
+		ReleaseLineUID: in.ReleaseLineUID,
 	}
 
 	// cpu_usage / memory_usage thresholds are a PERCENTAGE of the pod's
@@ -174,6 +176,9 @@ func policyUserLabels(in RuleInput) map[string]string {
 	}
 	if uid := normalizeUID(in.EnvironmentUID); uid != "" {
 		labels["openchoreo_environment_uid"] = sanitizeLabelValue(uid)
+	}
+	if uid := normalizeUID(in.ReleaseLineUID); uid != "" {
+		labels["openchoreo_release_line_uid"] = sanitizeLabelValue(uid)
 	}
 	return labels
 }

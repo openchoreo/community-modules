@@ -4,6 +4,7 @@
 package cloudwatch
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"log/slog"
@@ -57,7 +58,7 @@ func (c *Client) runEventsQuery(ctx context.Context, query string, startTime, en
 			ObjectKind:      row["objectKind"],
 			ObjectName:      row["objectName"],
 			ObjectNamespace: row["objectNamespace"],
-			ComponentUID:    row["componentUid"],
+			ComponentUID:    cmp.Or(row["componentUid"], row["releaseLineComponentUid"]),
 			ComponentName:   row["componentName"],
 			EnvironmentUID:  row["environmentUid"],
 			EnvironmentName: row["environmentName"],

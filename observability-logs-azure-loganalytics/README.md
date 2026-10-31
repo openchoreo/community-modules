@@ -55,7 +55,11 @@ metadata through `KubernetesMetadata.podLabels`:
 - Container name (`ContainerName`)
 - The OpenChoreo pod labels (`openchoreo.dev/namespace`,
   `openchoreo.dev/component-uid`, `openchoreo.dev/project-uid`,
-  `openchoreo.dev/environment-uid`)
+  `openchoreo.dev/environment-uid`, and on a release line's pods
+  `openchoreo.dev/release-line-uid` and
+  `openchoreo.dev/release-line-component-uid`)
+
+A component scope covers the component's main line: pods with `openchoreo.dev/component-uid` and no `openchoreo.dev/release-line-uid`. `allReleaseLines` covers every line of the component, matching `openchoreo.dev/component-uid` or `openchoreo.dev/release-line-component-uid`, which release line pods carry instead. `releaseLineUid` covers one line, matched on `openchoreo.dev/release-line-uid` alone, and takes precedence. Component log and event queries and alert rules answer with `OpenChoreo-Release-Line-Applied: true`. The agent collects every pod label, so the release line labels need no extra configuration.
 
 | Endpoint                                         | Purpose                                                                                                                                                            |
 | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -326,6 +330,8 @@ The chart guards against exposing the webhook without auth: enabling
 The adapter implements log alerting on top of Azure Monitor scheduled
 query rules.
 
+A rule without a release line evaluates its component's main line, and a rule with one evaluates that line alone. A `source.query` that is already a full KQL statement is sent as is, so it is not scoped to a line. A main line rule with one is created without `OpenChoreo-Release-Line-Applied`. A release line rule with one is rejected with `400`, so give a release line rule a search phrase instead.
+
 ### Configure the Action Group webhook receiver
 
 The Action Group ARM ID passed via `actionGroup.id` must already exist
@@ -467,10 +473,15 @@ contract as follows:
 | `metadata.objectKind`/`Name` | `ResourceAttributes["k8s.object.kind"]` / `["k8s.object.name"]`                                            |
 | OpenChoreo names and UIDs    | `ResourceAttributes["k8s.object.label.openchoreo.dev/<namespace\|component\|project\|environment>[-uid]"]` |
 
+The collector copies every label of the object by default. If its `enrichment.labels.include` list is narrowed, keep `openchoreo.dev/release-line-uid` and `openchoreo.dev/release-line-component-uid` in it, or a release line's events match no component scope.
+
 Queries follow the adapter contract:
 
 - **Component scope** matches the `openchoreo.dev/namespace` label and,
-  when given, the project, component and environment UID labels.
+  when given, the project and environment UID labels and the component or
+  release line, as described under [Architecture](#architecture). An
+  event of a release line's object reports the component UID it carries
+  as `openchoreo.dev/release-line-component-uid`.
 - **Workflow scope** matches events in `workflows-<namespace>` whose object
   name starts with the workflow run name, and contains the task name when
   one is given.
@@ -519,6 +530,8 @@ Audit is off until `adapter.audit.workspaceId` is set. Until then both audit
 endpoints answer `501`, which the Observer surfaces so the UI can say the
 backend does not serve audit — as opposed to an empty page, which reads as
 "nothing happened".
+
+The audit table has no release line column yet. A query that filters on `resource.release_line`, and a filter-values request for `resource.release_line`, answer `501` rather than every line's records.
 
 ### Turning it on
 

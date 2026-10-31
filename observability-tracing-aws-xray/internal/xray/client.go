@@ -28,6 +28,9 @@ type Scope struct {
 	ProjectID     string
 	ComponentID   string
 	EnvironmentID string
+	ReleaseLineID string
+	// AllReleaseLines covers every line of the component instead of its main line.
+	AllReleaseLines bool
 }
 
 type TracesQueryParams struct {

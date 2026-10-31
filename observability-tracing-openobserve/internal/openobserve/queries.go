@@ -39,6 +39,70 @@ func escapeSQLString(value string) string {
 	return value
 }
 
+// Resource attribute columns that place a span on a component's release lines. The collector copies
+// the pod labels onto spans and OpenObserve flattens them under the service_ prefix.
+const (
+	componentUIDColumn   = "service_openchoreo_dev_component_uid"
+	releaseLineUIDColumn = "service_openchoreo_dev_release_line_uid"
+	// releaseLineComponentUIDColumn is the component UID on a release line's spans, which don't carry componentUIDColumn.
+	releaseLineComponentUIDColumn = "service_openchoreo_dev_release_line_component_uid"
+)
+
+// lineColumns reports which release line attribute columns the traces stream has stored.
+// OpenObserve rejects a query naming a column the stream lacks.
+type lineColumns struct {
+	line, lineComponent bool
+}
+
+// releaseLineConditions matches a component's spans by release line. The component UID alone keeps
+// its main line's spans, those with the component UID and no release line UID. A release line's
+// pods carry the component UID under another attribute than the main line's, so AllReleaseLines
+// matches either and covers every line. One release line matches on its UID alone. A column the
+// stream has not stored is left out of the main and every line match, since no span carries that
+// attribute. Returns nil without a component or a line.
+func releaseLineConditions(scope Scope) []string {
+	if scope.ReleaseLineID != "" {
+		return []string{releaseLineUIDColumn + " = '" + escapeSQLString(scope.ReleaseLineID) + "'"}
+	}
+	if scope.ComponentID == "" {
+		return nil
+	}
+
+	match := componentUIDColumn + " = '" + escapeSQLString(scope.ComponentID) + "'"
+	if scope.AllReleaseLines {
+		if scope.stored.lineComponent {
+			match = "(" + match + " OR " + releaseLineComponentUIDColumn + " = '" + escapeSQLString(scope.ComponentID) + "')"
+		}
+		return []string{match}
+	}
+	if scope.stored.line {
+		return []string{match, releaseLineUIDColumn + " IS NULL"}
+	}
+	return []string{match}
+}
+
+// spanConditions builds the SQL WHERE conditions for the spans of one trace. Spans of other
+// components are kept, and the component's own spans are narrowed to the requested line: its main
+// line, one release line, or every line.
+func spanConditions(params TracesQueryParams) []string {
+	conditions := []string{"trace_id = '" + escapeSQLString(params.TraceID) + "'"}
+	scope := params.Scope
+	component := escapeSQLString(scope.ComponentID)
+	switch {
+	case scope.ReleaseLineID != "" && scope.ComponentID == "":
+		conditions = append(conditions, releaseLineUIDColumn+" = '"+escapeSQLString(scope.ReleaseLineID)+"'")
+	case scope.ReleaseLineID != "":
+		otherComponent := "(" + componentUIDColumn + " IS NULL OR " + componentUIDColumn + " != '" + component + "')"
+		if scope.stored.lineComponent {
+			otherComponent += " AND (" + releaseLineComponentUIDColumn + " IS NULL OR " + releaseLineComponentUIDColumn + " != '" + component + "')"
+		}
+		conditions = append(conditions, "("+releaseLineUIDColumn+" = '"+escapeSQLString(scope.ReleaseLineID)+"' OR ("+otherComponent+"))")
+	case scope.ComponentID != "" && !scope.AllReleaseLines && scope.stored.lineComponent:
+		conditions = append(conditions, "("+releaseLineComponentUIDColumn+" IS NULL OR "+releaseLineComponentUIDColumn+" != '"+component+"')")
+	}
+	return conditions
+}
+
 // generateTracesListQuery generates the OpenObserve query to list individual spans
 // so that traces can be grouped in Go code to identify root spans.
 func generateTracesListQuery(params TracesQueryParams, stream string, logger *slog.Logger) ([]byte, error) {
@@ -95,9 +159,7 @@ func generateTracesListQuery(params TracesQueryParams, stream string, logger *sl
 
 // generateSpansListQuery generates the OpenObserve query to list spans for a given trace.
 func generateSpansListQuery(params TracesQueryParams, stream string, logger *slog.Logger) ([]byte, error) {
-	conditions := []string{
-		"trace_id = '" + escapeSQLString(params.TraceID) + "'",
-	}
+	conditions := spanConditions(params)
 
 	safeStream, err := validateSQLIdentifier(stream)
 	if err != nil {
@@ -228,9 +290,7 @@ func generateSpansCountQuery(params TracesQueryParams, stream string, logger *sl
 		return nil, fmt.Errorf("invalid stream identifier: %w", err)
 	}
 
-	conditions := []string{
-		"trace_id = '" + escapeSQLString(params.TraceID) + "'",
-	}
+	conditions := spanConditions(params)
 
 	sql := fmt.Sprintf(
 		"SELECT count(*) as total FROM %s WHERE %s",
@@ -270,9 +330,7 @@ func buildFilterConditions(params TracesQueryParams) []string {
 	if params.Scope.EnvironmentID != "" {
 		conditions = append(conditions, "service_openchoreo_dev_environment_uid = '"+escapeSQLString(params.Scope.EnvironmentID)+"'")
 	}
-	if params.Scope.ComponentID != "" {
-		conditions = append(conditions, "service_openchoreo_dev_component_uid = '"+escapeSQLString(params.Scope.ComponentID)+"'")
-	}
+	conditions = append(conditions, releaseLineConditions(params.Scope)...)
 
 	return conditions
 }

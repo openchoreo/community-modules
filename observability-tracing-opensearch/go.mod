@@ -3,7 +3,7 @@ module github.com/openchoreo/community-modules/observability-tracing-opensearch
 go 1.27.3
 
 require (
-	github.com/getkin/kin-openapi v0.151.0
+	github.com/getkin/kin-openapi v0.152.0
 	github.com/oapi-codegen/runtime v1.7.0
 	github.com/opensearch-project/opensearch-go/v4 v4.8.1
 )

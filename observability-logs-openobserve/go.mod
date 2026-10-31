@@ -3,7 +3,7 @@ module github.com/openchoreo/community-modules/observability-logs-openobserve
 go 1.27.3
 
 require (
-	github.com/getkin/kin-openapi v0.151.0
+	github.com/getkin/kin-openapi v0.152.0
 	github.com/google/uuid v1.6.0
 	github.com/oapi-codegen/runtime v1.8.0
 )

@@ -14,8 +14,8 @@ cloud.google.com/go/logging v1.21.0 h1:Grn9NZsh87BO5+CEtZFFdj5mXEAnrlPFEdHDMVo9p
 cloud.google.com/go/logging v1.21.0/go.mod h1:4foM+ucR/w1KQrJOh4tDr14iHUIt0MLh2cL8094/LZs=
 cloud.google.com/go/longrunning v1.2.0 h1:WjYH3YHBGCxGJP9M4dWGHBfXr/cFIjMkNgWcJj7/iMM=
 cloud.google.com/go/longrunning v1.2.0/go.mod h1:5KMQALFGOCtFoi2xSOA1u3H7WKlhmckgiyFw7+LGQp0=
-cloud.google.com/go/monitoring v1.31.0 h1:LCuAoYiq8snyL/eDAG/VC73uWFXeax8+YEfmoNGJUrY=
-cloud.google.com/go/monitoring v1.31.0/go.mod h1:7uk2dIJIf7ra64dI1VuQ0ttoFqvtKjdzq46u6zNP1hU=
+cloud.google.com/go/monitoring v1.32.0 h1:0bXxoh3o751jZnKDHgUDajaG8ZtqtKPMxhVmohRHI0Q=
+cloud.google.com/go/monitoring v1.32.0/go.mod h1:FxmFKr7SUhb60LDuYvjUc6bk9i1+LyXaENR5qAEibrM=
 cloud.google.com/go/storage v1.62.3 h1:SZq1t23NCI+e96dH77Dg3PEfsNNEjqO8zE5AnD8gVD0=
 cloud.google.com/go/storage v1.62.3/go.mod h1:cpYz/kRVZ+UQAF1uHeea10/9ewcRbxGoGNKsS9daSXA=
 github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.34.0 h1:yzIYdwuro811Z27D3T80Wkd3rqZzb0K43nner7Eh1yE=

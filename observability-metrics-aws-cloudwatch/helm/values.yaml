@@ -441,7 +441,7 @@ metrics:
     enabled: true
     image:
       repository: public.ecr.aws/aws-cli/aws-cli
-      tag: "2.34.44"
+      tag: "2.39.3"
       pullPolicy: IfNotPresent
     serviceAccount:
       create: true

@@ -174,7 +174,7 @@ fluent-bit:
       - container-logs
       - audit-logs
     credentialsSecretName: opensearch-admin-credentials
-    image: "curlimages/curl:8.22.0"
+    image: "curlimages/curl:8.23.0"
 
   # Values for fluent-bit config map
   openSearchHost: "opensearch"

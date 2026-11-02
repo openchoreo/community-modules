@@ -216,9 +216,23 @@ COLUMNS=(
 # schema_version needs. update --columns replaces the custom column set, so the
 # full list goes every time. Retention is left alone on update: the operator may
 # have changed it since.
-if az monitor log-analytics workspace table show \
+if table_json=$(az monitor log-analytics workspace table show \
      --resource-group "$WS_RG" --workspace-name "$WS" --name "$TABLE" \
-     --output none 2>/dev/null; then
+     --output json 2>/dev/null); then
+  # A column the list omits is deleted by the update, data and all. That happens
+  # when this checkout is older than the release that set the table up, so stop
+  # rather than downgrade the schema.
+  dropped=$(jq -r --args '
+      ((.schema // .properties.schema).columns // [])[].name
+      | select(. as $c | $ARGS.positional | index($c) | not)
+      | "  " + .' \
+    "${COLUMNS[@]%%=*}" <<<"$table_json")
+  if [[ -n "$dropped" ]]; then
+    echo "table $TABLE has columns this script does not know, and updating it would delete them:" >&2
+    echo "$dropped" >&2
+    echo "Run the setup-audit.sh from the module release that matches the table." >&2
+    exit 1
+  fi
   say "Updating the columns of table $TABLE"
   az monitor log-analytics workspace table update \
     --resource-group "$WS_RG" --workspace-name "$WS" \

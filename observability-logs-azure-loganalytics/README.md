@@ -662,7 +662,10 @@ adapter still queries it, serving records without those groups, and the
 existing table and installs the transform that fills them. Done by hand, the
 same table command with `update` in place of `create`, without the plan and
 retention flags, does it. `update --columns` replaces the custom column set
-rather than adding to it, so pass the whole list.
+rather than adding to it, so pass the whole list. A column left out of the list is
+deleted along with its data. For that reason the script stops if the table has a
+column it does not know, which happens when the table was set up by a newer
+release.
 
 Records ingested before the re-run keep these groups only in `RawRecord`. They
 are still returned, and `searchPhrase` still finds them, but without `request` or

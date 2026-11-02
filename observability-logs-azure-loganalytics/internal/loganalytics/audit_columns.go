@@ -67,6 +67,13 @@ const (
 
 	ColMetadata = "Metadata"
 
+	// ColRequest and ColReturned hold the request and returned groups whole, so
+	// a key the producer adds to either needs no new column. A table created
+	// before schema 1.1 lacks both, which is why auditBase reads them through
+	// column_ifexists.
+	ColRequest  = "Request"
+	ColReturned = "Returned"
+
 	// Collector* come from the kubelet, never from the producer's line. That is
 	// the trust boundary: a pod cannot claim to be another pod.
 	ColCollectorNamespace = "CollectorNamespace"
@@ -93,6 +100,8 @@ const (
 	ColActorEntitlementsJSON = "ActorEntitlementsJson"
 	ColMetadataJSON          = "MetadataJson"
 	ColResourceMetadataJSON  = "ResourceMetadataJson"
+	ColRequestJSON           = "RequestJson"
+	ColReturnedJSON          = "ReturnedJson"
 
 	ColTotal       = "Total"
 	ColBucketStart = "BucketStart"

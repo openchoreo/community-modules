@@ -48,7 +48,9 @@ source
     ResourceUid = tostring(LogMessage["resource"]["uid"]),
     ResourceName = tostring(LogMessage["resource"]["name"]),
     ResourceMetadata = LogMessage["resource"]["metadata"],
-    Metadata = LogMessage["metadata"]
+    Metadata = LogMessage["metadata"],
+    Request = LogMessage["request"],
+    Returned = LogMessage["returned"]
 | extend
     CollectorNamespace = PodNamespace,
     CollectorPod = PodName,
@@ -62,5 +64,6 @@ source
     OperationId, ActorType, ActorId, ActorIssuer, ActorSessionId,
     ActorEntitlements, HttpMethod, HttpPath, ResourceType, ResourceNamespace,
     ResourceEnvironment, ResourceProject, ResourceComponent, ResourceResource,
-    ResourceUid, ResourceName, ResourceMetadata, Metadata, CollectorNamespace,
-    CollectorPod, CollectorContainer, ClusterInstance, RawRecord
+    ResourceUid, ResourceName, ResourceMetadata, Metadata, Request, Returned,
+    CollectorNamespace, CollectorPod, CollectorContainer, ClusterInstance,
+    RawRecord

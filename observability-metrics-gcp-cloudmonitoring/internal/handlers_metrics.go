@@ -114,13 +114,15 @@ func (h *MetricsHandler) QueryMetrics(ctx context.Context, request gen.QueryMetr
 
 func (h *MetricsHandler) queryResourceMetrics(ctx context.Context, req *gen.MetricsQueryRequest, step time.Duration) (gen.QueryMetricsResponseObject, error) {
 	params := cloudmonitoring.MetricsQueryParams{
-		Namespace:      req.SearchScope.Namespace,
-		ComponentUID:   derefString(req.SearchScope.ComponentUid),
-		ProjectUID:     derefString(req.SearchScope.ProjectUid),
-		EnvironmentUID: derefString(req.SearchScope.EnvironmentUid),
-		StartTime:      req.StartTime,
-		EndTime:        req.EndTime,
-		Step:           step,
+		Namespace:       req.SearchScope.Namespace,
+		ComponentUID:    derefString(req.SearchScope.ComponentUid),
+		ProjectUID:      derefString(req.SearchScope.ProjectUid),
+		EnvironmentUID:  derefString(req.SearchScope.EnvironmentUid),
+		ReleaseLineUID:  derefString(req.SearchScope.ReleaseLineUid),
+		AllReleaseLines: req.SearchScope.AllReleaseLines != nil && *req.SearchScope.AllReleaseLines,
+		StartTime:       req.StartTime,
+		EndTime:         req.EndTime,
+		Step:            step,
 	}
 
 	result, err := h.client.GetResourceMetrics(ctx, params)
@@ -144,7 +146,7 @@ func (h *MetricsHandler) queryResourceMetrics(ctx context.Context, req *gen.Metr
 	if err := union.FromResourceMetricsTimeSeries(resp); err != nil {
 		return serverErrorMetrics(fmt.Sprintf("failed to build response: %v", err)), nil
 	}
-	return metricsQueryOKResponse{union}, nil
+	return metricsQueryOKResponse{MetricsQueryResponse: union, releaseLineApplied: releaseLineApplied(params)}, nil
 }
 
 // queryHTTPMetrics returns an empty HttpMetricsTimeSeries. HTTP RED metrics
@@ -207,6 +209,15 @@ func derefString(s *string) string {
 
 func strPtr(s string) *string { return &s }
 
+// releaseLineApplied is the OpenChoreo-Release-Line-Applied header value for a
+// query: "true" when it was matched by release line, empty otherwise.
+func releaseLineApplied(p cloudmonitoring.MetricsQueryParams) string {
+	if !cloudmonitoring.ReleaseLineApplied(p) {
+		return ""
+	}
+	return "true"
+}
+
 func makeError(title gen.ErrorResponseTitle, code, detail string) gen.ErrorResponse {
 	return gen.ErrorResponse{Title: &title, ErrorCode: strPtr(code), Detail: strPtr(detail)}
 }
@@ -223,10 +234,14 @@ func serverErrorMetrics(detail string) gen.QueryMetrics500JSONResponse {
 // MarshalJSON that the generated 200 response would otherwise lose.
 type metricsQueryOKResponse struct {
 	gen.MetricsQueryResponse
+	releaseLineApplied string
 }
 
 func (r metricsQueryOKResponse) VisitQueryMetricsResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
+	if r.releaseLineApplied != "" {
+		w.Header().Set("OpenChoreo-Release-Line-Applied", r.releaseLineApplied)
+	}
 	w.WriteHeader(http.StatusOK)
 	return json.NewEncoder(w).Encode(r.MetricsQueryResponse)
 }

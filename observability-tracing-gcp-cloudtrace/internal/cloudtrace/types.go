@@ -12,6 +12,8 @@ type TracesParams struct {
 	ComponentUID      string
 	ProjectUID        string
 	EnvironmentUID    string
+	ReleaseLineUID    string
+	AllReleaseLines   bool // every line of the component instead of its main line
 	TraceID           string
 	Limit             int
 	SortOrder         string // "asc" or "desc"

@@ -14,7 +14,7 @@ flowchart TD
   observer["Observer"] -->|TRACING_ADAPTER_URL| adapter
 ```
 
-The collector promotes the four OpenChoreo pod labels (`openchoreo.dev/namespace`, `openchoreo.dev/component-uid`, `openchoreo.dev/project-uid`, `openchoreo.dev/environment-uid`) from resource attributes to **span attributes**. This step is load-bearing: the `googlecloud` exporter does not write resource attributes onto Cloud Trace spans, and the adapter scopes every query with exact-match label filters such as `+openchoreo.dev/namespace:default +openchoreo.dev/component-uid:<uid>`.
+The collector promotes the OpenChoreo pod labels (`openchoreo.dev/namespace`, `openchoreo.dev/component-uid`, `openchoreo.dev/project-uid`, `openchoreo.dev/environment-uid`, and the release line labels `openchoreo.dev/release-line`, `openchoreo.dev/release-line-uid`, `openchoreo.dev/release-line-component-uid`) from resource attributes to **span attributes**. This step is load-bearing: the `googlecloud` exporter does not write resource attributes onto Cloud Trace spans, and the adapter scopes every query with exact-match label filters such as `+openchoreo.dev/namespace:default +openchoreo.dev/component-uid:<uid>`.
 
 ## Prerequisites
 
@@ -177,6 +177,22 @@ The adapter is configured through these environment variables (set by the Helm c
 | `LOG_LEVEL` | no | `INFO` | `DEBUG`, `INFO`, `WARN`, `ERROR` |
 
 Credentials come from Application Default Credentials: Workload Identity in-cluster, `gcloud auth application-default login` locally.
+
+## Release lines
+
+Trace queries are scoped by release line:
+
+- A release line UID matches `+openchoreo.dev/release-line-uid:<uid>` alone, since release line pods don't carry the component UID label.
+- `allReleaseLines` covers every line of the component. Cloud Trace filter terms cannot be ORed, so the adapter runs one `ListTraces` on `openchoreo.dev/component-uid` and one on `openchoreo.dev/release-line-component-uid`, which release line pods carry instead, and merges the results.
+- A component UID on its own matches `+openchoreo.dev/component-uid:<uid>`, which only the main line's spans carry. Filter terms cannot be negated, so the filter cannot also exclude traces by a release line label.
+
+The adapter returns `OpenChoreo-Release-Line-Applied: true` for trace lists scoped to one release line or to every line, and leaves it off for the main line.
+
+A span request returns the spans of a trace once one of its spans is in scope. Spans of other components are always kept, and the requested component keeps only the spans of the requested line: its main line, one release line, or every line. The spans endpoint checks each span's labels itself, so it returns the header for any component or release line scope. The release line labels appear in the spans' `resourceAttributes`.
+
+### Upgrading to release line support
+
+Upgrade the chart in every cluster that runs a collector, so that the collector promotes the release line labels. Release line spans exported before the upgrade carry no component or release line label, so no component or release line query matches them.
 
 ## Compatibility
 

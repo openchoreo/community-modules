@@ -114,7 +114,7 @@ func TestBuildListRequestAggregation(t *testing.T) {
 		Step:      5 * time.Minute,
 	}
 
-	req := buildListRequest("my-project", specByKey(t, "cpuUsage"), p)
+	req := buildListRequests("my-project", specByKey(t, "cpuUsage"), p)[0]
 	if req.Name != "projects/my-project" {
 		t.Errorf("name = %q", req.Name)
 	}
@@ -131,7 +131,7 @@ func TestBuildListRequestAggregation(t *testing.T) {
 		t.Errorf("interval start = %v", got)
 	}
 
-	req = buildListRequest("my-project", specByKey(t, "memoryUsage"), p)
+	req = buildListRequests("my-project", specByKey(t, "memoryUsage"), p)[0]
 	if req.Aggregation.PerSeriesAligner != monitoringpb.Aggregation_ALIGN_MEAN {
 		t.Errorf("memoryUsage aligner = %v, want ALIGN_MEAN", req.Aggregation.PerSeriesAligner)
 	}
@@ -139,7 +139,7 @@ func TestBuildListRequestAggregation(t *testing.T) {
 
 func TestBuildListRequestClampsSubMinuteStep(t *testing.T) {
 	p := MetricsQueryParams{Namespace: "default", Step: 10 * time.Second}
-	req := buildListRequest("my-project", specByKey(t, "cpuUsage"), p)
+	req := buildListRequests("my-project", specByKey(t, "cpuUsage"), p)[0]
 	if got := req.Aggregation.AlignmentPeriod.AsDuration(); got != time.Minute {
 		t.Errorf("alignment period = %v, want 1m clamp", got)
 	}

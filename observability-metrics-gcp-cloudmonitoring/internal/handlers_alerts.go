@@ -68,7 +68,10 @@ func (h *MetricsHandler) CreateAlertRule(ctx context.Context, request gen.Create
 			slog.String("ruleName", in.RuleName), slog.String("namespace", in.Namespace), slog.Any("error", err))
 		return gen.CreateAlertRule500JSONResponse(makeError(gen.InternalServerError, errCodeInternal, "failed to create alert rule")), nil
 	}
-	return gen.CreateAlertRule201JSONResponse(syncResponse(res, gen.Created, gen.Synced)), nil
+	return gen.CreateAlertRule201JSONResponse{
+		Body:    syncResponse(res, gen.Created, gen.Synced),
+		Headers: gen.CreateAlertRule201ResponseHeaders{OpenChoreoReleaseLineApplied: ruleReleaseLineApplied(in)},
+	}, nil
 }
 
 // GetAlertRule handles GET /api/v1alpha1/alerts/rules/{ruleName}.
@@ -130,7 +133,10 @@ func (h *MetricsHandler) UpdateAlertRule(ctx context.Context, request gen.Update
 			slog.String("ruleName", in.RuleName), slog.String("namespace", in.Namespace), slog.Any("error", err))
 		return gen.UpdateAlertRule500JSONResponse(makeError(gen.InternalServerError, errCodeInternal, "failed to update alert rule")), nil
 	}
-	return gen.UpdateAlertRule200JSONResponse(syncResponse(res, gen.Updated, gen.Synced)), nil
+	return gen.UpdateAlertRule200JSONResponse{
+		Body:    syncResponse(res, gen.Updated, gen.Synced),
+		Headers: gen.UpdateAlertRule200ResponseHeaders{OpenChoreoReleaseLineApplied: ruleReleaseLineApplied(in)},
+	}, nil
 }
 
 // DeleteAlertRule handles DELETE /api/v1alpha1/alerts/rules/{ruleName}.
@@ -206,6 +212,7 @@ func ruleInputFromRequest(req gen.AlertRuleRequest) (cloudmonitoring.RuleInput, 
 		ComponentUID:   req.Metadata.ComponentUid.String(),
 		ProjectUID:     req.Metadata.ProjectUid.String(),
 		EnvironmentUID: req.Metadata.EnvironmentUid.String(),
+		ReleaseLineUID: uuidString(req.Metadata.ReleaseLineUid),
 		Metric:         string(req.Source.Metric),
 		Operator:       string(req.Condition.Operator),
 		Threshold:      float64(req.Condition.Threshold),
@@ -226,6 +233,20 @@ func ruleInputFromRequest(req gen.AlertRuleRequest) (cloudmonitoring.RuleInput, 
 		return in, errors.New("condition.operator is required")
 	}
 	return in, nil
+}
+
+// ruleReleaseLineApplied is the OpenChoreo-Release-Line-Applied header value
+// for an alert rule: "true" when it is scoped to a release line. A main line
+// rule's filter cannot exclude release line series, so it gets none.
+func ruleReleaseLineApplied(in cloudmonitoring.RuleInput) string {
+	return releaseLineApplied(cloudmonitoring.MetricsQueryParams{ReleaseLineUID: in.ReleaseLineUID})
+}
+
+func uuidString(id *openapi_types.UUID) string {
+	if id == nil {
+		return ""
+	}
+	return id.String()
 }
 
 func syncResponse(r *cloudmonitoring.RuleResult, action gen.AlertingRuleSyncResponseAction, status gen.AlertingRuleSyncResponseStatus) gen.AlertingRuleSyncResponse {

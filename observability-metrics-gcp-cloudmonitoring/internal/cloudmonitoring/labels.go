@@ -17,6 +17,11 @@ const (
 	labelComponentUID   = "openchoreo.dev/component-uid"
 	labelProjectUID     = "openchoreo.dev/project-uid"
 	labelEnvironmentUID = "openchoreo.dev/environment-uid"
+	labelReleaseLineUID = "openchoreo.dev/release-line-uid"
+
+	// labelReleaseLineComponentUID is the component UID on a release line's
+	// pods, which don't carry labelComponentUID.
+	labelReleaseLineComponentUID = "openchoreo.dev/release-line-component-uid"
 )
 
 // zeroUUID is treated as "not set" by upstream callers.

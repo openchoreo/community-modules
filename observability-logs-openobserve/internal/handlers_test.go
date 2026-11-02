@@ -292,11 +292,12 @@ func TestToLogAlertParams(t *testing.T) {
 
 	req := &gen.AlertRuleRequest{
 		Metadata: struct {
-			ComponentUid   openapi_types.UUID `json:"componentUid"`
-			EnvironmentUid openapi_types.UUID `json:"environmentUid"`
-			Name           string             `json:"name"`
-			Namespace      string             `json:"namespace"`
-			ProjectUid     openapi_types.UUID `json:"projectUid"`
+			ComponentUid   openapi_types.UUID  `json:"componentUid"`
+			EnvironmentUid openapi_types.UUID  `json:"environmentUid"`
+			Name           string              `json:"name"`
+			Namespace      string              `json:"namespace"`
+			ProjectUid     openapi_types.UUID  `json:"projectUid"`
+			ReleaseLineUid *openapi_types.UUID `json:"releaseLineUid,omitempty"`
 		}{
 			Name:           "my-alert",
 			Namespace:      "ns-1",
@@ -544,6 +545,10 @@ func TestQueryLogs_ComponentScope(t *testing.T) {
 
 func TestCreateAlertRule_Success(t *testing.T) {
 	ooServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" && r.URL.Path == "/api/default/streams/default/schema" {
+			json.NewEncoder(w).Encode(map[string]interface{}{"schema": []interface{}{}})
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(map[string]string{"id": "alert-123"})
@@ -565,11 +570,12 @@ func TestCreateAlertRule_Success(t *testing.T) {
 	resp, err := handler.CreateAlertRule(context.Background(), gen.CreateAlertRuleRequestObject{
 		Body: &gen.AlertRuleRequest{
 			Metadata: struct {
-				ComponentUid   openapi_types.UUID `json:"componentUid"`
-				EnvironmentUid openapi_types.UUID `json:"environmentUid"`
-				Name           string             `json:"name"`
-				Namespace      string             `json:"namespace"`
-				ProjectUid     openapi_types.UUID `json:"projectUid"`
+				ComponentUid   openapi_types.UUID  `json:"componentUid"`
+				EnvironmentUid openapi_types.UUID  `json:"environmentUid"`
+				Name           string              `json:"name"`
+				Namespace      string              `json:"namespace"`
+				ProjectUid     openapi_types.UUID  `json:"projectUid"`
+				ReleaseLineUid *openapi_types.UUID `json:"releaseLineUid,omitempty"`
 			}{
 				Name:           "test-alert",
 				Namespace:      "ns-1",
@@ -604,8 +610,8 @@ func TestCreateAlertRule_Success(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected 201 response, got %T", resp)
 	}
-	if createResp.RuleBackendId == nil || *createResp.RuleBackendId != "alert-123" {
-		t.Errorf("expected ruleBackendId 'alert-123', got %v", createResp.RuleBackendId)
+	if createResp.Body.RuleBackendId == nil || *createResp.Body.RuleBackendId != "alert-123" {
+		t.Errorf("expected ruleBackendId 'alert-123', got %v", createResp.Body.RuleBackendId)
 	}
 }
 
@@ -733,6 +739,8 @@ func TestUpdateAlertRule_Success(t *testing.T) {
 				},
 			}
 			json.NewEncoder(w).Encode(resp)
+		case r.Method == "GET" && r.URL.Path == "/api/default/streams/default/schema":
+			json.NewEncoder(w).Encode(map[string]interface{}{"schema": []interface{}{}})
 		case r.Method == "PUT" && r.URL.Path == "/api/v2/default/alerts/alert-upd-1":
 			w.WriteHeader(http.StatusOK)
 		}
@@ -752,11 +760,12 @@ func TestUpdateAlertRule_Success(t *testing.T) {
 		RuleName: "test-alert",
 		Body: &gen.AlertRuleRequest{
 			Metadata: struct {
-				ComponentUid   openapi_types.UUID `json:"componentUid"`
-				EnvironmentUid openapi_types.UUID `json:"environmentUid"`
-				Name           string             `json:"name"`
-				Namespace      string             `json:"namespace"`
-				ProjectUid     openapi_types.UUID `json:"projectUid"`
+				ComponentUid   openapi_types.UUID  `json:"componentUid"`
+				EnvironmentUid openapi_types.UUID  `json:"environmentUid"`
+				Name           string              `json:"name"`
+				Namespace      string              `json:"namespace"`
+				ProjectUid     openapi_types.UUID  `json:"projectUid"`
+				ReleaseLineUid *openapi_types.UUID `json:"releaseLineUid,omitempty"`
 			}{
 				Name:      "test-alert",
 				Namespace: "ns-1",
@@ -789,8 +798,8 @@ func TestUpdateAlertRule_Success(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected 200 response, got %T", resp)
 	}
-	if updateResp.RuleBackendId == nil || *updateResp.RuleBackendId != "alert-upd-1" {
-		t.Errorf("expected ruleBackendId 'alert-upd-1', got %v", updateResp.RuleBackendId)
+	if updateResp.Body.RuleBackendId == nil || *updateResp.Body.RuleBackendId != "alert-upd-1" {
+		t.Errorf("expected ruleBackendId 'alert-upd-1', got %v", updateResp.Body.RuleBackendId)
 	}
 }
 
@@ -847,6 +856,8 @@ func TestUpdateAlertRule_InvalidError(t *testing.T) {
 				},
 			}
 			json.NewEncoder(w).Encode(resp)
+		case r.Method == "GET" && r.URL.Path == "/api/default/streams/default/schema":
+			json.NewEncoder(w).Encode(map[string]interface{}{"schema": []interface{}{}})
 		case r.Method == "PUT":
 			w.WriteHeader(http.StatusBadRequest)
 			w.Write([]byte("invalid alert config"))
@@ -1098,6 +1109,10 @@ func TestDeleteAlertRule_Error(t *testing.T) {
 
 func TestCreateAlertRule_Error(t *testing.T) {
 	ooServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" && r.URL.Path == "/api/default/streams/default/schema" {
+			json.NewEncoder(w).Encode(map[string]interface{}{"schema": []interface{}{}})
+			return
+		}
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("bad request"))
 	}))
@@ -1115,11 +1130,12 @@ func TestCreateAlertRule_Error(t *testing.T) {
 	resp, err := handler.CreateAlertRule(context.Background(), gen.CreateAlertRuleRequestObject{
 		Body: &gen.AlertRuleRequest{
 			Metadata: struct {
-				ComponentUid   openapi_types.UUID `json:"componentUid"`
-				EnvironmentUid openapi_types.UUID `json:"environmentUid"`
-				Name           string             `json:"name"`
-				Namespace      string             `json:"namespace"`
-				ProjectUid     openapi_types.UUID `json:"projectUid"`
+				ComponentUid   openapi_types.UUID  `json:"componentUid"`
+				EnvironmentUid openapi_types.UUID  `json:"environmentUid"`
+				Name           string              `json:"name"`
+				Namespace      string              `json:"namespace"`
+				ProjectUid     openapi_types.UUID  `json:"projectUid"`
+				ReleaseLineUid *openapi_types.UUID `json:"releaseLineUid,omitempty"`
 			}{
 				Name:           "test-alert",
 				Namespace:      "ns-1",
@@ -1514,18 +1530,18 @@ func TestQueryEvents_ComponentScope(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected 200 response, got %T", resp)
 	}
-	if ok200.Events == nil || len(*ok200.Events) != 1 {
-		t.Fatalf("expected 1 event in response, got %v", ok200.Events)
+	if ok200.Body.Events == nil || len(*ok200.Body.Events) != 1 {
+		t.Fatalf("expected 1 event in response, got %v", ok200.Body.Events)
 	}
-	event := (*ok200.Events)[0]
+	event := (*ok200.Body.Events)[0]
 	if event.Type == nil || *event.Type != "Normal" {
 		t.Errorf("expected type Normal, got %v", event.Type)
 	}
 	if event.Reason == nil || *event.Reason != "Completed" {
 		t.Errorf("expected reason Completed, got %v", event.Reason)
 	}
-	if ok200.Total != 9 {
-		t.Errorf("expected total 9, got %d", ok200.Total)
+	if ok200.Body.Total != 9 {
+		t.Errorf("expected total 9, got %d", ok200.Body.Total)
 	}
 }
 

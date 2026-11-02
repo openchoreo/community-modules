@@ -128,33 +128,41 @@ func (c *Client) Ping(ctx context.Context) error {
 
 // QueryTraces runs ListTraces with the scope filter and COMPLETE view — the
 // only view that yields spanCount and hasErrors without a follow-up GetTrace
-// per trace.
+// per trace. A scope with several filters runs one ListTraces per filter and
+// merges the results.
 func (c *Client) QueryTraces(ctx context.Context, p TracesParams) (*TracesResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.queryTimeout)
 	defer cancel()
 
-	filter, err := BuildScopeFilter(p)
+	filters, err := BuildScopeFilters(p)
 	if err != nil {
 		return nil, fmt.Errorf("cloudtrace: QueryTraces: %w", err)
 	}
 
 	startedAt := time.Now()
-	traces, err := c.list(ctx, &tracepb.ListTracesRequest{
-		ProjectId: c.projectID,
-		View:      tracepb.ListTracesRequest_COMPLETE,
-		PageSize:  int32(min(p.Limit, pageSize)),
-		StartTime: timestamppb.New(p.StartTime),
-		EndTime:   timestamppb.New(p.EndTime),
-		Filter:    filter,
-		OrderBy:   orderBy(p.SortOrder),
-	}, p.Limit)
-	if err != nil {
-		return nil, fmt.Errorf("cloudtrace: QueryTraces: %w", err)
+	var traces []*tracepb.Trace
+	for _, filter := range filters {
+		got, err := c.list(ctx, &tracepb.ListTracesRequest{
+			ProjectId: c.projectID,
+			View:      tracepb.ListTracesRequest_COMPLETE,
+			PageSize:  int32(min(p.Limit, pageSize)),
+			StartTime: timestamppb.New(p.StartTime),
+			EndTime:   timestamppb.New(p.EndTime),
+			Filter:    filter,
+			OrderBy:   orderBy(p.SortOrder),
+		}, p.Limit)
+		if err != nil {
+			return nil, fmt.Errorf("cloudtrace: QueryTraces: %w", err)
+		}
+		traces = append(traces, got...)
 	}
 
 	entries := make([]TraceEntry, 0, len(traces))
 	for _, t := range traces {
 		entries = append(entries, summarizeTrace(t))
+	}
+	if len(filters) > 1 {
+		entries = mergeTraces(entries, p.SortOrder, p.Limit)
 	}
 	return &TracesResult{
 		Traces: entries,
@@ -165,7 +173,8 @@ func (c *Client) QueryTraces(ctx context.Context, p TracesParams) (*TracesResult
 
 // QuerySpans returns the spans of one trace. p.TraceID must be set. GetTrace
 // carries no filter expression, so the tenancy scope is enforced after the
-// fact: an out-of-scope trace is reported as empty.
+// fact: an out-of-scope trace is reported as empty. See spanInView for the
+// spans of a trace in scope.
 func (c *Client) QuerySpans(ctx context.Context, p TracesParams) (*SpansResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.queryTimeout)
 	defer cancel()
@@ -184,6 +193,9 @@ func (c *Client) QuerySpans(ctx context.Context, p TracesParams) (*SpansResult, 
 
 	spans := make([]Span, 0, len(t.GetSpans()))
 	for _, s := range t.GetSpans() {
+		if !spanInView(s.GetLabels(), p) {
+			continue
+		}
 		spans = append(spans, mapSpan(s, p.IncludeAttributes))
 	}
 	sort.Slice(spans, func(i, j int) bool {
@@ -240,6 +252,31 @@ func (c *Client) getTrace(ctx context.Context, traceID string) (*tracepb.Trace, 
 		return nil, err
 	}
 	return t, nil
+}
+
+// mergeTraces merges the traces of several filters, each already the first
+// limit in sort order, into the first limit of their union. A trace found by
+// more than one filter is kept once.
+func mergeTraces(entries []TraceEntry, sortOrder string, limit int) []TraceEntry {
+	seen := make(map[string]bool, len(entries))
+	merged := entries[:0]
+	for _, e := range entries {
+		if !seen[e.TraceID] {
+			seen[e.TraceID] = true
+			merged = append(merged, e)
+		}
+	}
+	asc := strings.EqualFold(sortOrder, "asc")
+	sort.SliceStable(merged, func(i, j int) bool {
+		if asc {
+			return merged[i].StartTime.Before(merged[j].StartTime)
+		}
+		return merged[i].StartTime.After(merged[j].StartTime)
+	})
+	if limit > 0 && len(merged) > limit {
+		merged = merged[:limit]
+	}
+	return merged
 }
 
 func anySpanMatchesScope(t *tracepb.Trace, p TracesParams) bool {

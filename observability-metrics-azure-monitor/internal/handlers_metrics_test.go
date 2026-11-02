@@ -162,10 +162,10 @@ func TestQueryMetrics_HTTP_EmptyWithHeader(t *testing.T) {
 func TestQueryRuntimeTopology_NotImplemented(t *testing.T) {
 	h := newHandler(&fakeClient{})
 	body := &gen.RuntimeTopologyRequest{
-		SearchScope: gen.ComponentSearchScope{Namespace: "ns"},
-		StartTime:   time.Now().Add(-2 * time.Hour),
-		EndTime:     time.Now(),
+		StartTime: time.Now().Add(-2 * time.Hour),
+		EndTime:   time.Now(),
 	}
+	body.SearchScope.Namespace = "ns"
 	resp, err := h.QueryRuntimeTopology(context.Background(), gen.QueryRuntimeTopologyRequestObject{Body: body})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

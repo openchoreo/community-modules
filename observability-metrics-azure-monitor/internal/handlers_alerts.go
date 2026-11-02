@@ -65,7 +65,10 @@ func (h *MetricsHandler) CreateAlertRule(ctx context.Context, request gen.Create
 		)
 		return gen.CreateAlertRule500JSONResponse(makeError(gen.InternalServerError, errCodeInternal, "failed to create alert rule")), nil
 	}
-	return gen.CreateAlertRule201JSONResponse(syncResponse(res, gen.Created, gen.Synced)), nil
+	return gen.CreateAlertRule201JSONResponse{
+		Body:    syncResponse(res, gen.Created, gen.Synced),
+		Headers: gen.CreateAlertRule201ResponseHeaders{OpenChoreoReleaseLineApplied: alertReleaseLineApplied(in)},
+	}, nil
 }
 
 func (h *MetricsHandler) GetAlertRule(ctx context.Context, request gen.GetAlertRuleRequestObject) (gen.GetAlertRuleResponseObject, error) {
@@ -125,7 +128,10 @@ func (h *MetricsHandler) UpdateAlertRule(ctx context.Context, request gen.Update
 		)
 		return gen.UpdateAlertRule500JSONResponse(makeError(gen.InternalServerError, errCodeInternal, "failed to update alert rule")), nil
 	}
-	return gen.UpdateAlertRule200JSONResponse(syncResponse(res, gen.Updated, gen.Synced)), nil
+	return gen.UpdateAlertRule200JSONResponse{
+		Body:    syncResponse(res, gen.Updated, gen.Synced),
+		Headers: gen.UpdateAlertRule200ResponseHeaders{OpenChoreoReleaseLineApplied: alertReleaseLineApplied(in)},
+	}, nil
 }
 
 func (h *MetricsHandler) DeleteAlertRule(ctx context.Context, request gen.DeleteAlertRuleRequestObject) (gen.DeleteAlertRuleResponseObject, error) {
@@ -190,6 +196,7 @@ func ruleInputFromRequest(req gen.AlertRuleRequest) (azuremonitor.RuleInput, err
 		ComponentUID:   req.Metadata.ComponentUid.String(),
 		ProjectUID:     req.Metadata.ProjectUid.String(),
 		EnvironmentUID: req.Metadata.EnvironmentUid.String(),
+		ReleaseLineUID: uuidString(req.Metadata.ReleaseLineUid),
 		Metric:         string(req.Source.Metric),
 		Operator:       string(req.Condition.Operator),
 		Threshold:      float64(req.Condition.Threshold),
@@ -214,6 +221,24 @@ func ruleInputFromRequest(req gen.AlertRuleRequest) (azuremonitor.RuleInput, err
 		return in, err
 	}
 	return in, nil
+}
+
+// alertReleaseLineApplied is the OpenChoreo-Release-Line-Applied header value
+// for an alert rule: "true" when its query is scoped to its line, or to its
+// component's main line, empty otherwise.
+func alertReleaseLineApplied(in azuremonitor.RuleInput) string {
+	if !azuremonitor.ReleaseLineScoped(in) {
+		return ""
+	}
+	return "true"
+}
+
+// uuidString returns the UUID as a string, empty when it is nil.
+func uuidString(id *openapi_types.UUID) string {
+	if id == nil {
+		return ""
+	}
+	return id.String()
 }
 
 func syncResponse(r *azuremonitor.RuleResult, action gen.AlertingRuleSyncResponseAction, status gen.AlertingRuleSyncResponseStatus) gen.AlertingRuleSyncResponse {

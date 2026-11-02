@@ -175,6 +175,13 @@ opentelemetry-collector:
             - tag_name: Namespace
               key: openchoreo.dev/namespace
               from: pod
+            # A release line's pods carry these in place of the component UID.
+            - tag_name: ReleaseLineUID
+              key: openchoreo.dev/release-line-uid
+              from: pod
+            - tag_name: ReleaseLineComponentUID
+              key: openchoreo.dev/release-line-component-uid
+              from: pod
           metadata:
             - k8s.pod.name
             - k8s.namespace.name
@@ -317,6 +324,12 @@ opentelemetry-collector:
             - tag_name: DestinationEnvironmentUID
               key: openchoreo.dev/environment-uid
               from: pod
+            - tag_name: DestinationReleaseLineUID
+              key: openchoreo.dev/release-line-uid
+              from: pod
+            - tag_name: DestinationReleaseLineComponentUID
+              key: openchoreo.dev/release-line-component-uid
+              from: pod
         pod_association:
           - sources:
               - from: resource_attribute
@@ -339,9 +352,15 @@ opentelemetry-collector:
         dimension_rollup_option: NoDimensionRollup
         resource_to_telemetry_conversion:
           enabled: true
+        # A dimension set applies only to pods carrying all of its keys. The main
+        # line's pods carry ComponentUID. A release line's pods carry
+        # ReleaseLineUID and ReleaseLineComponentUID instead, so their metrics are
+        # published per line and per component.
         metric_declarations:
           - dimensions:
               - [ComponentUID, EnvironmentUID, Namespace]
+              - [ReleaseLineUID, EnvironmentUID, Namespace]
+              - [ReleaseLineComponentUID, EnvironmentUID, Namespace]
             metric_name_selectors:
               - "pod_cpu_usage"
               - "pod_memory_usage"

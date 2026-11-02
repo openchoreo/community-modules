@@ -366,7 +366,7 @@ func TestResolveNamespaceDimensionReturnsValueFromListMetrics(t *testing.T) {
 		},
 	}
 	c := newTestClient(api)
-	got, err := c.ResolveNamespaceDimension(context.Background(), testComponentUID, testEnvironmentUID)
+	got, err := c.ResolveNamespaceDimension(context.Background(), testComponentUID, testEnvironmentUID, "")
 	if err != nil {
 		t.Fatalf("ResolveNamespaceDimension() error = %v", err)
 	}
@@ -377,7 +377,7 @@ func TestResolveNamespaceDimensionReturnsValueFromListMetrics(t *testing.T) {
 
 func TestResolveNamespaceDimensionReturnsEmptyWhenNoMetrics(t *testing.T) {
 	c := newTestClient(&stubCloudWatchAPI{})
-	got, err := c.ResolveNamespaceDimension(context.Background(), testComponentUID, testEnvironmentUID)
+	got, err := c.ResolveNamespaceDimension(context.Background(), testComponentUID, testEnvironmentUID, "")
 	if err != nil {
 		t.Fatalf("ResolveNamespaceDimension() error = %v", err)
 	}
@@ -388,7 +388,7 @@ func TestResolveNamespaceDimensionReturnsEmptyWhenNoMetrics(t *testing.T) {
 
 func TestResolveNamespaceDimensionReturnsEmptyWhenNoUIDs(t *testing.T) {
 	c := newTestClient(&stubCloudWatchAPI{})
-	got, err := c.ResolveNamespaceDimension(context.Background(), "", "")
+	got, err := c.ResolveNamespaceDimension(context.Background(), "", "", "")
 	if err != nil {
 		t.Fatalf("ResolveNamespaceDimension() error = %v", err)
 	}
@@ -400,7 +400,7 @@ func TestResolveNamespaceDimensionReturnsEmptyWhenNoUIDs(t *testing.T) {
 func TestResolveNamespaceDimensionPropagatesError(t *testing.T) {
 	api := &stubCloudWatchAPI{listMetricsErr: errors.New("aws boom")}
 	c := newTestClient(api)
-	_, err := c.ResolveNamespaceDimension(context.Background(), testComponentUID, testEnvironmentUID)
+	_, err := c.ResolveNamespaceDimension(context.Background(), testComponentUID, testEnvironmentUID, "")
 	if err == nil {
 		t.Fatal("expected error to propagate")
 	}

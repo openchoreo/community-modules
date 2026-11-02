@@ -95,8 +95,9 @@ func PingKQL() string {
 // emitted; the handler guarantees it is non-empty.
 func writeScopeFilters(sb *strings.Builder, p TracesParams) {
 	writePropertyFilter(sb, LabelNamespace, p.Namespace)
-	if p.ComponentUID != "" {
-		writePropertyFilter(sb, LabelComponentUID, p.ComponentUID)
+	if scope := releaseLineScope(p.ComponentUID, p.ReleaseLineUID, p.AllReleaseLines); scope != "" {
+		sb.WriteString("\n| where ")
+		sb.WriteString(scope)
 	}
 	if p.ProjectUID != "" {
 		writePropertyFilter(sb, LabelProjectUID, p.ProjectUID)
@@ -107,10 +108,36 @@ func writeScopeFilters(sb *strings.Builder, p TracesParams) {
 }
 
 func writePropertyFilter(sb *strings.Builder, label, value string) {
-	sb.WriteString("\n| where tostring(Properties[")
-	sb.WriteString(kqlString(label))
-	sb.WriteString("]) == ")
-	sb.WriteString(kqlString(value))
+	sb.WriteString("\n| where ")
+	sb.WriteString(propertyEquals(label, value))
+}
+
+// property renders the value of one span property, empty when the span lacks it.
+func property(label string) string {
+	return "tostring(Properties[" + kqlString(label) + "])"
+}
+
+func propertyEquals(label, value string) string {
+	return property(label) + " == " + kqlString(value)
+}
+
+// releaseLineScope renders the predicate placing a span on a component's
+// release lines. The component UID alone keeps its main line's spans, those
+// with the UID and no release line label. A release line's pods carry the
+// component UID under another label than the main line's, so allLines matches
+// either label and covers every line. One release line matches on its UID
+// alone. Empty without a component or a line.
+func releaseLineScope(componentUID, lineUID string, allLines bool) string {
+	switch {
+	case lineUID != "":
+		return propertyEquals(LabelReleaseLineUID, lineUID)
+	case componentUID == "":
+		return ""
+	case allLines:
+		return "(" + propertyEquals(LabelComponentUID, componentUID) +
+			" or " + propertyEquals(LabelReleaseLineComponentUID, componentUID) + ")"
+	}
+	return propertyEquals(LabelComponentUID, componentUID) + " and isempty(" + property(LabelReleaseLineUID) + ")"
 }
 
 // spanProjection projects the columns the mapping layer reads. ParentSpanId

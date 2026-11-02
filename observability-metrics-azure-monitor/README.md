@@ -77,6 +77,8 @@ summed across a pod's containers per time bin. The pod labels live inside the
 (`parse_json(PodLabel)[0]["openchoreo.dev/..."]`) rather than substring
 matching — the stored JSON escapes the `/` in the label keys.
 
+A component scope covers the component's main line: pods with `openchoreo.dev/component-uid` and no `openchoreo.dev/release-line-uid`. `allReleaseLines` covers every line of the component, matching `openchoreo.dev/component-uid` or `openchoreo.dev/release-line-component-uid`, which release line pods carry instead. `releaseLineUid` covers one line, matched on `openchoreo.dev/release-line-uid` alone, and takes precedence. `metric: resource` queries and alert rules answer with `OpenChoreo-Release-Line-Applied: true`. `PodLabel` carries every pod label, so the release line labels need no extra configuration.
+
 ## Prerequisites
 
 Before installing this module, make sure the following are available.
@@ -295,6 +297,7 @@ Important constraints:
   `2m` becomes `5m` instead of being rejected.
 - **Minimum 5-minute evaluation frequency.** Azure clamps sub-5-minute
   `interval` values.
+- **Release lines.** A rule without a release line evaluates its component's main line, and a rule with one evaluates that line alone.
 
 ### Webhook exposure
 
@@ -409,7 +412,9 @@ Auth (no env needed — set by the Workload Identity webhook in-cluster)
 
 - **HTTP RED metrics** (`metric: http`) are not implemented. The endpoint
   returns empty series with the
-  `X-OpenChoreo-Adapter-Notice: http-metrics-not-implemented` header.
+  `X-OpenChoreo-Adapter-Notice: http-metrics-not-implemented` header. It
+  filters nothing, so it does not set `OpenChoreo-Release-Line-Applied`, and
+  the Observer answers an HTTP metrics query for a release line with `501`.
 - **Runtime topology is not supported** by the Log Analytics backend. A
   topology graph is built from pod-to-pod L7 traffic, which lives in traces or
   L7/RED metrics — not in Container Insights' `Perf` / `KubePodInventory`. The

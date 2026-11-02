@@ -77,7 +77,12 @@ func (h *TracingHandler) QueryTraces(ctx context.Context, request gen.QueryTrace
 		}, nil
 	}
 
-	return gen.QueryTraces200JSONResponse(toTracesListResponse(result)), nil
+	return gen.QueryTraces200JSONResponse{
+		Body: toTracesListResponse(result),
+		Headers: gen.QueryTraces200ResponseHeaders{
+			OpenChoreoReleaseLineApplied: releaseLineApplied(params.ReleaseLineUID, params.ComponentUID),
+		},
+	}, nil
 }
 
 // QuerySpansForTrace implements POST /api/v1alpha1/traces/{traceId}/spans/query.
@@ -119,7 +124,12 @@ func (h *TracingHandler) QuerySpansForTrace(ctx context.Context, request gen.Que
 		}, nil
 	}
 
-	return gen.QuerySpansForTrace200JSONResponse(toSpansListResponse(result, params.IncludeAttributes)), nil
+	return gen.QuerySpansForTrace200JSONResponse{
+		Body: toSpansListResponse(result, params.IncludeAttributes),
+		Headers: gen.QuerySpansForTrace200ResponseHeaders{
+			OpenChoreoReleaseLineApplied: releaseLineApplied(params.ReleaseLineUID, params.ComponentUID),
+		},
+	}, nil
 }
 
 // GetSpanDetailsForTrace implements GET /api/v1alpha1/traces/{traceId}/spans/{spanId}.
@@ -148,6 +158,16 @@ func (h *TracingHandler) GetSpanDetailsForTrace(ctx context.Context, request gen
 	}
 
 	return gen.GetSpanDetailsForTrace200JSONResponse(toSpanDetailsResponse(span)), nil
+}
+
+// releaseLineApplied is the OpenChoreo-Release-Line-Applied header value for a
+// query scoped to a component or one of its release lines, which this adapter
+// matches by line: "true" when it was, empty otherwise.
+func releaseLineApplied(releaseLineUID, componentUID string) string {
+	if releaseLineUID == "" && componentUID == "" {
+		return ""
+	}
+	return "true"
 }
 
 // toTracesParams converts the generated request body to internal query params.
@@ -180,6 +200,12 @@ func toTracesParams(req *gen.TracesQueryRequest) appinsights.TracesParams {
 	}
 	if req.SearchScope.Environment != nil {
 		params.EnvironmentUID = strings.TrimSpace(*req.SearchScope.Environment)
+	}
+	if req.SearchScope.ReleaseLine != nil {
+		params.ReleaseLineUID = strings.TrimSpace(*req.SearchScope.ReleaseLine)
+	}
+	if req.SearchScope.AllReleaseLines != nil {
+		params.AllReleaseLines = *req.SearchScope.AllReleaseLines
 	}
 	if req.IncludeAttributes != nil {
 		params.IncludeAttributes = *req.IncludeAttributes

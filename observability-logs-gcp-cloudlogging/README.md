@@ -62,10 +62,13 @@ labels. The **logical** OpenChoreo namespace lives in the
 adapter scopes on — not the synthesised Kubernetes namespace
 (`resource.labels.namespace_name`, e.g. `dp-default-development-4b8b4fdc`).
 
+Component queries and alert rules are scoped by release line. A component UID on its own covers the component's main line: entries with `labels."k8s-pod/openchoreo_dev/component-uid"` and without `labels."k8s-pod/openchoreo_dev/release-line-uid"`. A release line UID matches `labels."k8s-pod/openchoreo_dev/release-line-uid"` alone, since release line pods don't carry the component UID label. `allReleaseLines` covers every line of the component by matching the component UID in either `component-uid` or `release-line-component-uid`. The adapter confirms this scoping with the `OpenChoreo-Release-Line-Applied: true` response header. An alert rule whose `source.query` is a raw Cloud Logging filter is used verbatim, so it is not scoped to a line. A main line rule with one is created without the header. A release line rule with one is rejected with `400`, so give a release line rule a search phrase instead. The release line labels reach Cloud Logging through the GKE logging agent like every other pod label, so no agent change is needed.
+
 | Endpoint | Purpose |
 | --- | --- |
-| `POST /api/v1/logs/query` | Runs a Cloud Logging filter against `k8s_container` logs, scoped by OpenChoreo namespace label plus optional component/project/environment UIDs. |
+| `POST /api/v1/logs/query` | Runs a Cloud Logging filter against `k8s_container` logs, scoped by OpenChoreo namespace label plus optional component/project/environment/release line UIDs. |
 | `POST /api/v1/events/query` | Not implemented — this adapter is a logs backend and does not serve Kubernetes events; returns `501` with error code `OBS-V1-L-GCP-501`. |
+| `POST /api/v1alpha1/audit-logs/query`, `/audit-logs/filter-values`, `/platform-logs/query`, `/platform-logs/filter-values` | Not implemented. Returns `501` with error code `OBS-V1-L-GCP-501`. |
 | `POST /api/v1alpha1/alerts/rules` | Creates a log-based metric and a Cloud Monitoring alert policy wired to the configured notification channel. Returns `409` if a rule with the same identity already exists (use `PUT` to replace). |
 | `GET /api/v1alpha1/alerts/rules/{ruleName}` | Looks the policy up by its `openchoreo-rule-name` user label. |
 | `PUT /api/v1alpha1/alerts/rules/{ruleName}` | Updates the rule's metric and policy in place. Returns `404` if the rule does not exist. |

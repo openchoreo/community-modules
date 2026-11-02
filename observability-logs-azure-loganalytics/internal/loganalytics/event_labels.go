@@ -46,6 +46,10 @@ func eventLabel(label string) string {
 	return resAttr(resLabelPrefix + label)
 }
 
+// eventComponentUID is the UID of the component an event's object belongs to. A
+// release line's objects carry it under their own label.
+var eventComponentUID = "coalesce(" + eventLabel(LabelComponentUID) + ", " + eventLabel(LabelReleaseLineComponentUID) + ")"
+
 // hasSafeValue matches values whose JSON rendering is the value itself, which
 // is what makes a `has` term pre-filter over the dynamic column a strict
 // superset of the exact match that follows it. UIDs, Kubernetes names and
@@ -53,14 +57,20 @@ func eventLabel(label string) string {
 var hasSafeValue = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 
 // dynEquals renders `expr == value` for an expr read out of the dynamic column
-// col. When the value allows it, a `has` pre-filter over the whole column goes
-// first: it can use the column's term index, where the extraction cannot.
+// col.
 func dynEquals(col, expr, value string) string {
-	eq := expr + " == " + kqlString(value)
+	return dynMatch(col, value, expr+" == "+kqlString(value))
+}
+
+// dynMatch renders pred, which holds only for rows whose dynamic column col
+// carries value. When the value allows it, a `has` pre-filter over the whole
+// column goes first: it can use the column's term index, where the extraction
+// cannot.
+func dynMatch(col, value, pred string) string {
 	if !hasSafeValue.MatchString(value) {
-		return eq
+		return pred
 	}
-	return col + " has " + kqlString(value) + "\n| where " + eq
+	return col + " has " + kqlString(value) + "\n| where " + pred
 }
 
 // dynIn renders `expr in (values)`, with a `has_any` pre-filter when every

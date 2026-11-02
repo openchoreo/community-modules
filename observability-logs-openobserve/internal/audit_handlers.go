@@ -233,6 +233,7 @@ func toAuditLogsParams(body *gen.AuditLogsQueryRequest) openobserve.AuditLogsPar
 		params.ResourceEnvironments = derefSlice(body.Resource.Environment)
 		params.ResourceProjects = derefSlice(body.Resource.Project)
 		params.ResourceComponents = derefSlice(body.Resource.Component)
+		params.ResourceReleaseLines = derefSlice(body.Resource.ReleaseLine)
 		params.ResourceResources = derefSlice(body.Resource.Resource)
 		params.ResourceNames = derefSlice(body.Resource.Name)
 	}
@@ -293,6 +294,8 @@ func clearAuditFilter(params *openobserve.AuditLogsParams, filter gen.AuditLogFi
 		params.ResourceProjects = nil
 	case "resource.component":
 		params.ResourceComponents = nil
+	case "resource.release_line":
+		params.ResourceReleaseLines = nil
 	case "resource.resource":
 		params.ResourceResources = nil
 	case "resource.name":
@@ -359,6 +362,7 @@ func toGenAuditLogRecord(r openobserve.AuditRecord) gen.AuditLogRecord {
 			Environment: strPtr(r.Resource.Environment),
 			Project:     strPtr(r.Resource.Project),
 			Component:   strPtr(r.Resource.Component),
+			ReleaseLine: strPtr(r.Resource.ReleaseLine),
 			Resource:    strPtr(r.Resource.Resource),
 			Uid:         strPtr(r.Resource.UID),
 			Name:        strPtr(r.Resource.Name),

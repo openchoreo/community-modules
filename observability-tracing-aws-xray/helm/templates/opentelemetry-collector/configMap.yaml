@@ -25,6 +25,8 @@ data:
           - openchoreo.dev/component-uid
           - openchoreo.dev/project-uid
           - openchoreo.dev/environment-uid
+          - openchoreo.dev/release-line-uid
+          - openchoreo.dev/release-line-component-uid
 
     extensions:
       health_check:
@@ -55,6 +57,8 @@ data:
               - set(span.attributes["openchoreo.dev/component-uid"], resource.attributes["openchoreo.dev/component-uid"]) where resource.attributes["openchoreo.dev/component-uid"] != nil
               - set(span.attributes["openchoreo.dev/project-uid"], resource.attributes["openchoreo.dev/project-uid"]) where resource.attributes["openchoreo.dev/project-uid"] != nil
               - set(span.attributes["openchoreo.dev/environment-uid"], resource.attributes["openchoreo.dev/environment-uid"]) where resource.attributes["openchoreo.dev/environment-uid"] != nil
+              - set(span.attributes["openchoreo.dev/release-line-uid"], resource.attributes["openchoreo.dev/release-line-uid"]) where resource.attributes["openchoreo.dev/release-line-uid"] != nil
+              - set(span.attributes["openchoreo.dev/release-line-component-uid"], resource.attributes["openchoreo.dev/release-line-component-uid"]) where resource.attributes["openchoreo.dev/release-line-component-uid"] != nil
       {{- if .Values.tracingCollectorCustomizations.tailSampling.enabled }}
       tail_sampling:
         decision_wait: {{ .Values.tracingCollectorCustomizations.tailSampling.decisionWait }}

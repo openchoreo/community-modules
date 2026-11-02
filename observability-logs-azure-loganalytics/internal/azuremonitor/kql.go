@@ -13,6 +13,7 @@ const (
 	labelComponentUID   = "openchoreo.dev/component-uid"
 	labelProjectUID     = "openchoreo.dev/project-uid"
 	labelEnvironmentUID = "openchoreo.dev/environment-uid"
+	labelReleaseLineUID = "openchoreo.dev/release-line-uid"
 )
 
 func BuildAlertKQL(in RuleInput) string {
@@ -27,11 +28,9 @@ func BuildAlertKQL(in RuleInput) string {
 		sb.WriteString("\n| where PodNamespace == ")
 		sb.WriteString(kqlString(ns))
 	}
-	if uid := normaliseUID(in.ComponentUID); uid != "" {
-		sb.WriteString("\n| where tostring(parse_json(tostring(KubernetesMetadata.podLabels))[")
-		sb.WriteString(kqlString(labelComponentUID))
-		sb.WriteString("]) == ")
-		sb.WriteString(kqlString(uid))
+	if scope := releaseLineScope(normaliseUID(in.ComponentUID), normaliseUID(in.ReleaseLineUID)); scope != "" {
+		sb.WriteString("\n| where ")
+		sb.WriteString(scope)
 	}
 	if uid := normaliseUID(in.ProjectUID); uid != "" {
 		sb.WriteString("\n| where tostring(parse_json(tostring(KubernetesMetadata.podLabels))[")
@@ -52,6 +51,42 @@ func BuildAlertKQL(in RuleInput) string {
 	}
 
 	return sb.String()
+}
+
+// ReleaseLineScoped reports whether BuildAlertKQL scopes the rule by release
+// line, to its line or else to its component's main line. A full KQL statement
+// is sent as is, so it is not.
+func ReleaseLineScoped(in RuleInput) bool {
+	if isKQLStatement(in.Query) {
+		return false
+	}
+	return normaliseUID(in.ReleaseLineUID) != "" || normaliseUID(in.ComponentUID) != ""
+}
+
+// UnscopableLineRule reports whether a release line rule's query is a full
+// KQL statement, which BuildAlertKQL sends as is and so can't scope to the
+// line.
+func UnscopableLineRule(in RuleInput) bool {
+	return normaliseUID(in.ReleaseLineUID) != "" && isKQLStatement(in.Query)
+}
+
+// releaseLineScope renders the predicate scoping a rule by release line. One
+// line matches on its UID alone, and the component UID alone keeps its main
+// line, the pods with the UID and no release line label. Empty without either.
+func releaseLineScope(componentUID, lineUID string) string {
+	switch {
+	case lineUID != "":
+		return podLabel(labelReleaseLineUID) + " == " + kqlString(lineUID)
+	case componentUID != "":
+		return podLabel(labelComponentUID) + " == " + kqlString(componentUID) +
+			" and isempty(" + podLabel(labelReleaseLineUID) + ")"
+	}
+	return ""
+}
+
+// podLabel renders the value of one pod label, empty when the pod lacks it.
+func podLabel(key string) string {
+	return "tostring(parse_json(tostring(KubernetesMetadata.podLabels))[" + kqlString(key) + "])"
 }
 
 func isKQLStatement(q string) bool {

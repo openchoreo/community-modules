@@ -485,8 +485,8 @@ func TestQueryLogsComponentReturnsResults(t *testing.T) {
 	if !isOK {
 		t.Fatalf("expected 200, got %T", resp)
 	}
-	if ok.Total == nil || *ok.Total != 1 {
-		t.Fatalf("unexpected total: %#v", ok.Total)
+	if ok.Body.Total == nil || *ok.Body.Total != 1 {
+		t.Fatalf("unexpected total: %#v", ok.Body.Total)
 	}
 }
 

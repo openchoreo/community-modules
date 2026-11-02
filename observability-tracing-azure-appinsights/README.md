@@ -213,6 +213,7 @@ Credentials come from `azidentity.NewDefaultAzureCredential`: Workload Identity 
 - **Root spans**: the `azuremonitor` exporter writes `ParentId == OperationId` for root spans; the adapter normalizes this to an empty `parentSpanId` in responses, matching the sibling adapters.
 - **Durations**: App Insights stores `DurationMs` (float milliseconds); `durationNs` values are converted and carry no sub-100ns precision.
 - **Attributes**: the exporter flattens resource and span attributes into one `Properties` bag; the adapter splits them back by key prefix (`openchoreo.dev/`, `k8s.`, `service.`, ... are reported as resource attributes).
+- **Release lines**: the collector's `k8sattributes` processor copies every pod label onto spans, so `Properties` carries the release line labels too. A component scope covers the component's main line: spans with `openchoreo.dev/component-uid` and no `openchoreo.dev/release-line-uid`. `allReleaseLines` covers every line of the component, matching `openchoreo.dev/component-uid` or `openchoreo.dev/release-line-component-uid`, which release line spans carry instead. `releaseLine` covers one line, matched on `openchoreo.dev/release-line-uid` alone, and takes precedence. Trace and span queries answer with `OpenChoreo-Release-Line-Applied: true`.
 
 ## Compatibility
 

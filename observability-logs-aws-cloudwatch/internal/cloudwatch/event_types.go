@@ -11,10 +11,15 @@ type ComponentEventsParams struct {
 	ProjectID     string
 	EnvironmentID string
 	ComponentID   string
-	StartTime     time.Time
-	EndTime       time.Time
-	Limit         int
-	SortOrder     string
+	ReleaseLineID string
+	// AllReleaseLines covers every line of the component instead of its main line.
+	AllReleaseLines bool
+	StartTime       time.Time
+	EndTime         time.Time
+	Limit           int
+	SortOrder       string
+	// Reasons keeps only events whose reason exactly matches one of the values.
+	Reasons []string
 }
 
 // WorkflowEventsParams captures the workflow-scoped event query options.
@@ -26,9 +31,12 @@ type WorkflowEventsParams struct {
 	EndTime         time.Time
 	Limit           int
 	SortOrder       string
+	// Reasons keeps only events whose reason exactly matches one of the values.
+	Reasons []string
 }
 
-// EventEntry is one CloudWatch event record normalised for the Observer response.
+// EventEntry is one CloudWatch event record normalised for the Observer response. ComponentUID
+// falls back to the release line component UID label, which a release line's objects carry instead.
 type EventEntry struct {
 	Timestamp       time.Time
 	Message         string

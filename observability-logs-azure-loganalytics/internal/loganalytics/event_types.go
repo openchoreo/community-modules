@@ -16,12 +16,15 @@ const (
 )
 
 // ComponentEventScope selects events of objects labelled with an OpenChoreo
-// namespace and, optionally, a project, component and environment.
+// namespace and, optionally, a project, component, environment and release line.
 type ComponentEventScope struct {
 	Namespace      string
 	ComponentUID   string
 	ProjectUID     string
 	EnvironmentUID string
+	ReleaseLineUID string
+	// AllReleaseLines covers every line of the component instead of its main line.
+	AllReleaseLines bool
 }
 
 // WorkflowEventScope selects events of a workflow run's objects, optionally

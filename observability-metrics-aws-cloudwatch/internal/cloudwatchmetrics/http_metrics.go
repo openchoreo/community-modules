@@ -22,9 +22,12 @@ type HTTPMetricsQueryParams struct {
 	ComponentUID   string
 	ProjectUID     string
 	EnvironmentUID string
-	StartTime      time.Time
-	EndTime        time.Time
-	StepSeconds    int32
+	ReleaseLineUID string
+	// AllReleaseLines covers every line of the component instead of its main line.
+	AllReleaseLines bool
+	StartTime       time.Time
+	EndTime         time.Time
+	StepSeconds     int32
 }
 
 // HTTPMetricsResult carries the per-step HTTP RED series for a component.
@@ -93,14 +96,8 @@ func (c *Client) GetHTTPMetrics(ctx context.Context, p HTTPMetricsQueryParams) (
 // destination component as BuildHTTPMetricsLogsInsightsQuery.
 func BuildHTTPMetricsBucketLogsInsightsQuery(p HTTPMetricsQueryParams) string {
 	binExpr, _ := logsInsightsBin(p.StepSeconds)
-	filters := []string{
-		`reporter = "server"`,
-		"ispresent(DestinationComponentUID)",
-		"ispresent(le)",
-	}
-	if p.ComponentUID != "" {
-		filters = append(filters, logsEquals("DestinationComponentUID", p.ComponentUID))
-	}
+	filters := append([]string{`reporter = "server"`}, destinationLineFilters(p)...)
+	filters = append(filters, "ispresent(le)")
 	if p.ProjectUID != "" {
 		filters = append(filters, logsEquals("DestinationProjectUID", p.ProjectUID))
 	}
@@ -190,10 +187,6 @@ func logsInsightsBin(stepSeconds int32) (string, float64) {
 // keeps both; the adapter folds the per-status rows back together per bucket.
 func BuildHTTPMetricsLogsInsightsQuery(p HTTPMetricsQueryParams) string {
 	binExpr, _ := logsInsightsBin(p.StepSeconds)
-	filters := []string{
-		`reporter = "server"`,
-		"ispresent(DestinationComponentUID)",
-	}
 	// The destination component UID is globally unique and is the real
 	// discriminator, so it (optionally reinforced by project/environment UID)
 	// scopes the query. We deliberately do NOT filter on Hubble's raw
@@ -201,9 +194,7 @@ func BuildHTTPMetricsLogsInsightsQuery(p HTTPMetricsQueryParams) string {
 	// (e.g. "default") while that EMF field holds the dataplane k8s namespace
 	// (e.g. "dp-default-default-development-<hash>"), so filtering it against the
 	// request value matches nothing (see topology.go for the fuller rationale).
-	if p.ComponentUID != "" {
-		filters = append(filters, logsEquals("DestinationComponentUID", p.ComponentUID))
-	}
+	filters := append([]string{`reporter = "server"`}, destinationLineFilters(p)...)
 	if p.ProjectUID != "" {
 		filters = append(filters, logsEquals("DestinationProjectUID", p.ProjectUID))
 	}
@@ -222,6 +213,29 @@ func BuildHTTPMetricsLogsInsightsQuery(p HTTPMetricsQueryParams) string {
 		fieldRequestsTotal, fieldDurationCount, fieldDurationSum,
 		binExpr,
 	)
+}
+
+// destinationLineFilters scopes Hubble series to the destination component's lines. The component
+// UID alone keeps its main line, whose pods carry no release line label. A release line's pods
+// carry the component UID under another label than the main line's, so allLines matches either
+// and covers every line. One release line matches on its UID alone. Without a component or a
+// line, any OpenChoreo component's main line is a destination.
+func destinationLineFilters(p HTTPMetricsQueryParams) []string {
+	switch {
+	case p.ReleaseLineUID != "":
+		return []string{logsEquals("DestinationReleaseLineUID", p.ReleaseLineUID)}
+	case p.ComponentUID == "":
+		return []string{"ispresent(DestinationComponentUID)"}
+	case p.AllReleaseLines:
+		return []string{fmt.Sprintf("(%s or %s)",
+			logsEquals("DestinationComponentUID", p.ComponentUID),
+			logsEquals("DestinationReleaseLineComponentUID", p.ComponentUID))}
+	}
+	return []string{
+		"ispresent(DestinationComponentUID)",
+		logsEquals("DestinationComponentUID", p.ComponentUID),
+		"not ispresent(DestinationReleaseLineUID)",
+	}
 }
 
 func httpMetricsFromRows(rows []map[string]string, binSeconds float64) *HTTPMetricsResult {

@@ -36,7 +36,7 @@ type metricsClient interface {
 	DeleteAlert(context.Context, string, string) (string, error)
 	GetAlert(context.Context, string, string) (*cloudwatchmetrics.AlertDetail, error)
 	GetAlarmTagsByName(context.Context, string) (map[string]string, error)
-	ResolveNamespaceDimension(context.Context, string, string) (string, error)
+	ResolveNamespaceDimension(ctx context.Context, componentUID, environmentUID, releaseLineUID string) (string, error)
 }
 
 type observerForwarder interface {
@@ -136,15 +136,23 @@ func (h *MetricsHandler) QueryMetrics(ctx context.Context, request gen.QueryMetr
 	}
 }
 
+// allReleaseLines reports whether the scope covers every line of its component. It has no effect
+// without one.
+func allReleaseLines(scope gen.ComponentSearchScope) bool {
+	return scope.AllReleaseLines != nil && *scope.AllReleaseLines && derefString(scope.ComponentUid) != ""
+}
+
 func (h *MetricsHandler) queryResourceMetrics(ctx context.Context, req *gen.MetricsQueryRequest, stepSec int32) (gen.QueryMetricsResponseObject, error) {
 	params := cloudwatchmetrics.MetricsQueryParams{
-		Namespace:      req.SearchScope.Namespace,
-		ComponentUID:   derefString(req.SearchScope.ComponentUid),
-		ProjectUID:     derefString(req.SearchScope.ProjectUid),
-		EnvironmentUID: derefString(req.SearchScope.EnvironmentUid),
-		StartTime:      req.StartTime,
-		EndTime:        req.EndTime,
-		StepSeconds:    stepSec,
+		Namespace:       req.SearchScope.Namespace,
+		ComponentUID:    derefString(req.SearchScope.ComponentUid),
+		ProjectUID:      derefString(req.SearchScope.ProjectUid),
+		EnvironmentUID:  derefString(req.SearchScope.EnvironmentUid),
+		ReleaseLineUID:  derefString(req.SearchScope.ReleaseLineUid),
+		AllReleaseLines: allReleaseLines(req.SearchScope),
+		StartTime:       req.StartTime,
+		EndTime:         req.EndTime,
+		StepSeconds:     stepSec,
 	}
 	if h.scopeResolver != nil {
 		resolved, ok, err := h.scopeResolver.Resolve(ctx, ScopeResolutionParams{
@@ -183,7 +191,10 @@ func (h *MetricsHandler) queryResourceMetrics(ctx context.Context, req *gen.Metr
 	if err := union.FromResourceMetricsTimeSeries(resp); err != nil {
 		return serverErrorMetrics(fmt.Sprintf("failed to build response: %v", err)), nil
 	}
-	return metricsQueryOKResponse{union}, nil
+	return metricsQueryOKResponse{
+		MetricsQueryResponse: union,
+		releaseLineApplied:   releaseLineApplied(derefString(req.SearchScope.ReleaseLineUid), derefString(req.SearchScope.ComponentUid)),
+	}, nil
 }
 
 // queryHTTPMetrics answers metric: http from Cilium Hubble RED metrics that the
@@ -194,13 +205,15 @@ func (h *MetricsHandler) queryResourceMetrics(ctx context.Context, req *gen.Metr
 // empty when the bucket series is unavailable).
 func (h *MetricsHandler) queryHTTPMetrics(ctx context.Context, req *gen.MetricsQueryRequest, stepSec int32) (gen.QueryMetricsResponseObject, error) {
 	params := cloudwatchmetrics.HTTPMetricsQueryParams{
-		Namespace:      req.SearchScope.Namespace,
-		ComponentUID:   derefString(req.SearchScope.ComponentUid),
-		ProjectUID:     derefString(req.SearchScope.ProjectUid),
-		EnvironmentUID: derefString(req.SearchScope.EnvironmentUid),
-		StartTime:      req.StartTime,
-		EndTime:        req.EndTime,
-		StepSeconds:    stepSec,
+		Namespace:       req.SearchScope.Namespace,
+		ComponentUID:    derefString(req.SearchScope.ComponentUid),
+		ProjectUID:      derefString(req.SearchScope.ProjectUid),
+		EnvironmentUID:  derefString(req.SearchScope.EnvironmentUid),
+		ReleaseLineUID:  derefString(req.SearchScope.ReleaseLineUid),
+		AllReleaseLines: allReleaseLines(req.SearchScope),
+		StartTime:       req.StartTime,
+		EndTime:         req.EndTime,
+		StepSeconds:     stepSec,
 	}
 	result, err := h.client.GetHTTPMetrics(ctx, params)
 	if err != nil {
@@ -226,19 +239,24 @@ func (h *MetricsHandler) queryHTTPMetrics(ctx context.Context, req *gen.MetricsQ
 	if err := union.FromHttpMetricsTimeSeries(resp); err != nil {
 		return serverErrorMetrics(fmt.Sprintf("failed to build response: %v", err)), nil
 	}
-	return httpMetricsQueryOKResponse{union}, nil
+	return httpMetricsQueryOKResponse{
+		MetricsQueryResponse: union,
+		releaseLineApplied:   releaseLineApplied(params.ReleaseLineUID, params.ComponentUID),
+	}, nil
 }
 
 // resolveAlertDimensionNamespace resolves the CloudWatch Namespace dimension
 // value for an alert. The Observer may send the Kubernetes namespace in
 // metadata.namespace, but the OTel collector emits the OpenChoreo namespace
 // (from the openchoreo.dev/namespace pod label) as the Namespace dimension.
+// A release line rule resolves it through that line's pods and metrics.
 func (h *MetricsHandler) resolveAlertDimensionNamespace(ctx context.Context, params *cloudwatchmetrics.MetricAlertParams) {
 	if h.scopeResolver != nil {
 		resolved, ok, err := h.scopeResolver.Resolve(ctx, ScopeResolutionParams{
 			ComponentUID:   params.ComponentUID,
 			ProjectUID:     params.ProjectUID,
 			EnvironmentUID: params.EnvironmentUID,
+			ReleaseLineUID: params.ReleaseLineUID,
 		})
 		if err != nil {
 			h.logger.Warn("Scope resolution failed for alert", slog.Any("error", err))
@@ -247,7 +265,7 @@ func (h *MetricsHandler) resolveAlertDimensionNamespace(ctx context.Context, par
 			return
 		}
 	}
-	ns, err := h.client.ResolveNamespaceDimension(ctx, params.ComponentUID, params.EnvironmentUID)
+	ns, err := h.client.ResolveNamespaceDimension(ctx, params.ComponentUID, params.EnvironmentUID, params.ReleaseLineUID)
 	if err != nil {
 		h.logger.Warn("CloudWatch namespace dimension resolution failed", slog.Any("error", err))
 		return
@@ -294,7 +312,10 @@ func (h *MetricsHandler) CreateAlertRule(ctx context.Context, request gen.Create
 			Detail: strPtr("internal server error"),
 		}, nil
 	}
-	return gen.CreateAlertRule201JSONResponse(buildSyncResponse(gen.Created, params.Name, arn, gen.Synced)), nil
+	return gen.CreateAlertRule201JSONResponse{
+		Body:    buildSyncResponse(gen.Created, params.Name, arn, gen.Synced),
+		Headers: gen.CreateAlertRule201ResponseHeaders{OpenChoreoReleaseLineApplied: releaseLineApplied(params.ReleaseLineUID, params.ComponentUID)},
+	}, nil
 }
 
 func (h *MetricsHandler) GetAlertRule(ctx context.Context, request gen.GetAlertRuleRequestObject) (gen.GetAlertRuleResponseObject, error) {
@@ -345,7 +366,10 @@ func (h *MetricsHandler) UpdateAlertRule(ctx context.Context, request gen.Update
 			Detail: strPtr("internal server error"),
 		}, nil
 	}
-	return gen.UpdateAlertRule200JSONResponse(buildSyncResponse(gen.Updated, request.RuleName, arn, gen.Synced)), nil
+	return gen.UpdateAlertRule200JSONResponse{
+		Body:    buildSyncResponse(gen.Updated, request.RuleName, arn, gen.Synced),
+		Headers: gen.UpdateAlertRule200ResponseHeaders{OpenChoreoReleaseLineApplied: releaseLineApplied(params.ReleaseLineUID, params.ComponentUID)},
+	}, nil
 }
 
 func (h *MetricsHandler) DeleteAlertRule(ctx context.Context, request gen.DeleteAlertRuleRequestObject) (gen.DeleteAlertRuleResponseObject, error) {
@@ -375,6 +399,7 @@ func alertParamsFromRequest(req *gen.AlertRuleRequest) cloudwatchmetrics.MetricA
 		ProjectUID:     req.Metadata.ProjectUid.String(),
 		EnvironmentUID: req.Metadata.EnvironmentUid.String(),
 		ComponentUID:   req.Metadata.ComponentUid.String(),
+		ReleaseLineUID: uuidString(req.Metadata.ReleaseLineUid),
 		Metric:         string(req.Source.Metric),
 		Operator:       string(req.Condition.Operator),
 		Threshold:      float64(req.Condition.Threshold),
@@ -481,6 +506,24 @@ func parseUUID(s string) (openapi_types.UUID, bool) {
 	return openapi_types.UUID(parsed), true
 }
 
+// releaseLineApplied is the OpenChoreo-Release-Line-Applied header value for a request scoped to a
+// component or one of its release lines, which this adapter matches by line: "true" when it was,
+// empty otherwise.
+func releaseLineApplied(releaseLineUID, componentUID string) string {
+	if releaseLineUID == "" && componentUID == "" {
+		return ""
+	}
+	return "true"
+}
+
+// uuidString returns the UUID as a string, empty when it is nil.
+func uuidString(id *openapi_types.UUID) string {
+	if id == nil {
+		return ""
+	}
+	return id.String()
+}
+
 func derefString(s *string) string {
 	if s == nil {
 		return ""
@@ -513,24 +556,37 @@ func serverErrorMetrics(detail string) gen.QueryMetrics500JSONResponse {
 	}
 }
 
+// releaseLineAppliedHeaderName confirms to the observer that a result was scoped by release line.
+const releaseLineAppliedHeaderName = "OpenChoreo-Release-Line-Applied"
+
 // metricsQueryOKResponse + httpMetricsQueryOKResponse preserve the union's
 // MarshalJSON the generated 200 response would otherwise lose.
 type metricsQueryOKResponse struct {
 	gen.MetricsQueryResponse
+	// releaseLineApplied is the OpenChoreo-Release-Line-Applied header value.
+	releaseLineApplied string
 }
 
 func (r metricsQueryOKResponse) VisitQueryMetricsResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
+	if r.releaseLineApplied != "" {
+		w.Header().Set(releaseLineAppliedHeaderName, r.releaseLineApplied)
+	}
 	w.WriteHeader(http.StatusOK)
 	return json.NewEncoder(w).Encode(r.MetricsQueryResponse)
 }
 
 type httpMetricsQueryOKResponse struct {
 	gen.MetricsQueryResponse
+	// releaseLineApplied is the OpenChoreo-Release-Line-Applied header value.
+	releaseLineApplied string
 }
 
 func (r httpMetricsQueryOKResponse) VisitQueryMetricsResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
+	if r.releaseLineApplied != "" {
+		w.Header().Set(releaseLineAppliedHeaderName, r.releaseLineApplied)
+	}
 	w.WriteHeader(http.StatusOK)
 	return json.NewEncoder(w).Encode(r.MetricsQueryResponse)
 }

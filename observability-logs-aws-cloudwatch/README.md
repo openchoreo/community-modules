@@ -70,6 +70,18 @@ See [Kubernetes events](#kubernetes-events) for how to publish and query them.
 | `GET /healthz` | Readiness check. Returns `200` once the adapter is ready. |
 | `GET /livez` | Liveness check. Does not call AWS, so transient AWS or DNS issues do not crash-loop the pod. |
 
+### Release lines
+
+The pods of a component's main line carry `openchoreo.dev/component-uid`. The pods of its release lines carry `openchoreo.dev/release-line-uid` and `openchoreo.dev/release-line-component-uid` instead. Fluent Bit's `kubernetes` filter copies every pod label into the log record, and the events collector copies every label of the involved object with its default `enrichment.labels` settings, so these labels reach CloudWatch without extra configuration.
+
+Component-scoped log and event queries match them as follows:
+
+- A component UID alone matches its main line: `openchoreo.dev/component-uid` without `openchoreo.dev/release-line-uid`.
+- A component UID with `allReleaseLines` matches every line: `openchoreo.dev/component-uid` or `openchoreo.dev/release-line-component-uid`.
+- A release line UID matches `openchoreo.dev/release-line-uid` alone.
+
+Log alert rules follow the same scoping: a rule for a release line matches that line, and a rule without one matches the component's main line. See [Alerting behavior](#alerting-behavior).
+
 ## Kubernetes events
 
 Alongside container logs, the adapter can answer `POST /api/v1/events/query` with
@@ -1024,6 +1036,7 @@ Important constraints:
 
 - Metric filters evaluate only newly ingested log events. They do not backfill historical logs.
 - `source.query` in the trait uses **CloudWatch Logs filter-pattern syntax**.
+- A rule for a release line matches `openchoreo.dev/release-line-uid`. A rule without a release line matches `openchoreo.dev/component-uid` on events without `openchoreo.dev/release-line-uid`, so it covers the component's main line only. The filter pattern selects these labels by key with bracket notation, for example `$.kubernetes.labels.['openchoreo.dev/component-uid']`. A rule created by an earlier adapter version matches the component UID in any label, and keeps doing so until the rule is next updated.
 
 ### Alert identity mapping
 

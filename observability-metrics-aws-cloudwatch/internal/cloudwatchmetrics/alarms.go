@@ -28,6 +28,7 @@ type MetricAlertParams struct {
 	ProjectUID         string
 	EnvironmentUID     string
 	ComponentUID       string
+	ReleaseLineUID     string // empty for the component's main line
 	Metric             string // cpu_usage | memory_usage
 	Operator           string // gt|gte|lt|lte|eq|neq
 	Threshold          float64
@@ -69,6 +70,7 @@ const (
 	TagProjectUID     = "openchoreo.project.uid"
 	TagEnvironmentUID = "openchoreo.environment.uid"
 	TagComponentUID   = "openchoreo.component.uid"
+	TagReleaseLineUID = "openchoreo.release-line.uid"
 	TagManagedBy      = "openchoreo.managed-by"
 	TagManagedByValue = "observability-metrics-aws-cloudwatch"
 	TagMetric         = "openchoreo.rule.metric"
@@ -408,6 +410,9 @@ func (c *Client) putMetricAlarm(ctx context.Context, p MetricAlertParams) (strin
 		dimNS = p.Namespace
 	}
 	dims := c.buildScopeDimensions(dimNS, p.ComponentUID, p.ProjectUID, p.EnvironmentUID)
+	if p.ReleaseLineUID != "" {
+		dims = scopeDimensions(dimNS, DimensionReleaseLineUID, p.ReleaseLineUID, p.EnvironmentUID)
+	}
 
 	tags := []cwtypes.Tag{
 		{Key: aws.String(TagRuleSource), Value: aws.String(TagRuleSourceVal)},
@@ -422,6 +427,9 @@ func (c *Client) putMetricAlarm(ctx context.Context, p MetricAlertParams) (strin
 		{Key: aws.String(TagWindow), Value: aws.String(p.Window.String())},
 		{Key: aws.String(TagInterval), Value: aws.String(p.Interval.String())},
 		{Key: aws.String(TagThreshold), Value: aws.String(strconv.FormatFloat(p.Threshold, 'f', -1, 64))},
+	}
+	if p.ReleaseLineUID != "" {
+		tags = append(tags, cwtypes.Tag{Key: aws.String(TagReleaseLineUID), Value: aws.String(p.ReleaseLineUID)})
 	}
 
 	// Threshold is a percentage (0-100) of the pod's CPU/memory limit.

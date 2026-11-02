@@ -21,6 +21,9 @@ type ComponentLogsParams struct {
 	ComponentUID   string
 	ProjectUID     string
 	EnvironmentUID string
+	ReleaseLineUID string
+	// AllReleaseLines covers every line of the component instead of its main line.
+	AllReleaseLines bool
 
 	StartTime time.Time
 	EndTime   time.Time

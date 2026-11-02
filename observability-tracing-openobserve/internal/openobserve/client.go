@@ -12,7 +12,9 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -48,6 +50,12 @@ type Scope struct {
 	ProjectID     string `json:"projectId"`
 	ComponentID   string `json:"componentId"`
 	EnvironmentID string `json:"environmentId"`
+	ReleaseLineID string `json:"releaseLineId,omitempty"`
+	// AllReleaseLines covers every line of the component instead of its main line.
+	AllReleaseLines bool `json:"allReleaseLines,omitempty"`
+
+	// stored is set by the client from the traces stream's schema.
+	stored lineColumns
 }
 
 // TracesQueryParams holds parameters for trace queries.
@@ -130,13 +138,14 @@ type OpenObserveResponse struct {
 }
 
 type Client struct {
-	baseURL    string
-	org        string
-	stream     string
-	user       string
-	token      string
-	httpClient *http.Client
-	logger     *slog.Logger
+	baseURL     string
+	org         string
+	stream      string
+	user        string
+	token       string
+	httpClient  *http.Client
+	logger      *slog.Logger
+	lineColumns lineColumnsCache
 }
 
 func NewClient(baseURL, org, stream, user, token string, logger *slog.Logger) *Client {
@@ -151,6 +160,132 @@ func NewClient(baseURL, org, stream, user, token string, logger *slog.Logger) *C
 		},
 		logger: logger,
 	}
+}
+
+// storedLineColumns reports which release line attribute columns the traces stream has stored.
+// The answer is cached, and a failed lookup falls back to the last one.
+func (c *Client) storedLineColumns(ctx context.Context) (lineColumns, error) {
+	cached, ok, fresh := c.lineColumns.get(c.stream)
+	if fresh {
+		return cached, nil
+	}
+	stored, err := c.fetchLineColumns(ctx)
+	if err != nil {
+		if ok {
+			c.logger.Warn("Using the last known release line columns", slog.String("stream", c.stream), slog.Any("error", err))
+			return cached, nil
+		}
+		return lineColumns{}, err
+	}
+	c.lineColumns.put(c.stream, stored)
+	return stored, nil
+}
+
+const (
+	// lineColumnsRecheck is how long a stream that lacks a release line column goes before it is
+	// asked again, so a new line's first spans are picked up quickly.
+	lineColumnsRecheck = 30 * time.Second
+	// lineColumnsRefresh is how long a stream with both columns goes before it is asked again.
+	// OpenObserve keeps a stored column, so this only guards against a deleted stream.
+	lineColumnsRefresh = 10 * time.Minute
+)
+
+// lineColumnsCache remembers the release line columns of each stream. The zero value is ready.
+type lineColumnsCache struct {
+	mu      sync.Mutex
+	entries map[string]lineColumnsEntry
+	now     func() time.Time
+}
+
+type lineColumnsEntry struct {
+	stored    lineColumns
+	checkedAt time.Time
+}
+
+// get returns the cached columns of a stream, whether there are any, and whether they are recent
+// enough to use without asking OpenObserve.
+func (l *lineColumnsCache) get(stream string) (lineColumns, bool, bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	e, ok := l.entries[stream]
+	if !ok {
+		return lineColumns{}, false, false
+	}
+	maxAge := lineColumnsRecheck
+	if e.stored.line && e.stored.lineComponent {
+		maxAge = lineColumnsRefresh
+	}
+	return e.stored, true, l.clock().Sub(e.checkedAt) < maxAge
+}
+
+func (l *lineColumnsCache) put(stream string, stored lineColumns) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.entries == nil {
+		l.entries = make(map[string]lineColumnsEntry)
+	}
+	l.entries[stream] = lineColumnsEntry{stored: stored, checkedAt: l.clock()}
+}
+
+func (l *lineColumnsCache) clock() time.Time {
+	if l.now != nil {
+		return l.now()
+	}
+	return time.Now()
+}
+
+// fetchLineColumns asks OpenObserve which release line attribute columns the traces stream has
+// stored. OpenObserve adds a column only once a span carries the attribute.
+func (c *Client) fetchLineColumns(ctx context.Context) (lineColumns, error) {
+	endpoint := fmt.Sprintf("%s/api/%s/streams/%s/schema?type=traces",
+		c.baseURL, url.PathEscape(c.org), url.PathEscape(c.stream))
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return lineColumns{}, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.SetBasicAuth(c.user, c.token)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return lineColumns{}, fmt.Errorf("failed to fetch stream schema: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return lineColumns{}, fmt.Errorf("failed to read stream schema: %w", err)
+	}
+
+	if resp.StatusCode == http.StatusNotFound {
+		return lineColumns{}, nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		c.logger.Error("OpenObserve returned error for stream schema",
+			slog.Int("statusCode", resp.StatusCode),
+			slog.String("body", string(body)))
+		return lineColumns{}, fmt.Errorf("openobserve returned status %d for stream schema", resp.StatusCode)
+	}
+
+	var parsed struct {
+		Schema []struct {
+			Name string `json:"name"`
+		} `json:"schema"`
+	}
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return lineColumns{}, fmt.Errorf("failed to parse stream schema: %w", err)
+	}
+
+	var stored lineColumns
+	for _, field := range parsed.Schema {
+		switch field.Name {
+		case releaseLineUIDColumn:
+			stored.line = true
+		case releaseLineComponentUIDColumn:
+			stored.lineComponent = true
+		}
+	}
+	return stored, nil
 }
 
 // executeSearchQuery executes a search query against OpenObserve and returns the parsed response
@@ -204,6 +339,18 @@ func (c *Client) executeSearchQuery(ctx context.Context, queryJSON []byte) (*Ope
 // It fetches individual spans, groups them by trace_id, and identifies the root span
 // (the span with no parent) per trace to populate rootSpanId, rootSpanName, and rootSpanKind.
 func (c *Client) GetTraces(ctx context.Context, params TracesQueryParams) (*TracesResult, error) {
+	if params.Scope.ComponentID != "" || params.Scope.ReleaseLineID != "" {
+		stored, err := c.storedLineColumns(ctx)
+		if err != nil {
+			return nil, err
+		}
+		// No span carries a release line yet.
+		if params.Scope.ReleaseLineID != "" && !stored.line {
+			return &TracesResult{Traces: []TraceEntry{}, Total: 0, TookMs: 0}, nil
+		}
+		params.Scope.stored = stored
+	}
+
 	queryJSON, err := generateTracesListQuery(params, c.stream, c.logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate traces query: %w", err)
@@ -313,6 +460,18 @@ func (c *Client) GetTraces(ctx context.Context, params TracesQueryParams) (*Trac
 
 // GetSpans queries OpenObserve for a list of spans belonging to the given traceId.
 func (c *Client) GetSpans(ctx context.Context, params TracesQueryParams) (*SpansResult, error) {
+	if params.Scope.ReleaseLineID != "" || params.Scope.ComponentID != "" {
+		stored, err := c.storedLineColumns(ctx)
+		if err != nil {
+			return nil, err
+		}
+		// No span carries a release line yet.
+		if params.Scope.ReleaseLineID != "" && !stored.line {
+			return &SpansResult{Spans: []SpanEntry{}, Total: 0, TookMs: 0}, nil
+		}
+		params.Scope.stored = stored
+	}
+
 	queryJSON, err := generateSpansListQuery(params, c.stream, c.logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate spans query: %w", err)

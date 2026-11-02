@@ -98,9 +98,13 @@ func (h *MetricsHandler) queryResourceMetrics(ctx context.Context, req *gen.Metr
 		ComponentUID:   derefString(req.SearchScope.ComponentUid),
 		ProjectUID:     derefString(req.SearchScope.ProjectUid),
 		EnvironmentUID: derefString(req.SearchScope.EnvironmentUid),
+		ReleaseLineUID: derefString(req.SearchScope.ReleaseLineUid),
 		StartTime:      req.StartTime,
 		EndTime:        req.EndTime,
 		Step:           step,
+	}
+	if req.SearchScope.AllReleaseLines != nil {
+		params.AllReleaseLines = *req.SearchScope.AllReleaseLines
 	}
 
 	result, err := h.client.GetResourceMetrics(ctx, params)
@@ -124,11 +128,12 @@ func (h *MetricsHandler) queryResourceMetrics(ctx context.Context, req *gen.Metr
 	if err := union.FromResourceMetricsTimeSeries(resp); err != nil {
 		return serverErrorMetrics(fmt.Sprintf("failed to build response: %v", err)), nil
 	}
-	return metricsQueryOKResponse{union}, nil
+	return metricsQueryOKResponse{union, releaseLineApplied(params.ReleaseLineUID, params.ComponentUID)}, nil
 }
 
 // queryHTTPMetrics returns an empty HttpMetricsTimeSeries. HTTP RED metrics
 // are not implemented in v1; the caller is informed via the response header.
+// Nothing is filtered, so it does not claim a release line scope either.
 func (h *MetricsHandler) queryHTTPMetrics() gen.QueryMetricsResponseObject {
 	empty := []gen.MetricsTimeSeriesItem{}
 	resp := gen.HttpMetricsTimeSeries{
@@ -202,14 +207,28 @@ func serverErrorMetrics(detail string) gen.QueryMetrics500JSONResponse {
 	}
 }
 
+// releaseLineApplied is the OpenChoreo-Release-Line-Applied header value for a
+// query scoped to a component or one of its release lines, which this adapter
+// matches by line: "true" when it was, empty otherwise.
+func releaseLineApplied(releaseLineUID, componentUID string) string {
+	if releaseLineUID == "" && componentUID == "" {
+		return ""
+	}
+	return "true"
+}
+
 // metricsQueryOKResponse + httpMetricsQueryOKResponse preserve the union's
 // MarshalJSON that the generated 200 response would otherwise lose.
 type metricsQueryOKResponse struct {
 	gen.MetricsQueryResponse
+	releaseLineApplied string
 }
 
 func (r metricsQueryOKResponse) VisitQueryMetricsResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
+	if r.releaseLineApplied != "" {
+		w.Header().Set("OpenChoreo-Release-Line-Applied", r.releaseLineApplied)
+	}
 	w.WriteHeader(http.StatusOK)
 	return json.NewEncoder(w).Encode(r.MetricsQueryResponse)
 }

@@ -14,6 +14,7 @@ const (
 	labelComponentUID   = "openchoreo.dev/component-uid"
 	labelProjectUID     = "openchoreo.dev/project-uid"
 	labelEnvironmentUID = "openchoreo.dev/environment-uid"
+	labelReleaseLineUID = "openchoreo.dev/release-line-uid"
 
 	// podLabelPrefix is how GKE surfaces pod labels on a LogEntry.
 	podLabelPrefix = "k8s-pod/"
@@ -34,9 +35,7 @@ func BuildAlertFilter(in RuleInput) string {
 	if ns := strings.TrimSpace(in.Namespace); ns != "" {
 		clauses = append(clauses, labelEquals(labelNamespace, ns))
 	}
-	if uid := normalizeUID(in.ComponentUID); uid != "" {
-		clauses = append(clauses, labelEquals(labelComponentUID, uid))
-	}
+	clauses = append(clauses, releaseLineScopeClauses(normalizeUID(in.ComponentUID), normalizeUID(in.ReleaseLineUID))...)
 	if uid := normalizeUID(in.ProjectUID); uid != "" {
 		clauses = append(clauses, labelEquals(labelProjectUID, uid))
 	}
@@ -48,6 +47,38 @@ func BuildAlertFilter(in RuleInput) string {
 	}
 
 	return strings.Join(clauses, "\n")
+}
+
+// ReleaseLineApplied reports whether BuildAlertFilter scopes the rule to its
+// component's main line or to its release line. A raw filter is used
+// verbatim, so it is never scoped.
+func ReleaseLineApplied(in RuleInput) bool {
+	if isRawFilter(in.Query) {
+		return false
+	}
+	return normalizeUID(in.ReleaseLineUID) != "" || normalizeUID(in.ComponentUID) != ""
+}
+
+// UnscopableLineRule reports whether a release line rule's query is a raw
+// Cloud Logging filter, which BuildAlertFilter uses verbatim and so can't
+// scope to the line.
+func UnscopableLineRule(in RuleInput) bool {
+	return normalizeUID(in.ReleaseLineUID) != "" && isRawFilter(in.Query)
+}
+
+// releaseLineScopeClauses places a rule on one of a component's lines: a
+// release line matches on its UID alone, since its pods don't carry the
+// component UID, and the component UID alone keeps its main line's entries,
+// those without a release line label. Returns nil without a component or a
+// line.
+func releaseLineScopeClauses(componentUID, lineUID string) []string {
+	switch {
+	case lineUID != "":
+		return []string{labelEquals(labelReleaseLineUID, lineUID)}
+	case componentUID == "":
+		return nil
+	}
+	return []string{labelEquals(labelComponentUID, componentUID), labelAbsent(labelReleaseLineUID)}
 }
 
 func isRawFilter(q string) bool {
@@ -81,6 +112,12 @@ func startsWithFilterOperator(s string) bool {
 
 func labelEquals(rawKey, value string) string {
 	return fmt.Sprintf(`labels.%s=%s`, quote(podLabelKey(rawKey)), quote(value))
+}
+
+// labelAbsent matches entries without the pod label: NOT on a missing field is
+// true, and :* tests for presence.
+func labelAbsent(rawKey string) string {
+	return fmt.Sprintf(`NOT labels.%s:*`, quote(podLabelKey(rawKey)))
 }
 
 func podLabelKey(rawKey string) string {

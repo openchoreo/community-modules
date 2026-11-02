@@ -27,6 +27,7 @@ type LogAlertParams struct {
 	ProjectUID     string
 	EnvironmentUID string
 	ComponentUID   string
+	ReleaseLineUID string
 	SearchPattern  string
 	Operator       string // gt|gte|lt|lte|eq|neq
 	Threshold      float64
@@ -117,6 +118,8 @@ const (
 	TagProjectUID     = "openchoreo.project.uid"
 	TagEnvironmentUID = "openchoreo.environment.uid"
 	TagComponentUID   = "openchoreo.component.uid"
+	// TagReleaseLineUID identifies a release line rule's line on the alarm and is not read back.
+	TagReleaseLineUID = "openchoreo.release-line.uid"
 	TagManagedBy      = "openchoreo.managed-by"
 	TagManagedByValue = "observability-logs-aws-cloudwatch"
 	TagSearchPattern  = "openchoreo.rule.searchpattern"

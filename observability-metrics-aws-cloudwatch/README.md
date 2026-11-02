@@ -67,6 +67,25 @@ All participating clusters write to the same configured EMF log group and metric
 | `GET /healthz` | Readiness check. Returns `200` once the adapter is ready. |
 | `GET /livez` | Liveness check. Does not call AWS, so transient AWS or DNS issues do not crash-loop the pod. |
 
+### Release lines
+
+The pods of a component's main line carry the `openchoreo.dev/component-uid` label. The pods of its release lines carry `openchoreo.dev/release-line-uid` and `openchoreo.dev/release-line-component-uid` instead. The collector extracts both labels, and publishes a release line pod's resource metrics with two more dimension sets in place of `ComponentUID`:
+
+- `ReleaseLineUID`, `EnvironmentUID`, `Namespace`
+- `ReleaseLineComponentUID`, `EnvironmentUID`, `Namespace`
+
+The Hubble EMF records carry the destination pod's labels as `DestinationReleaseLineUID` and `DestinationReleaseLineComponentUID`.
+
+Component-scoped queries and metric alerts match the lines as follows:
+
+- A component UID alone matches its main line, the `ComponentUID` dimension. HTTP metrics also require `DestinationReleaseLineUID` to be absent.
+- A component UID with `allReleaseLines` matches every line. Resource metrics average the samples published under `ComponentUID` and `ReleaseLineComponentUID`, and HTTP metrics match `DestinationComponentUID` or `DestinationReleaseLineComponentUID`.
+- A release line UID matches the `ReleaseLineUID` dimension, or `DestinationReleaseLineUID` for HTTP metrics, alone. An alert rule for a release line evaluates that line's metrics.
+
+Runtime topology has no release line scope. Its edges are keyed by `SourceComponentUID` and `DestinationComponentUID`, which only main line pods carry, so they cover main line traffic only.
+
+A component's first release line adds 12 custom metrics per environment, 6 for each of the two dimension sets. Each further line of the component adds 6, because all of its lines share the `ReleaseLineComponentUID` set. A collector from an earlier chart version writes a release line pod's metrics to the EMF log group only, without the release line fields, and they are not published as CloudWatch metrics. Upgrade the chart on every data-plane cluster before creating release lines.
+
 ### HTTP RED metrics (Cilium Hubble)
 
 `POST /api/v1/metrics/query` with `metric: http` returns per-component HTTP RED

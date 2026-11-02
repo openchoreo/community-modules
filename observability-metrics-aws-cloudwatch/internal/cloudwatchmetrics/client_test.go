@@ -37,6 +37,7 @@ const (
 // fields to set canned responses.
 type stubCloudWatchAPI struct {
 	getMetricDataFunc        func(*cloudwatch.GetMetricDataInput) (*cloudwatch.GetMetricDataOutput, error)
+	listMetricsInput         *cloudwatch.ListMetricsInput
 	listMetricsOut           *cloudwatch.ListMetricsOutput
 	listMetricsErr           error
 	putMetricAlarmInput      *cloudwatch.PutMetricAlarmInput
@@ -58,7 +59,8 @@ func (s *stubCloudWatchAPI) GetMetricData(_ context.Context, in *cloudwatch.GetM
 	return &cloudwatch.GetMetricDataOutput{}, nil
 }
 
-func (s *stubCloudWatchAPI) ListMetrics(_ context.Context, _ *cloudwatch.ListMetricsInput, _ ...func(*cloudwatch.Options)) (*cloudwatch.ListMetricsOutput, error) {
+func (s *stubCloudWatchAPI) ListMetrics(_ context.Context, in *cloudwatch.ListMetricsInput, _ ...func(*cloudwatch.Options)) (*cloudwatch.ListMetricsOutput, error) {
+	s.listMetricsInput = in
 	if s.listMetricsErr != nil {
 		return nil, s.listMetricsErr
 	}

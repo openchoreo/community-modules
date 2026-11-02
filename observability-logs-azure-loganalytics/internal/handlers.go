@@ -127,7 +127,7 @@ func (h *LogsHandler) QueryLogs(ctx context.Context, request gen.QueryLogsReques
 			)
 			return internalError("failed to query workflow logs"), nil
 		}
-		return gen.QueryLogs200JSONResponse(buildWorkflowResponse(result)), nil
+		return gen.QueryLogs200JSONResponse{Body: buildWorkflowResponse(result)}, nil
 	}
 
 	scope, err := request.Body.SearchScope.AsComponentSearchScope()
@@ -140,15 +140,19 @@ func (h *LogsHandler) QueryLogs(ctx context.Context, request gen.QueryLogsReques
 
 	params := loganalytics.ComponentLogsParams{
 		Namespace:      scope.Namespace,
-		ComponentUID:   derefString(scope.ComponentUid),
-		ProjectUID:     derefString(scope.ProjectUid),
-		EnvironmentUID: derefString(scope.EnvironmentUid),
+		ComponentUID:   strings.TrimSpace(derefString(scope.ComponentUid)),
+		ProjectUID:     strings.TrimSpace(derefString(scope.ProjectUid)),
+		EnvironmentUID: strings.TrimSpace(derefString(scope.EnvironmentUid)),
+		ReleaseLineUID: strings.TrimSpace(derefString(scope.ReleaseLineUid)),
 		StartTime:      request.Body.StartTime,
 		EndTime:        request.Body.EndTime,
 		Limit:          limit,
 		SortOrder:      sortOrder,
 		SearchPhrase:   searchPhrase,
 		LogLevels:      logLevels,
+	}
+	if scope.AllReleaseLines != nil {
+		params.AllReleaseLines = *scope.AllReleaseLines
 	}
 	result, err := h.client.GetComponentLogs(ctx, params)
 	if err != nil {
@@ -158,7 +162,10 @@ func (h *LogsHandler) QueryLogs(ctx context.Context, request gen.QueryLogsReques
 		)
 		return internalError("failed to query component logs"), nil
 	}
-	return gen.QueryLogs200JSONResponse(buildComponentResponse(result)), nil
+	return gen.QueryLogs200JSONResponse{
+		Body:    buildComponentResponse(result),
+		Headers: gen.QueryLogs200ResponseHeaders{OpenChoreoReleaseLineApplied: releaseLineApplied(params.ReleaseLineUID, params.ComponentUID)},
+	}, nil
 }
 
 // --- Alert endpoints ---
@@ -181,7 +188,10 @@ func (h *LogsHandler) CreateAlertRule(ctx context.Context, request gen.CreateAle
 		)
 		return gen.CreateAlertRule500JSONResponse(makeError(gen.InternalServerError, errCodeInternal, "failed to create alert rule")), nil
 	}
-	return gen.CreateAlertRule201JSONResponse(syncResponse(res, gen.Created, gen.Synced)), nil
+	return gen.CreateAlertRule201JSONResponse{
+		Body:    syncResponse(res, gen.Created, gen.Synced),
+		Headers: gen.CreateAlertRule201ResponseHeaders{OpenChoreoReleaseLineApplied: alertReleaseLineApplied(in)},
+	}, nil
 }
 
 // GetAlertRule returns the rule matching the Observer-supplied ruleName.
@@ -233,7 +243,10 @@ func (h *LogsHandler) UpdateAlertRule(ctx context.Context, request gen.UpdateAle
 		)
 		return gen.UpdateAlertRule500JSONResponse(makeError(gen.InternalServerError, errCodeInternal, "failed to update alert rule")), nil
 	}
-	return gen.UpdateAlertRule200JSONResponse(syncResponse(res, gen.Updated, gen.Synced)), nil
+	return gen.UpdateAlertRule200JSONResponse{
+		Body:    syncResponse(res, gen.Updated, gen.Synced),
+		Headers: gen.UpdateAlertRule200ResponseHeaders{OpenChoreoReleaseLineApplied: alertReleaseLineApplied(in)},
+	}, nil
 }
 
 // DeleteAlertRule removes the Azure rule matching the Observer-supplied ruleName.
@@ -306,6 +319,7 @@ func ruleInputFromRequest(req gen.AlertRuleRequest) (azuremonitor.RuleInput, err
 		ComponentUID:   req.Metadata.ComponentUid.String(),
 		ProjectUID:     req.Metadata.ProjectUid.String(),
 		EnvironmentUID: req.Metadata.EnvironmentUid.String(),
+		ReleaseLineUID: uuidString(req.Metadata.ReleaseLineUid),
 		Query:          req.Source.Query,
 		Operator:       string(req.Condition.Operator),
 		Threshold:      float64(req.Condition.Threshold),
@@ -324,6 +338,9 @@ func ruleInputFromRequest(req gen.AlertRuleRequest) (azuremonitor.RuleInput, err
 	}
 	if strings.TrimSpace(in.Operator) == "" {
 		return in, errors.New("condition.operator is required")
+	}
+	if azuremonitor.UnscopableLineRule(in) {
+		return in, errors.New("a release line rule needs a search phrase, since the adapter can't scope a full KQL query to the line")
 	}
 	return in, nil
 }
@@ -371,6 +388,34 @@ func internalError(message string) gen.QueryLogs500JSONResponse {
 		ErrorCode: &c,
 		Message:   &message,
 	}
+}
+
+// releaseLineApplied is the OpenChoreo-Release-Line-Applied header value for a
+// query scoped to a component or one of its release lines, which this adapter
+// matches by line: "true" when it was, empty otherwise.
+func releaseLineApplied(releaseLineUID, componentUID string) string {
+	if releaseLineUID == "" && componentUID == "" {
+		return ""
+	}
+	return "true"
+}
+
+// alertReleaseLineApplied is the OpenChoreo-Release-Line-Applied header value
+// for an alert rule: "true" when its query is scoped to its line, or to its
+// component's main line, empty otherwise.
+func alertReleaseLineApplied(in azuremonitor.RuleInput) string {
+	if !azuremonitor.ReleaseLineScoped(in) {
+		return ""
+	}
+	return "true"
+}
+
+// uuidString returns the UUID as a string, empty when it is nil.
+func uuidString(id *openapi_types.UUID) string {
+	if id == nil {
+		return ""
+	}
+	return id.String()
 }
 
 func derefString(s *string) string {

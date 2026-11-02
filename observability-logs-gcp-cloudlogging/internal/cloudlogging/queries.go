@@ -19,9 +19,7 @@ func BuildComponentLogsFilter(p ComponentLogsParams) string {
 		labelEquals(LabelNamespace, p.Namespace),
 	}
 
-	if p.ComponentUID != "" {
-		clauses = append(clauses, labelEquals(LabelComponentUID, p.ComponentUID))
-	}
+	clauses = append(clauses, releaseLineScopeClauses(p.ComponentUID, p.ReleaseLineUID, p.AllReleaseLines)...)
 	if p.ProjectUID != "" {
 		clauses = append(clauses, labelEquals(LabelProjectUID, p.ProjectUID))
 	}
@@ -72,8 +70,33 @@ func BuildWorkflowLogsFilter(p WorkflowLogsParams) string {
 	return strings.Join(clauses, "\n")
 }
 
+// releaseLineScopeClauses places an entry on a component's lines. The
+// component UID alone keeps its main line's entries, those with the UID and no
+// release line label. A release line's pods carry the component UID under
+// another label than the main line's, so allLines matches either label and
+// covers every line. One release line matches on its UID alone. Returns nil
+// without a component or a line.
+func releaseLineScopeClauses(componentUID, lineUID string, allLines bool) []string {
+	switch {
+	case lineUID != "":
+		return []string{labelEquals(LabelReleaseLineUID, lineUID)}
+	case componentUID == "":
+		return nil
+	case allLines:
+		return []string{fmt.Sprintf("(%s OR %s)",
+			labelEquals(LabelComponentUID, componentUID), labelEquals(LabelReleaseLineComponentUID, componentUID))}
+	}
+	return []string{labelEquals(LabelComponentUID, componentUID), labelAbsent(LabelReleaseLineUID)}
+}
+
 func labelEquals(rawKey, value string) string {
 	return fmt.Sprintf(`labels.%s=%s`, quote(podLabelKey(rawKey)), quote(value))
+}
+
+// labelAbsent matches entries without the pod label: NOT on a missing field is
+// true, and :* tests for presence.
+func labelAbsent(rawKey string) string {
+	return fmt.Sprintf(`NOT labels.%s:*`, quote(podLabelKey(rawKey)))
 }
 
 func timeRangeClauses(start, end time.Time) []string {

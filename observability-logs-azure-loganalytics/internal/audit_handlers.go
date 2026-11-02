@@ -39,6 +39,10 @@ var auditFilterColumns = map[gen.AuditLogFilterValuesRequestFilter]loganalytics.
 	gen.UserAgent:           loganalytics.AuditFilterUserAgent,
 }
 
+// auditReleaseLineUnsupported is the 501 message for a release line audit
+// filter: the audit table has no release line column to filter on.
+const auditReleaseLineUnsupported = "filtering audit logs by release line is not supported by this adapter"
+
 // QueryAuditLogs handles POST /api/v1alpha1/audit-logs/query.
 func (h *LogsHandler) QueryAuditLogs(
 	ctx context.Context, request gen.QueryAuditLogsRequestObject,
@@ -52,6 +56,10 @@ func (h *LogsHandler) QueryAuditLogs(
 	if msg != "" {
 		return gen.QueryAuditLogs400JSONResponse(
 			makeError(gen.BadRequest, errCodeBadRequest, msg)), nil
+	}
+	if filtersByReleaseLine(*request.Body) {
+		return gen.QueryAuditLogs501JSONResponse(
+			makeError(gen.NotImplemented, errCodeNotImplemented, auditReleaseLineUnsupported)), nil
 	}
 
 	result, err := h.client.GetAuditLogs(ctx, params)
@@ -87,6 +95,10 @@ func (h *LogsHandler) QueryAuditLogFilterValues(
 			makeError(gen.BadRequest, errCodeBadRequest, "request body is required")), nil
 	}
 
+	if request.Body.Filter == gen.ResourceReleaseLine {
+		return gen.QueryAuditLogFilterValues501JSONResponse(
+			makeError(gen.NotImplemented, errCodeNotImplemented, auditReleaseLineUnsupported)), nil
+	}
 	filter, ok := auditFilterColumns[request.Body.Filter]
 	if !ok || !loganalytics.IsListableAuditFilter(filter) {
 		return gen.QueryAuditLogFilterValues400JSONResponse(makeError(gen.BadRequest, errCodeBadRequest,
@@ -97,6 +109,10 @@ func (h *LogsHandler) QueryAuditLogFilterValues(
 	if msg != "" {
 		return gen.QueryAuditLogFilterValues400JSONResponse(
 			makeError(gen.BadRequest, errCodeBadRequest, msg)), nil
+	}
+	if filtersByReleaseLine(request.Body.Query) {
+		return gen.QueryAuditLogFilterValues501JSONResponse(
+			makeError(gen.NotImplemented, errCodeNotImplemented, auditReleaseLineUnsupported)), nil
 	}
 	// The page size and histogram say nothing about a value list.
 	query.Limit = 0
@@ -240,6 +256,12 @@ func auditParamsFromRequest(body gen.AuditLogsQueryRequest) (loganalytics.AuditP
 	}
 
 	return p, ""
+}
+
+// filtersByReleaseLine reports whether the query filters on
+// resource.release_line.
+func filtersByReleaseLine(body gen.AuditLogsQueryRequest) bool {
+	return body.Resource != nil && len(derefSlice(body.Resource.ReleaseLine)) > 0
 }
 
 func toGenAuditRecord(r loganalytics.AuditRecord) gen.AuditLogRecord {

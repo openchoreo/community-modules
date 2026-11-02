@@ -443,7 +443,7 @@ helm upgrade --install observability-tracing-aws-xray \
   oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-tracing-aws-xray \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.3.1 \
+  --version 0.5.0 \
   --set region="$AWS_REGION"
 ```
 
@@ -456,7 +456,7 @@ helm upgrade --install observability-tracing-aws-xray \
   oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-tracing-aws-xray \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.3.1 \
+  --version 0.5.0 \
   --set region="$AWS_REGION" \
   --set opentelemetry-collector.enabled=false
 ```
@@ -470,7 +470,7 @@ helm upgrade --install observability-tracing-aws-xray \
   oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-tracing-aws-xray \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.3.1 \
+  --version 0.5.0 \
   --set region="$AWS_REGION" \
   --set adapter.enabled=false
 ```
@@ -716,7 +716,7 @@ helm upgrade --install observability-tracing-aws-xray \
   oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-tracing-aws-xray \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.3.1 \
+  --version 0.5.0 \
   --set region="$AWS_REGION" \
   --set awsCredentials.create=true \
   --set awsCredentials.name=tracing-aws-xray-aws-credentials \
@@ -735,7 +735,7 @@ helm upgrade --install observability-tracing-aws-xray \
   oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-tracing-aws-xray \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.3.1 \
+  --version 0.5.0 \
   --set region="$AWS_REGION" \
   --set awsCredentials.create=true \
   --set awsCredentials.name=tracing-aws-xray-aws-credentials \
@@ -753,7 +753,7 @@ helm upgrade --install observability-tracing-aws-xray \
   oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-tracing-aws-xray \
   --create-namespace \
   --namespace "$NS" \
-  --version 0.3.1 \
+  --version 0.5.0 \
   --set region="$AWS_REGION" \
   --set awsCredentials.create=true \
   --set awsCredentials.name=tracing-aws-xray-aws-credentials \
@@ -847,5 +847,6 @@ Bundled upstream Helm charts:
 
 | Module Version | OpenChoreo Version |
 |----------------|--------------------|
-| v0.3.x         | v1.2.x             |
+| v0.5.x         | v1.4.0 and later   |
+| v0.3.x         | v1.2.x - v1.3.x    |
 | v0.2.x         | v1.1.x             |

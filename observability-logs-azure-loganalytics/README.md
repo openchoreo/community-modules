@@ -657,9 +657,20 @@ The name must end in `_CL`, and `TimeGenerated` must be declared explicitly.
 
 A table set up by an earlier release has no `Request` or `Returned` column. The
 adapter still queries it, serving records without those groups, and the
-`returned.items.name` filter matches nothing there. To add them, re-run
-`scripts/setup-audit.sh --apply --skip-preflight`. It updates the columns of an
-existing table and installs the transform that fills them. Done by hand, the
+`returned.items.name` filter matches nothing there. To add them, re-run the
+script for each producer cluster:
+
+```bash
+scripts/setup-audit.sh --cluster <aks-name> --resource-group <rg> --apply --skip-preflight
+```
+
+Repeat any `--producer` and `--table` options the first run was given. The script
+rewrites the routing from its own options, so a re-run without `--producer`
+restores the default allowlist and sends a custom producer's audit records back
+to `ContainerLogV2`, where container log readers can see them.
+
+The re-run updates the columns of an existing table and installs the transform
+that fills them. Done by hand, the
 same table command with `update` in place of `create`, without the plan and
 retention flags, does it. `update --columns` replaces the custom column set
 rather than adding to it, so pass the whole list. A column left out of the list is

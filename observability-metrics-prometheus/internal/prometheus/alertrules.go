@@ -174,27 +174,32 @@ func buildBudgetAlertExpression(componentUID, projectUID, environmentUID, releas
 	}
 	scale := windowDuration.Seconds() / 3600.0
 
+	cpuRequests := perContainerOnNode(fmt.Sprintf(
+		`avg_over_time(kube_pod_container_resource_requests{resource="cpu",job="kube-state-metrics"}[%s])`, window))
+	memoryRequests := perContainerOnNode(fmt.Sprintf(
+		`avg_over_time(kube_pod_container_resource_requests{resource="memory",job="kube-state-metrics"}[%s])`, window))
+
 	// CPU Cost = avg(requested cores over window) * CPU hourly cost * window hours
 	cpuCostExpr := fmt.Sprintf(`sum(
-        avg_over_time(kube_pod_container_resource_requests{resource="cpu",job="kube-state-metrics"}[%s])
+        %s
         * on(node) group_left
         node_cpu_hourly_cost
         * on(pod, namespace) group_left(label_openchoreo_dev_component_uid,label_openchoreo_dev_project_uid,label_openchoreo_dev_environment_uid)
         %s
         * %f
-    )`, window, podLabels, scale)
+    )`, cpuRequests, podLabels, scale)
 
 	// RAM Cost = avg(requested bytes over window) in GB * RAM hourly cost * window hours
 	ramCostExpr := fmt.Sprintf(`sum(
         (
-            avg_over_time(kube_pod_container_resource_requests{resource="memory",job="kube-state-metrics"}[%s]) / (1024*1024*1024)
+            %s / (1024*1024*1024)
         )
         * on(node) group_left
         node_ram_hourly_cost
         * on(pod, namespace) group_left(label_openchoreo_dev_component_uid,label_openchoreo_dev_project_uid,label_openchoreo_dev_environment_uid)
         %s
         * %f
-    )`, window, podLabels, scale)
+    )`, memoryRequests, podLabels, scale)
 
 	return fmt.Sprintf(`(%s + %s) %s %v`, cpuCostExpr, ramCostExpr, operator, threshold), nil
 }

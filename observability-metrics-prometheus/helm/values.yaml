@@ -26,6 +26,12 @@ kube-prometheus-stack:
     enabled: true
     fullnameOverride: prometheus-operator
 
+    # Allows the API server to reach the operator's admission webhook when the
+    # observability plane namespace has a default-deny NetworkPolicy.
+    networkPolicy:
+      enabled: true
+      flavor: kubernetes
+
     resources:
       limits:
         cpu: 40m

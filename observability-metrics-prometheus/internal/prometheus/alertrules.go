@@ -134,9 +134,16 @@ func buildCPUUsageAlertExpression(componentUID, projectUID, environmentUID, rele
 	// Use the provided window, but ensure a minimum of 2m for rate calculation
 	rateWindow := ensureMinimumWindow(window, "2m")
 
+	usage := perContainer(fmt.Sprintf(`rate(container_cpu_usage_seconds_total{container!=""}[%s])`, rateWindow))
+	limits := perContainer(`kube_pod_container_resource_limits{resource="cpu",job="kube-state-metrics"}`)
+	return buildUsageRatioExpression(usage, limits, podLabels, operator, threshold)
+}
+
+// buildUsageRatioExpression builds "usage / limits * 100 <op> <threshold>" over the component's pods.
+func buildUsageRatioExpression(usage, limits, podLabels, operator string, threshold float64) string {
 	return fmt.Sprintf(
-		`(sum(rate(container_cpu_usage_seconds_total{container!=""}[%s]) * on (pod) group_left(label_openchoreo_dev_component_uid,label_openchoreo_dev_project_uid,label_openchoreo_dev_environment_uid) %s) / sum(kube_pod_container_resource_limits{resource="cpu",job="kube-state-metrics"} * on (pod) group_left(label_openchoreo_dev_component_uid,label_openchoreo_dev_project_uid,label_openchoreo_dev_environment_uid) %s)) * 100 %s %v`,
-		rateWindow, podLabels, podLabels, operator, threshold,
+		`(sum(%s * on (namespace, pod) group_left(label_openchoreo_dev_component_uid,label_openchoreo_dev_project_uid,label_openchoreo_dev_environment_uid) %s) / sum(%s * on (namespace, pod) group_left(label_openchoreo_dev_component_uid,label_openchoreo_dev_project_uid,label_openchoreo_dev_environment_uid) %s)) * 100 %s %v`,
+		usage, podLabels, limits, podLabels, operator, threshold,
 	)
 }
 
@@ -146,10 +153,9 @@ func buildCPUUsageAlertExpression(componentUID, projectUID, environmentUID, rele
 func buildMemoryUsageAlertExpression(componentUID, projectUID, environmentUID, releaseLineUID, operator string, threshold float64, window string) string {
 	podLabels := BuildComponentPodLabels(componentUID, projectUID, environmentUID, releaseLineUID)
 
-	return fmt.Sprintf(
-		`(sum(container_memory_working_set_bytes{container!=""} * on (pod) group_left(label_openchoreo_dev_component_uid,label_openchoreo_dev_project_uid,label_openchoreo_dev_environment_uid) %s) / sum(kube_pod_container_resource_limits{resource="memory",job="kube-state-metrics"} * on (pod) group_left(label_openchoreo_dev_component_uid,label_openchoreo_dev_project_uid,label_openchoreo_dev_environment_uid) %s)) * 100 %s %v`,
-		podLabels, podLabels, operator, threshold,
-	)
+	usage := perContainer(`container_memory_working_set_bytes{container!=""}`)
+	limits := perContainer(`kube_pod_container_resource_limits{resource="memory",job="kube-state-metrics"}`)
+	return buildUsageRatioExpression(usage, limits, podLabels, operator, threshold)
 }
 
 // buildBudgetAlertExpression builds a PromQL expression for budget alerts.

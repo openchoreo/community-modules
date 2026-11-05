@@ -238,10 +238,10 @@ func TestResourceQueryBuilders(t *testing.T) {
 		queryFn  func(string, string, string) string
 		contains []string
 	}{
-		{"CPUUsage", BuildCPUUsageQuery, []string{"container_cpu_usage_seconds_total", "rate(", labelFilter}},
+		{"CPUUsage", BuildCPUUsageQuery, []string{`max by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{container!=""}[2m]))`, labelFilter}},
 		{"CPURequests", BuildCPURequestsQuery, []string{"kube_pod_container_resource_requests", `resource="cpu"`, labelFilter}},
 		{"CPULimits", BuildCPULimitsQuery, []string{"kube_pod_container_resource_limits", `resource="cpu"`, labelFilter}},
-		{"MemoryUsage", BuildMemoryUsageQuery, []string{"container_memory_working_set_bytes", labelFilter}},
+		{"MemoryUsage", BuildMemoryUsageQuery, []string{`max by (namespace, pod, container) (container_memory_working_set_bytes{container!=""})`, labelFilter}},
 		{"MemoryRequests", BuildMemoryRequestsQuery, []string{"kube_pod_container_resource_requests", `resource="memory"`, labelFilter}},
 		{"MemoryLimits", BuildMemoryLimitsQuery, []string{"kube_pod_container_resource_limits", `resource="memory"`, labelFilter}},
 	}

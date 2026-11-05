@@ -78,6 +78,12 @@ func podLabelsExpr(matchers []string) string {
 	return "(" + strings.Join(selectors, " or ") + ")"
 }
 
+// perContainer keeps one series per container, so the same container scraped by several
+// targets (differing only in job, service, instance, ...) is not counted more than once.
+func perContainer(expr string) string {
+	return fmt.Sprintf("max by (namespace, pod, container) (%s)", expr)
+}
+
 // BuildScopeLabelNames returns the Prometheus label names for whichever of
 // componentUID, projectUID, and environmentUID are non-empty.
 func BuildScopeLabelNames(componentUID, projectUID, environmentUID string) []string {
@@ -136,7 +142,8 @@ func BuildComponentPodLabels(componentUID, projectUID, environmentUID, releaseLi
 // BuildCPUUsageQuery builds a PromQL query for CPU usage rate.
 func BuildCPUUsageQuery(podLabels, sumByClause, groupLeftClause string) string {
 	return fmt.Sprintf(`sum by (%s) (
-    rate(container_cpu_usage_seconds_total{container!=""}[2m]) * on (pod, namespace) %s %s )`, sumByClause, groupLeftClause, podLabels)
+    %s * on (pod, namespace) %s %s )`, sumByClause,
+		perContainer(`rate(container_cpu_usage_seconds_total{container!=""}[2m])`), groupLeftClause, podLabels)
 }
 
 // BuildCPURequestsQuery builds a PromQL query for CPU requests.
@@ -168,10 +175,10 @@ func BuildCPULimitsQuery(podLabels, sumByClause, groupLeftClause string) string 
 // BuildMemoryUsageQuery builds a PromQL query for memory usage.
 func BuildMemoryUsageQuery(podLabels, sumByClause, groupLeftClause string) string {
 	return fmt.Sprintf(`sum by (%s) (
-              container_memory_working_set_bytes{container!=""}
+              %s
               * on (pod, namespace) %s
                 %s
-            )`, sumByClause, groupLeftClause, podLabels)
+            )`, sumByClause, perContainer(`container_memory_working_set_bytes{container!=""}`), groupLeftClause, podLabels)
 }
 
 // BuildMemoryRequestsQuery builds a PromQL query for memory requests.

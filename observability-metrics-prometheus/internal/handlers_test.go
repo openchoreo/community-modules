@@ -934,3 +934,48 @@ func TestMapPrometheusRuleToAlertRuleResponse_NoRules(t *testing.T) {
 		t.Error("expected error for PrometheusRule with no rules")
 	}
 }
+
+func TestUsageAlertExpressionRoundTrip(t *testing.T) {
+	const (
+		componentUID   = "c5f0a8d3-7e2b-4d9c-a1f4-6b8e3c0d5a7f"
+		projectUID     = "d6a1b9e4-8f3c-4e0d-b2a5-7c9f4d1e6b8a"
+		environmentUID = "e7b2c0f5-9a4d-4f1e-c3b6-8d0a5e2f7c9b"
+	)
+	tests := []struct {
+		metric string
+		want   gen.AlertRuleResponseSourceMetric
+	}{
+		{prometheus.MetricTypeCPUUsage, gen.AlertRuleResponseSourceMetricCpuUsage},
+		{prometheus.MetricTypeMemoryUsage, gen.AlertRuleResponseSourceMetricMemoryUsage},
+	}
+	for _, tt := range tests {
+		t.Run(tt.metric, func(t *testing.T) {
+			rule, err := prometheus.BuildPrometheusRule(prometheus.AlertRuleParams{
+				Name: "r", Namespace: "ns", ComponentUID: componentUID, ProjectUID: projectUID,
+				EnvironmentUID: environmentUID, Metric: tt.metric, Enabled: true,
+				Window: "5m", Interval: "1m", Operator: "lte", Threshold: 37.5,
+			}, "monitoring")
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			expr := rule.Spec.Groups[0].Rules[0].Expr.String()
+
+			if got := detectMetricType(expr); got != tt.want {
+				t.Errorf("detectMetricType() = %q, want %q", got, tt.want)
+			}
+			op, threshold := extractPromOperatorAndThreshold(expr)
+			if op != "lte" || threshold == nil || *threshold != 37.5 {
+				t.Errorf("extractPromOperatorAndThreshold() = %q, %v; want lte, 37.5", op, threshold)
+			}
+			for label, want := range map[string]string{
+				"label_openchoreo_dev_component_uid":   componentUID,
+				"label_openchoreo_dev_project_uid":     projectUID,
+				"label_openchoreo_dev_environment_uid": environmentUID,
+			} {
+				if got := extractPromLabelValue(expr, label); got != want {
+					t.Errorf("extractPromLabelValue(%s) = %q, want %q", label, got, want)
+				}
+			}
+		})
+	}
+}

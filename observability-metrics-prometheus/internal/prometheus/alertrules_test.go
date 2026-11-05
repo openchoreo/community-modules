@@ -416,3 +416,40 @@ func TestEnsureMinimumWindow(t *testing.T) {
 		})
 	}
 }
+
+func TestUsageAlertExpressions_DedupePerContainer(t *testing.T) {
+	tests := []struct {
+		metric string
+		usage  string
+		limits string
+	}{
+		{MetricTypeCPUUsage,
+			`max by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{container!=""}[5m]))`,
+			`max by (namespace, pod, container) (kube_pod_container_resource_limits{resource="cpu",job="kube-state-metrics"})`},
+		{MetricTypeMemoryUsage,
+			`max by (namespace, pod, container) (container_memory_working_set_bytes{container!=""})`,
+			`max by (namespace, pod, container) (kube_pod_container_resource_limits{resource="memory",job="kube-state-metrics"})`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.metric, func(t *testing.T) {
+			expr, err := buildAlertExpression(AlertRuleParams{
+				ComponentUID: "c", ProjectUID: "p", EnvironmentUID: "e",
+				Metric: tt.metric, Window: "5m", Operator: "lt", Threshold: 50,
+			})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			for _, want := range []string{tt.usage, tt.limits, " * 100 < 50"} {
+				if !strings.Contains(expr, want) {
+					t.Errorf("expression missing %q:\n%s", want, expr)
+				}
+			}
+			if got := strings.Count(expr, "on (namespace, pod) group_left("); got != 2 {
+				t.Errorf("expected both joins on (namespace, pod), got %d:\n%s", got, expr)
+			}
+			if strings.Contains(expr, "on (pod)") {
+				t.Errorf("expression must not join on pod alone:\n%s", expr)
+			}
+		})
+	}
+}

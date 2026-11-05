@@ -354,7 +354,17 @@ func buildHubblePodMappingExprWithSide(side, outputNameLabel, outputUIDLabel, la
                 "%s", "$1", "%s", "(.*)"
             ),
             "%s", "$1", "%s", "(.*)"
-        )`, onePerPod(fmt.Sprintf(`kube_pod_labels{job="kube-state-metrics",%s}`, labelFilter)), nsLabel, podLabel, outputNameLabel, componentNameLabel, outputUIDLabel, componentUIDLabel), outputUIDLabel)
+        )`, componentPodLabelsExpr(labelFilter), nsLabel, podLabel, outputNameLabel, componentNameLabel, outputUIDLabel, componentUIDLabel), outputUIDLabel)
+}
+
+// componentPodLabelsExpr is the kube_pod_labels selector of labelFilter, one series per pod, kept to
+// series that carry a component UID. A kube-state-metrics that doesn't export the release line labels
+// gives a release line pod a series without one, and the topology mapping needs it.
+func componentPodLabelsExpr(labelFilter string) string {
+	return podLabelsExpr([]string{
+		fmt.Sprintf(`%s,%s!=""`, labelFilter, prometheusLabelName(LabelComponentUID)),
+		fmt.Sprintf(`%s,%s!=""`, labelFilter, prometheusLabelName(LabelReleaseLineComponentUID)),
+	})
 }
 
 // withReleaseLineComponentUID fills outputUIDLabel of a release line pod's series, which has no

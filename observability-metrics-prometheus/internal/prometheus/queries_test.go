@@ -312,3 +312,16 @@ func TestPodLabelSelectors_OnePerPod(t *testing.T) {
 		})
 	}
 }
+
+// TestRuntimeTopologyMapping_SeriesWithComponentUID keeps a release line pod's series without its
+// release line labels, from a kube-state-metrics that doesn't export them, out of the topology mapping.
+func TestRuntimeTopologyMapping_SeriesWithComponentUID(t *testing.T) {
+	filter := `label_openchoreo_dev_namespace="ns"`
+	want := onePerPodPrefix +
+		`kube_pod_labels{job="kube-state-metrics",` + filter + `,label_openchoreo_dev_component_uid!=""} or ` +
+		`kube_pod_labels{job="kube-state-metrics",` + filter + `,label_openchoreo_dev_release_line_component_uid!=""})`
+	expr := BuildRuntimeTopologyComponentEdgeRequestCountQuery("3600s", filter)
+	if got := strings.Count(expr, want); got != 2 {
+		t.Errorf("want both Hubble sides mapped from %q, found %d:\n%s", want, got, expr)
+	}
+}

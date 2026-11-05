@@ -4,9 +4,6 @@
 package prometheus
 
 import (
-	"os"
-	"regexp"
-	"slices"
 	"strings"
 	"testing"
 )
@@ -296,33 +293,8 @@ func TestHTTPQueryBuilders(t *testing.T) {
 	}
 }
 
-// onePerPodPrefix is the onePerPod wrapper, spelled out so a change to the kept labels is deliberate.
-const onePerPodPrefix = "max by (namespace, pod, label_openchoreo_dev_component_uid, label_openchoreo_dev_project_uid, " +
-	"label_openchoreo_dev_environment_uid, label_openchoreo_dev_release_line_uid, label_openchoreo_dev_release_line_component_uid, " +
-	"label_openchoreo_dev_namespace, label_openchoreo_dev_component, label_openchoreo_dev_project, label_openchoreo_dev_environment) ("
-
-// TestPodLabelNames_MatchKubeStateMetricsAllowlist keeps onePerPod in step with the pod labels the chart's
-// kube-state-metrics exports: a label missing from podLabelNames would be dropped before the join.
-func TestPodLabelNames_MatchKubeStateMetricsAllowlist(t *testing.T) {
-	values, err := os.ReadFile("../../helm/values.yaml")
-	if err != nil {
-		t.Fatalf("read chart values: %v", err)
-	}
-	m := regexp.MustCompile(`pods=\[([^\]]*)\]`).FindSubmatch(values)
-	if m == nil {
-		t.Fatal("no pods=[...] entry in kube-state-metrics metricLabelsAllowlist")
-	}
-	var want []string
-	for _, l := range strings.Split(string(m[1]), ",") {
-		want = append(want, prometheusLabelName(strings.TrimSpace(l)))
-	}
-	got := podLabelNames[2:]
-	slices.Sort(want)
-	got = slices.Sorted(slices.Values(got))
-	if !slices.Equal(got, want) {
-		t.Errorf("podLabelNames = %v, allowlist = %v", got, want)
-	}
-}
+// onePerPodPrefix is the onePerPod wrapper.
+const onePerPodPrefix = "topk by (namespace, pod) (1, "
 
 func TestPodLabelSelectors_OnePerPod(t *testing.T) {
 	selectors := map[string]string{
@@ -332,8 +304,10 @@ func TestPodLabelSelectors_OnePerPod(t *testing.T) {
 	}
 	for name, expr := range selectors {
 		t.Run(name, func(t *testing.T) {
-			if got, want := strings.Count(expr, onePerPodPrefix+"kube_pod_labels{"), strings.Count(expr, "(kube_pod_labels{"); got == 0 || got != want {
-				t.Errorf("every kube_pod_labels join must keep one series per pod (%d of %d wrapped):\n%s", got, want, expr)
+			wrapped := strings.Count(expr, onePerPodPrefix+"kube_pod_labels{")
+			chained := strings.Count(expr, " or kube_pod_labels{")
+			if total := strings.Count(expr, "kube_pod_labels{"); wrapped == 0 || wrapped+chained != total {
+				t.Errorf("every kube_pod_labels join must keep one series per pod (%d of %d wrapped):\n%s", wrapped+chained, total, expr)
 			}
 		})
 	}

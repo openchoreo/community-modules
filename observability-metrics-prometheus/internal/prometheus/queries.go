@@ -75,26 +75,10 @@ func podLabelsExpr(matchers []string) string {
 	return onePerPod(strings.Join(selectors, " or "))
 }
 
-// podLabelNames are the kube_pod_labels labels the queries join on or read: the pod's namespace and
-// name, and the openchoreo.dev/* pod labels that the chart's kube-state-metrics exports.
-var podLabelNames = []string{
-	"namespace",
-	"pod",
-	prometheusLabelName(LabelComponentUID),
-	prometheusLabelName(LabelProjectUID),
-	prometheusLabelName(LabelEnvironmentUID),
-	prometheusLabelName(LabelReleaseLineUID),
-	prometheusLabelName(LabelReleaseLineComponentUID),
-	prometheusLabelName(LabelNamespace),
-	prometheusLabelName(LabelComponent),
-	prometheusLabelName(LabelProject),
-	prometheusLabelName(LabelEnvironment),
-}
-
 // onePerPod keeps one kube_pod_labels series per pod, so a join on it stays many-to-one when
-// several kube-state-metrics targets export the same pod.
+// several kube-state-metrics targets export the same pod, even with different label sets.
 func onePerPod(expr string) string {
-	return fmt.Sprintf("max by (%s) (%s)", strings.Join(podLabelNames, ", "), expr)
+	return fmt.Sprintf("topk by (namespace, pod) (1, %s)", expr)
 }
 
 // perContainer keeps one series per container, so the same container scraped by several

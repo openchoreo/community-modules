@@ -124,10 +124,10 @@ func TestBuildPrometheusRule_Budget(t *testing.T) {
 	if !strings.Contains(expr, "node_ram_hourly_cost") {
 		t.Errorf("expected RAM cost metric in expression, got %q", expr)
 	}
-	if !strings.Contains(expr, `kube_pod_container_resource_requests{resource="cpu"`) {
+	if !strings.Contains(expr, `max by (namespace, pod, container, node) (avg_over_time(kube_pod_container_resource_requests{resource="cpu"`) {
 		t.Errorf("expected CPU requests metric in expression, got %q", expr)
 	}
-	if !strings.Contains(expr, `kube_pod_container_resource_requests{resource="memory"`) {
+	if !strings.Contains(expr, `max by (namespace, pod, container, node) (avg_over_time(kube_pod_container_resource_requests{resource="memory"`) {
 		t.Errorf("expected memory requests metric in expression, got %q", expr)
 	}
 	if !strings.Contains(expr, "> 5") {

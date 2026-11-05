@@ -44,9 +44,9 @@ func TestBuildPodLabels(t *testing.T) {
 			namespace:    "test-ns",
 			wantContains: []string{`label_openchoreo_dev_namespace="test-ns"`},
 			wantNotContain: []string{
-				"label_openchoreo_dev_component_uid",
-				"label_openchoreo_dev_project_uid",
-				"label_openchoreo_dev_environment_uid",
+				"label_openchoreo_dev_component_uid=",
+				"label_openchoreo_dev_project_uid=",
+				"label_openchoreo_dev_environment_uid=",
 			},
 		},
 		{
@@ -71,8 +71,8 @@ func TestBuildPodLabels(t *testing.T) {
 				`label_openchoreo_dev_component_uid="c5f0a8d3-7e2b-4d9c-a1f4-6b8e3c0d5a7f"`,
 			},
 			wantNotContain: []string{
-				"label_openchoreo_dev_project_uid",
-				"label_openchoreo_dev_environment_uid",
+				"label_openchoreo_dev_project_uid=",
+				"label_openchoreo_dev_environment_uid=",
 			},
 		},
 	}
@@ -191,11 +191,11 @@ func TestBuildPodLabels_ReleaseLines(t *testing.T) {
 		allLines bool
 		want     string
 	}{
-		{name: "main line", want: `kube_pod_labels{job="kube-state-metrics",` + base +
-			`,label_openchoreo_dev_component_uid="c",label_openchoreo_dev_release_line_uid=""}`},
-		{name: "one release line matches on its UID alone", line: "l1", want: `kube_pod_labels{job="kube-state-metrics",` + base +
-			`,label_openchoreo_dev_release_line_uid="l1"}`},
-		{name: "every line", allLines: true, want: `(kube_pod_labels{job="kube-state-metrics",` + base +
+		{name: "main line", want: onePerPodPrefix + `kube_pod_labels{job="kube-state-metrics",` + base +
+			`,label_openchoreo_dev_component_uid="c",label_openchoreo_dev_release_line_uid=""})`},
+		{name: "one release line matches on its UID alone", line: "l1", want: onePerPodPrefix + `kube_pod_labels{job="kube-state-metrics",` + base +
+			`,label_openchoreo_dev_release_line_uid="l1"})`},
+		{name: "every line", allLines: true, want: onePerPodPrefix + `kube_pod_labels{job="kube-state-metrics",` + base +
 			`,label_openchoreo_dev_component_uid="c"} or ` +
 			`kube_pod_labels{job="kube-state-metrics",` + base + `,label_openchoreo_dev_release_line_component_uid="c"})`},
 	}
@@ -223,7 +223,7 @@ func TestBuildComponentPodLabels(t *testing.T) {
 	}
 
 	got = BuildComponentPodLabels("comp-1", "proj-1", "env-1", "line-1")
-	if strings.Contains(got, "component_uid") || !strings.Contains(got, `label_openchoreo_dev_release_line_uid="line-1"`) {
+	if strings.Contains(got, "component_uid=") || !strings.Contains(got, `label_openchoreo_dev_release_line_uid="line-1"`) {
 		t.Errorf("a release line's rule must match its UID alone: %q", got)
 	}
 }
@@ -239,11 +239,11 @@ func TestResourceQueryBuilders(t *testing.T) {
 		contains []string
 	}{
 		{"CPUUsage", BuildCPUUsageQuery, []string{`max by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{container!=""}[2m]))`, labelFilter}},
-		{"CPURequests", BuildCPURequestsQuery, []string{"kube_pod_container_resource_requests", `resource="cpu"`, labelFilter}},
-		{"CPULimits", BuildCPULimitsQuery, []string{"kube_pod_container_resource_limits", `resource="cpu"`, labelFilter}},
+		{"CPURequests", BuildCPURequestsQuery, []string{`max by (namespace, pod, container) (kube_pod_container_resource_requests{resource="cpu",job="kube-state-metrics"})`, labelFilter}},
+		{"CPULimits", BuildCPULimitsQuery, []string{`max by (namespace, pod, container) (kube_pod_container_resource_limits{resource="cpu",job="kube-state-metrics"})`, labelFilter}},
 		{"MemoryUsage", BuildMemoryUsageQuery, []string{`max by (namespace, pod, container) (container_memory_working_set_bytes{container!=""})`, labelFilter}},
-		{"MemoryRequests", BuildMemoryRequestsQuery, []string{"kube_pod_container_resource_requests", `resource="memory"`, labelFilter}},
-		{"MemoryLimits", BuildMemoryLimitsQuery, []string{"kube_pod_container_resource_limits", `resource="memory"`, labelFilter}},
+		{"MemoryRequests", BuildMemoryRequestsQuery, []string{`max by (namespace, pod, container) (kube_pod_container_resource_requests{resource="memory",job="kube-state-metrics"})`, labelFilter}},
+		{"MemoryLimits", BuildMemoryLimitsQuery, []string{`max by (namespace, pod, container) (kube_pod_container_resource_limits{resource="memory",job="kube-state-metrics"})`, labelFilter}},
 	}
 
 	for _, tt := range tests {
@@ -290,5 +290,38 @@ func TestHTTPQueryBuilders(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// onePerPodPrefix is the onePerPod wrapper.
+const onePerPodPrefix = "topk by (namespace, pod) (1, "
+
+func TestPodLabelSelectors_OnePerPod(t *testing.T) {
+	selectors := map[string]string{
+		"query":    BuildPodLabels("ns", "c", "p", "e", "", true),
+		"alert":    BuildComponentPodLabels("c", "p", "e", ""),
+		"topology": BuildRuntimeTopologyComponentEdgeRequestCountQuery("3600s", `label_openchoreo_dev_namespace="ns"`),
+	}
+	for name, expr := range selectors {
+		t.Run(name, func(t *testing.T) {
+			wrapped := strings.Count(expr, onePerPodPrefix+"kube_pod_labels{")
+			chained := strings.Count(expr, " or kube_pod_labels{")
+			if total := strings.Count(expr, "kube_pod_labels{"); wrapped == 0 || wrapped+chained != total {
+				t.Errorf("every kube_pod_labels join must keep one series per pod (%d of %d wrapped):\n%s", wrapped+chained, total, expr)
+			}
+		})
+	}
+}
+
+// TestRuntimeTopologyMapping_SeriesWithComponentUID keeps a release line pod's series without its
+// release line labels, from a kube-state-metrics that doesn't export them, out of the topology mapping.
+func TestRuntimeTopologyMapping_SeriesWithComponentUID(t *testing.T) {
+	filter := `label_openchoreo_dev_namespace="ns"`
+	want := onePerPodPrefix +
+		`kube_pod_labels{job="kube-state-metrics",` + filter + `,label_openchoreo_dev_component_uid!=""} or ` +
+		`kube_pod_labels{job="kube-state-metrics",` + filter + `,label_openchoreo_dev_release_line_component_uid!=""})`
+	expr := BuildRuntimeTopologyComponentEdgeRequestCountQuery("3600s", filter)
+	if got := strings.Count(expr, want); got != 2 {
+		t.Errorf("want both Hubble sides mapped from %q, found %d:\n%s", want, got, expr)
 	}
 }

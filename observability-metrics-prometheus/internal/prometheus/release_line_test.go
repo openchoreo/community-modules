@@ -23,7 +23,7 @@ func TestPodLabels_ReleaseLine(t *testing.T) {
 				t.Errorf("the main line's selector must exclude release line pods: %s", got)
 			}
 			got := build(testReleaseLineUID)
-			if !strings.Contains(got, releaseLineMatcher) || strings.Contains(got, "component_uid") {
+			if !strings.Contains(got, releaseLineMatcher) || strings.Contains(got, "component_uid=") {
 				t.Errorf("a release line's selector must match %s alone: %s", releaseLineMatcher, got)
 			}
 		})

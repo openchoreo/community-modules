@@ -66,22 +66,30 @@ func lineScopeMatchers(base, componentUID, releaseLineUID string, allLines bool)
 		prometheusLabelName(LabelComponentUID), componentUID, prometheusLabelName(LabelReleaseLineUID))}
 }
 
-// podLabelsExpr is a kube_pod_labels selector per matcher list, joined with or.
+// podLabelsExpr is a kube_pod_labels selector per matcher list, joined with or, with one series per pod.
 func podLabelsExpr(matchers []string) string {
 	selectors := make([]string, len(matchers))
 	for i, m := range matchers {
 		selectors[i] = fmt.Sprintf(`kube_pod_labels{job="kube-state-metrics",%s}`, m)
 	}
-	if len(selectors) == 1 {
-		return selectors[0]
-	}
-	return "(" + strings.Join(selectors, " or ") + ")"
+	return onePerPod(strings.Join(selectors, " or "))
+}
+
+// onePerPod keeps one kube_pod_labels series per pod, so a join on it stays many-to-one when
+// several kube-state-metrics targets export the same pod, even with different label sets.
+func onePerPod(expr string) string {
+	return fmt.Sprintf("topk by (namespace, pod) (1, %s)", expr)
 }
 
 // perContainer keeps one series per container, so the same container scraped by several
 // targets (differing only in job, service, instance, ...) is not counted more than once.
 func perContainer(expr string) string {
 	return fmt.Sprintf("max by (namespace, pod, container) (%s)", expr)
+}
+
+// perContainerOnNode is perContainer that also keeps the node, for a join on the node.
+func perContainerOnNode(expr string) string {
+	return fmt.Sprintf("max by (namespace, pod, container, node) (%s)", expr)
 }
 
 // BuildScopeLabelNames returns the Prometheus label names for whichever of
@@ -146,30 +154,28 @@ func BuildCPUUsageQuery(podLabels, sumByClause, groupLeftClause string) string {
 		perContainer(`rate(container_cpu_usage_seconds_total{container!=""}[2m])`), groupLeftClause, podLabels)
 }
 
-// BuildCPURequestsQuery builds a PromQL query for CPU requests.
-func BuildCPURequestsQuery(podLabels, sumByClause, groupLeftClause string) string {
+// buildRunningPodsResourceQuery sums a kube-state-metrics container resource series over the
+// running pods of podLabels.
+func buildRunningPodsResourceQuery(series, podLabels, sumByClause, groupLeftClause string) string {
 	return fmt.Sprintf(`sum by (%s) (
             (
-                kube_pod_container_resource_requests{resource="cpu",job="kube-state-metrics"}
+                %s
                 AND ON (pod, namespace)
                 (kube_pod_status_phase{phase="Running"} == 1)
             )
           * ON (pod, namespace) %s
             %s
-        )`, sumByClause, groupLeftClause, podLabels)
+        )`, sumByClause, perContainer(series), groupLeftClause, podLabels)
+}
+
+// BuildCPURequestsQuery builds a PromQL query for CPU requests.
+func BuildCPURequestsQuery(podLabels, sumByClause, groupLeftClause string) string {
+	return buildRunningPodsResourceQuery(`kube_pod_container_resource_requests{resource="cpu",job="kube-state-metrics"}`, podLabels, sumByClause, groupLeftClause)
 }
 
 // BuildCPULimitsQuery builds a PromQL query for CPU limits.
 func BuildCPULimitsQuery(podLabels, sumByClause, groupLeftClause string) string {
-	return fmt.Sprintf(`sum by (%s) (
-            (
-                kube_pod_container_resource_limits{resource="cpu",job="kube-state-metrics"}
-                AND ON (pod, namespace)
-                (kube_pod_status_phase{phase="Running"} == 1)
-            )
-          * ON (pod, namespace) %s
-            %s
-        )`, sumByClause, groupLeftClause, podLabels)
+	return buildRunningPodsResourceQuery(`kube_pod_container_resource_limits{resource="cpu",job="kube-state-metrics"}`, podLabels, sumByClause, groupLeftClause)
 }
 
 // BuildMemoryUsageQuery builds a PromQL query for memory usage.
@@ -183,28 +189,12 @@ func BuildMemoryUsageQuery(podLabels, sumByClause, groupLeftClause string) strin
 
 // BuildMemoryRequestsQuery builds a PromQL query for memory requests.
 func BuildMemoryRequestsQuery(podLabels, sumByClause, groupLeftClause string) string {
-	return fmt.Sprintf(`sum by (%s) (
-            (
-                kube_pod_container_resource_requests{resource="memory",job="kube-state-metrics"}
-                AND ON (pod, namespace)
-                (kube_pod_status_phase{phase="Running"} == 1)
-            )
-          * ON (pod, namespace) %s
-            %s
-        )`, sumByClause, groupLeftClause, podLabels)
+	return buildRunningPodsResourceQuery(`kube_pod_container_resource_requests{resource="memory",job="kube-state-metrics"}`, podLabels, sumByClause, groupLeftClause)
 }
 
 // BuildMemoryLimitsQuery builds a PromQL query for memory limits.
 func BuildMemoryLimitsQuery(podLabels, sumByClause, groupLeftClause string) string {
-	return fmt.Sprintf(`sum by (%s) (
-            (
-                kube_pod_container_resource_limits{resource="memory",job="kube-state-metrics"}
-                AND ON (pod, namespace)
-                (kube_pod_status_phase{phase="Running"} == 1)
-            )
-          * ON (pod, namespace) %s
-            %s
-        )`, sumByClause, groupLeftClause, podLabels)
+	return buildRunningPodsResourceQuery(`kube_pod_container_resource_limits{resource="memory",job="kube-state-metrics"}`, podLabels, sumByClause, groupLeftClause)
 }
 
 // ----------------------------
@@ -356,7 +346,7 @@ func buildHubblePodMappingExprWithSide(side, outputNameLabel, outputUIDLabel, la
             label_replace(
                 label_replace(
                     label_replace(
-                        kube_pod_labels{job="kube-state-metrics",%s},
+                        %s,
                         "%s", "$1", "namespace", "(.*)"
                     ),
                     "%s", "$1", "pod", "(.*)"
@@ -364,7 +354,17 @@ func buildHubblePodMappingExprWithSide(side, outputNameLabel, outputUIDLabel, la
                 "%s", "$1", "%s", "(.*)"
             ),
             "%s", "$1", "%s", "(.*)"
-        )`, labelFilter, nsLabel, podLabel, outputNameLabel, componentNameLabel, outputUIDLabel, componentUIDLabel), outputUIDLabel)
+        )`, componentPodLabelsExpr(labelFilter), nsLabel, podLabel, outputNameLabel, componentNameLabel, outputUIDLabel, componentUIDLabel), outputUIDLabel)
+}
+
+// componentPodLabelsExpr is the kube_pod_labels selector of labelFilter, one series per pod, kept to
+// series that carry a component UID. A kube-state-metrics that doesn't export the release line labels
+// gives a release line pod a series without one, and the topology mapping needs it.
+func componentPodLabelsExpr(labelFilter string) string {
+	return podLabelsExpr([]string{
+		fmt.Sprintf(`%s,%s!=""`, labelFilter, prometheusLabelName(LabelComponentUID)),
+		fmt.Sprintf(`%s,%s!=""`, labelFilter, prometheusLabelName(LabelReleaseLineComponentUID)),
+	})
 }
 
 // withReleaseLineComponentUID fills outputUIDLabel of a release line pod's series, which has no

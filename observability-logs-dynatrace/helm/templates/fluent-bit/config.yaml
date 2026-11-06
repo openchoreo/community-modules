@@ -1,0 +1,272 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+{{- if (index .Values "fluent-bit").enabled }}
+{{- /* Validate first, so a missing URL fails with the readable message, not a parse error. */}}
+{{- include "logs-dynatrace.validate" . }}
+{{- $ep := include "logs-dynatrace.ingestEndpoint" . | fromJson }}
+{{- $excludes := concat (list "/var/log/containers/fluent-bit-*.log") .Values.fluentBitCustomizations.excludePaths }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluent-bit
+  namespace: {{ .Release.Namespace }}
+data:
+  fluent-bit.conf: |
+    [SERVICE]
+        Flush         1
+        Daemon        Off
+        Log_Level     info
+        Parsers_File  /fluent-bit/etc/conf/parsers.conf
+        HTTP_Server   On
+        HTTP_Listen   0.0.0.0
+        HTTP_Port     2020
+
+    [INPUT]
+        Name tail
+        Buffer_Chunk_Size 32KB
+        Buffer_Max_Size 2MB
+        DB /var/lib/fluent-bit/db/tail-container-logs.db
+        Exclude_Path {{ join "," $excludes }}
+        Inotify_Watcher false
+        Mem_Buf_Limit 100MB
+        Path /var/log/containers/*.log
+        multiline.parser docker, cri
+        Read_from_Head {{ if .Values.fluentBitCustomizations.readFromHead }}On{{ else }}Off{{ end }}
+        Refresh_Interval 5
+        Skip_Long_Lines On
+        Tag kube.*
+
+    [FILTER]
+        Name kubernetes
+        Buffer_Size 15MB
+        K8S-Logging.Parser On
+        K8S-Logging.Exclude On
+        Keep_Log On
+        Match kube.*
+        Merge_Log Off
+        Labels On
+        Annotations Off
+        tls.verify Off
+        Use_Kubelet true
+
+    # Cluster identity stamped by the logs collector, and the log.source the adapter scopes
+    # its queries to. Set before audit records are split off, so they carry both too.
+    [FILTER]
+        Name modify
+        Match kube.*
+        Set k8s.cluster.name {{ .Values.fluentBitCustomizations.clusterInstance }}
+        Set log.source {{ .Values.dynatrace.containerLogsSource }}
+{{- if .Values.auditLogs.enabled }}
+{{ range $p := .Values.auditLogs.producers }}
+    [FILTER]
+        Name          rewrite_tag
+        Match         kube.var.log.containers.*_{{ $p.namespace }}_{{ $p.container }}-*
+        Rule          $log AUDIT-LOG(?!-) audit.{{ $p.producer }} false
+        Emitter_Name  audit_emitter_{{ $p.producer }}
+{{ end }}
+    [FILTER]
+        Name          parser
+        Match         audit.*
+        Key_Name      log
+        Parser        audit_json
+        Reserve_Data  On
+        Preserve_Key  On
+
+    [FILTER]
+        Name  modify
+        Match audit.*
+        Set   log.source {{ .Values.dynatrace.auditLogsSource }}
+
+    [FILTER]
+        Name    lua
+        Match   audit.*
+        script  /fluent-bit/etc/conf/dynatrace.lua
+        call    dt_audit_record
+{{- end }}
+
+    # Flatten Fluent Bit's nested Kubernetes metadata into the flat Grail fields the adapter
+    # queries. Dynatrace stores nested objects as JSON strings, which DQL cannot filter on.
+    [FILTER]
+        Name    lua
+        Match   kube.*
+        script  /fluent-bit/etc/conf/dynatrace.lua
+        call    dt_container_record
+
+    [OUTPUT]
+        Name http
+        Match kube.*
+        Host {{ $ep.host }}
+        Port {{ $ep.port }}
+        URI {{ $ep.basePath }}/api/v2/logs/ingest
+        Format json
+        json_date_key timestamp
+        json_date_format iso8601
+        Header Authorization {{ .Values.dynatrace.ingest.authScheme }} ${DT_INGEST_TOKEN}
+        Header Content-Type application/json; charset=utf-8
+        allow_duplicated_headers false
+        tls {{ if $ep.tls }}On{{ else }}Off{{ end }}
+        tls.verify {{ if .Values.dynatrace.ingest.tlsVerify }}On{{ else }}Off{{ end }}
+        Retry_Limit 5
+{{- if .Values.auditLogs.enabled }}
+
+    # Audit records carry their own timestamp (the event_time the Lua filter copied), so
+    # Fluent Bit must not add one.
+    [OUTPUT]
+        Name http
+        Match audit.*
+        Host {{ $ep.host }}
+        Port {{ $ep.port }}
+        URI {{ $ep.basePath }}/api/v2/logs/ingest
+        Format json
+        json_date_key false
+        Header Authorization {{ .Values.dynatrace.ingest.authScheme }} ${DT_INGEST_TOKEN}
+        Header Content-Type application/json; charset=utf-8
+        allow_duplicated_headers false
+        tls {{ if $ep.tls }}On{{ else }}Off{{ end }}
+        tls.verify {{ if .Values.dynatrace.ingest.tlsVerify }}On{{ else }}Off{{ end }}
+        Retry_Limit 5
+{{- end }}
+
+  parsers.conf: |
+    [PARSER]
+        Name docker_no_time
+        Format json
+        Time_Keep Off
+        Time_Key time
+        Time_Format %Y-%m-%dT%H:%M:%S.%L
+{{- if .Values.auditLogs.enabled }}
+
+    [PARSER]
+        Name   audit_json
+        Format json
+{{- end }}
+
+  # The Grail field names written here are read by the adapter
+  # (internal/dynatrace/fields.go). The two sides are one contract.
+  dynatrace.lua: |
+    local function set(out, key, value)
+      if type(value) == "string" and value ~= "" then
+        out[key] = value
+      end
+    end
+
+    -- Kubernetes coordinates, named as in the Dynatrace semantic dictionary.
+    local function set_k8s(out, record)
+      set(out, "log.source", record["log.source"])
+      set(out, "k8s.cluster.name", record["k8s.cluster.name"])
+      local k8s = record["kubernetes"]
+      if type(k8s) ~= "table" then
+        return nil
+      end
+      set(out, "k8s.namespace.name", k8s["namespace_name"])
+      set(out, "k8s.pod.name", k8s["pod_name"])
+      set(out, "k8s.pod.uid", k8s["pod_id"])
+      set(out, "k8s.container.name", k8s["container_name"])
+      set(out, "k8s.node.name", k8s["host"])
+      set(out, "k8s.pod.ip", k8s["pod_ip"])
+      set(out, "container.image.name", k8s["container_image"])
+      return k8s
+    end
+
+    -- OpenChoreo pod labels get fields of their own, so the component and workflow log
+    -- queries filter on a plain field rather than searching the label array.
+    local openchoreo_labels = {
+      ["openchoreo.dev/namespace"] = "openchoreo.namespace",
+      ["openchoreo.dev/project"] = "openchoreo.project",
+      ["openchoreo.dev/project-uid"] = "openchoreo.project_uid",
+      ["openchoreo.dev/component"] = "openchoreo.component",
+      ["openchoreo.dev/component-uid"] = "openchoreo.component_uid",
+      ["openchoreo.dev/environment"] = "openchoreo.environment",
+      ["openchoreo.dev/environment-uid"] = "openchoreo.environment_uid",
+      ["workflows.argoproj.io/workflow"] = "openchoreo.workflow_run",
+    }
+
+    function dt_container_record(tag, timestamp, record)
+      local out = {}
+      set(out, "content", record["log"])
+      if out["content"] == nil then
+        out["content"] = ""
+      end
+      local k8s = set_k8s(out, record)
+
+      if k8s ~= nil and type(k8s["labels"]) == "table" then
+        -- Every pod label as "key=value": keys keep the "/" and "." Kubernetes spells
+        -- them with, which field names could not carry unmangled. Sorted so a record's
+        -- labels always serialize the same way.
+        local labels = {}
+        for key, value in pairs(k8s["labels"]) do
+          if type(value) == "string" then
+            labels[#labels + 1] = key .. "=" .. value
+            local fieldName = openchoreo_labels[key]
+            if fieldName ~= nil then
+              set(out, fieldName, value)
+            end
+          end
+        end
+        if #labels > 0 then
+          table.sort(labels)
+          out["k8s.pod.labels"] = labels
+        end
+      end
+
+      return 2, timestamp, out
+    end
+{{- if .Values.auditLogs.enabled }}
+
+    local audit_scalars = {
+      "schema_version", "event_id", "action", "category", "result", "request_id",
+      "source_ip", "user_agent", "producer", "surface", "operation_id",
+    }
+    local audit_actor = { "type", "id", "issuer", "session_id" }
+    local audit_resource = { "type", "namespace", "environment", "project", "component", "resource", "name" }
+
+    -- The record is kept verbatim in content, and its filterable fields are lifted under
+    -- "audit." so DQL can filter on them.
+    function dt_audit_record(tag, timestamp, record)
+      local out = {}
+      set(out, "content", record["log"])
+      set(out, "timestamp", record["event_time"])
+      set_k8s(out, record)
+
+      for _, key in ipairs(audit_scalars) do
+        set(out, "audit." .. key, record[key])
+      end
+
+      local actor = record["actor"]
+      if type(actor) == "table" then
+        for _, key in ipairs(audit_actor) do
+          set(out, "audit.actor." .. key, actor[key])
+        end
+        -- Every value of every entitlement claim in one array, so a filter matches
+        -- whichever claim carries the value.
+        if type(actor["entitlements"]) == "table" then
+          local seen, values = {}, {}
+          for _, claim in pairs(actor["entitlements"]) do
+            if type(claim) == "table" then
+              for _, v in ipairs(claim) do
+                if type(v) == "string" and not seen[v] then
+                  seen[v] = true
+                  values[#values + 1] = v
+                end
+              end
+            end
+          end
+          if #values > 0 then
+            table.sort(values)
+            out["audit.actor.entitlements"] = values
+          end
+        end
+      end
+
+      local resource = record["resource"]
+      if type(resource) == "table" then
+        for _, key in ipairs(audit_resource) do
+          set(out, "audit.resource." .. key, resource[key])
+        end
+      end
+
+      return 2, timestamp, out
+    end
+{{- end }}
+{{- end }}

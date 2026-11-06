@@ -1,0 +1,28 @@
+# Git
+.git
+.gitignore
+
+# Documentation
+README.md
+*.md
+
+# Kubernetes manifests
+k8s/
+helm/
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Test files
+*_test.go
+
+# Build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib

@@ -7,7 +7,7 @@ require (
 	cloud.google.com/go/monitoring v1.32.0
 	github.com/getkin/kin-openapi v0.152.0
 	github.com/oapi-codegen/runtime v1.8.0
-	google.golang.org/api v0.309.0
+	google.golang.org/api v0.310.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20261012220534-4341edf3f941
 	google.golang.org/grpc v1.84.0
 	google.golang.org/protobuf v1.36.12
@@ -29,7 +29,7 @@ require (
 	github.com/go-openapi/swag/jsonname v0.25.5 // indirect
 	github.com/google/s2a-go v0.1.11 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/googleapis/enterprise-certificate-proxy v0.3.23 // indirect
+	github.com/googleapis/enterprise-certificate-proxy v0.3.24 // indirect
 	github.com/googleapis/gax-go/v2 v2.27.0 // indirect
 	github.com/oasdiff/yaml v0.1.1 // indirect
 	github.com/oasdiff/yaml3 v0.0.14 // indirect

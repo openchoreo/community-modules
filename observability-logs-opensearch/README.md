@@ -69,7 +69,7 @@ helm upgrade --install observability-logs-opensearch \
   oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-logs-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.8.1 \
+  --version 0.8.2 \
   --set adapter.openSearchSecretName="opensearch-admin-credentials" \
   --set openSearchSetup.openSearchSecretName="opensearch-admin-credentials" \
   --set fluentBitCustomizations.clusterInstance=singleCluster
@@ -86,7 +86,7 @@ clusters, see [Multi-cluster topology](#multi-cluster-topology).
 >   oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-logs-opensearch \
 >   --create-namespace \
 >   --namespace openchoreo-observability-plane \
->   --version 0.8.1 \
+>   --version 0.8.2 \
 >   --set adapter.openSearchSecretName="opensearch-admin-credentials" \
 >   --set openSearch.enabled=false \
 >   --set openSearchSetup.openSearchSecretName="opensearch-admin-credentials" \
@@ -141,7 +141,7 @@ helm upgrade --install observability-logs-opensearch \
   oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-logs-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.8.1 \
+  --version 0.8.2 \
   --set adapter.openSearchSecretName="opensearch-admin-credentials" \
   --set openSearch.enabled=false \
   --set openSearchCluster.enabled=true \
@@ -173,7 +173,7 @@ helm upgrade --install observability-logs-opensearch \
   oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-logs-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.8.1 \
+  --version 0.8.2 \
   --set adapter.enabled=false \
   --set openSearch.enabled=false \
   --set openSearchCluster.enabled=false \
@@ -206,7 +206,7 @@ helm upgrade observability-logs-opensearch \
   oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-logs-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.8.1 \
+  --version 0.8.2 \
   --reset-then-reuse-values \
   --set fluentBitCustomizations.clusterInstance=singleCluster \
   --set auditLogs.enabled=true
@@ -228,7 +228,7 @@ On the **observability plane cluster**, Fluent Bit ships to the in-cluster OpenS
 helm upgrade observability-logs-opensearch \
   oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-logs-opensearch \
   --namespace openchoreo-observability-plane \
-  --version 0.8.1 \
+  --version 0.8.2 \
   --reset-then-reuse-values \
   --set fluentBitCustomizations.clusterInstance=<op-cluster-name> \
   --set auditLogs.enabled=true
@@ -241,7 +241,7 @@ helm upgrade --install observability-logs-opensearch \
   oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-logs-opensearch \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.8.1 \
+  --version 0.8.2 \
   --set adapter.enabled=false \
   --set openSearch.enabled=false \
   --set openSearchCluster.enabled=false \

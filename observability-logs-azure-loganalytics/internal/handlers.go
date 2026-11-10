@@ -491,11 +491,14 @@ func mapComponentEntry(e *loganalytics.ComponentLogEntry) gen.ComponentLogEntry 
 		PodNamespace    *string             `json:"podNamespace,omitempty"`
 		ProjectName     *string             `json:"projectName,omitempty"`
 		ProjectUid      *openapi_types.UUID `json:"projectUid,omitempty"`
+		ReleaseLineName *string             `json:"releaseLineName,omitempty"`
+		ReleaseLineUid  *openapi_types.UUID `json:"releaseLineUid,omitempty"`
 	}{
-		ContainerName: ptrStringNonEmpty(e.ContainerName),
-		PodName:       ptrStringNonEmpty(e.PodName),
-		PodNamespace:  ptrStringNonEmpty(e.PodNamespace),
-		NamespaceName: ptrStringNonEmpty(e.OpenChoreoNamespace),
+		ContainerName:   ptrStringNonEmpty(e.ContainerName),
+		PodName:         ptrStringNonEmpty(e.PodName),
+		PodNamespace:    ptrStringNonEmpty(e.PodNamespace),
+		NamespaceName:   ptrStringNonEmpty(e.OpenChoreoNamespace),
+		ReleaseLineName: ptrStringNonEmpty(e.ReleaseLineName),
 	}
 
 	if uid, ok := parseUUID(e.ComponentUID); ok {
@@ -506,6 +509,9 @@ func mapComponentEntry(e *loganalytics.ComponentLogEntry) gen.ComponentLogEntry 
 	}
 	if uid, ok := parseUUID(e.EnvironmentUID); ok {
 		metadata.EnvironmentUid = &uid
+	}
+	if uid, ok := parseUUID(e.ReleaseLineUID); ok {
+		metadata.ReleaseLineUid = &uid
 	}
 
 	entry.Metadata = metadata

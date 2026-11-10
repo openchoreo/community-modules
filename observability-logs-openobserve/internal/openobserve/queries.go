@@ -32,6 +32,7 @@ const (
 	colReleaseLineID = "kubernetes_labels_openchoreo_dev_release_line_uid"
 	// colReleaseLineComponentID is the component UID on a release line's pods, which don't carry colComponentID.
 	colReleaseLineComponentID = "kubernetes_labels_openchoreo_dev_release_line_component_uid"
+	colReleaseLineName        = "kubernetes_labels_openchoreo_dev_release_line"
 )
 
 // releaseLineFields are the label columns that place a record on a component's lines.

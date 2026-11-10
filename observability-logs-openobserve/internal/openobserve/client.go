@@ -100,6 +100,9 @@ type ComponentLogsEntry struct {
 	PodName         string    `json:"podName"`
 	PodNamespace    string    `json:"podNamespace"`
 	ContainerName   string    `json:"containerName"`
+	// ReleaseLineName and ReleaseLineUID are empty for the component's main line.
+	ReleaseLineName string `json:"releaseLineName,omitempty"`
+	ReleaseLineUID  string `json:"releaseLineUid,omitempty"`
 }
 
 // ComponentLogsResult represents the result of a component log query.
@@ -875,6 +878,8 @@ func (c *Client) parseApplicationLogEntry(timestamp int64, source map[string]int
 	if v, ok := source["kubernetes_container_name"].(string); ok {
 		entry.ContainerName = v
 	}
+	entry.ReleaseLineName = stringField(source, colReleaseLineName)
+	entry.ReleaseLineUID = stringField(source, colReleaseLineID)
 
 	return entry
 }

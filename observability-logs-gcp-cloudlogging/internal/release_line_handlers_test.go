@@ -210,6 +210,59 @@ func TestQueryLogs_ReleaseLineScope(t *testing.T) {
 	}
 }
 
+// Each log entry names the release line of the pod that wrote it, and a main line entry names none.
+func TestQueryLogs_EntryReleaseLine(t *testing.T) {
+	entry := func(labels map[string]string) *loggingpb.LogEntry {
+		return &loggingpb.LogEntry{
+			LogName:   "projects/test/logs/stdout",
+			Timestamp: timestamppb.New(time.Date(2026, 6, 15, 0, 30, 0, 0, time.UTC)),
+			Payload:   &loggingpb.LogEntry_TextPayload{TextPayload: "hello"},
+			Labels:    labels,
+		}
+	}
+	h := newFakeHandler(t, &fakeGCP{entries: []*loggingpb.LogEntry{
+		entry(map[string]string{
+			"k8s-pod/openchoreo_dev/release-line-component-uid": testComponentUID,
+			"k8s-pod/openchoreo_dev/release-line":               "next",
+			"k8s-pod/openchoreo_dev/release-line-uid":           testLineUID,
+		}),
+		entry(map[string]string{"k8s-pod/openchoreo_dev/component-uid": testComponentUID}),
+	}})
+
+	scope := gen.LogsQueryRequest_SearchScope{}
+	_ = scope.FromComponentSearchScope(gen.ComponentSearchScope{
+		Namespace: "default", ComponentUid: ptr(testComponentUID), AllReleaseLines: ptr(true),
+	})
+	resp, err := h.QueryLogs(context.Background(), gen.QueryLogsRequestObject{Body: &gen.LogsQueryRequest{
+		StartTime:   time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC),
+		EndTime:     time.Date(2026, 6, 15, 1, 0, 0, 0, time.UTC),
+		SearchScope: scope,
+	}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	ok, is := resp.(gen.QueryLogs200JSONResponse)
+	if !is {
+		t.Fatalf("expected 200 response, got %T", resp)
+	}
+	entries, err := ok.Body.Logs.AsLogsQueryResponseLogs0()
+	if err != nil || len(entries) != 2 {
+		t.Fatalf("expected two component log entries, got %v (%v)", entries, err)
+	}
+
+	line := entries[0].Metadata
+	if line.ReleaseLineName == nil || *line.ReleaseLineName != "next" {
+		t.Errorf("releaseLineName = %v, want next", line.ReleaseLineName)
+	}
+	if line.ReleaseLineUid == nil || line.ReleaseLineUid.String() != testLineUID {
+		t.Errorf("releaseLineUid = %v, want %s", line.ReleaseLineUid, testLineUID)
+	}
+	main := entries[1].Metadata
+	if main.ReleaseLineName != nil || main.ReleaseLineUid != nil {
+		t.Errorf("main line entry has release line %v / %v, want none", main.ReleaseLineName, main.ReleaseLineUid)
+	}
+}
+
 func TestQueryLogs_WorkflowNeverSetsReleaseLineHeader(t *testing.T) {
 	h := newFakeHandler(t, &fakeGCP{})
 	scope := gen.LogsQueryRequest_SearchScope{}

@@ -371,6 +371,23 @@ func TestParseEntries_ReleaseLineComponentUID(t *testing.T) {
 	}
 }
 
+// A log entry names the release line of the pod that wrote it, and a main line entry names none.
+func TestParseApplicationLogEntry_ReleaseLine(t *testing.T) {
+	client := newTestClient("http://localhost")
+	line := client.parseApplicationLogEntry(0, map[string]interface{}{
+		colReleaseLineComponentID: "d2108e2c-f912-4cab-a0b4-71afde25c5ac",
+		colReleaseLineName:        "next",
+		colReleaseLineID:          testReleaseLineID,
+	})
+	if line.ReleaseLineName != "next" || line.ReleaseLineUID != testReleaseLineID {
+		t.Errorf("release line = %q / %q, want next / %s", line.ReleaseLineName, line.ReleaseLineUID, testReleaseLineID)
+	}
+	main := client.parseApplicationLogEntry(0, map[string]interface{}{colComponentID: "d2108e2c-f912-4cab-a0b4-71afde25c5ac"})
+	if main.ReleaseLineName != "" || main.ReleaseLineUID != "" {
+		t.Errorf("main line entry has release line %q / %q, want none", main.ReleaseLineName, main.ReleaseLineUID)
+	}
+}
+
 func TestAuditConditions_FiltersByReleaseLine(t *testing.T) {
 	conditions, ok := auditConditions(AuditLogsParams{
 		ResourceComponents:   []string{"hello"},

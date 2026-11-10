@@ -72,6 +72,8 @@ func BuildComponentLogsKQL(p ComponentLogsParams) string {
     ComponentUID        = coalesce(tostring(_labels["openchoreo.dev/component-uid"]), tostring(_labels["openchoreo.dev/release-line-component-uid"])),
     ProjectUID          = tostring(_labels["openchoreo.dev/project-uid"]),
     EnvironmentUID      = tostring(_labels["openchoreo.dev/environment-uid"]),
+    ReleaseLineName     = tostring(_labels["openchoreo.dev/release-line"]),
+    ReleaseLineUID      = tostring(_labels["openchoreo.dev/release-line-uid"]),
     OpenChoreoNamespace = tostring(_labels["openchoreo.dev/namespace"])`)
 
 	return sb.String()

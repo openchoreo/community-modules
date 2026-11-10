@@ -67,6 +67,82 @@ func TestQueryLogs_ReleaseLineHeader(t *testing.T) {
 	}
 }
 
+// Each log entry names the release line of the pod that wrote it, and a main line entry names none.
+func TestQueryLogs_EntryReleaseLine(t *testing.T) {
+	const componentUID = "550e8400-e29b-41d4-a716-446655440000"
+	const lineUID = "93f65294-926f-475b-98f1-dc4f152f38da"
+	hit := func(log string, labels map[string]string) map[string]any {
+		return map[string]any{"_source": map[string]any{
+			"@timestamp": "2025-06-15T00:30:00Z",
+			"log":        log,
+			"kubernetes": map[string]any{"labels": labels},
+		}}
+	}
+	searchResponse, err := json.Marshal(map[string]any{
+		"took": 1,
+		"hits": map[string]any{
+			"total": map[string]any{"value": 2, "relation": "eq"},
+			"hits": []any{
+				hit("from next", map[string]string{
+					osearch.ReplaceDots(osearch.ReleaseLineComponentID): componentUID,
+					osearch.ReplaceDots(osearch.ReleaseLineName):        "next",
+					osearch.ReplaceDots(osearch.ReleaseLineID):          lineUID,
+				}),
+				hit("from main", map[string]string{osearch.ReplaceDots(osearch.ComponentID): componentUID}),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal search response: %v", err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(searchResponse)
+	}))
+	defer server.Close()
+	handler := NewLogsHandler(newTestOSClient(t, server.URL), osearch.NewQueryBuilder("logs-"), nil, nil, nil, testLogger())
+
+	scope := gen.LogsQueryRequest_SearchScope{}
+	_ = scope.FromComponentSearchScope(gen.ComponentSearchScope{
+		Namespace: "default", ComponentUid: ptr(componentUID), AllReleaseLines: ptr(true),
+	})
+	resp, err := handler.QueryLogs(context.Background(), gen.QueryLogsRequestObject{Body: &gen.LogsQueryRequest{
+		StartTime:   time.Date(2025, 6, 15, 0, 0, 0, 0, time.UTC),
+		EndTime:     time.Date(2025, 6, 15, 1, 0, 0, 0, time.UTC),
+		SearchScope: scope,
+	}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	ok, is := resp.(gen.QueryLogs200JSONResponse)
+	if !is {
+		t.Fatalf("expected 200 response, got %T", resp)
+	}
+	entries, err := ok.Body.Logs.AsLogsQueryResponseLogs0()
+	if err != nil {
+		t.Fatalf("read log entries: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("got %d entries, want 2", len(entries))
+	}
+
+	line := entries[0].Metadata
+	if line.ReleaseLineName == nil || *line.ReleaseLineName != "next" {
+		t.Errorf("releaseLineName = %v, want next", line.ReleaseLineName)
+	}
+	if line.ReleaseLineUid == nil || line.ReleaseLineUid.String() != lineUID {
+		t.Errorf("releaseLineUid = %v, want %s", line.ReleaseLineUid, lineUID)
+	}
+	if line.ComponentUid == nil || line.ComponentUid.String() != componentUID {
+		t.Errorf("componentUid = %v, want %s", line.ComponentUid, componentUID)
+	}
+
+	main := entries[1].Metadata
+	if main.ReleaseLineName != nil || main.ReleaseLineUid != nil {
+		t.Errorf("main line entry has release line %v / %v, want none", main.ReleaseLineName, main.ReleaseLineUid)
+	}
+}
+
 // An alert rule read back names its component, though its query does not name it at the top level.
 func TestParseMonitor_ReleaseLineComponentUID(t *testing.T) {
 	const componentUID = "d2108e2c-f912-4cab-a0b4-71afde25c5ac"

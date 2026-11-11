@@ -164,12 +164,20 @@ helm upgrade --install observability-tracing-openobserve \
   --set opentelemetryCollectorCustomizations.http.observabilityPlaneVirtualHost="opentelemetry.<OBS_BASE_DOMAIN>"
 ```
 
-## Raw trace queries
+## Features
+
+| Feature                | Module version  | Setup                                  |
+| ---------------------- | --------------- | -------------------------------------- |
+| Trace and span queries | All             | None                                   |
+| Release line filtering | 0.3.3 and later | None                                   |
+| Raw trace queries      | 0.3.3 and later | The raw query user's Secret. See below |
+
+### Raw trace queries
 
 The adapter serves raw trace queries (`POST /api/v1alpha1/traces/raw-query` on the OpenChoreo Observer). The request
 body is an OpenObserve search body, sent as `application/json`, and the response is OpenObserve's own search response.
 OpenObserve requires `start_time` and `end_time`, in microseconds. Span attributes are columns, with `.` in their names
-replaced by `_`:
+replaced by `_`. For example:
 
 ```json
 {
@@ -183,15 +191,65 @@ replaced by `_`:
 
 How a raw query runs:
 
-- **Read-only, traces only:** the body runs only through OpenObserve's search API, in the adapter's organization,
-  with the search type set to traces, so it can read trace streams and nothing else. Every trace stream in that
-  organization is reachable, not only the configured one. A body that isn't JSON gets 415.
+- **Traces only:** the body runs only through OpenObserve's search API, in the adapter's organization, with the
+  search type set to traces, so it can read trace streams and nothing else; a query that names a logs or metrics
+  stream fails as if the stream didn't exist. Every trace stream in that organization is reachable, not only the
+  configured one. OpenObserve's search only runs queries, so SQL that would change data is rejected.
+- **Reviewed request keys only:** the body may use `query` (with `sql`, `start_time`, `end_time`, `from`, `size`,
+  `quick_mode`, `query_type`, `track_total_hits`, `skip_wal`, `sampling_ratio`, `histogram_interval` and `timezone`),
+  `encoding`, `use_cache` and `clear_cache`. Anything else, such as VRL functions (`query_fn`), actions or other
+  clusters and regions, is rejected. A body that isn't JSON gets 415.
 - **Request as sent:** the body runs as written, including its SQL, its time range and its row limit (`LIMIT` or
   `size`). The adapter only sets the search `timeout`.
 - **Limits:** a query timeout (default `30s`, `adapter.rawQuery.timeout`) and a maximum response size (default 10 MiB,
-  `adapter.rawQuery.maxResponseBytes`). A query that runs past the timeout, or that OpenObserve answers only
-  partially, gets 504; a larger result is rejected rather than returned partially.
+  `adapter.rawQuery.maxResponseBytes`). OpenObserve stops a search at the timeout, and the query gets 504, as does one
+  that OpenObserve answers only partially; a larger result is rejected rather than returned partially. OpenObserve
+  doesn't stop a search when its caller goes away, so a canceled query still runs until it ends or reaches the
+  timeout.
 - **Errors:** a request OpenObserve rejects gets 400 with OpenObserve's message.
+
+#### Raw query user
+
+Raw queries run as an OpenObserve user of their own, never as the root user. You provide its credentials in a Secret
+of their own, `openobserve-traces-users` by default (`adapter.rawQuery.credentialsSecretName`), apart from the admin
+credentials:
+
+- `rawQueryUsername`: the user's email, for example `traces-reader@example.com`
+- `rawQueryPassword`: its password, 8 to 128 characters with a lowercase letter, an uppercase letter, a digit and a
+  special character, as OpenObserve requires
+
+The setup job creates that user in the organization through OpenObserve's users API, using the root credentials, and
+sets the password again on every upgrade. If the setup job is disabled (`openObserveSetup.enabled`), create the user
+yourself.
+
+Open-source OpenObserve has no read-only role: its users are organization admins. The user is kept apart from the root
+user, so it can't reach other organizations, and the adapter only sends it searches of trace streams, but anyone with
+its credentials can do what an organization admin can. Keep the Secret as close as the admin credentials.
+
+To sync the Secret from a secret store, add the two entries to the store and an ExternalSecret for them, for example:
+
+```yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: openobserve-traces-users
+  namespace: openchoreo-observability-plane
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: default
+  target:
+    name: openobserve-traces-users
+  data:
+    - secretKey: rawQueryUsername
+      remoteRef: { key: openobserve-raw-query-username, property: value }
+    - secretKey: rawQueryPassword
+      remoteRef: { key: openobserve-raw-query-password, property: value }
+```
+
+Without the Secret or its keys, the module installs and works as before, and the adapter answers raw queries with 501.
+After providing them, run `helm upgrade` so the setup job creates the user, then restart the adapter so it reads them.
 
 ## Dependencies
 

@@ -8,3 +8,6 @@ images:
   - name: observability-tracing-openobserve-adapter
     context: .
     dockerfile: Dockerfile
+  - name: observability-tracing-openobserve-setup
+    context: init
+    dockerfile: init/Dockerfile

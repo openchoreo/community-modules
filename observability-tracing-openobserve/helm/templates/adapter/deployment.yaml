@@ -45,6 +45,19 @@ spec:
             secretKeyRef:
               name: {{ .Values.adapter.openObserveCredentialsSecret.name | quote }}
               key: {{ .Values.adapter.openObserveCredentialsSecret.passwordKey | quote }}
+        # Raw trace queries run as a user of their own. Without these keys, the adapter answers raw queries with 501.
+        - name: OPENOBSERVE_RAW_QUERY_USER
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "observability-tracing-openobserve.rawQuerySecretName" . | quote }}
+              key: rawQueryUsername
+              optional: true
+        - name: OPENOBSERVE_RAW_QUERY_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "observability-tracing-openobserve.rawQuerySecretName" . | quote }}
+              key: rawQueryPassword
+              optional: true
         resources:
           limits:
             cpu: {{ .Values.adapter.resources.limits.cpu }}

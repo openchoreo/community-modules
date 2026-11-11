@@ -172,6 +172,34 @@ func TestLoadConfig_ServerPortOutOfRange(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_RawQueryUser(t *testing.T) {
+	setEnvVars(t, validEnvVars())
+	t.Setenv("OPENOBSERVE_RAW_QUERY_USER", "")
+	t.Setenv("OPENOBSERVE_RAW_QUERY_PASSWORD", "")
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.RawQueryUser != "" {
+		t.Errorf("the raw query user should be unset by default, got %q", cfg.RawQueryUser)
+	}
+
+	t.Setenv("OPENOBSERVE_RAW_QUERY_USER", "traces-reader@openchoreo.localhost")
+	if _, err := LoadConfig(); err == nil {
+		t.Error("expected an error for a raw query user without a password")
+	}
+
+	t.Setenv("OPENOBSERVE_RAW_QUERY_PASSWORD", "secret")
+	cfg, err = LoadConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.RawQueryUser != "traces-reader@openchoreo.localhost" || cfg.RawQueryPassword != "secret" {
+		t.Errorf("got %q / %q", cfg.RawQueryUser, cfg.RawQueryPassword)
+	}
+}
+
 func TestGetEnv(t *testing.T) {
 	t.Setenv("TEST_GET_ENV_EXISTS", "value")
 

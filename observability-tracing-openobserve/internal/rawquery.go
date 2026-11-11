@@ -31,8 +31,9 @@ var DefaultRawQueryLimits = RawQueryLimits{Timeout: 30 * time.Second, MaxRespons
 const rawQueryGrace = 2 * time.Second
 
 // QueryRawTraces implements POST /api/v1alpha1/traces/raw-query: it runs an
-// OpenObserve search body, as written, through the search API for traces,
-// within the raw query limits. The response is OpenObserve's own.
+// OpenObserve search body, as written, through the search API for traces, as
+// the raw query user and within the raw query limits. The response is
+// OpenObserve's own.
 func (h *TracingHandler) QueryRawTraces(
 	ctx context.Context, request gen.QueryRawTracesRequestObject,
 ) (gen.QueryRawTracesResponseObject, error) {
@@ -40,6 +41,13 @@ func (h *TracingHandler) QueryRawTraces(
 		return gen.QueryRawTraces415JSONResponse{
 			Title:  ptr(gen.UnsupportedMediaType),
 			Detail: ptr("send an OpenObserve search body as application/json"),
+		}, nil
+	}
+	if h.rawClient == nil {
+		return gen.QueryRawTraces501JSONResponse{
+			Title: ptr(gen.NotImplemented),
+			Detail: ptr("raw trace queries need an OpenObserve user of their own, " +
+				"which is not configured for this module"),
 		}, nil
 	}
 
@@ -51,7 +59,7 @@ func (h *TracingHandler) QueryRawTraces(
 
 	ctx, cancel := context.WithTimeout(ctx, limits.Timeout+rawQueryGrace)
 	defer cancel()
-	result, err := h.client.RawSearch(ctx, body, limits.MaxResponseBytes)
+	result, err := h.rawClient.RawSearch(ctx, body, limits.MaxResponseBytes)
 	if err != nil {
 		return h.rawQueryError(err), nil
 	}
@@ -96,5 +104,5 @@ func (h *TracingHandler) rawQueryError(err error) gen.QueryRawTracesResponseObje
 		}
 	}
 	h.logger.Error("Raw trace query failed", "error", err)
-	return gen.QueryRawTraces500JSONResponse{Title: ptr(gen.InternalServerError), Detail: ptr(err.Error())}
+	return gen.QueryRawTraces500JSONResponse{Title: ptr(gen.InternalServerError), Detail: ptr("internal server error")}
 }

@@ -15,9 +15,12 @@ import (
 
 // TracingHandler implements the generated StrictServerInterface.
 type TracingHandler struct {
-	client   *openobserve.Client
-	logger   *slog.Logger
-	rawQuery RawQueryLimits
+	client *openobserve.Client
+	logger *slog.Logger
+	// rawClient connects as the raw query user; raw queries are not
+	// supported without it.
+	rawClient *openobserve.Client
+	rawQuery  RawQueryLimits
 }
 
 func NewTracingHandler(client *openobserve.Client, logger *slog.Logger) *TracingHandler {
@@ -28,8 +31,10 @@ func NewTracingHandler(client *openobserve.Client, logger *slog.Logger) *Tracing
 	}
 }
 
-// WithRawQueryLimits sets the limits raw queries run under.
-func (h *TracingHandler) WithRawQueryLimits(limits RawQueryLimits) *TracingHandler {
+// WithRawQuery enables raw queries: they run through client, which connects as
+// the raw query user, within limits.
+func (h *TracingHandler) WithRawQuery(client *openobserve.Client, limits RawQueryLimits) *TracingHandler {
+	h.rawClient = client
 	h.rawQuery = limits
 	return h
 }

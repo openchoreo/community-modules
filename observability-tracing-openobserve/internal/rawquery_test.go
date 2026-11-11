@@ -24,18 +24,39 @@ func rawRequest(body string) gen.QueryRawTracesRequestObject {
 const rawBody = `{"query":{"sql":"SELECT trace_id FROM \"default\" LIMIT 1",` +
 	`"start_time":1792483200000000,"end_time":1792486800000000}}`
 
+// rawHandler returns a handler whose raw query client connects, as
+// rawQueryUser, to a server answering status and body. The adapter's own
+// client points nowhere, so a raw query that used it would fail.
 func rawHandler(t *testing.T, status int, body string, limits RawQueryLimits) (*TracingHandler, *string) {
 	t.Helper()
 	var gotBody string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if user, _, _ := r.BasicAuth(); user != rawQueryUser {
+			http.Error(w, "Unauthorized Access", http.StatusUnauthorized)
+			return
+		}
 		raw, _ := io.ReadAll(r.Body)
 		gotBody = string(raw)
 		w.WriteHeader(status)
 		_, _ = io.WriteString(w, body)
 	}))
 	t.Cleanup(srv.Close)
-	client := openobserve.NewClient(srv.URL, "default", "default", "admin", "pass", testLogger())
-	return NewTracingHandler(client, testLogger()).WithRawQueryLimits(limits), &gotBody
+	adapterClient := openobserve.NewClient("http://adapter-client.invalid", "default", "default", "admin", "pass", testLogger())
+	rawClient := openobserve.NewClient(srv.URL, "default", "default", rawQueryUser, "pass", testLogger())
+	return NewTracingHandler(adapterClient, testLogger()).WithRawQuery(rawClient, limits), &gotBody
+}
+
+const rawQueryUser = "traces-reader@openchoreo.localhost"
+
+func TestQueryRawTraces_NotSupportedWithoutTheRawQueryUser(t *testing.T) {
+	h := NewTracingHandler(nil, testLogger())
+	resp, err := h.QueryRawTraces(context.Background(), rawRequest(rawBody))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := resp.(gen.QueryRawTraces501JSONResponse); !ok {
+		t.Errorf("got %#v, want 501", resp)
+	}
 }
 
 func TestQueryRawTraces_ReturnsOpenObservesResponse(t *testing.T) {
@@ -81,7 +102,7 @@ func TestQueryRawTraces_RejectsANonJSONRequest(t *testing.T) {
 }
 
 func TestQueryRawTraces_RejectsInvalidBodies(t *testing.T) {
-	h := NewTracingHandler(nil, testLogger())
+	h, _ := rawHandler(t, http.StatusOK, `{}`, DefaultRawQueryLimits)
 	tests := []struct {
 		name   string
 		body   string
@@ -91,6 +112,12 @@ func TestQueryRawTraces_RejectsInvalidBodies(t *testing.T) {
 			"invalid OpenObserve search request: the request must be an OpenObserve search body (a JSON object)"},
 		{"no SQL", `{"query":{"start_time":1792483200000000}}`,
 			"invalid OpenObserve search request: query.sql must be a non-empty SQL string"},
+		{"no query", `{"timeout":5}`,
+			"invalid OpenObserve search request: query must be an object with the SQL in query.sql"},
+		{"another cluster", `{"query":{"sql":"SELECT 1"},"clusters":["eu"]}`,
+			`invalid OpenObserve search request: "clusters" is not allowed in a raw query`},
+		{"a VRL function", `{"query":{"sql":"SELECT 1","query_fn":"."}}`,
+			`invalid OpenObserve search request: "query.query_fn" is not allowed in a raw query`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -128,6 +155,14 @@ func TestQueryRawTraces_MapsOpenObserveErrors(t *testing.T) {
 		}
 		if bad.ErrorCode == nil || *bad.ErrorCode != "RAW_QUERY_RESULT_TOO_LARGE" {
 			t.Errorf("a result too large must carry its errorCode, got %v", bad.ErrorCode)
+		}
+	})
+	t.Run("the raw query user is rejected", func(t *testing.T) {
+		h, _ := rawHandler(t, http.StatusUnauthorized, `Unauthorized Access`, DefaultRawQueryLimits)
+		resp, _ := h.QueryRawTraces(context.Background(), rawRequest(rawBody))
+		failed, ok := resp.(gen.QueryRawTraces500JSONResponse)
+		if !ok || *failed.Detail != "internal server error" {
+			t.Errorf("a credentials problem is the module's, not the query's: got %#v", resp)
 		}
 	})
 	t.Run("partial result", func(t *testing.T) {

@@ -1,0 +1,75 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+{{- if and .Values.adapter.enabled .Values.openObserveSetup.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: openobserve-setup-tracing
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation
+  labels:
+    app: openobserve-setup-tracing
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: openobserve-setup-tracing
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: OnFailure
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: openobserve-setup-tracing
+        image: "{{ .Values.openObserveSetup.image.repository }}:{{ .Values.openObserveSetup.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.openObserveSetup.image.pullPolicy | default "IfNotPresent" }}
+        env:
+        - name: OPENOBSERVE_URL
+          value: "{{ if .Values.common.openObserveTlsEnabled }}https{{ else }}http{{ end }}://{{ .Values.common.openObserveHost }}:{{ .Values.common.openObservePort }}"
+        - name: OPENOBSERVE_ORG
+          value: {{ .Values.common.openObserveOrg | quote }}
+        - name: OPENOBSERVE_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.openObserveSetup.openObserveCredentialsSecret.name | quote }}
+              key: {{ .Values.openObserveSetup.openObserveCredentialsSecret.userKey | quote }}
+        - name: OPENOBSERVE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.openObserveSetup.openObserveCredentialsSecret.name | quote }}
+              key: {{ .Values.openObserveSetup.openObserveCredentialsSecret.passwordKey | quote }}
+        - name: RAW_QUERY_CREDENTIALS_SECRET
+          value: {{ include "observability-tracing-openobserve.rawQuerySecretName" . | quote }}
+        - name: RAW_QUERY_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "observability-tracing-openobserve.rawQuerySecretName" . | quote }}
+              key: rawQueryUsername
+              optional: true
+        - name: RAW_QUERY_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "observability-tracing-openobserve.rawQuerySecretName" . | quote }}
+              key: rawQueryPassword
+              optional: true
+        resources:
+          requests:
+            memory: "50Mi"
+            cpu: "50m"
+          limits:
+            memory: "75Mi"
+            cpu: "75m"
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - all
+          readOnlyRootFilesystem: true
+          runAsGroup: 10500
+          runAsUser: 10500
+{{- end }}

@@ -20,7 +20,12 @@ type Config struct {
 	OpenObserveUser     string
 	OpenObservePassword string
 	LogLevel            slog.Level
-	RawQuery            RawQueryLimits
+	// RawQueryUser and RawQueryPassword are the OpenObserve user raw queries
+	// run as, never the adapter's own. Raw queries are not supported when
+	// they are unset.
+	RawQueryUser     string
+	RawQueryPassword string
+	RawQuery         RawQueryLimits
 }
 
 // LoadConfig loads configuration from environment variables
@@ -71,8 +76,15 @@ func LoadConfig() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	rawQueryUser := getEnv("OPENOBSERVE_RAW_QUERY_USER", "")
+	rawQueryPassword := getEnv("OPENOBSERVE_RAW_QUERY_PASSWORD", "")
+	if (rawQueryUser == "") != (rawQueryPassword == "") {
+		return nil, fmt.Errorf("OPENOBSERVE_RAW_QUERY_USER and OPENOBSERVE_RAW_QUERY_PASSWORD must be set together")
+	}
 
 	return &Config{
+		RawQueryUser:        rawQueryUser,
+		RawQueryPassword:    rawQueryPassword,
 		RawQuery:            rawQuery,
 		ServerPort:          serverPort,
 		OpenObserveURL:      openObserveURL,

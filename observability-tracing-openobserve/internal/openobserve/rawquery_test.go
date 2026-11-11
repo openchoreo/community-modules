@@ -31,12 +31,23 @@ func TestPrepareRawQuery_KeepsTheBodyAndSetsTheTimeout(t *testing.T) {
 
 func TestPrepareRawQuery_Rejects(t *testing.T) {
 	for name, body := range map[string]string{
-		"a JSON string":    `"SELECT 1"`,
-		"not JSON":         `SELECT 1`,
-		"no query":         `{"sql":"SELECT 1"}`,
-		"no SQL":           `{"query":{"start_time":1}}`,
-		"blank SQL":        `{"query":{"sql":"  "}}`,
-		"SQL not a string": `{"query":{"sql":1}}`,
+		"a JSON string":       `"SELECT 1"`,
+		"not JSON":            `SELECT 1`,
+		"no query":            `{"sql":"SELECT 1"}`,
+		"no SQL":              `{"query":{"start_time":1}}`,
+		"blank SQL":           `{"query":{"sql":"  "}}`,
+		"SQL not a string":    `{"query":{"sql":1}}`,
+		"query not an object": `{"query":"SELECT 1"}`,
+		// Keys outside the allowlist, at the top level and in query.
+		"other regions":          `{"query":{"sql":"SELECT 1"},"regions":["us"]}`,
+		"other clusters":         `{"query":{"sql":"SELECT 1"},"clusters":["eu"]}`,
+		"a search type":          `{"query":{"sql":"SELECT 1"},"search_type":"dashboards"}`,
+		"agent options":          `{"query":{"sql":"SELECT 1"},"agent_options":{"output_format":"csv"}}`,
+		"an unknown key":         `{"query":{"sql":"SELECT 1"},"pit":{}}`,
+		"a VRL function":         `{"query":{"sql":"SELECT 1","query_fn":"."}}`,
+		"saved functions in SQL": `{"query":{"sql":"SELECT 1","uses_zo_fn":true}}`,
+		"an action":              `{"query":{"sql":"SELECT 1","action_id":"a1"}}`,
+		"streaming output":       `{"query":{"sql":"SELECT 1","streaming_output":true}}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := PrepareRawQuery([]byte(body), time.Second)
@@ -45,6 +56,26 @@ func TestPrepareRawQuery_Rejects(t *testing.T) {
 				t.Errorf("got %v", err)
 			}
 		})
+	}
+}
+
+func TestPrepareRawQuery_AllowsTheReviewedKeys(t *testing.T) {
+	body := `{"query":{"sql":"SELECT 1","start_time":1,"end_time":2,"from":0,"size":10,` +
+		`"quick_mode":false,"query_type":"logs","track_total_hits":true,"skip_wal":false,` +
+		`"sampling_ratio":0.5,"histogram_interval":60,"timezone":"UTC"},` +
+		`"encoding":"","use_cache":false,"clear_cache":false}`
+	if _, err := PrepareRawQuery([]byte(body), time.Second); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPrepareRawQuery_KeepsLargeNumbersExact(t *testing.T) {
+	out, err := PrepareRawQuery([]byte(`{"query":{"sql":"SELECT 1","start_time":1792483200000000123}}`), time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(out), "1792483200000000123") {
+		t.Errorf("number lost precision: %s", out)
 	}
 }
 
@@ -108,6 +139,13 @@ func TestRawSearch_Errors(t *testing.T) {
 					t.Errorf("got %v", err)
 				}
 			}},
+		{"OpenObserve stopped the search at the timeout", http.StatusRequestTimeout,
+			`{"code":20010,"message":"Search query timed out","error_detail":"flight->search: search timeout"}`,
+			func(t *testing.T, err error) {
+				if !errors.Is(err, ErrRawQueryTimeout) {
+					t.Errorf("got %v", err)
+				}
+			}},
 		{"partial result", http.StatusOK, `{"took":30000,"hits":[],"is_partial":true}`,
 			func(t *testing.T, err error) {
 				if !errors.Is(err, ErrRawQueryTimeout) {
@@ -125,6 +163,20 @@ func TestRawSearch_Errors(t *testing.T) {
 			func(t *testing.T, err error) {
 				var invalid *InvalidRawQueryError
 				if !errors.As(err, &invalid) || errors.Is(err, ErrRawQueryTooLarge) {
+					t.Errorf("got %v", err)
+				}
+			}},
+		{"credentials rejected", http.StatusUnauthorized, `Unauthorized Access`,
+			func(t *testing.T, err error) {
+				var invalid *InvalidRawQueryError
+				if err == nil || errors.As(err, &invalid) || !strings.Contains(err.Error(), "credentials") {
+					t.Errorf("got %v", err)
+				}
+			}},
+		{"access refused", http.StatusForbidden, `{"code":403,"message":"Unauthorized Access"}`,
+			func(t *testing.T, err error) {
+				var invalid *InvalidRawQueryError
+				if err == nil || errors.As(err, &invalid) || !strings.Contains(err.Error(), "credentials") {
 					t.Errorf("got %v", err)
 				}
 			}},
@@ -163,5 +215,44 @@ func TestRawSearch_ContextDeadline(t *testing.T) {
 	_, err := newTestClient(srv.URL).RawSearch(ctx, []byte(rawBody), 1024)
 	if !errors.Is(err, ErrRawQueryTimeout) {
 		t.Errorf("got %v", err)
+	}
+}
+
+func TestRawSearch_StopsReadingAnOversizedResult(t *testing.T) {
+	// The result is read as it arrives, so the size limit applies before the
+	// whole result is in memory: the adapter stops reading, and OpenObserve
+	// stops sending, long before the result ends.
+	const resultSize = 256 << 20
+	chunk := []byte(strings.Repeat("x", 64<<10))
+	sent := make(chan int64, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		var n int64
+		defer func() { sent <- n }()
+		w.WriteHeader(http.StatusOK)
+		if _, err := io.WriteString(w, `{"took":1,"hits":["`); err != nil {
+			return
+		}
+		for n < resultSize {
+			written, err := w.Write(chunk)
+			n += int64(written)
+			if err != nil {
+				return
+			}
+			w.(http.Flusher).Flush()
+		}
+	}))
+	defer srv.Close()
+
+	_, err := newTestClient(srv.URL).RawSearch(context.Background(), []byte(rawBody), 1024)
+	if !errors.Is(err, ErrRawQueryTooLarge) {
+		t.Fatalf("got %v", err)
+	}
+	select {
+	case n := <-sent:
+		if n >= resultSize {
+			t.Errorf("the whole %d-byte result was read; the read must stop at the size limit", n)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("OpenObserve kept sending after the adapter stopped reading")
 	}
 }

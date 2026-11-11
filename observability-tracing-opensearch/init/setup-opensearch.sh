@@ -142,8 +142,10 @@ if [ -n "$otelTracesExtraMappings" ] && [ "$otelTracesExtraMappings" != "{}" ] &
         echo "ERROR: OTEL_TRACES_EXTRA_MAPPINGS must be a JSON object of field mappings"
         exit 1
     fi
+    # A recursive merge (*=), not +=: mappings written in nested form, such as {"resource": {"properties": {...}}},
+    # add to the template's own fields instead of replacing them.
     otelTracesIndexTemplate=$(echo "$otelTracesIndexTemplate" | jq --argjson extra "$otelTracesExtraMappings" \
-        '.template.mappings.properties += $extra')
+        '.template.mappings.properties *= $extra')
     hasExtraMappings=true
     echo "Adding extra field mappings to the trace index template: $otelTracesExtraMappings"
 fi

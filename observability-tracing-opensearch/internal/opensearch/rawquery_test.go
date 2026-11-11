@@ -224,6 +224,44 @@ func TestRawSearch_ContextDeadline(t *testing.T) {
 	}
 }
 
+func TestRawSearch_StopsReadingAnOversizedResult(t *testing.T) {
+	// The result is read as it arrives, so the size limit applies before the
+	// whole result is in memory: the adapter stops reading, and OpenSearch
+	// stops sending, long before the result ends.
+	const resultSize = 256 << 20
+	chunk := []byte(strings.Repeat("x", 64<<10))
+	sent := make(chan int64, 1)
+	client := newRawSearchClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		var n int64
+		defer func() { sent <- n }()
+		w.WriteHeader(http.StatusOK)
+		if _, err := io.WriteString(w, `{"took":1,"timed_out":false,"hits":{"hits":["`); err != nil {
+			return
+		}
+		for n < resultSize {
+			written, err := w.Write(chunk)
+			n += int64(written)
+			if err != nil {
+				return
+			}
+			w.(http.Flusher).Flush()
+		}
+	})
+
+	_, err := client.RawSearch(context.Background(), "otel-traces-*", []byte(`{}`), time.Second, 1024)
+	if !errors.Is(err, ErrRawQueryTooLarge) {
+		t.Fatalf("got %v", err)
+	}
+	select {
+	case n := <-sent:
+		if n >= resultSize {
+			t.Errorf("the whole %d-byte result was read; the read must stop at the size limit", n)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("OpenSearch kept sending after the adapter stopped reading")
+	}
+}
+
 func compact(t *testing.T, s string) string {
 	t.Helper()
 	var v any

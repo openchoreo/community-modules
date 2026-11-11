@@ -115,14 +115,27 @@ func (c *Client) RawSearch(
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	res, err := c.client.Client.Perform(req)
+	// Stream, not Perform: Perform reads the whole response into memory before
+	// returning, so a large result would be held in full before the size limit
+	// below applies. Streamed, the read stops one byte past the limit.
+	res, err := c.client.Client.Stream(req)
 	if err != nil {
+		// Stream can return a response with an error, for example when the
+		// context ends during a retry backoff; its body is still open.
+		if res != nil && res.Body != nil {
+			_ = res.Body.Close()
+		}
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			return nil, ErrRawQueryTimeout
 		}
 		return nil, fmt.Errorf("raw search request failed: %w", err)
 	}
-	defer res.Body.Close()
+	if res == nil || res.Body == nil {
+		return nil, fmt.Errorf("raw search request failed: no response")
+	}
+	// Closing a body that wasn't read to the end drops the connection, so
+	// OpenSearch stops sending the rest of an oversized result.
+	defer func() { _ = res.Body.Close() }()
 
 	data, err := io.ReadAll(io.LimitReader(res.Body, maxResponseBytes+1))
 	if err != nil {

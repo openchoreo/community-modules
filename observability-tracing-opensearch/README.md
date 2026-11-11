@@ -149,6 +149,125 @@ helm upgrade --install observability-tracing-opensearch \
   --set opentelemetryCollectorCustomizations.http.observabilityPlaneVirtualHost="opentelemetry.<gateway-domain>"
 ```
 
+## Features
+
+| Feature                | Module version  | Setup                                                                                    |
+| ---------------------- | --------------- | ---------------------------------------------------------------------------------------- |
+| Trace and span queries | All             | None                                                                                     |
+| Release line filtering | 0.9.0 and later | When upgrading from 0.8.x, see Upgrades                                                  |
+| Raw trace queries      | 0.9.2 and later | The read-only user's Secret; optionally, `openSearchSetup.traceIndexMappings`. See below |
+
+### Raw trace queries
+
+The adapter serves raw trace queries (`POST /api/v1alpha1/traces/raw-query` on the OpenChoreo Observer). The request
+body is an OpenSearch search body, sent as `application/json`, and the response is OpenSearch's own search response.
+For example:
+
+```json
+{
+  "size": 0,
+  "query": {
+    "bool": {
+      "filter": [
+        {
+          "range": {
+            "startTime": {
+              "gte": "2026-10-20T08:00:00Z",
+              "lte": "2026-10-20T09:00:00Z"
+            }
+          }
+        },
+        { "term": { "status.code": "Error" } }
+      ]
+    }
+  },
+  "aggs": {
+    "by_service": { "terms": { "field": "resource.service.name", "size": 20 } }
+  }
+}
+```
+
+How a raw query runs:
+
+- **Read-only, trace data only:** the body runs through the search API only, against the trace indices
+  (`otel-traces-*`), as a read-only OpenSearch user whose role can only read those indices. Bodies that read other
+  indices (terms lookups, `more_like_this` documents, indexed shapes, percolate) are rejected, and so are `global`
+  aggregations. A body that isn't JSON gets 415.
+- **Request as sent:** the body runs as written, including its own time range and `size`. Without a time range, the
+  query reads every trace the indices hold. The adapter only sets the search `timeout`.
+- **Limits:** a query timeout (default `30s`, `adapter.rawQuery.timeout`) and a maximum response size (default 10 MiB,
+  `adapter.rawQuery.maxResponseBytes`). A query that runs past the timeout, including one OpenSearch stops with
+  partial results, gets 504; a larger result is rejected rather than returned partially.
+
+#### Read-only user
+
+Raw queries run as a read-only OpenSearch user whose credentials you provide in a Secret of their own,
+`opensearch-traces-users` by default (`adapter.rawQuery.credentialsSecretName`), apart from the admin credentials:
+
+- `rawQueryUsername`: the user name, for example `openchoreo-traces-reader`
+- `rawQueryPassword`: its password, which must meet OpenSearch's password rules
+
+The setup job creates that user in OpenSearch through the security REST API, using the admin credentials, with a
+role, `openchoreo_traces_reader`, that can only read the trace indices, and sets the password again on every upgrade.
+If the setup job is disabled, create the user and role yourself.
+
+To sync the Secret from a secret store, add the two entries to the store and an ExternalSecret for them, for example:
+
+```yaml
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: opensearch-traces-users
+  namespace: openchoreo-observability-plane
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: default
+  target:
+    name: opensearch-traces-users
+  data:
+    - secretKey: rawQueryUsername
+      remoteRef: { key: opensearch-raw-query-username, property: value }
+    - secretKey: rawQueryPassword
+      remoteRef: { key: opensearch-raw-query-password, property: value }
+```
+
+Without the Secret or its keys, the module installs and works as before, and the adapter answers raw queries with 501. After providing them, run `helm upgrade` so the setup job creates the user, then restart the adapter so it reads
+them.
+
+#### Searchable span attributes
+
+The trace index template maps only the fields the adapter itself queries. Span attributes are stored, but a raw
+query can't match on them until they are mapped. Add mappings with `openSearchSetup.traceIndexMappings`:
+
+```yaml
+openSearchSetup:
+  traceIndexMappings:
+    attributes.db.system.name: { type: keyword }
+    attributes.http.route: { type: keyword }
+```
+
+The setup job adds them to the index template, so new trace indices get them, and to the mappings of the existing
+trace indices, so spans written from then on are searchable on them. It never reindexes: spans stored before a field
+was mapped can't be matched on it until you reindex them yourself.
+
+Reindexing rewrites every span in an index, so do it one index at a time, as a background task, when the cluster has
+spare capacity:
+
+```text
+# List the trace indices
+GET _cat/indices/otel-traces-*?h=index
+
+# Reindex one in place; the response has a task ID
+POST <index>/_update_by_query?conflicts=proceed&wait_for_completion=false
+
+# Follow its progress
+GET _tasks/<task-id>
+```
+
+The spans are rewritten in place, so if a task stops partway, run it again for that index.
+
 ## Upgrades
 
 If you are upgrading from a version before 0.4.0, reindex the older tracing data to work with newer queries
@@ -179,9 +298,9 @@ Module versions 0.8.1, 0.9.1 and later bundle OpenSearch 3.9.0. Earlier versions
 
 Bundled upstream Helm charts:
 
-| Chart | Repository |
-| ----- | ---------- |
-| opensearch | https://opensearch-project.github.io/helm-charts/ |
+| Chart                   | Repository                                                 |
+| ----------------------- | ---------------------------------------------------------- |
+| opensearch              | https://opensearch-project.github.io/helm-charts/          |
 | opentelemetry-collector | https://open-telemetry.github.io/opentelemetry-helm-charts |
 
 ## Compatibility
@@ -189,7 +308,7 @@ Bundled upstream Helm charts:
 > **Note:** The Helm chart versions specified in the installation commands above are for the latest module version compatible with the development version of OpenChoreo. Refer to the compatibility table below to determine the appropriate module version for your OpenChoreo installation.
 
 | OpenChoreo Version | Module Version |
-| ------------------ |----------------|
+| ------------------ | -------------- |
 | 1.4.0 and later    | 0.9.x          |
 | 1.2.x - 1.3.x      | 0.6.x, 0.8.x   |
 | 1.1.x              | 0.4.x          |

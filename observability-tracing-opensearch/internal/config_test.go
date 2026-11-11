@@ -20,6 +20,7 @@ func clearEnvVars(t *testing.T) {
 	for _, key := range []string{
 		"SERVER_PORT", "OPENSEARCH_ADDRESS", "OPENSEARCH_USERNAME",
 		"OPENSEARCH_PASSWORD", "OPENSEARCH_INDEX_PREFIX", "OPENSEARCH_TLS_SKIP_VERIFY", "LOG_LEVEL",
+		"OPENSEARCH_RAW_QUERY_USERNAME", "OPENSEARCH_RAW_QUERY_PASSWORD",
 	} {
 		t.Setenv(key, "")
 	}
@@ -198,5 +199,32 @@ func TestLoadConfig_LogLevels(t *testing.T) {
 				t.Errorf("expected log level %v, got %v", tt.expected, cfg.LogLevel)
 			}
 		})
+	}
+}
+
+func TestLoadConfig_RawQueryCredentials(t *testing.T) {
+	clearEnvVars(t)
+	setEnvVars(t, requiredEnvVars())
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.RawQueryUsername != "" || cfg.RawQueryPassword != "" {
+		t.Errorf("raw query credentials should be unset by default, got %q", cfg.RawQueryUsername)
+	}
+
+	t.Setenv("OPENSEARCH_RAW_QUERY_USERNAME", "openchoreo-traces-reader")
+	if _, err := LoadConfig(); err == nil {
+		t.Error("expected an error for a raw query username without a password")
+	}
+
+	t.Setenv("OPENSEARCH_RAW_QUERY_PASSWORD", "secret")
+	cfg, err = LoadConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.RawQueryUsername != "openchoreo-traces-reader" || cfg.RawQueryPassword != "secret" {
+		t.Errorf("got %q / %q", cfg.RawQueryUsername, cfg.RawQueryPassword)
 	}
 }

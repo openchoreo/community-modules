@@ -38,6 +38,24 @@ spec:
               key: password
         - name: OTEL_TRACES_MIN_INDEX_AGE
           value: "{{ .Values.openSearchSetup.dataRetentionTime.traces }}"
+        - name: OTEL_TRACES_EXTRA_MAPPINGS
+          value: {{ .Values.openSearchSetup.traceIndexMappings | default dict | toJson | quote }}
+        - name: RAW_QUERY_CREDENTIALS_SECRET
+          value: {{ include "observability-tracing-opensearch.rawQuerySecretName" . | quote }}
+        - name: RAW_QUERY_INDEX_PATTERN
+          value: {{ printf "%s*" .Values.adapter.openSearchIndexPrefix | quote }}
+        - name: RAW_QUERY_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "observability-tracing-opensearch.rawQuerySecretName" . }}
+              key: rawQueryUsername
+              optional: true
+        - name: RAW_QUERY_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "observability-tracing-opensearch.rawQuerySecretName" . }}
+              key: rawQueryPassword
+              optional: true
         image: {{ include "observability-tracing-opensearch.image" (dict "image" .Values.openSearchSetup.image "context" .) | quote }}
         imagePullPolicy: {{ .Values.openSearchSetup.image.pullPolicy | default "IfNotPresent" }}
         resources:

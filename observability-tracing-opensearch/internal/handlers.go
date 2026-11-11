@@ -24,13 +24,29 @@ const (
 type TracingHandler struct {
 	client *opensearch.Client
 	logger *slog.Logger
+	// rawClient connects as the read-only raw query user; raw queries are
+	// not supported without it.
+	rawClient       *opensearch.Client
+	rawIndexPattern string
+	rawQuery        RawQueryLimits
 }
 
 func NewTracingHandler(client *opensearch.Client, logger *slog.Logger) *TracingHandler {
 	return &TracingHandler{
-		client: client,
-		logger: logger,
+		client:   client,
+		logger:   logger,
+		rawQuery: DefaultRawQueryLimits,
 	}
+}
+
+// WithRawQuery enables raw queries: they run through client, which must
+// connect as a user that can only read the trace indices, against the indices
+// matching indexPattern and within limits.
+func (h *TracingHandler) WithRawQuery(client *opensearch.Client, indexPattern string, limits RawQueryLimits) *TracingHandler {
+	h.rawClient = client
+	h.rawIndexPattern = indexPattern
+	h.rawQuery = limits
+	return h
 }
 
 // Ensure TracingHandler implements the interface at compile time.

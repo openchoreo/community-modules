@@ -4,15 +4,20 @@
 package gen
 
 import (
+	"encoding/json"
 	"time"
 )
 
 // Defines values for ErrorResponseTitle.
 const (
-	BadRequest          ErrorResponseTitle = "badRequest"
-	Forbidden           ErrorResponseTitle = "forbidden"
-	InternalServerError ErrorResponseTitle = "internalServerError"
-	Unauthorized        ErrorResponseTitle = "unauthorized"
+	BadRequest           ErrorResponseTitle = "badRequest"
+	Forbidden            ErrorResponseTitle = "forbidden"
+	GatewayTimeout       ErrorResponseTitle = "gatewayTimeout"
+	InternalServerError  ErrorResponseTitle = "internalServerError"
+	NotImplemented       ErrorResponseTitle = "notImplemented"
+	PayloadTooLarge      ErrorResponseTitle = "payloadTooLarge"
+	Unauthorized         ErrorResponseTitle = "unauthorized"
+	UnsupportedMediaType ErrorResponseTitle = "unsupportedMediaType"
 )
 
 // Defines values for SpanStatusCode.
@@ -55,6 +60,15 @@ type ErrorResponse struct {
 
 // ErrorResponseTitle The error message
 type ErrorResponseTitle string
+
+// RawTracesQueryRequest The backend's native request, as JSON.
+type RawTracesQueryRequest = json.RawMessage
+
+// RawTracesQueryResponse The backend's response, unchanged.
+type RawTracesQueryResponse = json.RawMessage
+
+// RawTracesQueryText The backend's native request, as text.
+type RawTracesQueryText = string
 
 // SpanStatus Execution status of the span, following the OpenTelemetry span Status model.
 type SpanStatus struct {
@@ -203,6 +217,12 @@ type TracesQueryRequestSortOrder string
 
 // QueryTracesJSONRequestBody defines body for QueryTraces for application/json ContentType.
 type QueryTracesJSONRequestBody = TracesQueryRequest
+
+// QueryRawTracesJSONRequestBody defines body for QueryRawTraces for application/json ContentType.
+type QueryRawTracesJSONRequestBody = RawTracesQueryRequest
+
+// QueryRawTracesTextRequestBody defines body for QueryRawTraces for text/plain ContentType.
+type QueryRawTracesTextRequestBody = RawTracesQueryText
 
 // QuerySpansForTraceJSONRequestBody defines body for QuerySpansForTrace for application/json ContentType.
 type QuerySpansForTraceJSONRequestBody = TracesQueryRequest

@@ -42,3 +42,13 @@ Parameters:
 {{- end -}}
 {{- printf "%s:%s" $repo (.image.tag | default .context.Chart.AppVersion) -}}
 {{- end }}
+
+{{/*
+The Secret holding the read-only OpenSearch user raw trace queries run as, in
+its rawQueryUsername and rawQueryPassword keys. It is kept apart from the admin
+Secret, which only the setup job needs.
+*/}}
+{{- define "observability-tracing-opensearch.rawQuerySecretName" -}}
+{{- $rawQuery := .Values.adapter.rawQuery | default dict -}}
+{{- $rawQuery.credentialsSecretName | default "opensearch-traces-users" -}}
+{{- end }}

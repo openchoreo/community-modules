@@ -132,6 +132,22 @@ otelTracesIndexTemplate='
 
 # TODO: "openchoreo.dev/organization-uid": should be removed or refactored
 
+# Extra field mappings for the trace index template, from the chart's openSearchSetup.traceIndexMappings.
+# The template maps only the fields the adapter queries; span attributes are stored but not searchable, so
+# raw queries can only match on attributes mapped here, e.g. {"attributes.db.system.name": {"type": "keyword"}}.
+otelTracesExtraMappings="${OTEL_TRACES_EXTRA_MAPPINGS:-}"
+hasExtraMappings=false
+if [ -n "$otelTracesExtraMappings" ] && [ "$otelTracesExtraMappings" != "{}" ] && [ "$otelTracesExtraMappings" != "null" ]; then
+    if ! echo "$otelTracesExtraMappings" | jq -e 'type == "object"' >/dev/null 2>&1; then
+        echo "ERROR: OTEL_TRACES_EXTRA_MAPPINGS must be a JSON object of field mappings"
+        exit 1
+    fi
+    otelTracesIndexTemplate=$(echo "$otelTracesIndexTemplate" | jq --argjson extra "$otelTracesExtraMappings" \
+        '.template.mappings.properties += $extra')
+    hasExtraMappings=true
+    echo "Adding extra field mappings to the trace index template: $otelTracesExtraMappings"
+fi
+
 # The following array holds pairs of index template names and their definitions. Define more templates above
 # and add them to this array.
 # Format: (templateName1 templateDefinition1 templateName2 templateDefinition2 ...)
@@ -170,6 +186,29 @@ for ((i=0; i<${#indexTemplates[@]}; i+=2)); do
 done
 
 echo -e "Index template creation complete\n"
+
+# Indices created before the mappings were added get them too. This changes the mappings only: spans already
+# stored are never reindexed here, and become searchable on those fields only once the user reindexes them (see
+# the module README).
+if [ "$hasExtraMappings" = true ]; then
+    echo "Adding extra field mappings to existing trace indices..."
+    response=$(curl --data "{\"properties\": $otelTracesExtraMappings}" \
+                    --header "Authorization: Basic $authnToken" \
+                    --header "Content-Type: application/json" \
+                    --insecure \
+                    --request PUT \
+                    --show-error \
+                    --silent \
+                    --write-out "\n%{http_code}" \
+                    "$openSearchHost/otel-traces-*/_mapping?allow_no_indices=true")
+    httpCode=$(echo "$response" | tail -n1)
+    echo "Response: $(echo "$response" | head -n-1)"
+    if [ "$httpCode" -eq 200 ]; then
+        echo -e "Added extra field mappings to existing trace indices\n"
+    else
+        echo -e "Failed to add extra field mappings to existing trace indices. HTTP response code: $httpCode\n"
+    fi
+fi
 
 
 # 3. Add/Update ISM Policies
@@ -322,3 +361,58 @@ for ((i=0; i<${#ismPolicies[@]}; i+=2)); do
 done
 
 echo "ISM policy management complete"
+
+
+# 4. Create the read-only user raw trace queries run as
+# The user can only search the trace indices, so a raw query can't write or read other data in the cluster.
+# Reference: https://docs.opensearch.org/latest/security/access-control/api/
+# The credentials come from the rawQueryUsername and rawQueryPassword keys of their own Secret
+# (adapter.rawQuery.credentialsSecretName). Without them the user is not created and the adapter answers raw queries
+# with 501; the rest of the module works as before.
+rawQueryUsername="${RAW_QUERY_USERNAME:-}"
+rawQueryPassword="${RAW_QUERY_PASSWORD:-}"
+rawQuerySecret="${RAW_QUERY_CREDENTIALS_SECRET:-opensearch-traces-users}"
+if [ -z "$rawQueryUsername" ] && [ -z "$rawQueryPassword" ]; then
+    echo -e "\nSkipping the read-only user for raw trace queries: the Secret $rawQuerySecret is missing or has no" \
+        "rawQueryUsername and rawQueryPassword keys, so raw trace queries are not supported"
+elif [ -z "$rawQueryUsername" ] || [ -z "$rawQueryPassword" ]; then
+    echo -e "\nSkipping the read-only user for raw trace queries: the Secret $rawQuerySecret must have both the" \
+        "rawQueryUsername and rawQueryPassword keys"
+else
+    echo -e "\nCreating the read-only user for raw trace queries..."
+    rawQueryRole="openchoreo_traces_reader"
+    rawQueryIndexPattern="${RAW_QUERY_INDEX_PATTERN:-otel-traces-*}"
+
+    # Format: (path1 payload1 path2 payload2 ...)
+    securityResources=(
+        "roles/$rawQueryRole"
+        "$(jq -n --arg pattern "$rawQueryIndexPattern" \
+            '{cluster_permissions: [], index_permissions: [{index_patterns: [$pattern], allowed_actions: ["read"]}]}')"
+        "internalusers/$rawQueryUsername"
+        "$(jq -n --arg password "$rawQueryPassword" '{password: $password, backend_roles: []}')"
+        "rolesmapping/$rawQueryRole"
+        "$(jq -n --arg user "$rawQueryUsername" '{users: [$user]}')"
+    )
+    for ((i=0; i<${#securityResources[@]}; i+=2)); do
+        resourcePath="${securityResources[i]}"
+        response=$(curl --data "${securityResources[i+1]}" \
+                        --header "Authorization: Basic $authnToken" \
+                        --header "Content-Type: application/json" \
+                        --insecure \
+                        --request PUT \
+                        --show-error \
+                        --silent \
+                        --write-out "\n%{http_code}" \
+                        "$openSearchHost/_plugins/_security/api/$resourcePath")
+        httpCode=$(echo "$response" | tail -n1)
+        if [ "$httpCode" -eq 200 ] || [ "$httpCode" -eq 201 ]; then
+            echo "Created/updated $resourcePath"
+        else
+            # Raw trace queries fail until the user exists; the rest of the module works without it.
+            echo "Failed to create/update $resourcePath. HTTP response code: $httpCode"
+            echo "Response: $(echo "$response" | head -n-1)"
+        fi
+    done
+
+    echo "Read-only user setup complete"
+fi

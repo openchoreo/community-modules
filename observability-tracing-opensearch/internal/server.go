@@ -25,11 +25,18 @@ func NewServer(port string, tracingHandler *TracingHandler, logger *slog.Logger)
 	mux := http.NewServeMux()
 	handler := gen.HandlerFromMux(strictHandler, mux)
 
+	// A raw query may run up to its own timeout, so the write timeout leaves
+	// room for it.
+	writeTimeout := 15 * time.Second
+	if rawWrite := tracingHandler.rawQuery.Timeout + rawQueryGrace + 5*time.Second; rawWrite > writeTimeout {
+		writeTimeout = rawWrite
+	}
+
 	httpServer := &http.Server{
 		Addr:         ":" + port,
 		Handler:      handler,
 		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
+		WriteTimeout: writeTimeout,
 		IdleTimeout:  60 * time.Second,
 	}
 

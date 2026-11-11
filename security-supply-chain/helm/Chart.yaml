@@ -1,0 +1,20 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v2
+name: security-supply-chain
+description: Vulnerability scanning, signing and attestations for images built by OpenChoreo workflows
+type: application
+# Version strategy: latest-dev for development, replaced by CI for releases
+version: 0.0.0-latest-dev
+appVersion: "latest-dev"
+keywords:
+  - openchoreo
+  - security
+  - supply-chain
+  - trivy
+  - cosign
+  - sbom
+home: https://github.com/openchoreo/community-modules/tree/main/security-supply-chain
+sources:
+  - https://github.com/openchoreo/community-modules

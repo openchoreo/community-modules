@@ -1,0 +1,125 @@
+{{- if .Values.server.enabled }}
+{{- $name := include "image-security.serverName" . }}
+{{- if .Values.server.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "image-security.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- with .Values.server.persistence.storageClassName }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.server.persistence.size }}
+---
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "image-security.labels" . | nindent 4 }}
+    app.kubernetes.io/component: trivy-server
+spec:
+  replicas: {{ .Values.server.replicas }}
+  {{- if .Values.server.persistence.enabled }}
+  strategy:
+    type: Recreate
+  {{- end }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: trivy-server
+  template:
+    metadata:
+      labels:
+        {{- include "image-security.labels" . | nindent 8 }}
+        app.kubernetes.io/component: trivy-server
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: trivy
+          image: "{{ .Values.scan.image.repository }}:{{ .Values.scan.image.tag }}"
+          imagePullPolicy: {{ .Values.scan.image.pullPolicy }}
+          args:
+            - server
+            - --listen
+            - "0.0.0.0:{{ .Values.server.port }}"
+          env:
+            - name: TRIVY_CACHE_DIR
+              value: /cache
+            {{- with .Values.server.dbRepository }}
+            - name: TRIVY_DB_REPOSITORY
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.server.javaDbRepository }}
+            - name: TRIVY_JAVA_DB_REPOSITORY
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.server.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.server.port }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 30
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            {{- toYaml .Values.server.resources | nindent 12 }}
+          volumeMounts:
+            - name: cache
+              mountPath: /cache
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: cache
+          {{- if .Values.server.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ $name }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "image-security.labels" . | nindent 4 }}
+spec:
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: trivy-server
+  ports:
+    - name: http
+      port: {{ .Values.server.port }}
+      targetPort: http
+{{- end }}

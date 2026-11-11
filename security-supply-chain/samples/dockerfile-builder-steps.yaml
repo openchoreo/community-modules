@@ -1,0 +1,31 @@
+# Steps to insert into the `build-workflow` template of an OpenChoreo
+# ClusterWorkflow such as dockerfile-builder (spec.runTemplate.spec.templates).
+#
+# Order: checkout-source -> build-image -> scan-image -> publish-image
+#        -> sign-and-attest -> generate-workload-cr
+#
+# scan-image goes between build-image and publish-image:
+- - name: scan-image
+    templateRef:
+      name: image-security
+      clusterScope: true
+      template: scan-image
+    arguments:
+      parameters:
+        - name: git-repo
+          value: '{{workflow.parameters.git-repo}}'
+        - name: branch
+          value: '{{steps.checkout-source.outputs.parameters.source-branch}}'
+        - name: commit
+          value: '{{steps.checkout-source.outputs.parameters.commit-sha}}'
+
+# sign-and-attest goes between publish-image and generate-workload-cr:
+- - name: sign-and-attest
+    templateRef:
+      name: image-security
+      clusterScope: true
+      template: sign-and-attest
+    arguments:
+      parameters:
+        - name: image
+          value: '{{steps.publish-image.outputs.parameters.image}}'

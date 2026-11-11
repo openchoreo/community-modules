@@ -309,6 +309,20 @@ func (h *MetricsHandler) CreateAlertRule(ctx context.Context, request gen.Create
 		}, nil
 	}
 
+	if !params.Enabled {
+		action, backendID, err := h.removeDisabledRule(ctx, params.Name)
+		if err != nil {
+			return gen.CreateAlertRule500JSONResponse{
+				Title:  errorTitle(gen.InternalServerError),
+				Detail: strPtr(err.Error()),
+			}, nil
+		}
+		return gen.CreateAlertRule201JSONResponse{
+			Body:    buildSyncResponse(action, params.Name, backendID, gen.Synced),
+			Headers: gen.CreateAlertRule201ResponseHeaders{OpenChoreoReleaseLineApplied: releaseLineApplied(params.ReleaseLineUID, params.ComponentUID)},
+		}, nil
+	}
+
 	exists, err := h.k8sClient.PrometheusRuleExists(ctx, params.Name)
 	if err != nil {
 		return gen.CreateAlertRule500JSONResponse{
@@ -421,6 +435,20 @@ func (h *MetricsHandler) UpdateAlertRule(ctx context.Context, request gen.Update
 		}, nil
 	}
 
+	if !params.Enabled {
+		action, backendID, err := h.removeDisabledRule(ctx, request.RuleName)
+		if err != nil {
+			return gen.UpdateAlertRule500JSONResponse{
+				Title:  errorTitle(gen.InternalServerError),
+				Detail: strPtr(err.Error()),
+			}, nil
+		}
+		return gen.UpdateAlertRule200JSONResponse{
+			Body:    buildSyncResponse(action, request.RuleName, backendID, gen.Synced),
+			Headers: gen.UpdateAlertRule200ResponseHeaders{OpenChoreoReleaseLineApplied: releaseLineApplied(params.ReleaseLineUID, params.ComponentUID)},
+		}, nil
+	}
+
 	existing, err := h.k8sClient.GetPrometheusRule(ctx, request.RuleName)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
@@ -458,6 +486,26 @@ func (h *MetricsHandler) UpdateAlertRule(ctx context.Context, request gen.Update
 		Body:    buildSyncResponse(gen.Updated, request.RuleName, backendID, gen.Synced),
 		Headers: gen.UpdateAlertRule200ResponseHeaders{OpenChoreoReleaseLineApplied: releaseLineApplied(params.ReleaseLineUID, params.ComponentUID)},
 	}, nil
+}
+
+// removeDisabledRule ensures no PrometheusRule exists for a disabled alert rule, since Prometheus
+// has no per-rule enabled flag. It returns Deleted with the removed rule's UID, or Unchanged if absent.
+func (h *MetricsHandler) removeDisabledRule(ctx context.Context, ruleName string) (gen.AlertingRuleSyncResponseAction, string, error) {
+	existing, err := h.k8sClient.GetPrometheusRule(ctx, ruleName)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return gen.Unchanged, "", nil
+		}
+		return "", "", fmt.Errorf("failed to get existing alert rule: %w", err)
+	}
+
+	backendID := string(existing.UID)
+	if err := h.k8sClient.DeletePrometheusRule(ctx, ruleName); err != nil && !apierrors.IsNotFound(err) {
+		return "", "", fmt.Errorf("failed to delete disabled alert rule: %w", err)
+	}
+
+	h.logger.Info("PrometheusRule deleted for disabled alert rule", "rule_name", ruleName, "backend_id", backendID)
+	return gen.Deleted, backendID, nil
 }
 
 // DeleteAlertRule deletes a PrometheusRule CR.
@@ -699,6 +747,7 @@ func mapPrometheusRuleToAlertRuleResponse(pr *monitoringv1.PrometheusRule, ruleN
 
 	// Condition
 	operator, threshold := extractPromOperatorAndThreshold(expr)
+	// Disabled rules have no PrometheusRule, so an existing one is always enabled.
 	enabled := true
 	resp.Condition = &struct {
 		Enabled   *bool                                   `json:"enabled,omitempty"`

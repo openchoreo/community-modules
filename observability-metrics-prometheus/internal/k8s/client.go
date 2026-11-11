@@ -44,6 +44,11 @@ func NewClient(namespace string) (*Client, error) {
 	}, nil
 }
 
+// NewClientFromRuntimeClient wraps an existing controller-runtime client.
+func NewClientFromRuntimeClient(c client.Client, namespace string) *Client {
+	return &Client{client: c, namespace: namespace}
+}
+
 // CreatePrometheusRule creates a PrometheusRule in the configured namespace.
 func (c *Client) CreatePrometheusRule(ctx context.Context, rule *monitoringv1.PrometheusRule) error {
 	if err := c.client.Create(ctx, rule); err != nil {

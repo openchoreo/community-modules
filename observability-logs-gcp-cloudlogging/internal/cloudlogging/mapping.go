@@ -28,6 +28,8 @@ func mapComponentEntry(e *logging.Entry) ComponentLogEntry {
 		ProjectUID:          e.Labels[podLabelKey(LabelProjectUID)],
 		EnvironmentUID:      e.Labels[podLabelKey(LabelEnvironmentUID)],
 		OpenChoreoNamespace: e.Labels[podLabelKey(LabelNamespace)],
+		ReleaseLineName:     e.Labels[podLabelKey(LabelReleaseLineName)],
+		ReleaseLineUID:      e.Labels[podLabelKey(LabelReleaseLineUID)],
 	}
 }
 

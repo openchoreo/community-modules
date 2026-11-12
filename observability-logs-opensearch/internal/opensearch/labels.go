@@ -19,6 +19,7 @@ const (
 	ReleaseLineID = "openchoreo.dev/release-line-uid"
 	// ReleaseLineComponentID is the component UID on a release line's pods, which don't carry ComponentID.
 	ReleaseLineComponentID = "openchoreo.dev/release-line-component-uid"
+	ReleaseLineName        = "openchoreo.dev/release-line"
 	ComponentName          = "openchoreo.dev/component"
 	EnvironmentName        = "openchoreo.dev/environment"
 	ProjectName            = "openchoreo.dev/project"

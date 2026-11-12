@@ -21,6 +21,7 @@ const (
 	LabelComponentName   = "openchoreo.dev/component"
 	LabelProjectName     = "openchoreo.dev/project"
 	LabelEnvironmentName = "openchoreo.dev/environment"
+	LabelReleaseLineName = "openchoreo.dev/release-line"
 
 	// podLabelPrefix is how GKE's logging agent surfaces Kubernetes pod labels
 	// on a LogEntry, under "k8s-pod/<key>".

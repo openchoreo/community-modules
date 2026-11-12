@@ -1268,6 +1268,8 @@ func toComponentLogEntry(l *opensearch.LogEntry) gen.ComponentLogEntry {
 			PodNamespace    *string             `json:"podNamespace,omitempty"`
 			ProjectName     *string             `json:"projectName,omitempty"`
 			ProjectUid      *openapi_types.UUID `json:"projectUid,omitempty"`
+			ReleaseLineName *string             `json:"releaseLineName,omitempty"`
+			ReleaseLineUid  *openapi_types.UUID `json:"releaseLineUid,omitempty"`
 		}{
 			NamespaceName:   strPtr(l.NamespaceName),
 			ContainerName:   strPtr(l.ContainerName),
@@ -1276,6 +1278,7 @@ func toComponentLogEntry(l *opensearch.LogEntry) gen.ComponentLogEntry {
 			ComponentName:   strPtr(l.ComponentName),
 			ProjectName:     strPtr(l.ProjectName),
 			EnvironmentName: strPtr(l.EnvironmentName),
+			ReleaseLineName: strPtr(l.ReleaseLineName),
 		},
 	}
 
@@ -1292,6 +1295,11 @@ func toComponentLogEntry(l *opensearch.LogEntry) gen.ComponentLogEntry {
 	if l.EnvironmentID != "" {
 		if uid, ok := parseUUID(l.EnvironmentID); ok {
 			entry.Metadata.EnvironmentUid = &uid
+		}
+	}
+	if l.ReleaseLineID != "" {
+		if uid, ok := parseUUID(l.ReleaseLineID); ok {
+			entry.Metadata.ReleaseLineUid = &uid
 		}
 	}
 

@@ -176,6 +176,9 @@ type ComponentLogsEntry struct {
 	EnvironmentName string
 	ProjectUID      string
 	ProjectName     string
+	// ReleaseLineName and ReleaseLineUID are empty for the component's main line.
+	ReleaseLineName string
+	ReleaseLineUID  string
 }
 
 // ComponentLogsResult wraps the entries and query metadata.
@@ -239,6 +242,8 @@ func (c *Client) GetComponentLogs(ctx context.Context, params ComponentLogsParam
 			EnvironmentName: row["environmentName"],
 			ProjectUID:      row["projectUid"],
 			ProjectName:     row["projectName"],
+			ReleaseLineName: row["releaseLineName"],
+			ReleaseLineUID:  row["releaseLineUid"],
 			LogLevel:        logLevelFromRow(row),
 		}
 		if ts, err := parseInsightsTimestamp(row["@timestamp"]); err == nil {

@@ -62,6 +62,9 @@ type ComponentLogEntry struct {
 	ProjectUID          string
 	EnvironmentUID      string
 	OpenChoreoNamespace string
+	// ReleaseLineName and ReleaseLineUID are empty for the component's main line.
+	ReleaseLineName string
+	ReleaseLineUID  string
 }
 
 // WorkflowLogEntry is the simpler projection for workflow logs.

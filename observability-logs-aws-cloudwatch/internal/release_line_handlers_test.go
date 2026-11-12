@@ -166,6 +166,20 @@ func TestQueryEvents_UnscopedRequests(t *testing.T) {
 	}
 }
 
+func TestToComponentLogEntry_ReleaseLine(t *testing.T) {
+	line := toComponentLogEntry(&cloudwatch.ComponentLogsEntry{ReleaseLineName: "next", ReleaseLineUID: testReleaseLineUID})
+	if line.Metadata.ReleaseLineName == nil || *line.Metadata.ReleaseLineName != "next" {
+		t.Errorf("releaseLineName = %v, want next", line.Metadata.ReleaseLineName)
+	}
+	if line.Metadata.ReleaseLineUid == nil || line.Metadata.ReleaseLineUid.String() != testReleaseLineUID {
+		t.Errorf("releaseLineUid = %v, want %s", line.Metadata.ReleaseLineUid, testReleaseLineUID)
+	}
+	main := toComponentLogEntry(&cloudwatch.ComponentLogsEntry{})
+	if main.Metadata.ReleaseLineName != nil || main.Metadata.ReleaseLineUid != nil {
+		t.Errorf("main line entry has release line %v / %v, want none", main.Metadata.ReleaseLineName, main.Metadata.ReleaseLineUid)
+	}
+}
+
 // A rule covers its release line, or its component's main line.
 func TestAlertRule_ReleaseLineHeader(t *testing.T) {
 	for name, line := range map[string]*string{"release line": ptr(testReleaseLineUID), "main line": nil} {

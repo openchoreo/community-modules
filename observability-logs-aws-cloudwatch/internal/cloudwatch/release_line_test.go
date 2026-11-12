@@ -121,6 +121,48 @@ func TestGetComponentLogsAttributesReleaseLineToComponent(t *testing.T) {
 	}
 }
 
+// A log entry names the release line of the pod that wrote it, and a main line entry names none.
+func TestGetComponentLogsNamesReleaseLine(t *testing.T) {
+	query := buildComponentQuery(ComponentLogsParams{Namespace: "default"})
+	for _, want := range []string{
+		"`kubernetes.labels.openchoreo.dev/release-line` as releaseLineName",
+		"`kubernetes.labels.openchoreo.dev/release-line-uid` as releaseLineUid",
+	} {
+		if !strings.Contains(query, want) {
+			t.Errorf("the query must project %q:\n%s", want, query)
+		}
+	}
+
+	now := time.Now().UTC().Truncate(time.Second)
+	api := &queryStubLogsAPI{
+		resultsQueue: [][]cwltypes.ResultField{
+			{
+				{Field: aws.String("@timestamp"), Value: aws.String(now.Format("2006-01-02 15:04:05.000"))},
+				{Field: aws.String("releaseLineName"), Value: aws.String("next")},
+				{Field: aws.String("releaseLineUid"), Value: aws.String(testReleaseLineUID)},
+			},
+			{
+				{Field: aws.String("@timestamp"), Value: aws.String(now.Format("2006-01-02 15:04:05.000"))},
+			},
+		},
+	}
+	res, err := newQueryTestClient(api).GetComponentLogs(context.Background(), ComponentLogsParams{
+		Namespace: "default", StartTime: now.Add(-time.Hour), EndTime: now,
+	})
+	if err != nil {
+		t.Fatalf("GetComponentLogs() error = %v", err)
+	}
+	if len(res.Logs) != 2 {
+		t.Fatalf("got %d entries, want 2", len(res.Logs))
+	}
+	if line := res.Logs[0]; line.ReleaseLineName != "next" || line.ReleaseLineUID != testReleaseLineUID {
+		t.Errorf("release line = %q / %q, want next / %s", line.ReleaseLineName, line.ReleaseLineUID, testReleaseLineUID)
+	}
+	if main := res.Logs[1]; main.ReleaseLineName != "" || main.ReleaseLineUID != "" {
+		t.Errorf("main line entry has release line %q / %q, want none", main.ReleaseLineName, main.ReleaseLineUID)
+	}
+}
+
 func TestGetComponentEventsAttributesReleaseLineToComponent(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	api := &queryStubLogsAPI{

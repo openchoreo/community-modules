@@ -22,6 +22,7 @@ const (
 	labelReleaseLineUID  = "openchoreo.dev/release-line-uid"
 	// labelReleaseLineComponentUID is the component UID on a release line's pods, which don't carry labelComponentUID.
 	labelReleaseLineComponentUID = "openchoreo.dev/release-line-component-uid"
+	labelReleaseLineName         = "openchoreo.dev/release-line"
 )
 
 var logLevelFieldNames = []string{
@@ -85,6 +86,8 @@ func buildComponentQuery(p ComponentLogsParams) string {
 	b.WriteString(" kubernetes.container_name as containerName,")
 	fmt.Fprintf(&b, " %s as componentUid,", labelField(labelComponentUID))
 	fmt.Fprintf(&b, " %s as releaseLineComponentUid,", labelField(labelReleaseLineComponentUID))
+	fmt.Fprintf(&b, " %s as releaseLineName,", labelField(labelReleaseLineName))
+	fmt.Fprintf(&b, " %s as releaseLineUid,", labelField(labelReleaseLineUID))
 	fmt.Fprintf(&b, " %s as componentName,", labelField(labelComponentName))
 	fmt.Fprintf(&b, " %s as environmentUid,", labelField(labelEnvironmentUID))
 	fmt.Fprintf(&b, " %s as environmentName,", labelField(labelEnvironmentName))

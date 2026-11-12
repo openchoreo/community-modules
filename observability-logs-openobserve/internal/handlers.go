@@ -743,6 +743,8 @@ func toComponentLogEntry(l *openobserve.ComponentLogsEntry) gen.ComponentLogEntr
 			PodNamespace    *string            `json:"podNamespace,omitempty"`
 			ProjectName     *string            `json:"projectName,omitempty"`
 			ProjectUid      *openapi_types.UUID `json:"projectUid,omitempty"`
+			ReleaseLineName *string            `json:"releaseLineName,omitempty"`
+			ReleaseLineUid  *openapi_types.UUID `json:"releaseLineUid,omitempty"`
 		}{
 			NamespaceName:   strPtr(l.Namespace),
 			ContainerName:   strPtr(l.ContainerName),
@@ -751,6 +753,7 @@ func toComponentLogEntry(l *openobserve.ComponentLogsEntry) gen.ComponentLogEntr
 			ComponentName:   strPtr(l.ComponentName),
 			ProjectName:     strPtr(l.ProjectName),
 			EnvironmentName: strPtr(l.EnvironmentName),
+			ReleaseLineName: strPtr(l.ReleaseLineName),
 		},
 	}
 
@@ -767,6 +770,11 @@ func toComponentLogEntry(l *openobserve.ComponentLogsEntry) gen.ComponentLogEntr
 	if l.EnvironmentUID != "" {
 		if uid, ok := parseUUID(l.EnvironmentUID); ok {
 			entry.Metadata.EnvironmentUid = &uid
+		}
+	}
+	if l.ReleaseLineUID != "" {
+		if uid, ok := parseUUID(l.ReleaseLineUID); ok {
+			entry.Metadata.ReleaseLineUid = &uid
 		}
 	}
 

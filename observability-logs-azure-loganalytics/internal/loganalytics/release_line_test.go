@@ -6,6 +6,8 @@ package loganalytics
 import (
 	"strings"
 	"testing"
+
+	"github.com/Azure/azure-sdk-for-go/sdk/monitor/query/azlogs"
 )
 
 const testReleaseLineUID = "93f65294-926f-475b-98f1-dc4f152f38da"
@@ -85,6 +87,31 @@ func TestBuildComponentLogsKQL_ComponentUIDFallsBackToReleaseLineLabel(t *testin
 		`tostring(_labels["openchoreo.dev/release-line-component-uid"]))`
 	if !strings.Contains(got, want) {
 		t.Errorf("KQL missing %q\nKQL:\n%s", want, got)
+	}
+}
+
+// A log entry names the release line of the pod that wrote it, and a main line entry names none.
+func TestComponentLogs_ReleaseLinePerEntry(t *testing.T) {
+	kql := BuildComponentLogsKQL(ComponentLogsParams{Namespace: "default", Limit: 10})
+	assertContains(t, kql, `ReleaseLineName     = tostring(_labels["openchoreo.dev/release-line"])`)
+	assertContains(t, kql, `ReleaseLineUID      = tostring(_labels["openchoreo.dev/release-line-uid"])`)
+
+	entries, err := mapComponentRows(azlogs.QueryWorkspaceResponse{QueryResults: azlogs.QueryResults{Tables: []azlogs.Table{
+		table([]string{"TimeGenerated", "LogMessage", "ReleaseLineName", "ReleaseLineUID"},
+			azlogs.Row{"2026-09-01T10:00:00Z", "from next", "next", testReleaseLineUID},
+			azlogs.Row{"2026-09-01T10:00:00Z", "from main", "", ""}),
+	}}})
+	if err != nil {
+		t.Fatalf("mapComponentRows: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("got %d entries, want 2", len(entries))
+	}
+	if line := entries[0]; line.ReleaseLineName != "next" || line.ReleaseLineUID != testReleaseLineUID {
+		t.Errorf("release line = %q / %q, want next / %s", line.ReleaseLineName, line.ReleaseLineUID, testReleaseLineUID)
+	}
+	if main := entries[1]; main.ReleaseLineName != "" || main.ReleaseLineUID != "" {
+		t.Errorf("main line entry has release line %q / %q, want none", main.ReleaseLineName, main.ReleaseLineUID)
 	}
 }
 

@@ -18,6 +18,7 @@ import (
 
 	"github.com/openchoreo/community-modules/observability-logs-azure-loganalytics/internal/api/gen"
 	"github.com/openchoreo/community-modules/observability-logs-azure-loganalytics/internal/azuremonitor"
+	"github.com/openchoreo/community-modules/observability-logs-azure-loganalytics/internal/loganalytics"
 )
 
 const testReleaseLineUID = "93f65294-926f-475b-98f1-dc4f152f38da"
@@ -340,6 +341,20 @@ func TestAlertRule_ReleaseLineRejectsFullKQLStatement(t *testing.T) {
 		}
 		wantRejected(t, gen.ErrorResponse(got), rec)
 	})
+}
+
+func TestMapComponentEntry_ReleaseLine(t *testing.T) {
+	line := mapComponentEntry(&loganalytics.ComponentLogEntry{ReleaseLineName: "next", ReleaseLineUID: testReleaseLineUID})
+	if line.Metadata.ReleaseLineName == nil || *line.Metadata.ReleaseLineName != "next" {
+		t.Errorf("releaseLineName = %v, want next", line.Metadata.ReleaseLineName)
+	}
+	if line.Metadata.ReleaseLineUid == nil || line.Metadata.ReleaseLineUid.String() != testReleaseLineUID {
+		t.Errorf("releaseLineUid = %v, want %s", line.Metadata.ReleaseLineUid, testReleaseLineUID)
+	}
+	main := mapComponentEntry(&loganalytics.ComponentLogEntry{})
+	if main.Metadata.ReleaseLineName != nil || main.Metadata.ReleaseLineUid != nil {
+		t.Errorf("main line entry has release line %v / %v, want none", main.Metadata.ReleaseLineName, main.Metadata.ReleaseLineUid)
+	}
 }
 
 // A main line rule may still use a full KQL statement, which is not scoped.

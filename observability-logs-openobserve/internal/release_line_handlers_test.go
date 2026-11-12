@@ -139,6 +139,22 @@ func TestQueryLogs_WorkflowScopeNoReleaseLineHeader(t *testing.T) {
 	}
 }
 
+func TestToComponentLogEntry_ReleaseLine(t *testing.T) {
+	line := toComponentLogEntry(&openobserve.ComponentLogsEntry{
+		ComponentUID: testComponentUID, ReleaseLineName: "next", ReleaseLineUID: testLineUID,
+	})
+	if line.Metadata.ReleaseLineName == nil || *line.Metadata.ReleaseLineName != "next" {
+		t.Errorf("releaseLineName = %v, want next", line.Metadata.ReleaseLineName)
+	}
+	if line.Metadata.ReleaseLineUid == nil || line.Metadata.ReleaseLineUid.String() != testLineUID {
+		t.Errorf("releaseLineUid = %v, want %s", line.Metadata.ReleaseLineUid, testLineUID)
+	}
+	main := toComponentLogEntry(&openobserve.ComponentLogsEntry{ComponentUID: testComponentUID})
+	if main.Metadata.ReleaseLineName != nil || main.Metadata.ReleaseLineUid != nil {
+		t.Errorf("main line entry has release line %v / %v, want none", main.Metadata.ReleaseLineName, main.Metadata.ReleaseLineUid)
+	}
+}
+
 func TestQueryEvents_ReleaseLineHeader(t *testing.T) {
 	for name, tt := range lineScopes {
 		t.Run(name, func(t *testing.T) {

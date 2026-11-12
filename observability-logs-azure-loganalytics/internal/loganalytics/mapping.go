@@ -36,6 +36,8 @@ func mapComponentRows(resp azlogs.QueryWorkspaceResponse) ([]ComponentLogEntry, 
 			ComponentUID:        rowString(row, idx, "ComponentUID"),
 			ProjectUID:          rowString(row, idx, "ProjectUID"),
 			EnvironmentUID:      rowString(row, idx, "EnvironmentUID"),
+			ReleaseLineName:     rowString(row, idx, "ReleaseLineName"),
+			ReleaseLineUID:      rowString(row, idx, "ReleaseLineUID"),
 			OpenChoreoNamespace: rowString(row, idx, "OpenChoreoNamespace"),
 		})
 	}

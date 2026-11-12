@@ -56,6 +56,9 @@ type LogEntry struct {
 	NamespaceName   string            `json:"namespaceName,omitempty"`
 	PodNamespace    string            `json:"podNamespace,omitempty"`
 	PodName         string            `json:"podName,omitempty"`
+	// ReleaseLineName and ReleaseLineID are empty for the component's main line.
+	ReleaseLineName string `json:"releaseLineName,omitempty"`
+	ReleaseLineID   string `json:"releaseLineId,omitempty"`
 }
 
 // WorkflowRunLogEntry represents a log entry for workflow run logs.
@@ -276,6 +279,8 @@ func ParseLogEntry(hit Hit) LogEntry {
 			entry.EnvironmentName = getStringValue(labelMap, ReplaceDots(EnvironmentName))
 			entry.ProjectName = getStringValue(labelMap, ReplaceDots(ProjectName))
 			entry.NamespaceName = getStringValue(labelMap, ReplaceDots(NamespaceName))
+			entry.ReleaseLineName = getStringValue(labelMap, ReplaceDots(ReleaseLineName))
+			entry.ReleaseLineID = getStringValue(labelMap, ReplaceDots(ReleaseLineID))
 
 			for k, v := range labelMap {
 				if str, ok := v.(string); ok {

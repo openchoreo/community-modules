@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Config struct {
@@ -19,6 +20,11 @@ type Config struct {
 	OpenSearchIndexPrefix   string
 	OpenSearchTLSSkipVerify bool
 	LogLevel                slog.Level
+	// RawQueryUsername and RawQueryPassword are the read-only OpenSearch user
+	// raw queries run as. Raw queries are not supported when they are unset.
+	RawQueryUsername string
+	RawQueryPassword string
+	RawQuery         RawQueryLimits
 }
 
 // LoadConfig loads configuration from environment variables.
@@ -69,6 +75,16 @@ func LoadConfig() (*Config, error) {
 
 	skipVerify := strings.ToLower(tlsSkipVerify) == "true"
 
+	rawQuery, err := loadRawQueryLimits()
+	if err != nil {
+		return nil, err
+	}
+	rawQueryUsername := getEnv("OPENSEARCH_RAW_QUERY_USERNAME", "")
+	rawQueryPassword := getEnv("OPENSEARCH_RAW_QUERY_PASSWORD", "")
+	if (rawQueryUsername == "") != (rawQueryPassword == "") {
+		return nil, fmt.Errorf("OPENSEARCH_RAW_QUERY_USERNAME and OPENSEARCH_RAW_QUERY_PASSWORD must be set together")
+	}
+
 	return &Config{
 		ServerPort:              serverPort,
 		OpenSearchAddress:       openSearchAddress,
@@ -77,6 +93,9 @@ func LoadConfig() (*Config, error) {
 		OpenSearchIndexPrefix:   openSearchIndexPrefix,
 		OpenSearchTLSSkipVerify: skipVerify,
 		LogLevel:                logLevel,
+		RawQueryUsername:        rawQueryUsername,
+		RawQueryPassword:        rawQueryPassword,
+		RawQuery:                rawQuery,
 	}, nil
 }
 
@@ -85,4 +104,24 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+// loadRawQueryLimits reads RAW_QUERY_TIMEOUT and RAW_QUERY_MAX_RESPONSE_BYTES.
+func loadRawQueryLimits() (RawQueryLimits, error) {
+	limits := DefaultRawQueryLimits
+	if v := os.Getenv("RAW_QUERY_TIMEOUT"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil || d <= 0 {
+			return limits, fmt.Errorf("invalid RAW_QUERY_TIMEOUT %q: must be a positive duration", v)
+		}
+		limits.Timeout = d
+	}
+	if v := os.Getenv("RAW_QUERY_MAX_RESPONSE_BYTES"); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || n <= 0 {
+			return limits, fmt.Errorf("invalid RAW_QUERY_MAX_RESPONSE_BYTES %q: must be a positive integer", v)
+		}
+		limits.MaxResponseBytes = n
+	}
+	return limits, nil
 }

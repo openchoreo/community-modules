@@ -13,4 +13,8 @@ data:
   SERVER_PORT: {{ .Values.adapter.serverPort | quote }}
   OPENSEARCH_ADDRESS: {{ .Values.adapter.openSearchAddress | quote }}
   OPENSEARCH_INDEX_PREFIX: {{ .Values.adapter.openSearchIndexPrefix | quote }}
+  {{- /* rawQuery may be absent from values reused from an earlier release */}}
+  {{- $rawQuery := .Values.adapter.rawQuery | default dict }}
+  RAW_QUERY_TIMEOUT: {{ $rawQuery.timeout | default "30s" | quote }}
+  RAW_QUERY_MAX_RESPONSE_BYTES: {{ $rawQuery.maxResponseBytes | default 10485760 | int64 | quote }}
 {{- end }}

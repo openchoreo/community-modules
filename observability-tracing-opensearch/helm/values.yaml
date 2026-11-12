@@ -38,8 +38,6 @@ openSearch:
 
   singleNode: true
 
-
-
 opentelemetry-collector:
   enabled: true
 
@@ -51,7 +49,7 @@ opentelemetry-collector:
         verbs: ["list", "watch"]
       - apiGroups: ["apps"]
         resources: ["replicasets"]
-        verbs: ["list","watch"]
+        verbs: ["list", "watch"]
 
   configMap:
     create: false
@@ -86,7 +84,6 @@ opentelemetry-collector:
 
   service:
     type: ClusterIP
-
 
 ## -----------------------------------------------------------
 ## Values for OpenChoreo specific customizations and workloads
@@ -166,15 +163,28 @@ adapter:
   enabled: true
   image:
     repository: "cr.openchoreo.dev/openchoreo/observability-tracing-opensearch-adapter"
-    tag: ""  # Defaults to Chart.AppVersion via the template
+    tag: "" # Defaults to Chart.AppVersion via the template
   serverPort: "9100"
   openSearchAddress: "https://opensearch:9200"
   openSearchIndexPrefix: "otel-traces-"
   openSearchSecretName: ""
+  # Limits for raw trace queries (POST /api/v1alpha1/traces/raw-query). Keep them in line with the
+  # observability plane's observer.tracingAdapter.rawQuery settings.
+  rawQuery:
+    # Raw queries run as a read-only OpenSearch user that can only read the trace indices.
+    # This Secret holds its 'rawQueryUsername' and 'rawQueryPassword' keys,
+    # kept apart from the admin credentials and synced by an ExternalSecret. Providing the
+    # Secret turns raw queries on; without the Secret or its keys, the adapter answers them with 501.
+    credentialsSecretName: "opensearch-traces-users"
+    # Query timeout; OpenSearch is asked to cancel the search at this point.
+    timeout: "30s"
+    # Largest OpenSearch response passed on, in bytes. A larger result is rejected, never returned partially.
+    maxResponseBytes: 10485760
   resources:
     limits:
       cpu: 100m
-      memory: 128Mi
+      # Room for a raw query response of up to rawQuery.maxResponseBytes.
+      memory: 256Mi
     requests:
       cpu: 20m
       memory: 64Mi
@@ -189,6 +199,14 @@ openSearchSetup:
   dataRetentionTime:
     traces: "30d"
 
+  # Extra field mappings for the trace index template. Span attributes are stored but not searchable
+  # unless mapped, so raw queries can only match on the attributes listed here. Added to the index
+  # template and to the existing indices' mappings; spans already stored are not reindexed (see the
+  # README). For example:
+  #   traceIndexMappings:
+  #     attributes.db.system.name: {type: keyword}
+  #     attributes.http.route: {type: keyword}
+  traceIndexMappings: {}
 
 opentelemetryCollectorCustomizations:
   openSearchQueue:

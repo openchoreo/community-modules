@@ -37,6 +37,9 @@ func main() {
 		slog.String("OpenSearch Password", string(cfg.OpenSearchPassword[0])+"*****"),
 		slog.Bool("OpenSearch TLS Skip Verify", cfg.OpenSearchTLSSkipVerify),
 		slog.String("Server Port", cfg.ServerPort),
+		slog.String("Raw Query Username", cfg.RawQueryUsername),
+		slog.Duration("Raw Query Timeout", cfg.RawQuery.Timeout),
+		slog.Int64("Raw Query Max Response Bytes", cfg.RawQuery.MaxResponseBytes),
 	)
 
 	client, err := opensearch.NewClient(
@@ -65,6 +68,26 @@ func main() {
 
 	// Create handlers and server
 	tracingHandler := app.NewTracingHandler(client, logger)
+	if cfg.RawQueryUsername != "" {
+		// Raw queries run as a read-only user limited to the trace indices,
+		// never as the adapter's own user.
+		rawClient, err := opensearch.NewClient(
+			cfg.OpenSearchAddress,
+			cfg.RawQueryUsername,
+			cfg.RawQueryPassword,
+			cfg.OpenSearchTLSSkipVerify,
+			logger,
+		)
+		if err != nil {
+			logger.Error("Failed to create the raw query OpenSearch client", slog.Any("error", err))
+			os.Exit(1)
+		}
+		tracingHandler.WithRawQuery(rawClient, cfg.OpenSearchIndexPrefix+"*", cfg.RawQuery)
+	} else {
+		logger.Warn("Raw trace queries are disabled: no read-only user is set. " +
+			"Provide rawQueryUsername and rawQueryPassword in the raw query credentials Secret to enable them " +
+			"(OPENSEARCH_RAW_QUERY_USERNAME and OPENSEARCH_RAW_QUERY_PASSWORD)")
+	}
 	srv := app.NewServer(cfg.ServerPort, tracingHandler, logger)
 
 	go func() {

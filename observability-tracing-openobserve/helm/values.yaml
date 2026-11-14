@@ -125,6 +125,13 @@ opentelemetryCollectorCustomizations:
     observabilityPlaneUrl: ""          # OTLP endpoint of the receiver, via the gateway
     observabilityPlaneVirtualHost: ""  # Host header / gateway vhost
     hostnames: []                      # hostnames placed on the receiver HTTPRoute
+    # TLS settings for the multiClusterExporter otlp exporter.
+    # Default keeps the current behaviour (no TLS). For production set insecure: false and
+    # mount the CA via opentelemetry-collector.extraVolumes / extraVolumeMounts.
+    tls:
+      insecure: true
+      caFile: ""                       # e.g. /etc/telemetry-ca/ca.crt
+      serverNameOverride: ""           # optional, when the dial name differs from the certificate
 
   tailSampling:
     enabled: true

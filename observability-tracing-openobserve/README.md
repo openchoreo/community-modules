@@ -164,6 +164,29 @@ helm upgrade --install observability-tracing-openobserve \
   --set opentelemetryCollectorCustomizations.http.observabilityPlaneVirtualHost="opentelemetry.<OBS_BASE_DOMAIN>"
 ```
 
+##### Optional: encrypt the exporter connection with TLS
+
+By default the exporter sends traces to the receiver without TLS (`opentelemetryCollectorCustomizations.http.tls.insecure: true`),
+so existing installs are unchanged. For production, enable TLS and verify the gateway certificate against your CA:
+
+| Value | Description | Default |
+| ----- | ----------- | ------- |
+| `opentelemetryCollectorCustomizations.http.tls.insecure` | Set to `false` to enable TLS on the exporter. | `true` |
+| `opentelemetryCollectorCustomizations.http.tls.caFile` | Path to the CA certificate used to verify the gateway certificate. | `""` |
+| `opentelemetryCollectorCustomizations.http.tls.serverNameOverride` | Server name used for verification when the dial name differs from the certificate. | `""` |
+
+The CA file must be mounted into the collector pod. Create a Secret that holds the CA (for example `telemetry-ca`
+with a `ca.crt` key) and mount it through the upstream chart values:
+
+```bash
+  --set opentelemetryCollectorCustomizations.http.tls.insecure=false \
+  --set opentelemetryCollectorCustomizations.http.tls.caFile="/etc/telemetry-ca/ca.crt" \
+  --set-json opentelemetry-collector.extraVolumes='[{"name":"telemetry-ca","secret":{"secretName":"telemetry-ca"}}]' \
+  --set-json opentelemetry-collector.extraVolumeMounts='[{"name":"telemetry-ca","mountPath":"/etc/telemetry-ca","readOnly":true}]'
+```
+
+Add these flags to the `helm upgrade --install` command above.
+
 ## Dependencies
 
 Bundled upstream Helm charts:

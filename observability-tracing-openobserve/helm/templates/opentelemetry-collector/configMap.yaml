@@ -28,7 +28,13 @@ data:
       otlp:
         endpoint: {{ .Values.opentelemetryCollectorCustomizations.http.observabilityPlaneUrl }}
         tls:
-          insecure: true
+          insecure: {{ .Values.opentelemetryCollectorCustomizations.http.tls.insecure }}
+          {{- with .Values.opentelemetryCollectorCustomizations.http.tls.caFile }}
+          ca_file: {{ . | quote }}
+          {{- end }}
+          {{- with .Values.opentelemetryCollectorCustomizations.http.tls.serverNameOverride }}
+          server_name_override: {{ . | quote }}
+          {{- end }}
         {{- with .Values.opentelemetryCollectorCustomizations.http.observabilityPlaneVirtualHost }}
         headers:
           Host: {{ . | quote }}

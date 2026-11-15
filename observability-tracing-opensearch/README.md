@@ -174,6 +174,13 @@ with a `ca.crt` key) and mount it through the upstream chart values:
 
 Add these flags to the `helm upgrade --install` command above.
 
+The collector reads its configuration only at startup, and changing these TLS values alone does not restart it.
+After the upgrade, restart the collector so the new settings take effect:
+
+```bash
+kubectl rollout restart deployment/opentelemetry-collector -n openchoreo-observability-plane
+```
+
 ## Features
 
 | Feature                | Module version  | Setup                                                                                    |

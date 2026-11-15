@@ -228,3 +228,11 @@ opentelemetryCollectorCustomizations:
     observabilityPlaneUrl: ""
     observabilityPlaneVirtualHost: ""
     hostnames: []
+    # TLS settings for the multiClusterExporter otlp exporter.
+    # For production set insecure: false and
+    # mount the CA via opentelemetry-collector.extraVolumes / extraVolumeMounts.
+    tls:
+      insecure: true
+      insecureSkipVerify: false        # skip certificate verification, for self-signed setups without a distributed CA
+      caFile: ""                       # e.g. /etc/telemetry-ca/ca.crt
+      serverNameOverride: ""           # optional, when the dial name differs from the certificate

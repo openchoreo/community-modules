@@ -136,7 +136,14 @@ func (c *Client) RawSearch(ctx context.Context, body []byte, maxResponseBytes in
 	// OpenObserve stops sending the rest of an oversized result.
 	defer func() { _ = resp.Body.Close() }()
 
-	data, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
+	// Only a result is held to the maximum response size. An error answer is
+	// read up to a cap of its own, so its message is passed on whatever the
+	// configured size, and a large error page isn't read in full.
+	readLimit := maxResponseBytes + 1
+	if resp.StatusCode != http.StatusOK {
+		readLimit = maxErrorBodyBytes
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, readLimit))
 	if err != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			return nil, ErrRawQueryTimeout
@@ -160,8 +167,6 @@ func (c *Client) RawSearch(ctx context.Context, body []byte, maxResponseBytes in
 			slog.Int("statusCode", resp.StatusCode), slog.String("body", string(data)))
 		return nil, fmt.Errorf("openobserve returned status %d", resp.StatusCode)
 	}
-	// Only a result is held to the maximum response size; an error answer
-	// keeps its own meaning whatever its length.
 	if int64(len(data)) > maxResponseBytes {
 		return nil, ErrRawQueryTooLarge
 	}
@@ -203,3 +208,7 @@ func openObserveErrorMessage(data []byte, status int) string {
 
 // maxErrorMessageLength caps a plain-text OpenObserve error passed on.
 const maxErrorMessageLength = 1024
+
+// maxErrorBodyBytes caps how much of an OpenObserve error answer is read.
+// Error bodies are small JSON objects or short text, well under this.
+const maxErrorBodyBytes = 64 << 10

@@ -248,8 +248,9 @@ spec:
       remoteRef: { key: openobserve-raw-query-password, property: value }
 ```
 
-Without the Secret or its keys, the module installs and works as before, and the adapter answers raw queries with 501.
-After providing them, run `helm upgrade` so the setup job creates the user, then restart the adapter so it reads them.
+Without the Secret, or without both of its keys, the module installs and works as before, and the adapter answers raw
+queries with 501. With only one of the two keys, the adapter doesn't start, and the setup job skips the user. After
+providing them, run `helm upgrade` so the setup job creates the user, then restart the adapter so it reads them.
 
 ## Dependencies
 

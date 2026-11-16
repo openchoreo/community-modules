@@ -12,6 +12,10 @@ OPENOBSERVE_ORG="${OPENOBSERVE_ORG}"
 OPENOBSERVE_USERNAME="${OPENOBSERVE_USERNAME}"
 OPENOBSERVE_PASSWORD="${OPENOBSERVE_PASSWORD}"
 
+# Every request is bounded, so a connection OpenObserve accepts but never answers fails the step instead of holding
+# up the Helm hook.
+CURL_TIMEOUTS=(--connect-timeout 5 --max-time 30)
+
 # 1. Wait for OpenObserve to become ready.
 
 MAX_RETRIES=30
@@ -20,7 +24,7 @@ RETRY_INTERVAL=10
 echo "Checking OpenObserve health status..."
 healthy=false
 for i in $(seq 1 "$MAX_RETRIES"); do
-  status=$(curl -s "$OPENOBSERVE_URL/healthz" | jq -r '.status // empty' 2>/dev/null)
+  status=$(curl -s "${CURL_TIMEOUTS[@]}" "$OPENOBSERVE_URL/healthz" | jq -r '.status // empty' 2>/dev/null)
   if [ "$status" = "ok" ]; then
     echo "OpenObserve is healthy and ready"
     healthy=true
@@ -62,7 +66,7 @@ if [ "$rawQueryUsername" = "$(echo "$OPENOBSERVE_USERNAME" | tr '[:upper:]' '[:l
   exit 1
 fi
 
-users=$(curl -s -f -u "$OPENOBSERVE_USERNAME:$OPENOBSERVE_PASSWORD" "$OPENOBSERVE_URL/api/$OPENOBSERVE_ORG/users")
+users=$(curl -s -f "${CURL_TIMEOUTS[@]}" -u "$OPENOBSERVE_USERNAME:$OPENOBSERVE_PASSWORD" "$OPENOBSERVE_URL/api/$OPENOBSERVE_ORG/users")
 if [ $? -ne 0 ]; then
   echo "ERROR: failed to list the users of the organization $OPENOBSERVE_ORG"
   exit 1
@@ -82,7 +86,7 @@ else
     '{email: $email, password: $password, role: "admin", first_name: "OpenChoreo", last_name: "raw trace queries"}')
 fi
 
-response=$(curl -s -w "\n%{http_code}" -u "$OPENOBSERVE_USERNAME:$OPENOBSERVE_PASSWORD" -X "$method" "$url" \
+response=$(curl -s "${CURL_TIMEOUTS[@]}" -w "\n%{http_code}" -u "$OPENOBSERVE_USERNAME:$OPENOBSERVE_PASSWORD" -X "$method" "$url" \
   -H "Content-Type: application/json" -d "$payload")
 httpCode=$(echo "$response" | tail -n1)
 body=$(echo "$response" | sed '$d')

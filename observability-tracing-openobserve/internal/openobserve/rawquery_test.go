@@ -158,11 +158,14 @@ func TestRawSearch_Errors(t *testing.T) {
 					t.Errorf("got %v", err)
 				}
 			}},
-		{"an oversized rejection is still a rejection", http.StatusBadRequest,
+		{"an oversized rejection is still a rejection, with its whole message", http.StatusBadRequest,
 			`{"code":400,"message":"` + strings.Repeat("x", 2048) + `"}`,
 			func(t *testing.T, err error) {
+				// The body is larger than the 1024-byte maximum response size,
+				// which applies only to results.
 				var invalid *InvalidRawQueryError
-				if !errors.As(err, &invalid) || errors.Is(err, ErrRawQueryTooLarge) {
+				if !errors.As(err, &invalid) || errors.Is(err, ErrRawQueryTooLarge) ||
+					invalid.Reason != strings.Repeat("x", 2048) {
 					t.Errorf("got %v", err)
 				}
 			}},

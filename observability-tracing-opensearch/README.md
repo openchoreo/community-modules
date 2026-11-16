@@ -149,6 +149,86 @@ helm upgrade --install observability-tracing-opensearch \
   --set opentelemetryCollectorCustomizations.http.observabilityPlaneVirtualHost="opentelemetry.<gateway-domain>"
 ```
 
+#### Optional: encrypt the exporter connection with TLS
+
+By default the exporter sends traces to the receiver without TLS (`opentelemetryCollectorCustomizations.http.tls.insecure: true`),
+so existing installs are unchanged. For production, enable TLS, point `observabilityPlaneUrl` at the gateway's HTTPS
+listener, and verify the gateway certificate against your CA:
+
+| Value | Description | Default |
+| ----- | ----------- | ------- |
+| `opentelemetryCollectorCustomizations.http.tls.insecure` | Set to `false` to enable TLS on the exporter. | `true` |
+| `opentelemetryCollectorCustomizations.http.tls.insecureSkipVerify` | Skip verification of the gateway certificate. Only for self-signed setups without a distributed CA. | `false` |
+| `opentelemetryCollectorCustomizations.http.tls.caFile` | Path to the CA certificate used to verify the gateway certificate. | `""` |
+| `opentelemetryCollectorCustomizations.http.tls.serverNameOverride` | Server name used for verification when the dial name differs from the certificate. | `""` |
+
+The CA file must be mounted into the collector pod from a Secret in the exporter cluster (for example `telemetry-ca`
+with a `ca.crt` key). It is the CA that issued the observability plane gateway's TLS Secret (the one set in
+`gateway.tls.certificateRefs` of the `openchoreo-observability-plane` chart). When that certificate is issued by a
+cert-manager CA issuer, the CA is in the Secret's `ca.crt` key. Copy it into the exporter cluster:
+
+```bash
+# On the observability plane cluster: read the CA from the gateway's TLS Secret.
+kubectl --context <observability-plane-context> get secret <gateway-tls-secret> \
+  -n openchoreo-observability-plane -o jsonpath='{.data.ca\.crt}' | base64 -d > ca.crt
+
+# On the exporter cluster: store it in the Secret the collector mounts.
+kubectl --context <exporter-context> create secret generic telemetry-ca \
+  -n openchoreo-observability-plane --from-file=ca.crt=ca.crt
+```
+
+If the gateway certificate comes from a public CA, the exporter already trusts it through the system roots:
+leave `caFile` empty and do not mount a CA.
+
+> **Production:** do not copy the CA by hand. Store it in your secret backend (key vault) and sync it into the
+> exporter cluster with an External Secrets Operator `ExternalSecret`, so rotation is handled in one place.
+> The collector loads `caFile` only at startup, so restart it after each CA rotation (see the restart command below).
+> For example, with the CA stored under the key `observability-gateway-ca`:
+>
+> ```yaml
+> apiVersion: external-secrets.io/v1
+> kind: ExternalSecret
+> metadata:
+>   name: telemetry-ca
+>   namespace: openchoreo-observability-plane
+> spec:
+>   refreshInterval: 1h
+>   secretStoreRef:
+>     kind: ClusterSecretStore
+>     name: default  # a store backed by your key vault, available in the exporter cluster
+>   target:
+>     name: telemetry-ca
+>   data:
+>     - secretKey: ca.crt
+>       remoteRef:
+>         key: observability-gateway-ca
+>         property: value
+> ```
+
+Then enable TLS on the exporter. Every TLS setup needs this flag, whichever CA issued the gateway certificate:
+
+```bash
+  --set opentelemetryCollectorCustomizations.http.tls.insecure=false
+```
+
+Only when the gateway certificate is issued by a private CA, also set `caFile` and mount the `telemetry-ca` Secret
+through the upstream chart values:
+
+```bash
+  --set opentelemetryCollectorCustomizations.http.tls.caFile="/etc/telemetry-ca/ca.crt" \
+  --set-json opentelemetry-collector.extraVolumes='[{"name":"telemetry-ca","secret":{"secretName":"telemetry-ca"}}]' \
+  --set-json opentelemetry-collector.extraVolumeMounts='[{"name":"telemetry-ca","mountPath":"/etc/telemetry-ca","readOnly":true}]'
+```
+
+Add these flags to the `helm upgrade --install` command above.
+
+The collector reads its configuration only at startup, and changing these TLS values alone does not restart it.
+After the upgrade, restart the collector so the new settings take effect:
+
+```bash
+kubectl rollout restart deployment/opentelemetry-collector -n openchoreo-observability-plane
+```
+
 ## Features
 
 | Feature                | Module version  | Setup                                                                                    |

@@ -182,6 +182,7 @@ leave `caFile` empty and do not mount a CA.
 
 > **Production:** do not copy the CA by hand. Store it in your secret backend (key vault) and sync it into the
 > exporter cluster with an External Secrets Operator `ExternalSecret`, so rotation is handled in one place.
+> The collector loads `caFile` only at startup, so restart it after each CA rotation (see the restart command below).
 > For example, with the CA stored under the key `observability-gateway-ca`:
 >
 > ```yaml
@@ -204,10 +205,16 @@ leave `caFile` empty and do not mount a CA.
 >         property: value
 > ```
 
-Then enable TLS and mount the Secret through the upstream chart values:
+Then enable TLS on the exporter. Every TLS setup needs this flag, whichever CA issued the gateway certificate:
 
 ```bash
-  --set opentelemetryCollectorCustomizations.http.tls.insecure=false \
+  --set opentelemetryCollectorCustomizations.http.tls.insecure=false
+```
+
+Only when the gateway certificate is issued by a private CA, also set `caFile` and mount the `telemetry-ca` Secret
+through the upstream chart values:
+
+```bash
   --set opentelemetryCollectorCustomizations.http.tls.caFile="/etc/telemetry-ca/ca.crt" \
   --set-json opentelemetry-collector.extraVolumes='[{"name":"telemetry-ca","secret":{"secretName":"telemetry-ca"}}]' \
   --set-json opentelemetry-collector.extraVolumeMounts='[{"name":"telemetry-ca","mountPath":"/etc/telemetry-ca","readOnly":true}]'

@@ -282,8 +282,8 @@ func TestBuildLogAlertingRuleMonitorBody(t *testing.T) {
 		if body["type"] != "monitor" {
 			t.Errorf("expected type='monitor', got %v", body["type"])
 		}
-		if body["name"] != "test-rule" {
-			t.Errorf("expected name='test-rule', got %v", body["name"])
+		if body["name"] != "test-ns/test-rule" {
+			t.Errorf("expected name='test-ns/test-rule', got %v", body["name"])
 		}
 		if body["enabled"] != true {
 			t.Errorf("expected enabled=true, got %v", body["enabled"])

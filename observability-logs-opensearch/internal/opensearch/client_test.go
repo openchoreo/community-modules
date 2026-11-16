@@ -7,10 +7,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -190,16 +192,22 @@ func TestSearch(t *testing.T) {
 	})
 }
 
-func TestSearchMonitorByName(t *testing.T) {
-	t.Run("found", func(t *testing.T) {
+func TestSearchMonitorsByName(t *testing.T) {
+	t.Run("returns every hit with its name", func(t *testing.T) {
+		var gotBody string
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path == "/_plugins/_alerting/monitors/_search" {
+				b, _ := io.ReadAll(r.Body)
+				gotBody = string(b)
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
 				resp := `{
 					"hits": {
-						"total": {"value": 1, "relation": "eq"},
-						"hits": [{"_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890", "_source": {"name": "test-monitor"}}]
+						"total": {"value": 2, "relation": "eq"},
+						"hits": [
+							{"_id": "id-1", "_source": {"name": "ns-a/test-monitor"}},
+							{"_id": "id-2", "_source": {"monitor": {"name": "ns-a/test-monitor-2"}}}
+						]
 					}
 				}`
 				fmt.Fprint(w, resp)
@@ -210,15 +218,16 @@ func TestSearchMonitorByName(t *testing.T) {
 		defer server.Close()
 
 		client := newTestClient(t, server.URL)
-		id, found, err := client.SearchMonitorByName(context.Background(), "test-monitor")
+		refs, err := client.SearchMonitorsByName(context.Background(), "ns-a/test-monitor")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if !found {
-			t.Fatal("expected monitor to be found")
+		want := []MonitorRef{{ID: "id-1", Name: "ns-a/test-monitor"}, {ID: "id-2", Name: "ns-a/test-monitor-2"}}
+		if !reflect.DeepEqual(refs, want) {
+			t.Errorf("expected %v, got %v", want, refs)
 		}
-		if id != "a1b2c3d4-e5f6-7890-abcd-ef1234567890" {
-			t.Errorf("expected id 'a1b2c3d4-e5f6-7890-abcd-ef1234567890', got %q", id)
+		if !strings.Contains(gotBody, `"monitor.name.keyword": "ns-a/test-monitor"`) {
+			t.Errorf("expected an exact-name clause in the query, got %s", gotBody)
 		}
 	})
 
@@ -227,13 +236,7 @@ func TestSearchMonitorByName(t *testing.T) {
 			if r.URL.Path == "/_plugins/_alerting/monitors/_search" {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
-				resp := `{
-					"hits": {
-						"total": {"value": 0, "relation": "eq"},
-						"hits": []
-					}
-				}`
-				fmt.Fprint(w, resp)
+				fmt.Fprint(w, `{"hits": {"total": {"value": 0, "relation": "eq"}, "hits": []}}`)
 				return
 			}
 			w.WriteHeader(http.StatusOK)
@@ -241,12 +244,12 @@ func TestSearchMonitorByName(t *testing.T) {
 		defer server.Close()
 
 		client := newTestClient(t, server.URL)
-		_, found, err := client.SearchMonitorByName(context.Background(), "nonexistent")
+		refs, err := client.SearchMonitorsByName(context.Background(), "nonexistent")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if found {
-			t.Fatal("expected monitor not to be found")
+		if len(refs) != 0 {
+			t.Fatalf("expected no monitors, got %v", refs)
 		}
 	})
 
@@ -261,8 +264,7 @@ func TestSearchMonitorByName(t *testing.T) {
 		defer server.Close()
 
 		client := newTestClient(t, server.URL)
-		_, _, err := client.SearchMonitorByName(context.Background(), "test")
-		if err == nil {
+		if _, err := client.SearchMonitorsByName(context.Background(), "test"); err == nil {
 			t.Fatal("expected error for server error")
 		}
 	})

@@ -6,6 +6,8 @@ package prometheus
 import (
 	"strings"
 	"testing"
+
+	"k8s.io/apimachinery/pkg/util/validation"
 )
 
 func TestBuildPrometheusRule_CPUUsage(t *testing.T) {
@@ -28,8 +30,11 @@ func TestBuildPrometheusRule_CPUUsage(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if rule.Name != "test-cpu-alert" {
-		t.Errorf("expected name %q, got %q", "test-cpu-alert", rule.Name)
+	if want := ObjectName(params.Namespace, params.Name); rule.Name != want {
+		t.Errorf("expected name %q, got %q", want, rule.Name)
+	}
+	if rule.Labels[RuleNamespaceLabel] != params.Namespace {
+		t.Errorf("expected %s label %q, got %q", RuleNamespaceLabel, params.Namespace, rule.Labels[RuleNamespaceLabel])
 	}
 	if rule.Namespace != "monitoring" {
 		t.Errorf("expected namespace %q, got %q", "monitoring", rule.Namespace)
@@ -110,8 +115,11 @@ func TestBuildPrometheusRule_Budget(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if rule.Name != "test-budget-alert" {
-		t.Errorf("expected name %q, got %q", "test-budget-alert", rule.Name)
+	if want := ObjectName(params.Namespace, params.Name); rule.Name != want {
+		t.Errorf("expected name %q, got %q", want, rule.Name)
+	}
+	if rule.Labels[RuleNamespaceLabel] != params.Namespace {
+		t.Errorf("expected %s label %q, got %q", RuleNamespaceLabel, params.Namespace, rule.Labels[RuleNamespaceLabel])
 	}
 
 	alertRule := rule.Spec.Groups[0].Rules[0]
@@ -451,5 +459,47 @@ func TestUsageAlertExpressions_DedupePerContainer(t *testing.T) {
 				t.Errorf("expression must not join on pod alone:\n%s", expr)
 			}
 		})
+	}
+}
+
+func TestObjectName(t *testing.T) {
+	a := ObjectName("tenant-a", "api-development-1a2b3c4d-cpu-high")
+	b := ObjectName("tenant-b", "api-development-1a2b3c4d-cpu-high")
+	if a == b {
+		t.Fatalf("same rule name in different namespaces must map to different objects, both got %q", a)
+	}
+	if a != ObjectName("tenant-a", "api-development-1a2b3c4d-cpu-high") {
+		t.Fatalf("ObjectName must be deterministic")
+	}
+	if !strings.HasPrefix(a, "api-development-1a2b3c4d-cpu-high-") {
+		t.Errorf("expected the rule name as prefix, got %q", a)
+	}
+
+	long := ObjectName("ns", strings.Repeat("a", 250)+".b")
+	if len(long) > maxObjectNameLength {
+		t.Errorf("expected at most %d characters, got %d", maxObjectNameLength, len(long))
+	}
+	if errs := validation.IsDNS1123Subdomain(long); len(errs) > 0 {
+		t.Errorf("expected a valid object name, got %q: %v", long, errs)
+	}
+	dotted := ObjectName("ns", strings.Repeat("a", 241)+".bcd")
+	if errs := validation.IsDNS1123Subdomain(dotted); len(errs) > 0 {
+		t.Errorf("expected a valid object name, got %q: %v", dotted, errs)
+	}
+}
+
+func TestRuleIdentity(t *testing.T) {
+	params := AlertRuleParams{
+		Name: "cpu-high", Namespace: "tenant-a", ComponentUID: "c5f0a8d3-7e2b-4d9c-a1f4-6b8e3c0d5a7f",
+		ProjectUID: "d6a1b9e4-8f3c-4e0d-b2a5-7c9f4d1e6b8a", EnvironmentUID: "e7b2c0f5-9a4d-4f1e-c3b6-8d0a5e2f7c9b",
+		Metric: MetricTypeCPUUsage, Enabled: true, Window: "5m", Interval: "1m", Operator: "gt", Threshold: 80,
+	}
+	rule, err := BuildPrometheusRule(params, "monitoring")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	ns, name := RuleIdentity(rule)
+	if ns != "tenant-a" || name != "cpu-high" {
+		t.Errorf("expected tenant-a/cpu-high, got %s/%s", ns, name)
 	}
 }

@@ -4,7 +4,10 @@
 package prometheus
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"strings"
 	"time"
 
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
@@ -40,6 +43,43 @@ type AlertRuleParams struct {
 // ComponentUIDAnnotation is the alert rule annotation that records the rule's component UID.
 const ComponentUIDAnnotation = "component_uid"
 
+const (
+	// RuleNameAnnotation is the alert rule annotation that records the name of the alert rule CR.
+	RuleNameAnnotation = "rule_name"
+	// RuleNamespaceAnnotation is the alert rule annotation that records the namespace of the alert rule CR.
+	RuleNamespaceAnnotation = "rule_namespace"
+	// RuleNamespaceLabel labels each PrometheusRule with the namespace of its alert rule CR.
+	RuleNamespaceLabel = "openchoreo.dev/rule-namespace"
+
+	maxObjectNameLength = 253
+	objectNameHashLen   = 10
+)
+
+// ObjectName returns the PrometheusRule name for the alert rule with the given namespace and name.
+// Rules from every namespace share one PrometheusRule namespace, so the name carries a hash of both
+// to keep same-named rules from different namespaces apart.
+func ObjectName(namespace, name string) string {
+	sum := sha256.Sum256([]byte(namespace + "/" + name))
+	suffix := hex.EncodeToString(sum[:])[:objectNameHashLen]
+	base := name
+	if maxBase := maxObjectNameLength - len(suffix) - 1; len(base) > maxBase {
+		base = strings.TrimRight(base[:maxBase], "-.")
+	}
+	return base + "-" + suffix
+}
+
+// RuleIdentity returns the namespace and name of the alert rule a PrometheusRule was built from.
+func RuleIdentity(rule *monitoringv1.PrometheusRule) (namespace, name string) {
+	for _, group := range rule.Spec.Groups {
+		for _, r := range group.Rules {
+			if r.Annotations[RuleNameAnnotation] != "" {
+				return r.Annotations[RuleNamespaceAnnotation], r.Annotations[RuleNameAnnotation]
+			}
+		}
+	}
+	return "", ""
+}
+
 // BuildPrometheusRule builds a PrometheusRule CR from alert rule parameters.
 func BuildPrometheusRule(rule AlertRuleParams, namespace string) (*monitoringv1.PrometheusRule, error) {
 	if rule.Metric != MetricTypeCPUUsage && rule.Metric != MetricTypeMemoryUsage && rule.Metric != MetricTypeBudget {
@@ -62,9 +102,9 @@ func BuildPrometheusRule(rule AlertRuleParams, namespace string) (*monitoringv1.
 	}
 
 	alertAnnotations := map[string]string{
-		"rule_name":      rule.Name,
-		"rule_namespace": rule.Namespace,
-		"alert_value":    "{{ $value | printf \"%.2f\" }}",
+		RuleNameAnnotation:      rule.Name,
+		RuleNamespaceAnnotation: rule.Namespace,
+		"alert_value":           "{{ $value | printf \"%.2f\" }}",
 		// A release line's rule matches on the line alone, so its expression does not name the component.
 		ComponentUIDAnnotation: rule.ComponentUID,
 	}
@@ -82,8 +122,9 @@ func BuildPrometheusRule(rule AlertRuleParams, namespace string) (*monitoringv1.
 			Kind:       "PrometheusRule",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      rule.Name,
+			Name:      ObjectName(rule.Namespace, rule.Name),
 			Namespace: namespace,
+			Labels:    map[string]string{RuleNamespaceLabel: rule.Namespace},
 		},
 		Spec: monitoringv1.PrometheusRuleSpec{
 			Groups: []monitoringv1.RuleGroup{

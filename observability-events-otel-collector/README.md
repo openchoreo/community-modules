@@ -180,6 +180,34 @@ collector:
 `collector.initContainers` is generic and rendered through `tpl`, so the same hook works for any
 backend that needs the collector held back until it is ready.
 
+### Verifying a private CA
+
+Exporters are free-form, so any exporter can set `tls.ca_file`. To verify a backend or gateway
+certificate signed by a private CA, put the CA in a Secret and mount it with
+`collector.extraVolumes` and `collector.extraVolumeMounts`. Both are appended to the chart's
+built-in volumes and mounts.
+
+```bash
+kubectl -n openchoreo-observability-plane create secret generic telemetry-ca --from-file=ca.crt
+```
+
+```yaml
+collector:
+  extraVolumes:
+    - name: telemetry-ca
+      secret:
+        secretName: telemetry-ca
+  extraVolumeMounts:
+    - name: telemetry-ca
+      mountPath: /etc/telemetry-ca
+      readOnly: true
+exporters:
+  otlphttp/openobserve:
+    endpoint: https://openobserve.observability.internal/api/default
+    tls:
+      ca_file: /etc/telemetry-ca/ca.crt
+```
+
 ### OpenObserve (native OTLP/HTTP)
 
 Compatible with `observability-logs-openobserve` community module (>= version 0.5.0):

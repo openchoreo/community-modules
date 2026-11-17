@@ -65,6 +65,18 @@ collector:
   # has a ready-made one for OpenSearch.
   initContainers: []
 
+  # Extra volumes for the collector pod and mounts for the collector container,
+  # appended to the built-in ones. Typically used to mount a private CA that an
+  # exporter's `tls.ca_file` points to. See "Verifying a private CA" in the README.
+  extraVolumes: []
+  #  - name: telemetry-ca
+  #    secret:
+  #      secretName: telemetry-ca
+  extraVolumeMounts: []
+  #  - name: telemetry-ca
+  #    mountPath: /etc/telemetry-ca
+  #    readOnly: true
+
   podAnnotations: {}
   podLabels: {}
   nodeSelector: {}

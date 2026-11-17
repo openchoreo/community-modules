@@ -18,9 +18,13 @@ spec:
   podMonitorNamespaceSelector: {}
   remoteWrite:
     - url: {{ .Values.prometheusCustomizations.http.observabilityPlaneUrl | quote }}
+      {{- $tlsConfig := deepCopy (.Values.prometheusCustomizations.remoteWrite.tlsConfig | default dict) }}
       {{- if .Values.prometheusCustomizations.remoteWrite.tlsInsecureSkipVerify }}
+      {{- $_ := set $tlsConfig "insecureSkipVerify" true }}
+      {{- end }}
+      {{- with $tlsConfig }}
       tlsConfig:
-        insecureSkipVerify: true
+        {{- toYaml . | nindent 8 }}
       {{- end }}
       queueConfig:
         capacity: 2500

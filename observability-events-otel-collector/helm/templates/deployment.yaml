@@ -93,6 +93,9 @@ spec:
             - name: storage
               mountPath: {{ .Values.persistence.mountPath }}
             {{- end }}
+            {{- with .Values.collector.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
       volumes:
         - name: config
           configMap:
@@ -103,6 +106,9 @@ spec:
         - name: storage
           persistentVolumeClaim:
             claimName: {{ include "events-collector.fullname" . }}-storage
+        {{- end }}
+        {{- with .Values.collector.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
         {{- end }}
       {{- with .Values.collector.nodeSelector }}
       nodeSelector:

@@ -88,16 +88,21 @@ data:
         http_user ${OPENOBSERVE_USERNAME}
         http_passwd ${OPENOBSERVE_PASSWORD}
         tls {{ if .Values.common.openObserveTlsEnabled }}On{{ else }}Off{{ end }}
+{{- include "observability-logs-openobserve.fluentBitTlsOptions" (dict "tls" .Values.common.openObserveTlsEnabled "caFile" .Values.common.openObserveTlsCaFile "verifyHostname" .Values.common.openObserveTlsVerifyHostname "vhost" .Values.common.openObserveTlsVhost) }}
 {{- if .Values.auditLogs.enabled }}
 {{- $c := .Values.common }}
-{{- $out := dict "host" $c.openObserveHost "port" $c.openObservePort "org" $c.openObserveOrg "tls" $c.openObserveTlsEnabled "env" "OPENOBSERVE" }}
+{{- $out := dict "host" $c.openObserveHost "port" $c.openObservePort "org" $c.openObserveOrg "tls" $c.openObserveTlsEnabled "caFile" $c.openObserveTlsCaFile "verifyHostname" $c.openObserveTlsVerifyHostname "vhost" $c.openObserveTlsVhost "env" "OPENOBSERVE" }}
 {{- with .Values.auditLogs.output }}
 {{- if .host }}
 {{- $tls := $out.tls }}
 {{- if kindIs "bool" .tlsEnabled }}
 {{- $tls = .tlsEnabled }}
 {{- end }}
-{{- $out = dict "host" .host "port" (.port | default $out.port) "org" (.org | default $out.org) "tls" $tls "env" "AUDIT_OPENOBSERVE" }}
+{{- $verifyHostname := $out.verifyHostname }}
+{{- if kindIs "bool" .tlsVerifyHostname }}
+{{- $verifyHostname = .tlsVerifyHostname }}
+{{- end }}
+{{- $out = dict "host" .host "port" (.port | default $out.port) "org" (.org | default $out.org) "tls" $tls "caFile" (.tlsCaFile | default $out.caFile) "verifyHostname" $verifyHostname "vhost" .tlsVhost "env" "AUDIT_OPENOBSERVE" }}
 {{- end }}
 {{- end }}
 
@@ -111,6 +116,7 @@ data:
         http_user {{ printf "${%s_USERNAME}" $out.env }}
         http_passwd {{ printf "${%s_PASSWORD}" $out.env }}
         tls {{ if $out.tls }}On{{ else }}Off{{ end }}
+{{- include "observability-logs-openobserve.fluentBitTlsOptions" $out }}
 {{- end }}
 
   parsers.conf: |

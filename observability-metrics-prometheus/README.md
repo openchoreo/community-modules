@@ -58,7 +58,24 @@ helm upgrade --install observability-metrics-prometheus \
   --set kube-prometheus-stack.alertmanager.enabled=false
 ```
 
-> **Note:** If the observability plane gateway uses self-signed certificates, remote write will fail with `x509: certificate signed by unknown authority`. Add `--set prometheusCustomizations.remoteWrite.tlsInsecureSkipVerify=true` to skip TLS verification.
+> **Note:** If the observability plane gateway uses self-signed certificates, remote write will fail with `x509: certificate signed by unknown authority`. Either verify the certificate against its CA with `prometheusCustomizations.remoteWrite.tlsConfig` (below), or add `--set prometheusCustomizations.remoteWrite.tlsInsecureSkipVerify=true` to skip TLS verification.
+
+To verify the receiver against a private CA, put the CA in a Secret in the exporter's namespace and reference it from `tlsConfig`. The block is passed as-is to the PrometheusAgent's remote write entry, so the operator's other TLS fields (`cert`, `keySecret` for client certificates, `serverName`) work too. The operator mounts the referenced Secrets into the agent pod.
+
+```bash
+kubectl -n openchoreo-observability-plane create secret generic telemetry-ca --from-file=ca.crt
+```
+
+```yaml
+prometheusCustomizations:
+  remoteWrite:
+    tlsConfig:
+      ca:
+        secret:
+          name: telemetry-ca
+          key: ca.crt
+      serverName: prometheus.observability.example.com
+```
 
 #### Exporter configuration options
 
@@ -66,6 +83,7 @@ helm upgrade --install observability-metrics-prometheus \
 | ------------------------------------------------------------ | ---------- | ------------------------------------------------------------------------------------- |
 | `prometheusCustomizations.http.observabilityPlaneUrl`        | (required) | Central receiver URL for remote write. The URL hostname is used as the `Host` header. |
 | `prometheusCustomizations.remoteWrite.tlsInsecureSkipVerify` | `false`    | Skip TLS certificate verification for self-signed certs on the receiver.              |
+| `prometheusCustomizations.remoteWrite.tlsConfig`             | `{}`       | TLS settings for the remote write entry (`ca`, `cert`, `keySecret`, `serverName`, `insecureSkipVerify`), passed as-is to the PrometheusAgent. |
 | `prometheusCustomizations.agent.image`                       | `quay.io/prometheus/prometheus:v3.15.1-distroless` | Image for the PrometheusAgent. Empty falls back to the operator's compiled-in default. |
 
 ## Storage and retention

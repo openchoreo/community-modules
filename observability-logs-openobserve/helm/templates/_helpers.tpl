@@ -16,3 +16,21 @@ Usage: {{ include "observability-logs-openobserve.auditStream" . }}
 {{- end -}}
 {{- $stream -}}
 {{- end }}
+
+{{/*
+Optional TLS settings for a Fluent Bit http output, rendered only when TLS is on.
+Takes a dict with tls, caFile, verifyHostname and vhost.
+*/}}
+{{- define "observability-logs-openobserve.fluentBitTlsOptions" -}}
+{{- if .tls }}
+{{- with .caFile }}
+        tls.ca_file {{ . }}
+{{- end }}
+{{- if .verifyHostname }}
+        tls.verify_hostname On
+{{- end }}
+{{- with .vhost }}
+        tls.vhost {{ . }}
+{{- end }}
+{{- end }}
+{{- end }}

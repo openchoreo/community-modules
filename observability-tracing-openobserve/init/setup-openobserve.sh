@@ -68,9 +68,11 @@ RETRY_INTERVAL=10
 echo "Checking OpenObserve health status..."
 healthy=false
 for i in $(seq 1 "$MAX_RETRIES"); do
-  # -f fails the request on an HTTP error, so only a 200 with status ok counts.
-  if status=$(curl -s -f "${CURL_TIMEOUTS[@]}" "$OPENOBSERVE_URL/healthz" | jq -r '.status // empty' 2>/dev/null) &&
-    [ "$status" = "ok" ]; then
+  # Only a 200 with status ok counts as ready. A failed request reports the code 000.
+  response=$(curl -s "${CURL_TIMEOUTS[@]}" -w '\n%{http_code}' "$OPENOBSERVE_URL/healthz")
+  httpCode=$(printf '%s' "$response" | tail -n1)
+  status=$(printf '%s' "$response" | sed '$d' | jq -r '.status // empty' 2>/dev/null)
+  if [ "$httpCode" = "200" ] && [ "$status" = "ok" ]; then
     echo "OpenObserve is healthy and ready"
     healthy=true
     break

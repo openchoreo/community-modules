@@ -14,4 +14,8 @@ data:
   OPENOBSERVE_URL: "{{ if .Values.common.openObserveTlsEnabled }}https{{ else }}http{{ end }}://{{ .Values.common.openObserveHost }}:{{ .Values.common.openObservePort }}"
   OPENOBSERVE_ORG: {{ .Values.common.openObserveOrg | quote }}
   OPENOBSERVE_STREAM: {{ .Values.common.openObserveStream | quote }}
+  {{- /* rawQuery may be absent from values reused from an earlier release */}}
+  {{- $rawQuery := .Values.adapter.rawQuery | default dict }}
+  RAW_QUERY_TIMEOUT: {{ $rawQuery.timeout | default "30s" | quote }}
+  RAW_QUERY_MAX_RESPONSE_BYTES: {{ $rawQuery.maxResponseBytes | default 10485760 | int64 | quote }}
 {{- end }}

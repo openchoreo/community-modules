@@ -18,11 +18,16 @@ func setEnvVars(t *testing.T, vars map[string]string) {
 }
 
 // validEnvVars returns the minimal set of environment variables required for LoadConfig.
+// The optional settings are cleared, so a value inherited from the shell can't change a test.
 func validEnvVars() map[string]string {
 	return map[string]string{
-		"OPENOBSERVE_URL":      "http://localhost:5080",
-		"OPENOBSERVE_USER":     "admin",
-		"OPENOBSERVE_PASSWORD": "fakeOpenObservePassword",
+		"OPENOBSERVE_URL":                "http://localhost:5080",
+		"OPENOBSERVE_USER":               "admin",
+		"OPENOBSERVE_PASSWORD":           "fakeOpenObservePassword",
+		"OPENOBSERVE_RAW_QUERY_USER":     "",
+		"OPENOBSERVE_RAW_QUERY_PASSWORD": "",
+		"RAW_QUERY_TIMEOUT":              "",
+		"RAW_QUERY_MAX_RESPONSE_BYTES":   "",
 	}
 }
 
@@ -169,6 +174,53 @@ func TestLoadConfig_ServerPortOutOfRange(t *testing.T) {
 				t.Fatalf("expected error for SERVER_PORT=%s, got nil", tt.port)
 			}
 		})
+	}
+}
+
+func TestLoadConfig_RawQueryUser(t *testing.T) {
+	setEnvVars(t, validEnvVars())
+	t.Setenv("OPENOBSERVE_RAW_QUERY_USER", "")
+	t.Setenv("OPENOBSERVE_RAW_QUERY_PASSWORD", "")
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.RawQueryUser != "" {
+		t.Errorf("the raw query user should be unset by default, got %q", cfg.RawQueryUser)
+	}
+
+	t.Setenv("OPENOBSERVE_RAW_QUERY_USER", "traces-reader@openchoreo.localhost")
+	if _, err := LoadConfig(); err == nil {
+		t.Error("expected an error for a raw query user without a password")
+	}
+
+	t.Setenv("OPENOBSERVE_RAW_QUERY_PASSWORD", "secret")
+	cfg, err = LoadConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.RawQueryUser != "traces-reader@openchoreo.localhost" || cfg.RawQueryPassword != "secret" {
+		t.Errorf("got %q / %q", cfg.RawQueryUser, cfg.RawQueryPassword)
+	}
+}
+
+func TestLoadConfig_RawQueryUserIsLowercasedAndNotRoot(t *testing.T) {
+	setEnvVars(t, validEnvVars())
+	t.Setenv("OPENOBSERVE_RAW_QUERY_PASSWORD", "secret")
+
+	t.Setenv("OPENOBSERVE_RAW_QUERY_USER", " Traces-Reader@OpenChoreo.localhost\n")
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.RawQueryUser != "traces-reader@openchoreo.localhost" {
+		t.Errorf("the raw query user must be trimmed and lowercased as OpenObserve stores it, got %q", cfg.RawQueryUser)
+	}
+
+	t.Setenv("OPENOBSERVE_RAW_QUERY_USER", "ADMIN")
+	if _, err := LoadConfig(); err == nil {
+		t.Error("expected an error for a raw query user that is the root user")
 	}
 }
 

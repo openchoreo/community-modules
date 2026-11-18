@@ -41,6 +41,9 @@ func main() {
 		slog.String("OpenObserve User", cfg.OpenObserveUser),
 		slog.String("OpenObserve Password", string(cfg.OpenObservePassword[0])+"*****"),
 		slog.String("Server Port", cfg.ServerPort),
+		slog.String("Raw Query User", cfg.RawQueryUser),
+		slog.Duration("Raw Query Timeout", cfg.RawQuery.Timeout),
+		slog.Int64("Raw Query Max Response Bytes", cfg.RawQuery.MaxResponseBytes),
 	)
 
 	client := openobserve.NewClient(
@@ -96,6 +99,22 @@ func main() {
 
 	// Create handlers and server
 	tracingHandler := app.NewTracingHandler(client, logger)
+	if cfg.RawQueryUser != "" {
+		// Raw queries run as a user of their own, never as the adapter's.
+		rawClient := openobserve.NewClient(
+			cfg.OpenObserveURL,
+			cfg.OpenObserveOrg,
+			cfg.OpenObserveStream,
+			cfg.RawQueryUser,
+			cfg.RawQueryPassword,
+			logger,
+		)
+		tracingHandler.WithRawQuery(rawClient, cfg.RawQuery)
+	} else {
+		logger.Warn("Raw trace queries are disabled: no raw query user is set. " +
+			"Provide rawQueryUsername and rawQueryPassword in the raw query credentials Secret to enable them " +
+			"(OPENOBSERVE_RAW_QUERY_USER and OPENOBSERVE_RAW_QUERY_PASSWORD)")
+	}
 	srv := app.NewServer(cfg.ServerPort, tracingHandler, logger)
 
 	go func() {

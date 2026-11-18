@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Config struct {
@@ -19,6 +20,12 @@ type Config struct {
 	OpenObserveUser     string
 	OpenObservePassword string
 	LogLevel            slog.Level
+	// RawQueryUser and RawQueryPassword are the OpenObserve user raw queries
+	// run as, never the adapter's own. Raw queries are not supported when
+	// they are unset.
+	RawQueryUser     string
+	RawQueryPassword string
+	RawQuery         RawQueryLimits
 }
 
 // LoadConfig loads configuration from environment variables
@@ -65,7 +72,25 @@ func LoadConfig() (*Config, error) {
 		return nil, fmt.Errorf("invalid SERVER_PORT: must be integer in 1..65535")
 	}
 
+	rawQuery, err := loadRawQueryLimits()
+	if err != nil {
+		return nil, err
+	}
+	// OpenObserve trims and lowercases a user's email when it creates the user,
+	// as the setup job does, so the adapter logs in with the same email.
+	rawQueryUser := strings.ToLower(strings.TrimSpace(getEnv("OPENOBSERVE_RAW_QUERY_USER", "")))
+	rawQueryPassword := getEnv("OPENOBSERVE_RAW_QUERY_PASSWORD", "")
+	if (rawQueryUser == "") != (rawQueryPassword == "") {
+		return nil, fmt.Errorf("OPENOBSERVE_RAW_QUERY_USER and OPENOBSERVE_RAW_QUERY_PASSWORD must be set together")
+	}
+	if rawQueryUser != "" && rawQueryUser == strings.ToLower(strings.TrimSpace(openObserveUser)) {
+		return nil, fmt.Errorf("OPENOBSERVE_RAW_QUERY_USER is the root user; raw trace queries need a user of their own")
+	}
+
 	return &Config{
+		RawQueryUser:        rawQueryUser,
+		RawQueryPassword:    rawQueryPassword,
+		RawQuery:            rawQuery,
 		ServerPort:          serverPort,
 		OpenObserveURL:      openObserveURL,
 		OpenObserveOrg:      openObserveOrg,
@@ -81,4 +106,24 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+// loadRawQueryLimits reads RAW_QUERY_TIMEOUT and RAW_QUERY_MAX_RESPONSE_BYTES.
+func loadRawQueryLimits() (RawQueryLimits, error) {
+	limits := DefaultRawQueryLimits
+	if v := os.Getenv("RAW_QUERY_TIMEOUT"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil || d <= 0 {
+			return limits, fmt.Errorf("invalid RAW_QUERY_TIMEOUT %q: must be a positive duration", v)
+		}
+		limits.Timeout = d
+	}
+	if v := os.Getenv("RAW_QUERY_MAX_RESPONSE_BYTES"); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || n <= 0 {
+			return limits, fmt.Errorf("invalid RAW_QUERY_MAX_RESPONSE_BYTES %q: must be a positive integer", v)
+		}
+		limits.MaxResponseBytes = n
+	}
+	return limits, nil
 }

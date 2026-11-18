@@ -20,3 +20,11 @@ SPDX-License-Identifier: Apache-2.0
 {{- fail "adapter.openObserveUrl is deprecated and no longer used. Set common.openObserveHost and common.openObservePort instead." -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+The Secret with the user raw trace queries run as.
+*/}}
+{{- define "observability-tracing-openobserve.rawQuerySecretName" -}}
+{{- $rawQuery := .Values.adapter.rawQuery | default dict -}}
+{{- $rawQuery.credentialsSecretName | default "openobserve-traces-users" -}}
+{{- end }}

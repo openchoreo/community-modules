@@ -102,6 +102,19 @@ adapter:
     userKey: "ZO_ROOT_USER_EMAIL"
     passwordKey: "ZO_ROOT_USER_PASSWORD"
 
+  # Raw trace queries (POST /api/v1alpha1/traces/raw-query). Keep the limits in line with the
+  # observability plane's observer.tracingAdapter.rawQuery settings.
+  rawQuery:
+    # Raw queries run as an OpenObserve user of their own, never as the root user.
+    # This Secret holds its 'rawQueryUsername' (an email) and 'rawQueryPassword' keys,
+    # kept apart from the admin credentials and synced by an ExternalSecret. Providing the
+    # Secret turns raw queries on; without the Secret or its keys, the adapter answers them with 501.
+    credentialsSecretName: "openobserve-traces-users"
+    # Query timeout; also passed to OpenObserve as the search timeout.
+    timeout: "30s"
+    # Largest OpenObserve response passed on, in bytes. A larger result is rejected, never returned partially.
+    maxResponseBytes: 10485760
+
   resources:
     limits:
       cpu: 200m
@@ -111,6 +124,20 @@ adapter:
       memory: 128Mi
   serverPort: 9100
 
+# Post-install and post-upgrade Job that creates the raw trace query user in OpenObserve, from the
+# adapter.rawQuery.credentialsSecretName Secret, and sets its password again on every upgrade. Does nothing
+# without that Secret. Disable it to manage the user yourself.
+openObserveSetup:
+  enabled: true
+  image:
+    repository: "cr.openchoreo.dev/openchoreo/observability-tracing-openobserve-setup"
+    tag: ""  # Defaults to Chart.AppVersion via the template
+
+  # Credentials of the OpenObserve root user, which creates the raw query user
+  openObserveCredentialsSecret:
+    name: "openobserve-admin-credentials"
+    userKey: "ZO_ROOT_USER_EMAIL"
+    passwordKey: "ZO_ROOT_USER_PASSWORD"
 
 opentelemetryCollectorCustomizations:
   openSearchQueue:

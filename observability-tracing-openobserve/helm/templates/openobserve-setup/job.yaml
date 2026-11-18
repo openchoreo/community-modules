@@ -1,0 +1,86 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+
+{{- /* openObserveSetup may be absent from values reused from an earlier release (helm upgrade --reuse-values) */}}
+{{- $setup := .Values.openObserveSetup | default dict }}
+{{- $setupEnabled := ternary $setup.enabled true (hasKey $setup "enabled") }}
+{{- if and .Values.adapter.enabled $setupEnabled }}
+{{- $image := $setup.image | default dict }}
+{{- $rootCredentials := $setup.openObserveCredentialsSecret | default dict }}
+{{- $rootCredentialsSecret := $rootCredentials.name | default "openobserve-admin-credentials" }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: openobserve-setup-tracing
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation
+  labels:
+    app: openobserve-setup-tracing
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: openobserve-setup-tracing
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: OnFailure
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: openobserve-setup-tracing
+        image: "{{ $image.repository | default "cr.openchoreo.dev/openchoreo/observability-tracing-openobserve-setup" }}:{{ $image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ $image.pullPolicy | default "IfNotPresent" }}
+        env:
+        - name: OPENOBSERVE_URL
+          value: "{{ if .Values.common.openObserveTlsEnabled }}https{{ else }}http{{ end }}://{{ .Values.common.openObserveHost }}:{{ .Values.common.openObservePort }}"
+        - name: OPENOBSERVE_ORG
+          value: {{ .Values.common.openObserveOrg | quote }}
+        - name: OPENOBSERVE_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: {{ $rootCredentialsSecret | quote }}
+              key: {{ $rootCredentials.userKey | default "ZO_ROOT_USER_EMAIL" | quote }}
+              # Needed only when the raw query Secret is set; the script says so if it's missing then.
+              optional: true
+        - name: OPENOBSERVE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ $rootCredentialsSecret | quote }}
+              key: {{ $rootCredentials.passwordKey | default "ZO_ROOT_USER_PASSWORD" | quote }}
+              optional: true
+        - name: OPENOBSERVE_CREDENTIALS_SECRET
+          value: {{ $rootCredentialsSecret | quote }}
+        - name: RAW_QUERY_CREDENTIALS_SECRET
+          value: {{ include "observability-tracing-openobserve.rawQuerySecretName" . | quote }}
+        - name: RAW_QUERY_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "observability-tracing-openobserve.rawQuerySecretName" . | quote }}
+              key: rawQueryUsername
+              optional: true
+        - name: RAW_QUERY_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "observability-tracing-openobserve.rawQuerySecretName" . | quote }}
+              key: rawQueryPassword
+              optional: true
+        resources:
+          requests:
+            memory: "50Mi"
+            cpu: "50m"
+          limits:
+            memory: "75Mi"
+            cpu: "75m"
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - all
+          readOnlyRootFilesystem: true
+          runAsGroup: 10500
+          runAsUser: 10500
+{{- end }}

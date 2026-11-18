@@ -17,13 +17,26 @@ import (
 type TracingHandler struct {
 	client *openobserve.Client
 	logger *slog.Logger
+	// rawClient connects as the raw query user; raw queries are not
+	// supported without it.
+	rawClient *openobserve.Client
+	rawQuery  RawQueryLimits
 }
 
 func NewTracingHandler(client *openobserve.Client, logger *slog.Logger) *TracingHandler {
 	return &TracingHandler{
-		client: client,
-		logger: logger,
+		client:   client,
+		logger:   logger,
+		rawQuery: DefaultRawQueryLimits,
 	}
+}
+
+// WithRawQuery enables raw queries: they run through client, which connects as
+// the raw query user, within limits.
+func (h *TracingHandler) WithRawQuery(client *openobserve.Client, limits RawQueryLimits) *TracingHandler {
+	h.rawClient = client
+	h.rawQuery = limits
+	return h
 }
 
 // Ensure TracingHandler implements the interface at compile time.

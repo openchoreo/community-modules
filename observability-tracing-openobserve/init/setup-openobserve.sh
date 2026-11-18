@@ -9,6 +9,15 @@ set -uo pipefail
 
 OPENOBSERVE_URL="${OPENOBSERVE_URL}"
 OPENOBSERVE_ORG="${OPENOBSERVE_ORG}"
+# normalizeEmail trims surrounding whitespace, newlines included, and lowercases the whole value, as OpenObserve does
+# when it creates a user and as the adapter does.
+normalizeEmail() {
+  local v="$1"
+  v="${v#"${v%%[![:space:]]*}"}"
+  v="${v%"${v##*[![:space:]]}"}"
+  printf '%s' "${v,,}"
+}
+
 # The root credentials are needed only to set up the raw query user, so their Secret is optional.
 OPENOBSERVE_USERNAME="${OPENOBSERVE_USERNAME:-}"
 OPENOBSERVE_PASSWORD="${OPENOBSERVE_PASSWORD:-}"
@@ -25,8 +34,7 @@ CURL_TIMEOUTS=(--connect-timeout 5 --max-time 30)
 # root user, and the adapter only sends it searches of trace streams.
 # This is checked before waiting for OpenObserve, so an install without the Secret doesn't depend on OpenObserve.
 
-# OpenObserve trims and lowercases a user's email when it creates the user, so the email is matched the same way.
-rawQueryUsername=$(printf '%s' "${RAW_QUERY_USERNAME:-}" | tr '[:upper:]' '[:lower:]' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+rawQueryUsername=$(normalizeEmail "${RAW_QUERY_USERNAME:-}")
 rawQueryPassword="${RAW_QUERY_PASSWORD:-}"
 rawQuerySecret="${RAW_QUERY_CREDENTIALS_SECRET:-openobserve-traces-users}"
 if [ -z "$rawQueryUsername" ] && [ -z "$rawQueryPassword" ]; then
@@ -46,7 +54,7 @@ if [ -z "$OPENOBSERVE_USERNAME" ] || [ -z "$OPENOBSERVE_PASSWORD" ]; then
     "(openObserveSetup.openObserveCredentialsSecret)"
   exit 1
 fi
-rootUsername=$(printf '%s' "$OPENOBSERVE_USERNAME" | tr '[:upper:]' '[:lower:]' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+rootUsername=$(normalizeEmail "$OPENOBSERVE_USERNAME")
 if [ "$rawQueryUsername" = "$rootUsername" ]; then
   echo "ERROR: rawQueryUsername in the Secret $rawQuerySecret is the root user; raw trace queries need a user of their own"
   exit 1
@@ -60,7 +68,8 @@ RETRY_INTERVAL=10
 echo "Checking OpenObserve health status..."
 healthy=false
 for i in $(seq 1 "$MAX_RETRIES"); do
-  if status=$(curl -s "${CURL_TIMEOUTS[@]}" "$OPENOBSERVE_URL/healthz" | jq -r '.status // empty' 2>/dev/null) &&
+  # -f fails the request on an HTTP error, so only a 200 with status ok counts.
+  if status=$(curl -s -f "${CURL_TIMEOUTS[@]}" "$OPENOBSERVE_URL/healthz" | jq -r '.status // empty' 2>/dev/null) &&
     [ "$status" = "ok" ]; then
     echo "OpenObserve is healthy and ready"
     healthy=true

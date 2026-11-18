@@ -205,9 +205,10 @@ How a raw query runs:
   `adapter.rawQuery.maxResponseBytes`). OpenObserve stops a search at the timeout, and the query gets 504; a larger
   result is rejected rather than returned partially. OpenObserve doesn't stop a search when its caller goes away, so a
   canceled query still runs until it ends or reaches the timeout.
-- **Errors:** a request OpenObserve rejects gets 400 with OpenObserve's message. So does a search OpenObserve answers
+- **Errors:** a query OpenObserve rejects gets 400 with OpenObserve's message. So does a search OpenObserve answers
   only in part, for example because its time range is longer than the stream allows, with OpenObserve's reason; a
-  partial result is never returned.
+  partial result is never returned. When OpenObserve refuses the raw query user itself (401 or 403), the query gets
+  500 and the adapter logs why: the user's credentials are wrong or out of date, so check the raw query user's Secret.
 
 #### Raw query user
 
@@ -215,8 +216,9 @@ Raw queries run as an OpenObserve user of their own, never as the root user. You
 of their own, `openobserve-traces-users` by default (`adapter.rawQuery.credentialsSecretName`), apart from the admin
 credentials:
 
-- `rawQueryUsername`: the user's email, for example `traces-reader@example.com`. OpenObserve keeps emails in lower
-  case, so the module lowercases it. It must not be the root user.
+- `rawQueryUsername`: the user's email, for example `traces-reader@example.com`. OpenObserve keeps emails trimmed and
+  in lower case, so the module does the same. It must not be the root user, and should be an email no one else uses:
+  the setup job sets the password and the admin role of the user with that email, whoever it is.
 - `rawQueryPassword`: its password, 8 to 128 characters with a lowercase letter, an uppercase letter, a digit and a
   special character, as OpenObserve requires
 
@@ -252,7 +254,8 @@ spec:
 
 Without the Secret, or without both of its keys, the module installs and works as before, and the adapter answers raw
 queries with 501. With only one of the two keys, the adapter doesn't start, and the setup job skips the user. After
-providing them, run `helm upgrade` so the setup job creates the user, then restart the adapter so it reads them.
+providing them or changing the password, run `helm upgrade` so the setup job creates the user or sets the new password,
+then restart the adapter so it reads them.
 
 ## Dependencies
 

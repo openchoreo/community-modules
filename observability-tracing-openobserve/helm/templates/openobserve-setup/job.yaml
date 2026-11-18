@@ -44,11 +44,16 @@ spec:
             secretKeyRef:
               name: {{ $rootCredentialsSecret | quote }}
               key: {{ $rootCredentials.userKey | default "ZO_ROOT_USER_EMAIL" | quote }}
+              # Needed only when the raw query Secret is set; the script says so if it's missing then.
+              optional: true
         - name: OPENOBSERVE_PASSWORD
           valueFrom:
             secretKeyRef:
               name: {{ $rootCredentialsSecret | quote }}
               key: {{ $rootCredentials.passwordKey | default "ZO_ROOT_USER_PASSWORD" | quote }}
+              optional: true
+        - name: OPENOBSERVE_CREDENTIALS_SECRET
+          value: {{ $rootCredentialsSecret | quote }}
         - name: RAW_QUERY_CREDENTIALS_SECRET
           value: {{ include "observability-tracing-openobserve.rawQuerySecretName" . | quote }}
         - name: RAW_QUERY_USERNAME

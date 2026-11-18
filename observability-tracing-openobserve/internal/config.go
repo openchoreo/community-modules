@@ -76,14 +76,14 @@ func LoadConfig() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	rawQueryUser := getEnv("OPENOBSERVE_RAW_QUERY_USER", "")
+	// OpenObserve trims and lowercases a user's email when it creates the user,
+	// as the setup job does, so the adapter logs in with the same email.
+	rawQueryUser := strings.ToLower(strings.TrimSpace(getEnv("OPENOBSERVE_RAW_QUERY_USER", "")))
 	rawQueryPassword := getEnv("OPENOBSERVE_RAW_QUERY_PASSWORD", "")
 	if (rawQueryUser == "") != (rawQueryPassword == "") {
 		return nil, fmt.Errorf("OPENOBSERVE_RAW_QUERY_USER and OPENOBSERVE_RAW_QUERY_PASSWORD must be set together")
 	}
-	// OpenObserve keeps user emails in lower case, and the setup job creates the user that way.
-	rawQueryUser = strings.ToLower(rawQueryUser)
-	if rawQueryUser != "" && rawQueryUser == strings.ToLower(openObserveUser) {
+	if rawQueryUser != "" && rawQueryUser == strings.ToLower(strings.TrimSpace(openObserveUser)) {
 		return nil, fmt.Errorf("OPENOBSERVE_RAW_QUERY_USER is the root user; raw trace queries need a user of their own")
 	}
 

@@ -18,11 +18,16 @@ func setEnvVars(t *testing.T, vars map[string]string) {
 }
 
 // validEnvVars returns the minimal set of environment variables required for LoadConfig.
+// The optional settings are cleared, so a value inherited from the shell can't change a test.
 func validEnvVars() map[string]string {
 	return map[string]string{
-		"OPENOBSERVE_URL":      "http://localhost:5080",
-		"OPENOBSERVE_USER":     "admin",
-		"OPENOBSERVE_PASSWORD": "fakeOpenObservePassword",
+		"OPENOBSERVE_URL":                "http://localhost:5080",
+		"OPENOBSERVE_USER":               "admin",
+		"OPENOBSERVE_PASSWORD":           "fakeOpenObservePassword",
+		"OPENOBSERVE_RAW_QUERY_USER":     "",
+		"OPENOBSERVE_RAW_QUERY_PASSWORD": "",
+		"RAW_QUERY_TIMEOUT":              "",
+		"RAW_QUERY_MAX_RESPONSE_BYTES":   "",
 	}
 }
 
@@ -204,13 +209,13 @@ func TestLoadConfig_RawQueryUserIsLowercasedAndNotRoot(t *testing.T) {
 	setEnvVars(t, validEnvVars())
 	t.Setenv("OPENOBSERVE_RAW_QUERY_PASSWORD", "secret")
 
-	t.Setenv("OPENOBSERVE_RAW_QUERY_USER", "Traces-Reader@OpenChoreo.localhost")
+	t.Setenv("OPENOBSERVE_RAW_QUERY_USER", " Traces-Reader@OpenChoreo.localhost\n")
 	cfg, err := LoadConfig()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if cfg.RawQueryUser != "traces-reader@openchoreo.localhost" {
-		t.Errorf("the raw query user must be lowercased as the setup job creates it, got %q", cfg.RawQueryUser)
+		t.Errorf("the raw query user must be trimmed and lowercased as OpenObserve stores it, got %q", cfg.RawQueryUser)
 	}
 
 	t.Setenv("OPENOBSERVE_RAW_QUERY_USER", "ADMIN")

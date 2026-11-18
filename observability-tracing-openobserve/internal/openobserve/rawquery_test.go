@@ -260,10 +260,18 @@ func TestRawSearch_CallerGoesAway(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	// The deadline only bounds the test if the request never arrives; the
+	// caller goes away as soon as it does.
+	deadline, stop := context.WithTimeout(context.Background(), 10*time.Second)
+	defer stop()
+	ctx, cancel := context.WithCancel(deadline)
+	defer cancel()
 	go func() {
-		<-started
-		cancel()
+		select {
+		case <-started:
+			cancel()
+		case <-ctx.Done():
+		}
 	}()
 	_, err := newTestClient(srv.URL).RawSearch(ctx, []byte(rawBody), 1024)
 	if !errors.Is(err, context.Canceled) || errors.Is(err, ErrRawQueryTimeout) {

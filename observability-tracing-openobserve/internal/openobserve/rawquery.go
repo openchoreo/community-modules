@@ -195,11 +195,14 @@ func (c *Client) RawSearch(ctx context.Context, body []byte, maxResponseBytes in
 // query deadline passed, and keeps the context's error in the chain when the
 // caller went away, so that can be told apart from a failure.
 func rawSearchFailure(ctx context.Context, err error) error {
+	// The context is read once, so a deadline that passes in between can't be
+	// taken for a failure.
+	ctxErr := ctx.Err()
 	switch {
-	case errors.Is(ctx.Err(), context.DeadlineExceeded):
+	case errors.Is(ctxErr, context.DeadlineExceeded):
 		return ErrRawQueryTimeout
-	case ctx.Err() != nil && !errors.Is(err, ctx.Err()):
-		return fmt.Errorf("%w: %w", ctx.Err(), err)
+	case ctxErr != nil && !errors.Is(err, ctxErr):
+		return fmt.Errorf("%w: %w", ctxErr, err)
 	}
 	return err
 }

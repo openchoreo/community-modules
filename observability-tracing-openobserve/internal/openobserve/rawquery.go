@@ -23,8 +23,7 @@ import (
 const QueryLanguage = "OpenObserve search request"
 
 var (
-	// ErrRawQueryTimeout is returned when a raw query runs past its timeout,
-	// or OpenObserve returns only a partial result.
+	// ErrRawQueryTimeout is returned when a raw query runs past its timeout.
 	ErrRawQueryTimeout = errors.New("raw query timed out")
 	// ErrRawQueryTooLarge is returned when the result exceeds the maximum response size.
 	ErrRawQueryTooLarge = errors.New("raw query result exceeds the maximum response size")
@@ -38,6 +37,17 @@ type InvalidRawQueryError struct {
 
 func (e *InvalidRawQueryError) Error() string {
 	return "invalid " + QueryLanguage + ": " + e.Reason
+}
+
+// PartialResultError reports a search that OpenObserve answered only in part.
+// OpenObserve does that for several reasons, such as a time range longer than
+// the stream allows or a node that failed, and says which in function_error.
+type PartialResultError struct {
+	Reason string
+}
+
+func (e *PartialResultError) Error() string {
+	return "OpenObserve returned only part of the result: " + e.Reason
 }
 
 // allowedTopLevelKeys and allowedQueryKeys are the search body keys a raw
@@ -127,10 +137,7 @@ func (c *Client) RawSearch(ctx context.Context, body []byte, maxResponseBytes in
 	// for the adapter's own queries, with its fixed timeout, is not used here.
 	resp, err := c.rawHTTPClient.Do(req)
 	if err != nil {
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return nil, ErrRawQueryTimeout
-		}
-		return nil, fmt.Errorf("raw search request failed: %w", err)
+		return nil, rawSearchFailure(ctx, fmt.Errorf("raw search request failed: %w", err))
 	}
 	// Closing a body that wasn't read to the end drops the connection, so
 	// OpenObserve stops sending the rest of an oversized result.
@@ -145,10 +152,7 @@ func (c *Client) RawSearch(ctx context.Context, body []byte, maxResponseBytes in
 	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, readLimit))
 	if err != nil {
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return nil, ErrRawQueryTimeout
-		}
-		return nil, fmt.Errorf("failed to read raw search response: %w", err)
+		return nil, rawSearchFailure(ctx, fmt.Errorf("failed to read raw search response: %w", err))
 	}
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
@@ -158,9 +162,11 @@ func (c *Client) RawSearch(ctx context.Context, body []byte, maxResponseBytes in
 	case resp.StatusCode == http.StatusRequestTimeout:
 		// OpenObserve stopped the search at the timeout the adapter set.
 		return nil, ErrRawQueryTimeout
-	// OpenObserve answers 400 for a query it can't run, and 422 for a body it
-	// can't decode, such as one without start_time.
-	case resp.StatusCode == http.StatusBadRequest || resp.StatusCode == http.StatusUnprocessableEntity:
+	// OpenObserve answers 400 for a query it can't run and 422 for a body it
+	// can't decode, such as one without start_time. Its message is passed on
+	// for every other 4xx too, such as a 429 for too many searches, as the
+	// OpenSearch module does.
+	case resp.StatusCode >= 400 && resp.StatusCode < 500:
 		return nil, &InvalidRawQueryError{Reason: openObserveErrorMessage(data, resp.StatusCode)}
 	case resp.StatusCode != http.StatusOK:
 		c.logger.Error("OpenObserve returned an error for a raw query",
@@ -172,16 +178,50 @@ func (c *Client) RawSearch(ctx context.Context, body []byte, maxResponseBytes in
 	}
 
 	var meta struct {
-		IsPartial bool `json:"is_partial"`
+		IsPartial     bool            `json:"is_partial"`
+		FunctionError json.RawMessage `json:"function_error"`
 	}
 	if err := json.Unmarshal(data, &meta); err != nil {
 		return nil, fmt.Errorf("failed to parse raw search response: %w", err)
 	}
 	if meta.IsPartial {
 		// A partial result is never passed on as if it were complete.
-		return nil, ErrRawQueryTimeout
+		return nil, &PartialResultError{Reason: partialResultReason(meta.FunctionError)}
 	}
 	return data, nil
+}
+
+// rawSearchFailure turns a failed request into ErrRawQueryTimeout when the raw
+// query deadline passed, and keeps the context's error in the chain when the
+// caller went away, so that can be told apart from a failure.
+func rawSearchFailure(ctx context.Context, err error) error {
+	switch {
+	case errors.Is(ctx.Err(), context.DeadlineExceeded):
+		return ErrRawQueryTimeout
+	case ctx.Err() != nil && !errors.Is(err, ctx.Err()):
+		return fmt.Errorf("%w: %w", ctx.Err(), err)
+	}
+	return err
+}
+
+// partialResultReason joins OpenObserve's function_error, a list of messages,
+// or a single one in some versions.
+func partialResultReason(raw json.RawMessage) string {
+	var messages []string
+	if json.Unmarshal(raw, &messages) != nil {
+		var message string
+		if json.Unmarshal(raw, &message) == nil {
+			messages = []string{message}
+		}
+	}
+	reason := strings.TrimSpace(strings.Join(messages, "; "))
+	if reason == "" {
+		return "OpenObserve didn't say why"
+	}
+	if len(reason) > maxErrorMessageLength {
+		reason = reason[:maxErrorMessageLength] + "…"
+	}
+	return reason
 }
 
 // openObserveErrorMessage extracts the message from an OpenObserve error body,

@@ -1,7 +1,13 @@
 # Copyright 2026 The OpenChoreo Authors
 # SPDX-License-Identifier: Apache-2.0
 
-{{- if and .Values.adapter.enabled .Values.openObserveSetup.enabled }}
+{{- /* openObserveSetup may be absent from values reused from an earlier release (helm upgrade --reuse-values) */}}
+{{- $setup := .Values.openObserveSetup | default dict }}
+{{- $setupEnabled := ternary $setup.enabled true (hasKey $setup "enabled") }}
+{{- if and .Values.adapter.enabled $setupEnabled }}
+{{- $image := $setup.image | default dict }}
+{{- $rootCredentials := $setup.openObserveCredentialsSecret | default dict }}
+{{- $rootCredentialsSecret := $rootCredentials.name | default "openobserve-admin-credentials" }}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -26,8 +32,8 @@ spec:
           type: RuntimeDefault
       containers:
       - name: openobserve-setup-tracing
-        image: "{{ .Values.openObserveSetup.image.repository }}:{{ .Values.openObserveSetup.image.tag | default .Chart.AppVersion }}"
-        imagePullPolicy: {{ .Values.openObserveSetup.image.pullPolicy | default "IfNotPresent" }}
+        image: "{{ $image.repository | default "cr.openchoreo.dev/openchoreo/observability-tracing-openobserve-setup" }}:{{ $image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ $image.pullPolicy | default "IfNotPresent" }}
         env:
         - name: OPENOBSERVE_URL
           value: "{{ if .Values.common.openObserveTlsEnabled }}https{{ else }}http{{ end }}://{{ .Values.common.openObserveHost }}:{{ .Values.common.openObservePort }}"
@@ -36,13 +42,13 @@ spec:
         - name: OPENOBSERVE_USERNAME
           valueFrom:
             secretKeyRef:
-              name: {{ .Values.openObserveSetup.openObserveCredentialsSecret.name | quote }}
-              key: {{ .Values.openObserveSetup.openObserveCredentialsSecret.userKey | quote }}
+              name: {{ $rootCredentialsSecret | quote }}
+              key: {{ $rootCredentials.userKey | default "ZO_ROOT_USER_EMAIL" | quote }}
         - name: OPENOBSERVE_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: {{ .Values.openObserveSetup.openObserveCredentialsSecret.name | quote }}
-              key: {{ .Values.openObserveSetup.openObserveCredentialsSecret.passwordKey | quote }}
+              name: {{ $rootCredentialsSecret | quote }}
+              key: {{ $rootCredentials.passwordKey | default "ZO_ROOT_USER_PASSWORD" | quote }}
         - name: RAW_QUERY_CREDENTIALS_SECRET
           value: {{ include "observability-tracing-openobserve.rawQuerySecretName" . | quote }}
         - name: RAW_QUERY_USERNAME

@@ -61,6 +61,11 @@ func (h *TracingHandler) QueryRawTraces(
 	defer cancel()
 	result, err := h.rawClient.RawSearch(ctx, body, limits.MaxResponseBytes)
 	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			// The caller went away; nobody reads the answer, and it isn't a failure of the adapter.
+			h.logger.Debug("Raw trace query canceled by the caller")
+			return gen.QueryRawTraces500JSONResponse{Title: ptr(gen.InternalServerError), Detail: ptr("the request was canceled")}, nil
+		}
 		return h.rawQueryError(err), nil
 	}
 
@@ -87,9 +92,15 @@ const rawQueryResultTooLargeCode = "RAW_QUERY_RESULT_TOO_LARGE"
 
 func (h *TracingHandler) rawQueryError(err error) gen.QueryRawTracesResponseObject {
 	var invalid *openobserve.InvalidRawQueryError
+	var partial *openobserve.PartialResultError
 	switch {
 	case errors.As(err, &invalid):
 		return gen.QueryRawTraces400JSONResponse{Title: ptr(gen.BadRequest), Detail: ptr(invalid.Error())}
+	case errors.As(err, &partial):
+		// The Observer passes on the message of a 400 only, and OpenObserve's
+		// reason, such as the stream's maximum query range, is what the caller
+		// needs to change the query.
+		return gen.QueryRawTraces400JSONResponse{Title: ptr(gen.BadRequest), Detail: ptr(partial.Error())}
 	case errors.Is(err, openobserve.ErrRawQueryTooLarge):
 		return gen.QueryRawTraces400JSONResponse{
 			Title:     ptr(gen.BadRequest),

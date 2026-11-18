@@ -200,6 +200,25 @@ func TestLoadConfig_RawQueryUser(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_RawQueryUserIsLowercasedAndNotRoot(t *testing.T) {
+	setEnvVars(t, validEnvVars())
+	t.Setenv("OPENOBSERVE_RAW_QUERY_PASSWORD", "secret")
+
+	t.Setenv("OPENOBSERVE_RAW_QUERY_USER", "Traces-Reader@OpenChoreo.localhost")
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.RawQueryUser != "traces-reader@openchoreo.localhost" {
+		t.Errorf("the raw query user must be lowercased as the setup job creates it, got %q", cfg.RawQueryUser)
+	}
+
+	t.Setenv("OPENOBSERVE_RAW_QUERY_USER", "ADMIN")
+	if _, err := LoadConfig(); err == nil {
+		t.Error("expected an error for a raw query user that is the root user")
+	}
+}
+
 func TestGetEnv(t *testing.T) {
 	t.Setenv("TEST_GET_ENV_EXISTS", "value")
 

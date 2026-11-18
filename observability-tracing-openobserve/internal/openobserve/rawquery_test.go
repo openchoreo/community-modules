@@ -146,9 +146,36 @@ func TestRawSearch_Errors(t *testing.T) {
 					t.Errorf("got %v", err)
 				}
 			}},
-		{"partial result", http.StatusOK, `{"took":30000,"hits":[],"is_partial":true}`,
+		{"partial result, with OpenObserve's reasons", http.StatusOK,
+			`{"took":3,"hits":[],"is_partial":true,"function_error":["Query duration is modified due to query range ` +
+				`restriction of 24 hours","Please be aware that the response is based on partial data"]}`,
 			func(t *testing.T, err error) {
-				if !errors.Is(err, ErrRawQueryTimeout) {
+				var partial *PartialResultError
+				want := "OpenObserve returned only part of the result: Query duration is modified due to query range " +
+					"restriction of 24 hours; Please be aware that the response is based on partial data"
+				if !errors.As(err, &partial) || partial.Error() != want || errors.Is(err, ErrRawQueryTimeout) {
+					t.Errorf("got %v", err)
+				}
+			}},
+		{"partial result, with a single reason", http.StatusOK,
+			`{"took":3,"hits":[],"is_partial":true,"function_error":"node failed"}`,
+			func(t *testing.T, err error) {
+				var partial *PartialResultError
+				if !errors.As(err, &partial) || partial.Reason != "node failed" {
+					t.Errorf("got %v", err)
+				}
+			}},
+		{"partial result, without a reason", http.StatusOK, `{"took":3,"hits":[],"is_partial":true}`,
+			func(t *testing.T, err error) {
+				var partial *PartialResultError
+				if !errors.As(err, &partial) || partial.Reason != "OpenObserve didn't say why" {
+					t.Errorf("got %v", err)
+				}
+			}},
+		{"too many searches", http.StatusTooManyRequests, `{"code":429,"message":"too many requests"}`,
+			func(t *testing.T, err error) {
+				var invalid *InvalidRawQueryError
+				if !errors.As(err, &invalid) || invalid.Reason != "too many requests" {
 					t.Errorf("got %v", err)
 				}
 			}},
@@ -217,6 +244,29 @@ func TestRawSearch_ContextDeadline(t *testing.T) {
 	defer cancel()
 	_, err := newTestClient(srv.URL).RawSearch(ctx, []byte(rawBody), 1024)
 	if !errors.Is(err, ErrRawQueryTimeout) {
+		t.Errorf("got %v", err)
+	}
+}
+
+func TestRawSearch_CallerGoesAway(t *testing.T) {
+	started := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		close(started)
+		select {
+		case <-r.Context().Done():
+		case <-time.After(5 * time.Second):
+		}
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		<-started
+		cancel()
+	}()
+	_, err := newTestClient(srv.URL).RawSearch(ctx, []byte(rawBody), 1024)
+	if !errors.Is(err, context.Canceled) || errors.Is(err, ErrRawQueryTimeout) {
 		t.Errorf("got %v", err)
 	}
 }

@@ -166,9 +166,33 @@ func TestQueryRawTraces_MapsOpenObserveErrors(t *testing.T) {
 		}
 	})
 	t.Run("partial result", func(t *testing.T) {
-		h, _ := rawHandler(t, http.StatusOK, `{"took":1,"hits":[],"is_partial":true}`, DefaultRawQueryLimits)
+		h, _ := rawHandler(t, http.StatusOK,
+			`{"took":1,"hits":[],"is_partial":true,"function_error":["query range restriction of 24 hours"]}`,
+			DefaultRawQueryLimits)
+		resp, _ := h.QueryRawTraces(context.Background(), rawRequest(rawBody))
+		bad, ok := resp.(gen.QueryRawTraces400JSONResponse)
+		if !ok || *bad.Detail != "OpenObserve returned only part of the result: query range restriction of 24 hours" {
+			t.Errorf("a partial result must carry OpenObserve's reason: got %#v", resp)
+		}
+		if bad.ErrorCode != nil {
+			t.Errorf("a partial result must not carry the result too large code, got %q", *bad.ErrorCode)
+		}
+	})
+	t.Run("OpenObserve stopped the search at the timeout", func(t *testing.T) {
+		h, _ := rawHandler(t, http.StatusRequestTimeout, `{"code":20010,"message":"Search query timed out"}`,
+			DefaultRawQueryLimits)
 		resp, _ := h.QueryRawTraces(context.Background(), rawRequest(rawBody))
 		if _, ok := resp.(gen.QueryRawTraces504JSONResponse); !ok {
+			t.Errorf("got %#v", resp)
+		}
+	})
+	t.Run("the caller went away", func(t *testing.T) {
+		h, _ := rawHandler(t, http.StatusOK, `{"took":1,"hits":[]}`, DefaultRawQueryLimits)
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		resp, _ := h.QueryRawTraces(ctx, rawRequest(rawBody))
+		failed, ok := resp.(gen.QueryRawTraces500JSONResponse)
+		if !ok || *failed.Detail != "the request was canceled" {
 			t.Errorf("got %#v", resp)
 		}
 	})

@@ -202,11 +202,12 @@ How a raw query runs:
 - **Request as sent:** the body runs as written, including its SQL, its time range and its row limit (`LIMIT` or
   `size`). The adapter only sets the search `timeout`.
 - **Limits:** a query timeout (default `30s`, `adapter.rawQuery.timeout`) and a maximum response size (default 10 MiB,
-  `adapter.rawQuery.maxResponseBytes`). OpenObserve stops a search at the timeout, and the query gets 504, as does one
-  that OpenObserve answers only partially; a larger result is rejected rather than returned partially. OpenObserve
-  doesn't stop a search when its caller goes away, so a canceled query still runs until it ends or reaches the
-  timeout.
-- **Errors:** a request OpenObserve rejects gets 400 with OpenObserve's message.
+  `adapter.rawQuery.maxResponseBytes`). OpenObserve stops a search at the timeout, and the query gets 504; a larger
+  result is rejected rather than returned partially. OpenObserve doesn't stop a search when its caller goes away, so a
+  canceled query still runs until it ends or reaches the timeout.
+- **Errors:** a request OpenObserve rejects gets 400 with OpenObserve's message. So does a search OpenObserve answers
+  only in part, for example because its time range is longer than the stream allows, with OpenObserve's reason; a
+  partial result is never returned.
 
 #### Raw query user
 
@@ -214,7 +215,8 @@ Raw queries run as an OpenObserve user of their own, never as the root user. You
 of their own, `openobserve-traces-users` by default (`adapter.rawQuery.credentialsSecretName`), apart from the admin
 credentials:
 
-- `rawQueryUsername`: the user's email, for example `traces-reader@example.com`
+- `rawQueryUsername`: the user's email, for example `traces-reader@example.com`. OpenObserve keeps emails in lower
+  case, so the module lowercases it. It must not be the root user.
 - `rawQueryPassword`: its password, 8 to 128 characters with a lowercase letter, an uppercase letter, a digit and a
   special character, as OpenObserve requires
 

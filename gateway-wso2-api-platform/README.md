@@ -29,7 +29,7 @@ The Choreo API Platform gateway can run in **two modes**:
 ### Key Design Decisions
 
 - **kgateway remains the Gateway API controller**: The default kgateway handles all `Gateway` and `HTTPRoute` resources. Choreo API Platform does not replace kgateway, it sits behind it as an API management layer.
-- **Traffic routing via kgateway Backend**: The trait creates a kgateway `Backend` (static type) pointing to the Choreo API Platform router, and patches the HTTPRoute's `backendRef` to route through the Choreo router instead of directly to the component's Service.
+- **Traffic routing via kgateway Backend**: The trait creates a kgateway `Backend` (static type) pointing to the Choreo API Platform router, and patches the HTTPRoute's `backendRef` to route through the Choreo API Platform router instead of directly to the component's Service.
 - **Choreo RestApi CRD for API management**: The trait creates a `RestApi` resource that defines the API's context path, version, upstream, operations, and policies. Choreo's operator reconciles this into its internal gateway configuration.
 - **No control plane changes required**: The rendering pipeline, endpoint resolution, and release controllers work unchanged. Only a ClusterTrait is added to inject the Choreo resources.
 - **Separate Helm installation**: The Choreo API Platform operator and gateway are installed via their own Helm charts, independent of the OpenChoreo data plane chart.
@@ -101,12 +101,12 @@ The Choreo API Platform gateway can run in **two modes**:
 │              │                                   │  │       │
 │              │   - Watches Gateway, HTTPRoute    │  │       │
 │              │   - Resolves Backend refs         │  │       │
-│              │   - Routes to Choreo router         │  │       │
+│              │   - Routes to Choreo router       │  │       │
 │              └───────────────┬───────────────────┘  │       │
 │                              │                      │       │
 │                              ▼                      │       │
 │              ┌───────────────────────────────────┐  │       │
-│              │   Choreo API Platform Router        │◄─┘       │
+│              │   Choreo Router                   │◄─┘       │
 │              │                                   │          │
 │              │   - Applies API policies          │          │
 │              │   - Rate limiting                 │          │
@@ -127,10 +127,10 @@ The Choreo API Platform gateway can run in **two modes**:
 | Component                      | Role                                                                                                                            |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
 | **kgateway Controller**        | Watches Gateway API resources (Gateway, HTTPRoute, Backend), routes traffic. Remains the Gateway API implementation             |
-| **Choreo API Platform Operator** | Watches `RestApi` and `APIGateway` (Choreo) CRDs, reconciles API configurations into the Choreo router                              |
+| **Choreo API Platform Operator** | Watches `RestApi` and `APIGateway` (Choreo) CRDs, reconciles API configurations into the Choreo API Platform router                              |
 | **Choreo API Platform Router**   | Processes API traffic, enforces policies (rate limiting, auth), and routes to upstream backend services                         |
 | **Gateway CR**                 | Kubernetes Gateway API resource that defines listeners (ports, protocols, TLS). Managed by kgateway as usual                    |
-| **HTTPRoute**                  | Gateway API route resource. Created by OpenChoreo release pipeline per component. Patched by the trait to route via Choreo router |
+| **HTTPRoute**                  | Gateway API route resource. Created by OpenChoreo release pipeline per component. Patched by the trait to route via Choreo API Platform router |
 | **Backend (kgateway)**         | kgateway-specific CRD pointing to the Choreo API Platform router as a static upstream. Created by the trait                       |
 | **RestApi (Choreo)**             | Choreo API Platform CRD defining API context, version, upstream service, operations, and policies. Created by the trait           |
 
@@ -144,7 +144,7 @@ The ReleaseBinding controller resolves endpoint URLs by inspecting rendered HTTP
 4. Resolves the HTTPS port from DataPlane/Environment gateway configuration
 5. Constructs the invoke URL: `https://<hostname>[:<port>]/<path>`
 
-This resolution is gateway-implementation-agnostic — it only reads standard Gateway API fields. The HTTPRoute's `backendRef` is replaced to point to the kgateway Backend (Choreo router), but the URL resolution logic remains unchanged.
+This resolution is gateway-implementation-agnostic — it only reads standard Gateway API fields. The HTTPRoute's `backendRef` is replaced to point to the kgateway Backend (Choreo API Platform router), but the URL resolution logic remains unchanged.
 
 ### Traffic Flow
 
@@ -158,7 +158,7 @@ LoadBalancer (:19443)
 kgateway (TLS termination)
   │
   ├─ Match HTTPRoute rules (hostname + path)
-  ├─ Resolve Backend ref → Choreo router
+  ├─ Resolve Backend ref → Choreo API Platform router
   │
   ▼
 Choreo API Platform Router (:8080)
@@ -400,7 +400,7 @@ kubectl delete workload greeting-service-workload -n default
 
 ### API Management ClusterTrait
 
-The `api-management` ClusterTrait provides declarative API management for components routed through Choreo API Platform. It creates a kgateway `Backend` (static) pointing to the Choreo router, a Choreo `RestApi` resource defining the API, and patches the HTTPRoute to route traffic through the Choreo router.
+The `api-management` ClusterTrait provides declarative API management for components routed through Choreo API Platform. It creates a kgateway `Backend` (static) pointing to the Choreo API Platform router, a Choreo `RestApi` resource defining the API, and patches the HTTPRoute to route traffic through the Choreo API Platform router.
 
 #### Derived Values (automatic)
 
@@ -430,17 +430,17 @@ Optional policies that can be enabled via trait parameters (all disabled by defa
 
 The trait uses OpenChoreo's template rendering pipeline to:
 
-1. **Create a kgateway Backend** — A `Backend` resource of type `Static` pointing to the Choreo API Platform router (`api-platform-default-gateway-gateway-runtime.openchoreo-data-plane:8080`). This allows the HTTPRoute to reference the Choreo router as a backend.
+1. **Create a kgateway Backend** — A `Backend` resource of type `Static` pointing to the Choreo API Platform router (`api-platform-default-gateway-gateway-runtime.openchoreo-data-plane:8080`). This allows the HTTPRoute to reference the Choreo API Platform router as a backend.
 
 2. **Create a Choreo RestApi** — A `RestApi` resource with automatically derived displayName, context, version, upstream URL, and operations. Policies include a default CORS policy plus any enabled optional policies (JWT auth, rate limiting, custom headers). Choreo's operator reconciles this into the router's configuration.
 
-3. **Patch the HTTPRoute backendRef** — Replaces the component's Service in the HTTPRoute `backendRef` with the kgateway `Backend` pointing to the Choreo router. This redirects all traffic through the Choreo API Platform for policy enforcement.
+3. **Patch the HTTPRoute backendRef** — Replaces the component's Service in the HTTPRoute `backendRef` with the kgateway `Backend` pointing to the Choreo API Platform router. This redirects all traffic through the Choreo API Platform for policy enforcement.
 
-4. **Patch the HTTPRoute URL rewrite** — Updates the `URLRewrite` filter's `replacePrefixMatch` to use the derived API context path (`/<environment>-<namespace>-<name>`), ensuring the Choreo router receives the correct path prefix to match the `RestApi` configuration.
+4. **Patch the HTTPRoute URL rewrite** — Updates the `URLRewrite` filter's `replacePrefixMatch` to use the derived API context path (`/<environment>-<namespace>-<name>`), ensuring the Choreo API Platform router receives the correct path prefix to match the `RestApi` configuration.
 
 #### Composing with KEDA scale-to-zero
 
-The `api-management` trait can share a component with the `keda-scaling` trait (the `autoscaling-keda` module), giving a service both Choreo API management and scale-to-zero. Because both traits repoint the HTTPRoute `backendRef`, list `api-management` **before** `keda-scaling` in `spec.traits`: `api-management` takes the edge route through the Choreo router, and `keda-scaling` detects it no longer owns the route, skips its own edge patch, and wires its interceptor behind the component's Service so the Choreo router's upstream call wakes the pod. Traffic flows kgateway -> Choreo router -> component ExternalName -> KEDA interceptor -> pod, and the API policies (rate limiting, auth, headers) still apply. See the autoscaling-keda module's `CONFIGURATION.md` ("Composing with an API gateway trait") for the details.
+The `api-management` trait can share a component with the `keda-scaling` trait (the `autoscaling-keda` module), giving a service both Choreo API management and scale-to-zero. Because both traits repoint the HTTPRoute `backendRef`, list `api-management` **before** `keda-scaling` in `spec.traits`: `api-management` takes the edge route through the Choreo API Platform router, and `keda-scaling` detects it no longer owns the route, skips its own edge patch, and wires its interceptor behind the component's Service so the Choreo API Platform router's upstream call wakes the pod. Traffic flows kgateway -> Choreo API Platform router -> component ExternalName -> KEDA interceptor -> pod, and the API policies (rate limiting, auth, headers) still apply. See the autoscaling-keda module's `CONFIGURATION.md` ("Composing with an API gateway trait") for the details.
 
 #### Key Differences from Other Gateway Modules
 
@@ -450,7 +450,7 @@ The `api-management` trait can share a component with the `keda-scaling` trait (
 | Gateway API       | Native support          | Native support                   | Native support                | **Limited** — Gateway + HTTPRoute ([edge mode](#running-at-the-edge)); default uses own CRDs |
 | Rate limiting     | `KongPlugin` annotation | `BackendTrafficPolicy` targetRef | `Middleware` + `ExtensionRef` | `RestApi` policies                                                                           |
 | Authentication    | `KongPlugin` annotation | `SecurityPolicy` targetRef       | `Middleware` + `ExtensionRef` | `RestApi` policies                                                                           |
-| Traffic routing   | Direct (Gateway API)    | Direct (Gateway API)             | Direct (Gateway API)          | Via kgateway `Backend` → Choreo router                                                         |
+| Traffic routing   | Direct (Gateway API)    | Direct (Gateway API)             | Direct (Gateway API)          | Via kgateway `Backend` → Choreo API Platform router                                                         |
 
 #### Example Usage
 
@@ -493,13 +493,13 @@ spec:
 
 ## Running at the Edge
 
-By default Choreo API Platform runs **behind kgateway**. kgateway stays the Kubernetes Gateway API controller, and the `api-management` trait routes traffic through the Choreo router via a kgateway `Backend` and a `RestApi`. This is the default, recommended setup.
+By default Choreo API Platform runs **behind kgateway**. kgateway stays the Kubernetes Gateway API controller, and the `api-management` trait routes traffic through the Choreo API Platform router via a kgateway `Backend` and a `RestApi`. This is the default, recommended setup.
 
 With the release of Choreo API Platform 1.1.0, **Kubernetes Gateway API** is supported. Currently only the `Gateway` and `HTTPRoute` resources are supported. This lets you **remove kgateway from the data plane** and run the Choreo API Platform gateway directly at the edge, where it terminates client traffic and routes straight to your component Services.
 
 What changes in this mode:
 
-- Choreo operator reconciles a standard `Gateway` (through a Choreo `GatewayClass`) and the `HTTPRoute`s attached to it. There is **no kgateway, no kgateway `Backend`, and no `RestApi`**.
+- Choreo API Platform operator reconciles a standard `Gateway` (through a Choreo `GatewayClass`) and the `HTTPRoute`s attached to it. There is **no kgateway, no kgateway `Backend`, and no `RestApi`**.
 - The **standard OpenChoreo ComponentTypes work unchanged** — the `HTTPRoute` they render (with the component `Service` as its `backendRef`) is consumed directly by Choreo API Platform Gateway. **The `api-management` trait is not used.**
 - The edge gateway is swapped in through the data plane Helm chart. The same way you would switch to Kong, Traefik, or Envoy Gateway.
 
@@ -556,7 +556,7 @@ gateway:
   # Helm values to use for the gateway it deploys (reuses gateway-configuration.yaml).
   annotations:
     gateway.api-platform.wso2.com/helm-values-configmap: api-platform-operator-gateway-values
-  # spec.infrastructure is propagated to the Choreo gateway-runtime Service.
+  # spec.infrastructure is propagated to the Choreo API Platform gateway-runtime Service.
   infrastructure:
     labels:
       openchoreo.dev/system-component: gateway
@@ -600,7 +600,7 @@ spec:
           from: All
 ```
 
-The operator reconciles it and installs a per Gateway runtime Helm release (`gateway-default-gateway`), deploying the Choreo controller + gateway-runtime (Envoy) and exposing the runtime as a LoadBalancer on the listener port.
+The operator reconciles it and installs a per Gateway runtime Helm release (`gateway-default-gateway`), deploying the Choreo API Platform controller + gateway-runtime (Envoy) and exposing the runtime as a LoadBalancer on the listener port.
 
 > **About the annotations:**
 >
@@ -620,8 +620,8 @@ Expected:
 
 | Resource                                          | Description                                      |
 | ------------------------------------------------- | ------------------------------------------------ |
-| `gateway-default-gateway-controller-*` pod        | Choreo controller — manages API config, xDS server |
-| `gateway-default-gateway-gateway-runtime-*` pod   | Choreo gateway runtime (Envoy + policy engine)     |
+| `gateway-default-gateway-controller-*` pod        | Choreo API Platform controller — manages API config, xDS server |
+| `gateway-default-gateway-gateway-runtime-*` pod   | Choreo API Platform gateway runtime (Envoy + policy engine)     |
 | `gateway-default-gateway-gateway-runtime` Service | `LoadBalancer` exposing the HTTP listener port   |
 
 ### Step 5: Deploy and invoke a component (no trait)
@@ -897,7 +897,7 @@ The Choreo API Platform router listens on port 8080 by default within the cluste
 api-platform-default-gateway-gateway-runtime.openchoreo-data-plane:8080
 ```
 
-This is an internal cluster address. External traffic reaches the Choreo router via kgateway, which handles TLS termination and hostname-based routing.
+This is an internal cluster address. External traffic reaches the Choreo API Platform router via kgateway, which handles TLS termination and hostname-based routing.
 
 ### Choreo RestApi Policies
 
@@ -950,11 +950,11 @@ kubectl get pods -n openchoreo-data-plane \
 # Check RestApi resources
 kubectl get restapi -A
 
-# View Choreo operator logs
+# View Choreo API Platform operator logs
 kubectl logs -n openchoreo-data-plane \
   -l app.kubernetes.io/component=operator,app.kubernetes.io/instance=api-platform-default-gateway -f
 
-# View Choreo router logs
+# View Choreo API Platform router logs
 kubectl logs -n openchoreo-data-plane \
   -l app.kubernetes.io/component=router,app.kubernetes.io/instance=api-platform-default-gateway -f
 
@@ -1026,7 +1026,7 @@ kubectl describe restapi <name> -n <namespace>
 
 Common causes:
 
-- Choreo operator not running. Check operator pod logs.
+- Choreo API Platform operator not running. Check operator pod logs.
 - Invalid RestApi spec (incorrect context path format, missing required fields).
 
 **Traffic not reaching the upstream service**
@@ -1046,7 +1046,7 @@ Common causes:
 
 - HTTPRoute `backendRef` not pointing to the kgateway Backend. Check the trait's patch is applied.
 - RestApi upstream URL has wrong service name or port.
-- Choreo router cannot reach the upstream Service (network policy or DNS issue).
+- Choreo API Platform router cannot reach the upstream Service (network policy or DNS issue).
 - Missing RBAC for the cluster agent to create `gateway.api-platform.wso2.com` or `gateway.kgateway.dev` resources (see Step 4).
 
 **Endpoint URLs not resolving**

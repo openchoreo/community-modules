@@ -3,12 +3,12 @@
 # This trait adds Choreo API Platform API management to components by:
 #   - Creating a kgateway Backend pointing to the Choreo API Platform router
 #   - Creating a Choreo RestApi resource that defines the API in the gateway
-#   - Patching the HTTPRoute backendRef to route traffic through the Choreo router
+#   - Patching the HTTPRoute backendRef to route traffic through the Choreo API Platform router
 #   - Patching the HTTPRoute URL rewrite to use the derived API context path
 #
 # Choreo API Platform does not implement the Kubernetes Gateway API. It runs alongside
 # the default kgateway, which continues to handle Gateway/HTTPRoute resources. Traffic
-# is redirected through the Choreo router via a kgateway Backend resource.
+# is redirected through the Choreo API Platform router via a kgateway Backend resource.
 #
 # Derived values (not user-configurable):
 #   - displayName: <environment>-<namespace>-<name>
@@ -137,7 +137,7 @@ spec:
                 port: 8080
 
     # --- RestApi: Choreo API Platform API definition ---
-    # Registers the API in the Choreo gateway. The displayName, context, and version are
+    # Registers the API in the Choreo API Platform gateway. The displayName, context, and version are
     # derived from the component metadata. The upstream URL points to the component's
     # Service using the first endpoint port. Policies are conditionally included based
     # on the enabled flags in the trait parameters.
@@ -174,10 +174,10 @@ spec:
               path: "/*"
 
   patches:
-    # --- Patch HTTPRoute: Replace backendRef with Choreo router Backend ---
+    # --- Patch HTTPRoute: Replace backendRef with Choreo API Platform router Backend ---
     # Replaces the component's Service in the HTTPRoute backendRef with the kgateway
     # Backend pointing to the Choreo API Platform router. This redirects all traffic
-    # through the Choreo router for policy enforcement before reaching the upstream service.
+    # through the Choreo API Platform router for policy enforcement before reaching the upstream service.
     #
     # The selector matches the backendRef by the component's Service name, ensuring
     # only the correct backendRef is replaced (not other refs in multi-backend routes).
@@ -195,7 +195,7 @@ spec:
 
     # --- Patch HTTPRoute: Update URL rewrite to derived API context path ---
     # Sets the replacePrefixMatch to /<environment>-<namespace>-<name>,
-    # matching the RestApi context so the Choreo router can route correctly.
+    # matching the RestApi context so the Choreo API Platform router can route correctly.
         - op: replace
           path: /spec/rules/0/filters/0/urlRewrite/path
           value:

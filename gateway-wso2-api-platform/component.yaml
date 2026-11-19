@@ -75,7 +75,7 @@ spec:
 # With the api-management trait applied, the following resources are created
 # or patched:
 #
-# 1. Backend: kgateway static backend → Choreo router
+# 1. Backend: kgateway static backend → Choreo API Platform router
 #    ---
 #    apiVersion: gateway.kgateway.dev/v1alpha1
 #    kind: Backend
@@ -159,7 +159,7 @@ spec:
 #    and operations from the component metadata and workload endpoints.
 #
 # 2. Traffic Path:
-#    Client → kgateway (TLS, hostname routing) → Choreo Router (policies) → Service → Pod
+#    Client → kgateway (TLS, hostname routing) → Choreo API Platform Router (policies) → Service → Pod
 #
 # 3. Context Path Pattern:
 #    /<environment>-<namespace>-<name>

@@ -19,7 +19,7 @@
 # ai-model-routing when the platform decides (load balancing across models).
 # A component should use one or the other for a given endpoint, not both.
 #
-# Like ai-model-routing, traffic is east-west: the component calls the Choreo
+# Like ai-model-routing, traffic is east-west: the component calls the Choreo AI Gateway
 # gateway-runtime Service directly inside the cluster. The trait does NOT create
 # a kgateway Backend or patch an HTTPRoute — there is no public ingress. It only:
 #   - Creates a Choreo LlmProxy (context only; no policies)

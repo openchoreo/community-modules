@@ -21,8 +21,8 @@
 #                           the shared provider by id. No upstream URL or secret
 #                           lives in the component namespace.
 #
-# Traffic is east-west: the component (agent) calls the Choreo gateway-runtime
-# Service directly inside the cluster. The trait therefore does NOT create a
+# Traffic is east-west: the component (agent) calls the Choreo AI Gateway
+# gateway-runtime Service directly inside the cluster. The trait therefore does NOT create a
 # kgateway Backend or patch an HTTPRoute — there is no public ingress. It only:
 #   - Creates a Choreo LlmProxy (context + model-routing policy)
 #   - Injects OPENAI_BASE_URL (and OPENAI_API_KEY) into the component Deployment

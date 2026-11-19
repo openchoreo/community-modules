@@ -6,7 +6,7 @@ management capabilities — model-aware routing, LLM token/cost control, and
 provider abstraction for components that consume LLM APIs.
 
 It runs on the **same runtime** as the
-[Choreo API Platform Gateway module](https://openchoreo.dev/ecosystem/item/?id=wso2-api-platform-gateway): the
+[Choreo API Platform Gateway module](https://openchoreo.dev/ecosystem/choreo-api-platform-gateway): the
 same operator and the same gateway components. The difference is the set of **Traits** layered on
 top. Where the gateway module exposes the `api-management` trait for standard
 REST API management, this module adds **AI gateway traits**, such as **model-aware routing**, **guardrails**, **MCP gateway** etc.
@@ -91,7 +91,7 @@ Depending on the trait, the proxy either forwards the request unchanged
 (`ai-llm-proxy`) or applies a model-routing policy (`ai-model-routing`) before
 forwarding through the shared `LlmProvider` to the upstream. (The underlying
 gateway runtime is the same one the
-[Choreo API Platform gateway module](https://openchoreo.dev/ecosystem/item/?id=wso2-api-platform-gateway)
+[Choreo API Platform gateway module](https://openchoreo.dev/ecosystem/choreo-api-platform-gateway)
 installs.)
 
 ---
@@ -99,7 +99,7 @@ installs.)
 ## Installation
 
 The installation is identical to the
-[Choreo API Platform Gateway module](https://openchoreo.dev/ecosystem/item/?id=wso2-api-platform-gateway).
+[Choreo API Platform Gateway module](https://openchoreo.dev/ecosystem/choreo-api-platform-gateway).
 If that module is already installed in your data plane, the runtime is ready —
 skip to [Using the `ai-model-routing` Trait](#using-the-ai-model-routing-trait).
 
@@ -652,7 +652,7 @@ the `LlmProxy` directly (the Tip below) shows the raw response:
 ---
 
 See the
-[Choreo API Platform Gateway module](https://openchoreo.dev/ecosystem/item/?id=wso2-api-platform-gateway) for
+[Choreo API Platform Gateway module](https://openchoreo.dev/ecosystem/choreo-api-platform-gateway) for
 the underlying runtime, optional Choreo API Manager connectivity, and edge-mode
 deployment — all of which apply unchanged to this AI gateway module.
 

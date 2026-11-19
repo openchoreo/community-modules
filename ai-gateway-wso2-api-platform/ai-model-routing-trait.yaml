@@ -1,6 +1,6 @@
 # ClusterTrait: ai-model-routing
 #
-# Model-aware routing trait for the Choreo API Platform AI gateway. Attach it to
+# Model-aware routing trait for the Choreo AI Gateway. Attach it to
 # any in-cluster component (an AI agent or service) that calls an LLM. The trait
 # exposes a per-component LLM endpoint (an LlmProxy) that fronts a shared,
 # platform-managed LlmProvider and distributes requests across multiple models

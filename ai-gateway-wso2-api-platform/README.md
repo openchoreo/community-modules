@@ -1,4 +1,4 @@
-# Choreo API Platform AI Gateway Module for OpenChoreo Data Plane
+# Choreo AI Gateway Module for OpenChoreo Data Plane
 
 This module integrates the [Choreo API Platform](https://github.com/wso2/api-platform)
 as an **AI gateway** in the OpenChoreo data plane, providing AI-native API
@@ -82,7 +82,7 @@ module reuses the same operator install, the same `APIGateway` CR, and the same
 
 ## High-Level Architecture
 
-![Choreo API Platform AI Gateway Module — Architecture](wso2-api-platform-ai-gateway.svg)
+![Choreo AI Gateway Module — Architecture](wso2-api-platform-ai-gateway.svg)
 
 There is no public ingress, kgateway `Backend`, or `HTTPRoute` in this path —
 components call the gateway-runtime Service directly inside the cluster. The

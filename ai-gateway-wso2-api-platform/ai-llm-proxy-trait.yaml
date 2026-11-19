@@ -1,6 +1,6 @@
 # ClusterTrait: ai-llm-proxy
 #
-# LLM passthrough proxy trait for the Choreo API Platform AI gateway. Attach it to
+# LLM passthrough proxy trait for the Choreo AI Gateway. Attach it to
 # any in-cluster component (an AI agent or service) that calls an LLM. The trait
 # exposes a per-component LLM endpoint (an LlmProxy) that fronts a shared,
 # platform-managed LlmProvider and forwards requests to the upstream as-is.

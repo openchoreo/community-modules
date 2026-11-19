@@ -1,6 +1,6 @@
 # ClusterTrait: ai-token-cost-control
 #
-# Token & cost control trait for the Choreo API Platform AI gateway. Attach it to
+# Token & cost control trait for the Choreo AI Gateway. Attach it to
 # an in-cluster component that calls an LLM to get per-request cost/token
 # tracking plus optional token-based and budget-based rate limiting — without
 # the application implementing any of it.

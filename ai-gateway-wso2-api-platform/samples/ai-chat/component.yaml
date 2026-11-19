@@ -30,7 +30,7 @@
 #     and set limits in releasebinding.yaml (see that file).
 #
 # Prerequisites:
-#   - Choreo API Platform AI gateway installed (README.md Steps 1-4)
+#   - Choreo AI Gateway installed (README.md Steps 1-4)
 #   - Shared LlmProvider "openai-provider" deployed (README.md Step 5)
 #   - The chosen trait applied and allowed on the ComponentType
 # =============================================================================

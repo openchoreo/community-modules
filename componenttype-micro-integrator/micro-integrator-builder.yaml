@@ -5,7 +5,7 @@ metadata:
   labels:
     openchoreo.dev/workflow-type: "component"
   annotations:
-    openchoreo.dev/description: "Containerize WSO2 Micro Integrator projects from a Maven-based integration project"
+    openchoreo.dev/description: "Containerize Choreo Integrator projects from a Maven-based integration project"
 spec:
   workflowPlaneRef:
     kind: ClusterWorkflowPlane
@@ -49,7 +49,7 @@ spec:
             appPath:
               type: string
               default: "."
-              description: "Path to the WSO2 MI integration project (must contain pom.xml) relative to the repository root"
+              description: "Path to the Choreo Integrator integration project (must contain pom.xml) relative to the repository root"
               x-openchoreo-component-parameter-repository-app-path: true
   runTemplate:
     apiVersion: argoproj.io/v1alpha1

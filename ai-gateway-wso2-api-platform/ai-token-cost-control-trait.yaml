@@ -1,6 +1,6 @@
 # ClusterTrait: ai-token-cost-control
 #
-# Token & cost control trait for the WSO2 API Platform AI gateway. Attach it to
+# Token & cost control trait for the Choreo API Platform AI gateway. Attach it to
 # an in-cluster component that calls an LLM to get per-request cost/token
 # tracking plus optional token-based and budget-based rate limiting — without
 # the application implementing any of it.
@@ -32,7 +32,7 @@
 # total_tokens), so no per-trait token configuration is needed.
 #
 # Prerequisites:
-#   - WSO2 API Platform gateway installed in the data plane (see README.md).
+#   - Choreo API Platform gateway installed in the data plane (see README.md).
 #   - A shared LlmProvider deployed once (its name is `providerRef`).
 #   - The gateway's llmPricing data is enabled (it is, in gateway-configuration.yaml)
 #     so llm-cost / llm-cost-based-ratelimit can price requests.
@@ -52,11 +52,11 @@ spec:
         gatewayRuntimeName:
           type: string
           default: "api-platform-default-gateway-gateway-runtime"
-          description: "Name of the WSO2 API Platform gateway-runtime Service in the data plane"
+          description: "Name of the Choreo API Platform gateway-runtime Service in the data plane"
         gatewayRuntimeNamespace:
           type: string
           default: "openchoreo-data-plane"
-          description: "Namespace of the WSO2 API Platform gateway-runtime Service"
+          description: "Namespace of the Choreo API Platform gateway-runtime Service"
         gatewayRuntimePort:
           type: integer
           default: 8080

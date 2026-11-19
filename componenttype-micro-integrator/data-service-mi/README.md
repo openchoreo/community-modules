@@ -1,6 +1,6 @@
 # Data Service MI
 
-A REST API that exposes employee data from a MySQL database, built with WSO2 Micro Integrator. This sample deploys three components on OpenChoreo: a MySQL database, a one-time database initializer, and the MI data service.
+A REST API that exposes employee data from a MySQL database, built with Choreo Integrator. This sample deploys three components on OpenChoreo: a MySQL database, a one-time database initializer, and the MI data service.
 
 **Source:** [openchoreo/community-modules — data-service-mi](https://github.com/openchoreo/community-modules/tree/main/componenttype-micro-integrator/data-service-mi)
 

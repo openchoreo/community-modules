@@ -1,14 +1,14 @@
-# WSO2 API Platform API Configuration Trait for OpenChoreo
+# Choreo API Platform API Configuration Trait for OpenChoreo
 #
-# This trait adds WSO2 API Platform API management to components by:
-#   - Creating a kgateway Backend pointing to the WSO2 API Platform router
-#   - Creating a WSO2 RestApi resource that defines the API in the gateway
-#   - Patching the HTTPRoute backendRef to route traffic through the WSO2 router
+# This trait adds Choreo API Platform API management to components by:
+#   - Creating a kgateway Backend pointing to the Choreo API Platform router
+#   - Creating a Choreo RestApi resource that defines the API in the gateway
+#   - Patching the HTTPRoute backendRef to route traffic through the Choreo router
 #   - Patching the HTTPRoute URL rewrite to use the derived API context path
 #
-# WSO2 API Platform does not implement the Kubernetes Gateway API. It runs alongside
+# Choreo API Platform does not implement the Kubernetes Gateway API. It runs alongside
 # the default kgateway, which continues to handle Gateway/HTTPRoute resources. Traffic
-# is redirected through the WSO2 router via a kgateway Backend resource.
+# is redirected through the Choreo router via a kgateway Backend resource.
 #
 # Derived values (not user-configurable):
 #   - displayName: <environment>-<namespace>-<name>
@@ -24,8 +24,8 @@
 #   - addHeaders: Custom request/response headers
 #
 # Prerequisites:
-#   - WSO2 API Platform gateway installed in the data plane (see README.md)
-#   - WSO2 API Platform CRDs available (RestApi, APIGateway)
+#   - Choreo API Platform gateway installed in the data plane (see README.md)
+#   - Choreo API Platform CRDs available (RestApi, APIGateway)
 #   - kgateway installed (default) with Backend CRD support
 #   - ComponentType must have HTTPRoute resources for the patch to target
 #   - "api-management" must be listed in the ComponentType's allowedTraits
@@ -119,8 +119,8 @@ spec:
           default: {}
 
   creates:
-    # --- Backend: kgateway static backend pointing to WSO2 API Platform router ---
-    # This Backend resource tells kgateway to forward traffic to the WSO2 API Platform
+    # --- Backend: kgateway static backend pointing to Choreo API Platform router ---
+    # This Backend resource tells kgateway to forward traffic to the Choreo API Platform
     # router instead of directly to the component's Service. The HTTPRoute's backendRef
     # is patched (below) to reference this Backend.
     - template:
@@ -136,8 +136,8 @@ spec:
               - host: api-platform-default-gateway-gateway-runtime.openchoreo-data-plane
                 port: 8080
 
-    # --- RestApi: WSO2 API Platform API definition ---
-    # Registers the API in the WSO2 gateway. The displayName, context, and version are
+    # --- RestApi: Choreo API Platform API definition ---
+    # Registers the API in the Choreo gateway. The displayName, context, and version are
     # derived from the component metadata. The upstream URL points to the component's
     # Service using the first endpoint port. Policies are conditionally included based
     # on the enabled flags in the trait parameters.
@@ -174,10 +174,10 @@ spec:
               path: "/*"
 
   patches:
-    # --- Patch HTTPRoute: Replace backendRef with WSO2 router Backend ---
+    # --- Patch HTTPRoute: Replace backendRef with Choreo router Backend ---
     # Replaces the component's Service in the HTTPRoute backendRef with the kgateway
-    # Backend pointing to the WSO2 API Platform router. This redirects all traffic
-    # through the WSO2 router for policy enforcement before reaching the upstream service.
+    # Backend pointing to the Choreo API Platform router. This redirects all traffic
+    # through the Choreo router for policy enforcement before reaching the upstream service.
     #
     # The selector matches the backendRef by the component's Service name, ensuring
     # only the correct backendRef is replaced (not other refs in multi-backend routes).
@@ -195,7 +195,7 @@ spec:
 
     # --- Patch HTTPRoute: Update URL rewrite to derived API context path ---
     # Sets the replacePrefixMatch to /<environment>-<namespace>-<name>,
-    # matching the RestApi context so the WSO2 router can route correctly.
+    # matching the RestApi context so the Choreo router can route correctly.
         - op: replace
           path: /spec/rules/0/filters/0/urlRewrite/path
           value:

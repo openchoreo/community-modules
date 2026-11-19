@@ -1,13 +1,13 @@
 # ClusterTrait: ai-model-routing
 #
-# Model-aware routing trait for the WSO2 API Platform AI gateway. Attach it to
+# Model-aware routing trait for the Choreo API Platform AI gateway. Attach it to
 # any in-cluster component (an AI agent or service) that calls an LLM. The trait
 # exposes a per-component LLM endpoint (an LlmProxy) that fronts a shared,
 # platform-managed LlmProvider and distributes requests across multiple models
 # using the gateway's model-aware routing policies — `model-round-robin` (even
 # distribution) or `model-weighted-round-robin` (proportional distribution).
 #
-# Resource model (WSO2 API Platform personas):
+# Resource model (Choreo API Platform personas):
 #   - LlmProviderTemplate : wire-format mapping (where the model name / tokens
 #                           live). Built-in defaults are loaded by the gateway:
 #                           openai, anthropic, gemini, mistralai, azure-openai,
@@ -21,10 +21,10 @@
 #                           the shared provider by id. No upstream URL or secret
 #                           lives in the component namespace.
 #
-# Traffic is east-west: the component (agent) calls the WSO2 gateway-runtime
+# Traffic is east-west: the component (agent) calls the Choreo gateway-runtime
 # Service directly inside the cluster. The trait therefore does NOT create a
 # kgateway Backend or patch an HTTPRoute — there is no public ingress. It only:
-#   - Creates a WSO2 LlmProxy (context + model-routing policy)
+#   - Creates a Choreo LlmProxy (context + model-routing policy)
 #   - Injects OPENAI_BASE_URL (and OPENAI_API_KEY) into the component Deployment
 #
 # The component talks to OPENAI_BASE_URL using the standard OpenAI SDK; the
@@ -32,7 +32,7 @@
 # selected model per the routing strategy, then forwards through the provider to
 # the upstream with the platform-managed credential.
 #
-# How model-aware routing works (WSO2 API Platform):
+# How model-aware routing works (Choreo API Platform):
 #   - `requestModel` tells the gateway where the model name is in the request
 #     (default JSONPath `$.model`); supplied inline in the policy params here so
 #     it works regardless of the provider's template.
@@ -42,7 +42,7 @@
 #     suspended -> HTTP 503 "All models are currently unavailable".
 #
 # Prerequisites:
-#   - WSO2 API Platform gateway installed in the data plane (see README.md).
+#   - Choreo API Platform gateway installed in the data plane (see README.md).
 #   - A shared LlmProvider deployed once (its name is `providerRef`), holding the
 #     upstream URL + credential (see README.md install step).
 #   - The APIGateway uses `apiSelector.scope: Cluster` so LLM resources in any
@@ -65,11 +65,11 @@ spec:
         gatewayRuntimeName:
           type: string
           default: "api-platform-default-gateway-gateway-runtime"
-          description: "Name of the WSO2 API Platform gateway-runtime Service in the data plane"
+          description: "Name of the Choreo API Platform gateway-runtime Service in the data plane"
         gatewayRuntimeNamespace:
           type: string
           default: "openchoreo-data-plane"
-          description: "Namespace of the WSO2 API Platform gateway-runtime Service"
+          description: "Namespace of the Choreo API Platform gateway-runtime Service"
         gatewayRuntimePort:
           type: integer
           default: 8080

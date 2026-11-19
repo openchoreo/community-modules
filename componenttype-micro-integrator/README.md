@@ -1,6 +1,6 @@
-# WSO2 Micro Integrator — OpenChoreo Platform Resources
+# Choreo Integrator — OpenChoreo Platform Resources
 
-This directory contains the OpenChoreo platform resources for building and deploying WSO2 Micro Integrator projects from source. Apply these once per cluster before deploying any MI component.
+This directory contains the OpenChoreo platform resources for building and deploying Choreo Integrator projects from source. Apply these once per cluster before deploying any MI component.
 
 ## Platform resources
 

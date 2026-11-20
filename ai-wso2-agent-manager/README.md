@@ -1,6 +1,6 @@
-# WSO2 Agent Manager Module for OpenChoreo
+# Choreo Agent Manager Module for OpenChoreo
 
-[WSO2 Agent Manager](https://github.com/wso2/agent-manager) is an open control plane for deploying, managing, and governing AI agents at scale. This module installs Agent Manager v1.0.0 on an existing OpenChoreo v1.3.x installation and wires it into OpenChoreo's identity provider and its data, workflow, and observability planes.
+[Choreo Agent Manager](https://github.com/wso2/agent-manager) is an open control plane for deploying, managing, and governing AI agents at scale. This module installs Agent Manager v1.0.0 on an existing OpenChoreo v1.3.x installation and wires it into OpenChoreo's identity provider and its data, workflow, and observability planes.
 
 > **Important:** Agent Manager reuses OpenChoreo's Thunder identity provider, OpenBao secret store, plane gateways, and OpenSearch. It does not install a second copy of any of them. Read [Prerequisites](#prerequisites) before you start, then run [Check the Cluster](#check-the-cluster): it reports what Agent Manager would share with, or collide with, in your OpenChoreo installation. The default commands produce an evaluation install; see [Before a Production Install](#before-a-production-install).
 
@@ -269,7 +269,7 @@ It reports each finding as `FAIL`, `WARN`, or `OK`, and exits with an error when
 | OpenChoreo | A plane is missing or not 1.3.x, ThunderID is not 1.0.x, or a required observability module is missing |
 | Agent Manager's namespace | `${DEFAULT_NS}` does not exist. Components of other products in it are a warning: the Console lists them as agents |
 | Data plane gateway | The `default` ClusterDataPlane's gateway is not kgateway; Agent Manager routes agents through kgateway `Backend` resources |
-| Shared components | Another module already installed the WSO2 API Platform Gateway Operator or Agent Sandbox, for example `gateway-wso2-api-platform` or `agent-sandbox`; Agent Manager would add a second copy |
+| Shared components | Another module already installed the Choreo API Platform Gateway Operator or Agent Sandbox, for example `gateway-wso2-api-platform` or `agent-sandbox`; Agent Manager would add a second copy |
 | Resources Agent Manager creates | A name Agent Manager uses after adaptation, such as its `amp-` build templates, belongs to something else. An existing `default` Project, DeploymentPipeline, or Environment in `${DEFAULT_NS}`, or OpenChoreo's `horizontal-pod-autoscaler` trait, is not a failure: `prepare-charts.sh` leaves it out of the chart and Agent Manager uses it |
 | Build template users | Another workflow uses one of the build templates Agent Manager ships, which its uninstall would delete |
 | Environments | An environment in `${DEFAULT_NS}` uses a data plane other than the `default` ClusterDataPlane |
@@ -529,7 +529,7 @@ The module's own ConfigMap is left in place. After you upgrade the tracing modul
 
 > **Cluster:** Data Plane
 
-The WSO2 API Platform Gateway Operator manages the API Platform Gateway that fronts deployed agents and secures trace ingestion.
+The Choreo API Platform Gateway Operator manages the API Platform Gateway that fronts deployed agents and secures trace ingestion.
 
 The gateway controller encrypts stored credentials at rest and will not start without a key. The Secret key name must be exactly `default-aesgcm256-v1.bin`. Store the key with your other platform secrets; losing it means the stored entries cannot be decrypted:
 
@@ -541,7 +541,7 @@ kubectl create secret generic gateway-encryption-keys \
 rm -f gateway-aesgcm.key
 ```
 
-> **If you already have the WSO2 API Platform Gateway Operator installed** (for example from the `gateway-wso2-api-platform` community module), check that it is version `0.11.0` and pins the gateway chart and images shown below before reusing it:
+> **If you already have the Choreo API Platform Gateway Operator installed** (for example from the `gateway-wso2-api-platform` community module), check that it is version `0.11.0` and pins the gateway chart and images shown below before reusing it:
 > ```bash
 > helm list -n ${DATA_PLANE_NS} | grep operator
 > ```
@@ -571,7 +571,7 @@ kubectl wait --for=condition=Available deployment \
 
 ### Grant RBAC to the Data Plane Service Account
 
-The OpenChoreo data plane service account needs permission to manage WSO2 API Platform CRDs:
+The OpenChoreo data plane service account needs permission to manage Choreo API Platform CRDs:
 
 ```bash
 kubectl apply -f ${MODULE_RAW}/resources/rbac.yaml

@@ -1,12 +1,12 @@
-# WSO2 API Platform AI Gateway Module for OpenChoreo Data Plane
+# Choreo AI Gateway Module for OpenChoreo Data Plane
 
-This module integrates the [WSO2 API Platform](https://github.com/wso2/api-platform)
+This module integrates the [Choreo API Platform](https://github.com/wso2/api-platform)
 as an **AI gateway** in the OpenChoreo data plane, providing AI-native API
 management capabilities — model-aware routing, LLM token/cost control, and
 provider abstraction for components that consume LLM APIs.
 
 It runs on the **same runtime** as the
-[WSO2 API Platform Gateway module](https://openchoreo.dev/ecosystem/item/?id=wso2-api-platform-gateway): the
+[Choreo API Platform Gateway module](https://openchoreo.dev/ecosystem/choreo-api-platform-gateway): the
 same operator and the same gateway components. The difference is the set of **Traits** layered on
 top. Where the gateway module exposes the `api-management` trait for standard
 REST API management, this module adds **AI gateway traits**, such as **model-aware routing**, **guardrails**, **MCP gateway** etc.
@@ -16,7 +16,7 @@ REST API management, this module adds **AI gateway traits**, such as **model-awa
 ## Overview
 
 OpenChoreo uses the [Kubernetes Gateway API](https://gateway-api.sigs.k8s.io/)
-as the standard API for exposing component endpoints. The WSO2 API Platform
+as the standard API for exposing component endpoints. The Choreo API Platform
 gateway runs behind the default kgateway and provides enterprise API management,
 including AI-specific governance for traffic to Large Language Model (LLM)
 providers.
@@ -44,15 +44,15 @@ and the gateway applies routing and policies:
   contract; backend credentials and provider endpoints are managed at the
   gateway.
 
-Because the runtime is identical to the WSO2 API Platform gateway module, this
+Because the runtime is identical to the Choreo API Platform gateway module, this
 module reuses the same operator install, the same `APIGateway` CR, and the same
 `gateway-configuration.yaml`. Only the **AI gateway Traits** are new.
 
 ### Key Design Decisions
 
-- **Same runtime as the WSO2 API Platform gateway module** — No separate
+- **Same runtime as the Choreo API Platform gateway module** — No separate
   operator or gateway install. If you already installed the
-  [WSO2 API Platform Gateway module](../gateway-wso2-api-platform/README.md),
+  [Choreo API Platform Gateway module](../gateway-wso2-api-platform/README.md),
   the runtime is already in place and you can skip straight to the AI traits.
 - **East-west traffic, no ingress** — Components call the gateway-runtime
   Service directly in the cluster. AI gateway traits do **not** create a
@@ -65,7 +65,7 @@ module reuses the same operator install, the same `APIGateway` CR, and the same
   routing). Credentials never live in component namespaces. Wire-format
   `LlmProviderTemplate`s are built-in and auto-loaded by the gateway.
 - **No control plane changes required** — The rendering pipeline and release
-  controllers work unchanged. Only ClusterTraits are added to inject the WSO2
+  controllers work unchanged. Only ClusterTraits are added to inject the Choreo
   AI resources.
 
 ---
@@ -82,7 +82,7 @@ module reuses the same operator install, the same `APIGateway` CR, and the same
 
 ## High-Level Architecture
 
-![WSO2 API Platform AI Gateway Module — Architecture](wso2-api-platform-ai-gateway.svg)
+![Choreo AI Gateway Module — Architecture](wso2-api-platform-ai-gateway.svg)
 
 There is no public ingress, kgateway `Backend`, or `HTTPRoute` in this path —
 components call the gateway-runtime Service directly inside the cluster. The
@@ -91,7 +91,7 @@ Depending on the trait, the proxy either forwards the request unchanged
 (`ai-llm-proxy`) or applies a model-routing policy (`ai-model-routing`) before
 forwarding through the shared `LlmProvider` to the upstream. (The underlying
 gateway runtime is the same one the
-[WSO2 API Platform gateway module](https://openchoreo.dev/ecosystem/item/?id=wso2-api-platform-gateway)
+[Choreo API Platform gateway module](https://openchoreo.dev/ecosystem/choreo-api-platform-gateway)
 installs.)
 
 ---
@@ -99,7 +99,7 @@ installs.)
 ## Installation
 
 The installation is identical to the
-[WSO2 API Platform Gateway module](https://openchoreo.dev/ecosystem/item/?id=wso2-api-platform-gateway).
+[Choreo API Platform Gateway module](https://openchoreo.dev/ecosystem/choreo-api-platform-gateway).
 If that module is already installed in your data plane, the runtime is ready —
 skip to [Using the `ai-model-routing` Trait](#using-the-ai-model-routing-trait).
 
@@ -109,10 +109,10 @@ skip to [Using the `ai-model-routing` Trait](#using-the-ai-model-routing-trait).
 - Helm 3.x
 - kubectl configured with cluster access
 
-### Step 1: Install the WSO2 API Platform Operator
+### Step 1: Install the Choreo API Platform Operator
 
-Install the WSO2 API Platform gateway operator using its Helm chart. The
-operator watches `RestApi` and `APIGateway` (WSO2) CRDs, and deploys the gateway
+Install the Choreo API Platform gateway operator using its Helm chart. The
+operator watches `RestApi` and `APIGateway` (Choreo) CRDs, and deploys the gateway
 components (router, policy engine) based on the `gateway.helm.*` values:
 
 ```bash
@@ -132,10 +132,10 @@ kubectl wait --for=condition=ready pod \
   --timeout=300s
 ```
 
-> **Already installed the WSO2 API Platform gateway module?** The operator is
+> **Already installed the Choreo API Platform gateway module?** The operator is
 > shared. Skip this step.
 
-### Step 2: Apply the Gateway Configuration and Create the WSO2 APIGateway CR
+### Step 2: Apply the Gateway Configuration and Create the Choreo APIGateway CR
 
 The operator is now running but no gateway instance exists yet. First, apply the
 gateway configuration ConfigMap that defines the gateway's runtime settings
@@ -145,12 +145,12 @@ gateway configuration ConfigMap that defines the gateway's runtime settings
 kubectl apply -f gateway-configuration.yaml
 ```
 
-> This is the **same `gateway-configuration.yaml`** used by the WSO2 API
+> This is the **same `gateway-configuration.yaml`** used by the Choreo API
 > Platform gateway module. It already enables the LLM pricing data
 > (`gateway.gatewayRuntime.policies.llmPricing`) consumed by the AI cost/token
 > policies.
 
-Then, create an `APIGateway` CR (WSO2's CRD —
+Then, create an `APIGateway` CR (Choreo's CRD —
 `apigateways.gateway.api-platform.wso2.com`, not the Kubernetes Gateway API
 `Gateway`) to instruct the operator to deploy the gateway components. The CR
 references the ConfigMap created above via `configRef`:
@@ -197,7 +197,7 @@ kubectl wait --for=condition=ready pod \
 
 ### Step 3: Verify the Installation
 
-Confirm all WSO2 API Platform components are operational:
+Confirm all Choreo API Platform components are operational:
 
 ```bash
 kubectl get pods -n openchoreo-data-plane \
@@ -208,10 +208,10 @@ Expected pods:
 
 | Pod                                              | Role                                                                                              |
 | ------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| `api-platform-default-gateway-controller-*`      | WSO2 API Platform controller — manages API configurations, xDS server, REST API                   |
-| `api-platform-default-gateway-gateway-runtime-*` | WSO2 API Platform gateway runtime — combines the router (Envoy) and policy engine in a single pod |
+| `api-platform-default-gateway-controller-*`      | Choreo API Platform controller — manages API configurations, xDS server, REST API                   |
+| `api-platform-default-gateway-gateway-runtime-*` | Choreo API Platform gateway runtime — combines the router (Envoy) and policy engine in a single pod |
 
-### Step 4: Grant RBAC for WSO2 API Platform CRDs
+### Step 4: Grant RBAC for Choreo API Platform CRDs
 
 The AI gateway traits (`ai-llm-proxy`, `ai-model-routing`) each create a
 `LlmProxy` (`gateway.api-platform.wso2.com`) per component, so the data plane
@@ -249,7 +249,7 @@ EOF
 
 > **Note:** Without these permissions, the Release controller will fail to apply
 > the AI gateway resources to the data plane with a "forbidden" error. If you
-> already created the equivalent ClusterRole for the WSO2 API Platform gateway
+> already created the equivalent ClusterRole for the Choreo API Platform gateway
 > module, this step is redundant. To remove these permissions later:
 >
 > ```bash
@@ -652,8 +652,8 @@ the `LlmProxy` directly (the Tip below) shows the raw response:
 ---
 
 See the
-[WSO2 API Platform Gateway module](https://openchoreo.dev/ecosystem/item/?id=wso2-api-platform-gateway) for
-the underlying runtime, optional WSO2 API Manager connectivity, and edge-mode
+[Choreo API Platform Gateway module](https://openchoreo.dev/ecosystem/choreo-api-platform-gateway) for
+the underlying runtime, optional Choreo API Manager connectivity, and edge-mode
 deployment — all of which apply unchanged to this AI gateway module.
 
 ---

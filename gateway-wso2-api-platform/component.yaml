@@ -7,7 +7,7 @@
 # samples/getting-started/component-types/service.yaml already includes
 # "api-management" in its allowedTraits.
 
-# --- Component: Using WSO2 API Platform for API management ---
+# --- Component: Using Choreo API Platform for API management ---
 ---
 apiVersion: openchoreo.dev/v1alpha1
 kind: Component
@@ -75,7 +75,7 @@ spec:
 # With the api-management trait applied, the following resources are created
 # or patched:
 #
-# 1. Backend: kgateway static backend → WSO2 router
+# 1. Backend: kgateway static backend → Choreo API Platform router
 #    ---
 #    apiVersion: gateway.kgateway.dev/v1alpha1
 #    kind: Backend
@@ -88,7 +88,7 @@ spec:
 #          - host: api-platform-default-gateway-router.openchoreo-data-plane
 #            port: 8080
 #
-# 2. RestApi: WSO2 API Platform API definition
+# 2. RestApi: Choreo API Platform API definition
 #    ---
 #    apiVersion: gateway.api-platform.wso2.com/v1alpha1
 #    kind: RestApi
@@ -159,7 +159,7 @@ spec:
 #    and operations from the component metadata and workload endpoints.
 #
 # 2. Traffic Path:
-#    Client → kgateway (TLS, hostname routing) → WSO2 Router (policies) → Service → Pod
+#    Client → kgateway (TLS, hostname routing) → Choreo API Platform Router (policies) → Service → Pod
 #
 # 3. Context Path Pattern:
 #    /<environment>-<namespace>-<name>

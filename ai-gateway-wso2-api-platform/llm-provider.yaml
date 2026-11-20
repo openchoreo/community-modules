@@ -1,4 +1,4 @@
-# Shared, platform-managed LLM provider for the WSO2 API Platform AI gateway.
+# Shared, platform-managed LLM provider for the Choreo AI Gateway.
 #
 # Created ONCE by a platform engineer (not per component). It holds the upstream
 # LLM endpoint, the credential, and access control. Per-component LlmProxy

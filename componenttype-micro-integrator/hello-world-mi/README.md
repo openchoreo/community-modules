@@ -1,6 +1,6 @@
 # Hello World MI
 
-A minimal REST API that responds with `{"Hello": "World"}` — a good starting point for deploying WSO2 Micro Integrator projects on OpenChoreo.
+A minimal REST API that responds with `{"Hello": "World"}` — a good starting point for deploying Choreo Integrator projects on OpenChoreo.
 
 **Source:** [openchoreo/community-modules — hello-world-mi](https://github.com/openchoreo/community-modules/tree/main/componenttype-micro-integrator/hello-world-mi)
 

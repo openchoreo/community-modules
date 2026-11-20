@@ -3,7 +3,7 @@ kind: ClusterComponentType
 metadata:
   name: micro-integrator
   annotations:
-    openchoreo.dev/description: "A WSO2 Micro Integrator workload built from a Maven integration project"
+    openchoreo.dev/description: "A Choreo Integrator workload built from a Maven integration project"
 spec:
   workloadType: deployment
 

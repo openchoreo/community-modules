@@ -1,0 +1,264 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# PostgreSQL with day 2 operations, backed by Crossplane. Apply on the control
+# plane, next to `postgres-crossplane`, which it leaves unchanged.
+#
+# It renders a single AdvancedPostgresInstance into the cell namespace and names
+# no cloud: the data plane that receives it builds it through the Composition
+# installed there. Only Azure has one, azure/postgres-advanced-composition.yaml.
+#
+# Outputs match the other Postgres ResourceTypes (host, port, database,
+# username, password), so a Workload's envBindings carry over unchanged.
+#
+# Day 2 operations are grouped:
+#   parameters          version upgrades and extensions, the same in every
+#                       environment and promoted with each release
+#   environmentConfigs  per environment, on the binding:
+#     capacity          CPU, memory and storage
+#     maintenance       when minor version and patch updates are applied
+#     credentials       password rotation
+#     network           firewall rules
+#     configuration     server parameters: connections, memory, timeouts and
+#                       logging
+apiVersion: openchoreo.dev/v1alpha1
+kind: ClusterResourceType
+metadata:
+  name: postgres-crossplane-advanced
+  labels:
+    app.kubernetes.io/name: provisioner-crossplane
+    app.kubernetes.io/part-of: openchoreo
+  annotations:
+    openchoreo.dev/local-dev-addresses: client=outputs.host:outputs.port
+    openchoreo.dev/description: >-
+      PostgreSQL provisioned by Crossplane, with day 2 operations: scaling,
+      storage growth, version upgrades, maintenance windows, password
+      rotation, firewall rules and server parameters.
+spec:
+  parameters:
+    openAPIV3Schema:
+      type: object
+      properties:
+        database:
+          type: string
+          pattern: "^[a-z_][a-z0-9_]{0,62}$"
+          default: appdb
+        version:
+          type: string
+          description: >-
+            PostgreSQL major version. Raising it upgrades the server in place
+            when the binding is promoted to the new release; it cannot be
+            lowered.
+          enum: ["15", "16", "17", "18"]
+          default: "16"
+        extensions:
+          type: array
+          description: >-
+            Extensions the application may create, such as vector or postgis.
+            The application still runs CREATE EXTENSION.
+          default: []
+          maxItems: 30
+          items:
+            type: string
+            pattern: "^[a-z0-9_-]{1,63}$"
+
+  environmentConfigs:
+    openAPIV3Schema:
+      type: object
+      properties:
+        capacity:
+          type: object
+          description: CPU, memory and storage.
+          default: {}
+          properties:
+            size:
+              type: string
+              description: >-
+                CPU and memory, and the default storage. Changing it restarts
+                the server.
+              enum: [small, medium, large]
+              default: small
+            storageGb:
+              type: integer
+              description: >-
+                Storage in GiB. Unset follows size. It can grow but not shrink,
+                so set it to the current size before lowering size.
+              enum: [32, 64, 128, 256, 512, 1024, 2048, 4096]
+            storageAutoGrow:
+              type: boolean
+              description: Grow storage automatically when it runs low.
+              default: false
+
+        maintenance:
+          type: object
+          description: When minor version and patch updates are applied.
+          default: {}
+          properties:
+            window:
+              type: object
+              description: Weekly window, in UTC. Unset lets the cloud provider choose.
+              required: [dayOfWeek, startHour]
+              properties:
+                dayOfWeek:
+                  type: integer
+                  description: 0 is Sunday, 6 is Saturday.
+                  minimum: 0
+                  maximum: 6
+                startHour:
+                  type: integer
+                  minimum: 0
+                  maximum: 23
+                startMinute:
+                  type: integer
+                  minimum: 0
+                  maximum: 59
+                  default: 0
+
+        credentials:
+          type: object
+          description: Password rotation.
+          default: {}
+          properties:
+            passwordRevision:
+              type: integer
+              description: >-
+                Raise to rotate the password. Workloads that use the password
+                output roll onto the new one once the server accepts it.
+              minimum: 1
+              default: 1
+
+        network:
+          type: object
+          description: Who can connect.
+          default: {}
+          properties:
+            firewallRules:
+              type: array
+              description: >-
+                IPv4 ranges allowed to connect in this environment, on top of
+                the data plane's own rules.
+              default: []
+              maxItems: 20
+              items:
+                type: object
+                required: [name, startIpAddress, endIpAddress]
+                properties:
+                  name:
+                    type: string
+                    pattern: "^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$"
+                  startIpAddress:
+                    type: string
+                  endIpAddress:
+                    type: string
+
+        configuration:
+          type: object
+          description: >-
+            Server parameters. Unset ones keep the default, and removing one
+            resets it. Only connections.maxConnections restarts the server.
+          default: {}
+          properties:
+            connections:
+              type: object
+              properties:
+                maxConnections:
+                  type: integer
+                  description: max_connections. Changing it restarts the server.
+                  minimum: 25
+                  maximum: 5000
+            memory:
+              type: object
+              properties:
+                workMemMb:
+                  type: integer
+                  description: work_mem, memory for each sort or hash in a query.
+                  minimum: 4
+                  maximum: 2047
+                maintenanceWorkMemMb:
+                  type: integer
+                  description: maintenance_work_mem, memory for vacuum and index builds.
+                  minimum: 1
+                  maximum: 2047
+            timeouts:
+              type: object
+              description: In seconds. 0 turns a timeout off.
+              properties:
+                statementTimeoutSeconds:
+                  type: integer
+                  description: statement_timeout, for runaway queries.
+                  minimum: 0
+                  maximum: 2147483
+                idleInTransactionTimeoutSeconds:
+                  type: integer
+                  description: >-
+                    idle_in_transaction_session_timeout, for sessions left open
+                    inside a transaction.
+                  minimum: 0
+                  maximum: 2147483
+                lockTimeoutSeconds:
+                  type: integer
+                  description: lock_timeout, for waits on a lock.
+                  minimum: 0
+                  maximum: 2147483
+            logging:
+              type: object
+              properties:
+                slowQueryThresholdMs:
+                  type: integer
+                  description: >-
+                    log_min_duration_statement: log statements that run at
+                    least this long. 0 logs every statement, -1 none.
+                  minimum: -1
+                  maximum: 2147483647
+                logStatement:
+                  type: string
+                  description: log_statement.
+                  enum: [none, ddl, mod, all]
+                queryStats:
+                  type: string
+                  description: >-
+                    pg_stat_statements.track, which statements to collect query
+                    statistics for.
+                  enum: [none, top, all]
+
+  retainPolicy: Delete
+
+  outputs:
+    - name: host
+      value: ${applied.instance.status.address}
+    - name: port
+      value: ${string(applied.instance.status.port)}
+    - name: database
+      value: ${applied.instance.status.database}
+    - name: username
+      value: ${applied.instance.status.username}
+    # The Composition names the Secret in status.connectionSecretName, and a
+    # new name on each password rotation is what rolls the workloads. Until the
+    # first one is published, the provider's "<name>-conn" stands in.
+    - name: password
+      secretKeyRef:
+        name: >-
+          ${has(applied.instance.status.connectionSecretName)
+            ? applied.instance.status.connectionSecretName
+            : metadata.name + "-conn"}
+        key: password
+
+  resources:
+    - id: instance
+      readyWhen: "${has(applied.instance.status.conditions) && applied.instance.status.conditions.exists(c, c.type == 'Ready' && c.status == 'True')}"
+      template:
+        apiVersion: crossplane.community.openchoreo.dev/v1alpha1
+        kind: AdvancedPostgresInstance
+        metadata:
+          name: ${metadata.name}
+          namespace: ${metadata.namespace}
+          labels: ${metadata.labels}
+        spec:
+          version: ${parameters.version}
+          database: ${parameters.database}
+          extensions: ${parameters.extensions}
+          capacity: ${environmentConfigs.capacity}
+          maintenance: ${environmentConfigs.maintenance}
+          credentials: ${environmentConfigs.credentials}
+          network: ${environmentConfigs.network}
+          configuration: ${environmentConfigs.configuration}

@@ -1,0 +1,66 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# The `production` binding of `orders-db`, with every day 2 setting. Each change
+# applies to this environment only, without a new ResourceRelease. Every group
+# is optional; leave out what you do not need.
+#
+# Where a change interrupts connections, it says so below. The timings are from
+# the Azure backing; see azure/README.md, "PostgreSQL (advanced)".
+#
+# spec.resourceRelease is left out, so the binding waits until it is promoted
+# to a ResourceRelease, for example with `occ resource promote`.
+apiVersion: openchoreo.dev/v1alpha1
+kind: ResourceReleaseBinding
+metadata:
+  name: orders-db-production
+  namespace: default
+spec:
+  owner:
+    projectName: shop
+    resourceName: orders-db
+  environment: production
+  resourceTypeEnvironmentConfigs:
+    # Scale up: raising `size` restarts the server. Storage grows online and
+    # cannot shrink; set `storageGb` to the current storage before lowering
+    # `size`.
+    capacity:
+      size: medium
+      storageGb: 128
+      storageAutoGrow: true
+
+    # Minor version and patch updates are applied in this weekly window, in
+    # UTC: Sunday 02:00.
+    maintenance:
+      window:
+        dayOfWeek: 0
+        startHour: 2
+
+    # Raise to rotate the password. Workloads roll onto the new one once the
+    # server accepts it; expect connection errors for a few minutes.
+    credentials:
+      passwordRevision: 1
+
+    # Extra IPv4 ranges allowed to connect, on top of the data plane's rules.
+    network:
+      firewallRules:
+        - name: office
+          startIpAddress: 203.0.113.10
+          endIpAddress: 203.0.113.10
+
+    # Server parameters. Only maxConnections restarts the server; the rest
+    # apply live. Removing one resets it to the default.
+    configuration:
+      connections:
+        maxConnections: 200
+      memory:
+        workMemMb: 16
+        maintenanceWorkMemMb: 128
+      timeouts:
+        statementTimeoutSeconds: 30
+        idleInTransactionTimeoutSeconds: 60
+        lockTimeoutSeconds: 10
+      logging:
+        slowQueryThresholdMs: 500
+        logStatement: ddl
+        queryStats: top

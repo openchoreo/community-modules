@@ -1,0 +1,49 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# The Azure resources as the provider reports them once Azure has finished.
+# Pass with --observed-resources to render a later reconcile, where the
+# AdvancedPostgresInstance gets its address and becomes Ready.
+apiVersion: dbforpostgresql.azure.m.upbound.io/v1beta1
+kind: FlexibleServer
+metadata:
+  name: r-orders-db-development-1a2b3c4d
+  namespace: dp-default-shop-development-5f6e7d8c
+  annotations:
+    crossplane.io/composition-resource-name: server
+status:
+  atProvider:
+    fqdn: xp-r-orders-db-development-1a2b3c4d-a8b59b7c.postgres.database.azure.com
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: Available
+      lastTransitionTime: "2026-09-30T00:00:00Z"
+---
+apiVersion: dbforpostgresql.azure.m.upbound.io/v1beta1
+kind: FlexibleServerDatabase
+metadata:
+  name: r-orders-db-development-1a2b3c4d
+  namespace: dp-default-shop-development-5f6e7d8c
+  annotations:
+    crossplane.io/composition-resource-name: database
+status:
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: Available
+      lastTransitionTime: "2026-09-30T00:00:00Z"
+---
+apiVersion: dbforpostgresql.azure.m.upbound.io/v1beta1
+kind: FlexibleServerFirewallRule
+metadata:
+  name: r-orders-db-development-1a2b3c4d-data-plane-egress
+  namespace: dp-default-shop-development-5f6e7d8c
+  annotations:
+    crossplane.io/composition-resource-name: firewall-data-plane-egress
+status:
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: Available
+      lastTransitionTime: "2026-09-30T00:00:00Z"

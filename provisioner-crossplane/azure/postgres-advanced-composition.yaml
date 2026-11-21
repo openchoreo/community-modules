@@ -1,0 +1,376 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# Builds an AdvancedPostgresInstance as an Azure Database for PostgreSQL
+# Flexible Server, with day 2 operations. The plain PostgresInstance is built by
+# postgres-composition.yaml, which this file leaves unchanged.
+#
+# For each AdvancedPostgresInstance, in its own namespace:
+#   FlexibleServer              the server: SKU and storage from spec.capacity,
+#                               maintenance window from spec.maintenance
+#   FlexibleServerDatabase      the application database
+#   FlexibleServerFirewallRule  one per entry in `postgres.firewallRules`, and
+#                               one per entry in spec.network.firewallRules
+#   FlexibleServerConfiguration one per server parameter set in
+#                               spec.configuration, and azure.extensions for
+#                               spec.extensions. Only max_connections restarts
+#                               the server; the provider does that straight away
+#   Secret "<name>-password-r<N>" the administrator password for
+#                               spec.credentials.passwordRevision N, generated
+#                               here; it never leaves the data plane
+#   Secret "<name>-conn-r<N>"   the password again, for workloads, published
+#                               in status.connectionSecretName once the server
+#                               has accepted it
+#
+# Raising spec.credentials.passwordRevision rotates the password: a new one is
+# generated, the server is updated to it, and once the provider reports the
+# server is using it, status.connectionSecretName moves to the new Secret. The
+# previous Secret stays until then, so workloads are never pointed at a
+# password the server does not accept yet.
+#
+# Per-data-plane settings come from the `azure` EnvironmentConfig: the resource
+# group, region and name prefix shared by every Azure Composition, and the
+# Postgres-only settings under `postgres`, including an optional `sizes` map
+# that overrides the SKU and storage behind each size. Nothing cloud-specific
+# reaches the ResourceType. The resource group is referenced by name and never
+# created or deleted here.
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: postgres-advanced-azure
+  labels:
+    app.kubernetes.io/name: provisioner-crossplane
+    app.kubernetes.io/part-of: openchoreo
+spec:
+  compositeTypeRef:
+    apiVersion: crossplane.community.openchoreo.dev/v1alpha1
+    kind: AdvancedPostgresInstance
+  mode: Pipeline
+  pipeline:
+    # 1. Load this data plane's settings into the pipeline context.
+    - step: load-settings
+      functionRef:
+        name: function-environment-configs
+      input:
+        apiVersion: environmentconfigs.fn.crossplane.io/v1beta1
+        kind: Input
+        spec:
+          environmentConfigs:
+            - type: Reference
+              ref:
+                name: azure
+
+    # 2. Render the Azure resources, and copy what clients need into the
+    #    AdvancedPostgresInstance's status.
+    - step: render
+      functionRef:
+        name: function-go-templating
+      input:
+        apiVersion: gotemplating.fn.crossplane.io/v1beta1
+        kind: GoTemplate
+        source: Inline
+        inline:
+          template: |
+            {{- $xr := .observed.composite.resource }}
+            {{- $settings := index .context "apiextensions.crossplane.io/environment" }}
+            {{- $pg := $settings.postgres }}
+
+            {{- /* Azure server names are global, 3-63 characters. The
+                   composite's name only covers the Resource and the
+                   environment, so add a hash of its namespace, which differs
+                   per OpenChoreo namespace and project. If the result is too
+                   long, keep it unique with a hash of the full name. A server
+                   that already exists keeps its name. */}}
+            {{- $azureName := printf "%s%s-%s" $settings.namePrefix $xr.metadata.name ($xr.metadata.namespace | sha256sum | trunc 8) }}
+            {{- if gt (len $azureName) 63 }}
+            {{- $azureName = printf "%s-%s" ($azureName | trunc 54 | trimSuffix "-") ($azureName | sha256sum | trunc 8) }}
+            {{- end }}
+            {{- with getComposedResource . "server" }}
+            {{- with dig "metadata" "annotations" "crossplane.io/external-name" "" . }}
+            {{- $azureName = . }}
+            {{- end }}
+            {{- end }}
+
+            {{- /* Capacity. Each size is a SKU, which fixes CPU and memory,
+                   and a default storage size. postgres.sizes in the
+                   EnvironmentConfig can override either for this data plane,
+                   for example to use Memory Optimized SKUs. */}}
+            {{- $capacity := $xr.spec.capacity | default dict }}
+            {{- $size := $capacity.size | default "small" }}
+            {{- $sizes := dict
+                  "small" (dict "sku" "B_Standard_B1ms" "storageGb" 32)
+                  "medium" (dict "sku" "GP_Standard_D2ds_v5" "storageGb" 64)
+                  "large" (dict "sku" "GP_Standard_D4ds_v5" "storageGb" 128) }}
+            {{- $sizes = merge (deepCopy ($pg.sizes | default dict)) $sizes }}
+            {{- $sku := (index $sizes $size).sku }}
+            {{- $storageGb := $capacity.storageGb | default (index $sizes $size).storageGb | int }}
+            {{- /* Never ask for less storage than the server has: Azure
+                   cannot shrink it, and auto-grow may have added some. */}}
+            {{- $storageMb := mul $storageGb 1024 }}
+            {{- with getComposedResource . "server" }}
+            {{- $storageMb = max $storageMb (dig "status" "atProvider" "storageMb" 0 . | int) }}
+            {{- end }}
+
+            {{- /* Azure picks the availability zone when it creates the
+                   server. The provider reads a missing zone as a request to
+                   move the server, which Azure refuses, so repeat the zone
+                   Azure picked. */}}
+            {{- $zone := "" }}
+            {{- with getComposedResource . "server" }}
+            {{- $zone = dig "status" "atProvider" "zone" "" . }}
+            {{- end }}
+
+            {{- /* Server parameters, by PostgreSQL name. Only the ones set
+                   are rendered; removing one deletes its configuration, which
+                   resets it to Azure's default. Timeouts are seconds in the
+                   spec and milliseconds in PostgreSQL, memory MiB and KiB. */}}
+            {{- $configuration := $xr.spec.configuration | default dict }}
+            {{- $connections := $configuration.connections | default dict }}
+            {{- $memory := $configuration.memory | default dict }}
+            {{- $timeouts := $configuration.timeouts | default dict }}
+            {{- $logging := $configuration.logging | default dict }}
+            {{- $parameters := dict }}
+            {{- if hasKey $connections "maxConnections" }}
+            {{- $_ := set $parameters "max_connections" ($connections.maxConnections | int | toString) }}
+            {{- end }}
+            {{- if hasKey $memory "workMemMb" }}
+            {{- $_ := set $parameters "work_mem" (mul ($memory.workMemMb | int) 1024 | toString) }}
+            {{- end }}
+            {{- if hasKey $memory "maintenanceWorkMemMb" }}
+            {{- $_ := set $parameters "maintenance_work_mem" (mul ($memory.maintenanceWorkMemMb | int) 1024 | toString) }}
+            {{- end }}
+            {{- if hasKey $timeouts "statementTimeoutSeconds" }}
+            {{- $_ := set $parameters "statement_timeout" (mul ($timeouts.statementTimeoutSeconds | int) 1000 | toString) }}
+            {{- end }}
+            {{- if hasKey $timeouts "idleInTransactionTimeoutSeconds" }}
+            {{- $_ := set $parameters "idle_in_transaction_session_timeout" (mul ($timeouts.idleInTransactionTimeoutSeconds | int) 1000 | toString) }}
+            {{- end }}
+            {{- if hasKey $timeouts "lockTimeoutSeconds" }}
+            {{- $_ := set $parameters "lock_timeout" (mul ($timeouts.lockTimeoutSeconds | int) 1000 | toString) }}
+            {{- end }}
+            {{- if hasKey $logging "slowQueryThresholdMs" }}
+            {{- $_ := set $parameters "log_min_duration_statement" ($logging.slowQueryThresholdMs | int | toString) }}
+            {{- end }}
+            {{- if hasKey $logging "logStatement" }}
+            {{- $_ := set $parameters "log_statement" $logging.logStatement }}
+            {{- end }}
+            {{- if hasKey $logging "queryStats" }}
+            {{- $_ := set $parameters "pg_stat_statements.track" $logging.queryStats }}
+            {{- end }}
+            {{- with $xr.spec.extensions }}
+            {{- $_ := set $parameters "azure.extensions" (join "," .) }}
+            {{- end }}
+
+            {{- /* The password for this revision: generated the first time,
+                   then copied back from the Secret this Composition wrote, so
+                   it only changes when the revision does. Secret data is
+                   already base64-encoded. Azure wants three of upper case,
+                   lower case, digits and symbols, so one of each of the first
+                   three is fixed in. */}}
+            {{- $revision := ($xr.spec.credentials | default dict).passwordRevision | default 1 | int }}
+            {{- $passwordSecret := printf "%s-password-r%d" $xr.metadata.name $revision }}
+            {{- $password := printf "A%sa1" (randAlphaNum 29) | b64enc }}
+            {{- with getComposedResource . (printf "password-r%d" $revision) }}
+            {{- with dig "data" "password" "" . }}
+            {{- $password = . }}
+            {{- end }}
+            {{- end }}
+
+            {{- /* Workloads read the password from a Secret per revision,
+                   named in status.connectionSecretName. Move to this
+                   revision's Secret only once the provider reports the server
+                   is using its password, in the server's connection details;
+                   until then keep publishing the previous one. Until the
+                   first revision is published, the ResourceType falls back
+                   to the provider's "<name>-conn". */}}
+            {{- $serverPassword := "" }}
+            {{- with index (.observed.resources | default dict) "server" }}
+            {{- $serverPassword = index (.connectionDetails | default dict) "password" | default "" }}
+            {{- end }}
+            {{- $connectionPrefix := printf "%s-conn-r" $xr.metadata.name }}
+            {{- $published := dig "status" "connectionSecretName" "" $xr }}
+            {{- if eq $serverPassword $password }}
+            {{- $published = printf "%s%d" $connectionPrefix $revision }}
+            {{- end }}
+            {{- $publishedPassword := $password }}
+            {{- if and $published (ne $published (printf "%s%d" $connectionPrefix $revision)) }}
+            {{- $publishedPassword = "" }}
+            {{- with getComposedResource . (printf "connection-r%s" (trimPrefix $connectionPrefix $published)) }}
+            {{- $publishedPassword = dig "data" "password" "" . }}
+            {{- end }}
+            {{- end }}
+
+            ---
+            apiVersion: dbforpostgresql.azure.m.upbound.io/v1beta1
+            kind: FlexibleServer
+            metadata:
+              name: {{ $xr.metadata.name }}
+              annotations:
+                {{ setResourceNameAnnotation "server" }}
+                crossplane.io/external-name: {{ $azureName }}
+            spec:
+              {{- /* No LateInitialize. Otherwise the provider copies values
+                     Azure chose into the spec and then holds the server to
+                     them: the storage tier for the first size, which blocks
+                     every later storage change, and the size auto-grow
+                     reached. Left out, Azure picks the tier for each size.
+                     The zone is the exception, repeated above. */}}
+              managementPolicies: ["Observe", "Create", "Update", "Delete"]
+              forProvider:
+                resourceGroupName: {{ $settings.resourceGroupName }}
+                location: {{ $settings.location }}
+                {{- with $zone }}
+                zone: {{ . | quote }}
+                {{- end }}
+                {{- /* A major version: Azure picks the minor version and
+                       applies minor updates in the maintenance window.
+                       Raising it upgrades the server in place. */}}
+                version: {{ $xr.spec.version | quote }}
+                {{- /* Changing the SKU restarts the server. Storage grows
+                       online and cannot shrink. */}}
+                skuName: {{ $sku }}
+                storageMb: {{ $storageMb }}
+                autoGrowEnabled: {{ $capacity.storageAutoGrow | default false }}
+                administratorLogin: {{ $pg.administratorLogin }}
+                administratorPasswordSecretRef:
+                  name: {{ $passwordSecret }}
+                  key: password
+                publicNetworkAccessEnabled: true
+                {{- with ($xr.spec.maintenance | default dict).window }}
+                maintenanceWindow:
+                  dayOfWeek: {{ .dayOfWeek }}
+                  startHour: {{ .startHour }}
+                  startMinute: {{ .startMinute | default 0 }}
+                {{- end }}
+              writeConnectionSecretToRef:
+                name: {{ $xr.metadata.name }}-conn
+            ---
+            apiVersion: v1
+            kind: Secret
+            metadata:
+              name: {{ $passwordSecret }}
+              annotations:
+                {{ setResourceNameAnnotation (printf "password-r%d" $revision) }}
+                {{- /* Not ready until workloads have this revision's
+                       password, so the composite shows a rotation in
+                       progress. */}}
+                gotemplating.fn.crossplane.io/ready: {{ if eq $published (printf "%s%d" $connectionPrefix $revision) }}"True"{{ else }}"False"{{ end }}
+            type: Opaque
+            data:
+              password: {{ $password }}
+            {{- if and $published $publishedPassword }}
+            ---
+            apiVersion: v1
+            kind: Secret
+            metadata:
+              name: {{ $published }}
+              annotations:
+                {{ setResourceNameAnnotation (printf "connection-r%s" (trimPrefix $connectionPrefix $published)) }}
+                gotemplating.fn.crossplane.io/ready: "True"
+            type: Opaque
+            data:
+              password: {{ $publishedPassword }}
+            {{- end }}
+            ---
+            apiVersion: dbforpostgresql.azure.m.upbound.io/v1beta1
+            kind: FlexibleServerDatabase
+            metadata:
+              name: {{ $xr.metadata.name }}
+              annotations:
+                {{ setResourceNameAnnotation "database" }}
+                crossplane.io/external-name: {{ $xr.spec.database }}
+            spec:
+              forProvider:
+                {{- /* Resolve: Always, so a recreated server is picked up
+                       instead of the ID resolved the first time. */}}
+                serverIdRef:
+                  name: {{ $xr.metadata.name }}
+                  policy:
+                    resolve: Always
+                charset: UTF8
+                collation: en_US.utf8
+            {{- /* One configuration per server parameter. For a parameter
+                   PostgreSQL applies only on a restart (max_connections here),
+                   the provider restarts the server when the value changes,
+                   straight away and outside the maintenance window. */}}
+            {{- range $name, $value := $parameters }}
+            {{- $id := $name | replace "_" "-" | replace "." "-" }}
+            ---
+            apiVersion: dbforpostgresql.azure.m.upbound.io/v1beta1
+            kind: FlexibleServerConfiguration
+            metadata:
+              name: {{ $xr.metadata.name }}-{{ $id }}
+              annotations:
+                {{ setResourceNameAnnotation (printf "config-%s" $id) }}
+            spec:
+              forProvider:
+                name: {{ $name }}
+                value: {{ $value | quote }}
+                serverIdRef:
+                  name: {{ $xr.metadata.name }}
+                  policy:
+                    resolve: Always
+            {{- end }}
+            {{- /* The data plane's rules, on every server. */}}
+            {{- range $pg.firewallRules }}
+            ---
+            apiVersion: dbforpostgresql.azure.m.upbound.io/v1beta1
+            kind: FlexibleServerFirewallRule
+            metadata:
+              name: {{ $xr.metadata.name }}-{{ .name }}
+              annotations:
+                {{ setResourceNameAnnotation (printf "firewall-%s" .name) }}
+                crossplane.io/external-name: {{ .name }}
+            spec:
+              forProvider:
+                serverIdRef:
+                  name: {{ $xr.metadata.name }}
+                  policy:
+                    resolve: Always
+                startIpAddress: {{ .startIpAddress }}
+                endIpAddress: {{ .endIpAddress }}
+            {{- end }}
+            {{- /* This environment's rules, prefixed so they cannot clash
+                   with the data plane's. */}}
+            {{- range (($xr.spec.network | default dict).firewallRules | default list) }}
+            ---
+            apiVersion: dbforpostgresql.azure.m.upbound.io/v1beta1
+            kind: FlexibleServerFirewallRule
+            metadata:
+              name: {{ $xr.metadata.name }}-env-{{ .name }}
+              annotations:
+                {{ setResourceNameAnnotation (printf "firewall-env-%s" .name) }}
+                crossplane.io/external-name: env-{{ .name }}
+            spec:
+              forProvider:
+                serverIdRef:
+                  name: {{ $xr.metadata.name }}
+                  policy:
+                    resolve: Always
+                startIpAddress: {{ .startIpAddress }}
+                endIpAddress: {{ .endIpAddress }}
+            {{- end }}
+            ---
+            {{- /* No resource-name annotation: this updates the
+                   AdvancedPostgresInstance's own status instead of
+                   composing one. */}}
+            apiVersion: crossplane.community.openchoreo.dev/v1alpha1
+            kind: AdvancedPostgresInstance
+            status:
+              port: 5432
+              database: {{ $xr.spec.database }}
+              username: {{ $pg.administratorLogin }}
+              {{- with getComposedResource . "server" }}
+              {{- with dig "status" "atProvider" "fqdn" "" . }}
+              address: {{ . }}
+              {{- end }}
+              {{- end }}
+              {{- if and $published $publishedPassword }}
+              connectionSecretName: {{ $published }}
+              {{- end }}
+
+    # 3. Mark each resource Ready when Azure reports it Ready, and the
+    #    AdvancedPostgresInstance Ready when all of them are.
+    - step: ready
+      functionRef:
+        name: function-auto-ready

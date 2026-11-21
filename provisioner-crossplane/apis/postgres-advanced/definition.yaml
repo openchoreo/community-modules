@@ -1,0 +1,283 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# The AdvancedPostgresInstance API: PostgresInstance with day 2 operations.
+# The `postgres-crossplane-advanced` ClusterResourceType creates it. It is a
+# separate kind, so the plain PostgresInstance and its Compositions are
+# unchanged.
+#
+# Install on every data plane that serves it. Only Azure has a Composition for
+# it, azure/postgres-advanced-composition.yaml. With more than one Composition
+# for this kind on a cluster, set spec.defaultCompositionRef below, or
+# Crossplane picks one of them at random.
+#
+# Every Composition must, once the database is reachable:
+#   - set status.address, status.port, status.database and status.username
+#   - write a Secret in the same namespace with the password under the key
+#     "password", and set status.connectionSecretName to its name. Leaving
+#     status.connectionSecretName unset means "<name>-conn"
+#   - map spec.capacity.size to the platform's compute and storage
+#
+# The spec is grouped by day 2 operation:
+#   version, extensions  version upgrades and extensions, the same in every
+#                        environment
+#   capacity             CPU, memory and storage
+#   maintenance          when minor version and patch updates are applied
+#   credentials          password rotation
+#   network              firewall rules
+#   configuration        server parameters, in subgroups
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: advancedpostgresinstances.crossplane.community.openchoreo.dev
+  labels:
+    app.kubernetes.io/name: provisioner-crossplane
+    app.kubernetes.io/part-of: openchoreo
+spec:
+  scope: Namespaced
+  group: crossplane.community.openchoreo.dev
+  names:
+    kind: AdvancedPostgresInstance
+    plural: advancedpostgresinstances
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                version:
+                  type: string
+                  description: >-
+                    PostgreSQL major version. It can be raised, which upgrades
+                    the server in place, but not lowered.
+                  enum: ["15", "16", "17", "18"]
+                  default: "16"
+                  x-kubernetes-validations:
+                    - rule: int(self) >= int(oldSelf)
+                      message: version can be raised but not lowered
+                database:
+                  type: string
+                  description: Name of the database created for the application.
+                  pattern: "^[a-z_][a-z0-9_]{0,62}$"
+                  default: appdb
+                extensions:
+                  type: array
+                  description: >-
+                    Extensions the application may create, such as vector or
+                    postgis. The application still runs CREATE EXTENSION.
+                  maxItems: 30
+                  x-kubernetes-list-type: set
+                  items:
+                    type: string
+                    pattern: "^[a-z0-9_-]{1,63}$"
+
+                capacity:
+                  type: object
+                  description: CPU, memory and storage.
+                  default: {}
+                  properties:
+                    size:
+                      type: string
+                      description: >-
+                        Relative size. Each Composition maps it to its own
+                        provider's CPU and memory, and to a default storage
+                        size. Changing it restarts the server.
+                      enum: [small, medium, large]
+                      default: small
+                    storageGb:
+                      type: integer
+                      description: >-
+                        Storage in GiB. Unset follows size. It can grow but not
+                        shrink, so set it to the current size before lowering
+                        size.
+                      enum: [32, 64, 128, 256, 512, 1024, 2048, 4096]
+                      x-kubernetes-validations:
+                        - rule: self >= oldSelf
+                          message: storage can grow but not shrink
+                    storageAutoGrow:
+                      type: boolean
+                      description: Grow storage automatically when it runs low.
+                      default: false
+                  x-kubernetes-validations:
+                    - rule: "!has(oldSelf.storageGb) || has(self.storageGb)"
+                      message: storageGb cannot be unset once set
+
+                maintenance:
+                  type: object
+                  description: When minor version and patch updates are applied.
+                  default: {}
+                  properties:
+                    window:
+                      type: object
+                      description: >-
+                        Weekly window, in UTC. Unset lets the provider choose.
+                      required: [dayOfWeek, startHour]
+                      properties:
+                        dayOfWeek:
+                          type: integer
+                          description: 0 is Sunday, 6 is Saturday.
+                          minimum: 0
+                          maximum: 6
+                        startHour:
+                          type: integer
+                          minimum: 0
+                          maximum: 23
+                        startMinute:
+                          type: integer
+                          minimum: 0
+                          maximum: 59
+                          default: 0
+
+                credentials:
+                  type: object
+                  description: Password rotation.
+                  default: {}
+                  properties:
+                    passwordRevision:
+                      type: integer
+                      description: >-
+                        Raise to rotate the password. Each revision gets a new
+                        password and a new connection Secret, published once
+                        the server accepts the password, so workloads roll onto
+                        it.
+                      minimum: 1
+                      default: 1
+                      x-kubernetes-validations:
+                        - rule: self >= oldSelf
+                          message: passwordRevision can be raised but not lowered
+
+                network:
+                  type: object
+                  description: Who can connect.
+                  default: {}
+                  properties:
+                    firewallRules:
+                      type: array
+                      description: >-
+                        IPv4 ranges allowed to connect, on top of the rules the
+                        data plane's settings add to every server.
+                      default: []
+                      maxItems: 20
+                      x-kubernetes-list-type: map
+                      x-kubernetes-list-map-keys: [name]
+                      items:
+                        type: object
+                        required: [name, startIpAddress, endIpAddress]
+                        properties:
+                          name:
+                            type: string
+                            pattern: "^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$"
+                          startIpAddress:
+                            type: string
+                            format: ipv4
+                          endIpAddress:
+                            type: string
+                            format: ipv4
+                        x-kubernetes-validations:
+                          - rule: >-
+                              !(self.startIpAddress == '0.0.0.0' &&
+                              (self.endIpAddress == '0.0.0.0' ||
+                              self.endIpAddress == '255.255.255.255'))
+                            message: >-
+                              a rule may not allow every address or every
+                              address inside the provider's cloud
+
+                configuration:
+                  type: object
+                  description: >-
+                    Server parameters. Unset ones keep the provider's default,
+                    and removing one resets it. Only
+                    connections.maxConnections needs a restart.
+                  default: {}
+                  properties:
+                    connections:
+                      type: object
+                      properties:
+                        maxConnections:
+                          type: integer
+                          description: >-
+                            max_connections. PostgreSQL applies a change only
+                            on a restart, which a Composition may do straight
+                            away.
+                          minimum: 25
+                          maximum: 5000
+                    memory:
+                      type: object
+                      properties:
+                        workMemMb:
+                          type: integer
+                          description: >-
+                            work_mem: memory for each sort or hash in a query.
+                          minimum: 4
+                          maximum: 2047
+                        maintenanceWorkMemMb:
+                          type: integer
+                          description: >-
+                            maintenance_work_mem: memory for vacuum and index
+                            builds.
+                          minimum: 1
+                          maximum: 2047
+                    timeouts:
+                      type: object
+                      description: In seconds. 0 turns a timeout off.
+                      properties:
+                        statementTimeoutSeconds:
+                          type: integer
+                          description: statement_timeout, for runaway queries.
+                          minimum: 0
+                          maximum: 2147483
+                        idleInTransactionTimeoutSeconds:
+                          type: integer
+                          description: >-
+                            idle_in_transaction_session_timeout, for sessions
+                            left open inside a transaction.
+                          minimum: 0
+                          maximum: 2147483
+                        lockTimeoutSeconds:
+                          type: integer
+                          description: lock_timeout, for waits on a lock.
+                          minimum: 0
+                          maximum: 2147483
+                    logging:
+                      type: object
+                      properties:
+                        slowQueryThresholdMs:
+                          type: integer
+                          description: >-
+                            log_min_duration_statement: log statements that run
+                            at least this long. 0 logs every statement, -1 none.
+                          minimum: -1
+                          maximum: 2147483647
+                        logStatement:
+                          type: string
+                          description: log_statement.
+                          enum: [none, ddl, mod, all]
+                        queryStats:
+                          type: string
+                          description: >-
+                            pg_stat_statements.track: which statements to
+                            collect query statistics for.
+                          enum: [none, top, all]
+            status:
+              type: object
+              properties:
+                address:
+                  type: string
+                  description: Hostname clients connect to.
+                port:
+                  type: integer
+                database:
+                  type: string
+                username:
+                  type: string
+                connectionSecretName:
+                  type: string
+                  description: >-
+                    The Secret, in the same namespace, holding the password
+                    under the key "password". Unset means
+                    "<name>-conn".

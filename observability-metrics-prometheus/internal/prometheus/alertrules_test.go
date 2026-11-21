@@ -63,6 +63,9 @@ func TestBuildPrometheusRule_CPUUsage(t *testing.T) {
 	if alertRule.Labels["openchoreo_alert"] != "true" {
 		t.Errorf("expected openchoreo_alert label, got %q", alertRule.Labels["openchoreo_alert"])
 	}
+	if alertRule.Labels[RuleNamespaceAlertLabel] != "test-ns" {
+		t.Errorf("expected %s label %q, got %q", RuleNamespaceAlertLabel, "test-ns", alertRule.Labels[RuleNamespaceAlertLabel])
+	}
 }
 
 func TestBuildPrometheusRule_MemoryUsage(t *testing.T) {

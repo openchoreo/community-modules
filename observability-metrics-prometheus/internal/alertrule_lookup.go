@@ -26,7 +26,7 @@ func (h *MetricsHandler) findRule(ctx context.Context, namespace, name string) (
 		return h.findRuleByName(ctx, name)
 	}
 
-	rule, err := h.k8sClient.GetPrometheusRule(ctx, prometheus.ObjectName(namespace, name))
+	rule, err := h.findCurrentRule(ctx, namespace, name)
 	if err == nil {
 		return rule, false, nil
 	}
@@ -41,6 +41,32 @@ func (h *MetricsHandler) findRule(ctx context.Context, namespace, name string) (
 	return legacy, true, nil
 }
 
+// findCurrentRule returns the PrometheusRule named after the alert rule's namespace and name. It
+// returns a NotFound error when there is none, or when that name is held by a PrometheusRule built
+// from another rule, as a legacy PrometheusRule whose rule is named like the generated name is.
+func (h *MetricsHandler) findCurrentRule(ctx context.Context, namespace, name string) (*monitoringv1.PrometheusRule, error) {
+	objectName := prometheus.ObjectName(namespace, name)
+	rule, err := h.k8sClient.GetPrometheusRule(ctx, objectName)
+	if err != nil {
+		return nil, err
+	}
+	if !isRuleOf(rule, namespace, name) {
+		ownerNamespace, ownerName := prometheus.RuleIdentity(rule)
+		h.logger.Warn("PrometheusRule name of an alert rule is held by another alert rule",
+			"rule_namespace", namespace, "rule_name", name, "object_name", objectName,
+			"holder_rule_namespace", ownerNamespace, "holder_rule_name", ownerName)
+		return nil, apierrors.NewNotFound(prometheusRuleResource, objectName)
+	}
+	return rule, nil
+}
+
+// isRuleOf reports whether a PrometheusRule was built from the alert rule with the given namespace
+// and name.
+func isRuleOf(rule *monitoringv1.PrometheusRule, namespace, name string) bool {
+	ns, n := prometheus.RuleIdentity(rule)
+	return ns == namespace && n == name
+}
+
 // findOwnedLegacyRule returns the legacy PrometheusRule, named after the rule alone, of the alert
 // rule with the given namespace and name. It returns a NotFound error when there is none, or when
 // the legacy PrometheusRule was built from another namespace's rule.
@@ -49,7 +75,7 @@ func (h *MetricsHandler) findOwnedLegacyRule(ctx context.Context, namespace, nam
 	if err != nil {
 		return nil, err
 	}
-	if ns, n := prometheus.RuleIdentity(legacy); ns != namespace || n != name {
+	if !isRuleOf(legacy, namespace, name) {
 		return nil, apierrors.NewNotFound(prometheusRuleResource, name)
 	}
 	return legacy, nil
@@ -77,13 +103,17 @@ func (h *MetricsHandler) removeOwnedLegacyRule(ctx context.Context, namespace, n
 }
 
 // findRuleByName returns a PrometheusRule built from a rule with the given name, in any namespace.
+// A PrometheusRule named like the rule is only taken as its legacy PrometheusRule when it was built
+// from a rule with that name, since another rule's current PrometheusRule can carry that name too.
 func (h *MetricsHandler) findRuleByName(ctx context.Context, name string) (*monitoringv1.PrometheusRule, bool, error) {
 	legacy, err := h.k8sClient.GetPrometheusRule(ctx, name)
-	if err == nil {
-		return legacy, true, nil
-	}
-	if !apierrors.IsNotFound(err) {
+	if err != nil && !apierrors.IsNotFound(err) {
 		return nil, false, err
+	}
+	if err == nil {
+		if _, n := prometheus.RuleIdentity(legacy); n == name {
+			return legacy, true, nil
+		}
 	}
 
 	rules, err := h.k8sClient.ListPrometheusRules(ctx)
@@ -102,30 +132,53 @@ func (h *MetricsHandler) findRuleByName(ctx context.Context, name string) (*moni
 // current one and, with a namespace, a legacy one this namespace owns. It returns the UID of the
 // first deleted PrometheusRule and a NotFound error when there was none.
 func (h *MetricsHandler) deleteRule(ctx context.Context, namespace, name string) (string, error) {
-	maxDeletes := 1
-	if namespace != "" {
-		maxDeletes = 2
+	rules, err := h.ruleObjects(ctx, namespace, name)
+	if err != nil {
+		return "", fmt.Errorf("failed to get alert rule: %w", err)
+	}
+	if len(rules) == 0 {
+		return "", apierrors.NewNotFound(prometheusRuleResource, name)
 	}
 
-	backendID, deleted := "", false
-	for range maxDeletes {
-		rule, _, err := h.findRule(ctx, namespace, name)
-		if apierrors.IsNotFound(err) {
-			break
-		}
-		if err != nil {
-			return "", fmt.Errorf("failed to get alert rule: %w", err)
-		}
+	// Each PrometheusRule is deleted by name, so one whose deletion is still pending, as a finalizer
+	// keeps it, cannot stand in for the other.
+	for _, rule := range rules {
 		if err := h.k8sClient.DeletePrometheusRule(ctx, rule.Name); err != nil && !apierrors.IsNotFound(err) {
 			return "", fmt.Errorf("failed to delete alert rule: %w", err)
 		}
-		if !deleted {
-			backendID, deleted = string(rule.UID), true
+	}
+	return string(rules[0].UID), nil
+}
+
+// ruleObjects returns the PrometheusRules of the alert rule with the given namespace and name: the
+// current one first, then a legacy one this namespace owns. Without a namespace, it returns the
+// PrometheusRule findRuleByName finds.
+func (h *MetricsHandler) ruleObjects(ctx context.Context, namespace, name string) ([]*monitoringv1.PrometheusRule, error) {
+	if namespace == "" {
+		rule, _, err := h.findRuleByName(ctx, name)
+		if apierrors.IsNotFound(err) {
+			return nil, nil
 		}
+		if err != nil {
+			return nil, err
+		}
+		return []*monitoringv1.PrometheusRule{rule}, nil
 	}
 
-	if !deleted {
-		return "", apierrors.NewNotFound(prometheusRuleResource, name)
+	var rules []*monitoringv1.PrometheusRule
+	current, err := h.findCurrentRule(ctx, namespace, name)
+	if err != nil && !apierrors.IsNotFound(err) {
+		return nil, err
 	}
-	return backendID, nil
+	if err == nil {
+		rules = append(rules, current)
+	}
+	legacy, err := h.findOwnedLegacyRule(ctx, namespace, name)
+	if err != nil && !apierrors.IsNotFound(err) {
+		return nil, err
+	}
+	if err == nil {
+		rules = append(rules, legacy)
+	}
+	return rules, nil
 }

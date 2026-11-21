@@ -50,6 +50,10 @@ const (
 	RuleNamespaceAnnotation = "rule_namespace"
 	// RuleNamespaceLabel labels each PrometheusRule with the namespace of its alert rule CR.
 	RuleNamespaceLabel = "openchoreo.dev/rule-namespace"
+	// RuleNamespaceAlertLabel labels each alert with the namespace of its alert rule CR. Alertmanager
+	// identifies an alert by its labels, and the alert expressions aggregate away every series
+	// label, so without it the alerts of same-named rules from different namespaces are merged.
+	RuleNamespaceAlertLabel = "openchoreo_rule_namespace"
 
 	maxObjectNameLength = 253
 	objectNameHashLen   = 10
@@ -110,7 +114,8 @@ func BuildPrometheusRule(rule AlertRuleParams, namespace string) (*monitoringv1.
 	}
 
 	alertLabels := map[string]string{
-		"openchoreo_alert": "true",
+		"openchoreo_alert":      "true",
+		RuleNamespaceAlertLabel: rule.Namespace,
 	}
 
 	interval := monitoringv1.Duration(intervalDuration)

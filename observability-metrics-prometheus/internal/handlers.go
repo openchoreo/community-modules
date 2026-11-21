@@ -339,9 +339,13 @@ func (h *MetricsHandler) CreateAlertRule(ctx context.Context, request gen.Create
 
 	if err := h.k8sClient.CreatePrometheusRule(ctx, rule); err != nil {
 		if apierrors.IsAlreadyExists(err) {
+			detail := fmt.Sprintf("alert rule %q already exists", params.Name)
+			if holder, getErr := h.k8sClient.GetPrometheusRule(ctx, rule.Name); getErr == nil && !isRuleOf(holder, params.Namespace, params.Name) {
+				detail = nameHeldError(rule.Name).Error()
+			}
 			return gen.CreateAlertRule409JSONResponse{
 				Title:  errorTitle(gen.BadRequest),
-				Detail: strPtr(fmt.Sprintf("alert rule %q already exists", params.Name)),
+				Detail: strPtr(detail),
 			}, nil
 		}
 		return gen.CreateAlertRule500JSONResponse{
@@ -527,7 +531,12 @@ func (h *MetricsHandler) migrateLegacyRule(
 	legacy, newRule *monitoringv1.PrometheusRule,
 	params prometheus.AlertRuleParams,
 ) (gen.UpdateAlertRuleResponseObject, error) {
-	if err := h.k8sClient.CreatePrometheusRule(ctx, newRule); err != nil && !apierrors.IsAlreadyExists(err) {
+	err := h.k8sClient.CreatePrometheusRule(ctx, newRule)
+	if apierrors.IsAlreadyExists(err) {
+		err = h.syncExistingCurrentRule(ctx, newRule, params)
+	}
+	if err != nil {
+		// The legacy PrometheusRule is kept, so the rule is still evaluated.
 		return gen.UpdateAlertRule500JSONResponse{
 			Title:  errorTitle(gen.InternalServerError),
 			Detail: strPtr(fmt.Sprintf("failed to migrate alert rule: %v", err)),
@@ -550,6 +559,30 @@ func (h *MetricsHandler) migrateLegacyRule(
 		Body:    buildSyncResponse(gen.Updated, params.Name, backendID, gen.Synced),
 		Headers: gen.UpdateAlertRule200ResponseHeaders{OpenChoreoReleaseLineApplied: releaseLineApplied(params.ReleaseLineUID, params.ComponentUID)},
 	}, nil
+}
+
+// syncExistingCurrentRule brings the PrometheusRule that already holds newRule's name, as a
+// concurrent migration creates it, to newRule's spec. It changes nothing and fails when that
+// PrometheusRule was built from another rule.
+func (h *MetricsHandler) syncExistingCurrentRule(ctx context.Context, newRule *monitoringv1.PrometheusRule, params prometheus.AlertRuleParams) error {
+	existing, err := h.k8sClient.GetPrometheusRule(ctx, newRule.Name)
+	if err != nil {
+		return err
+	}
+	if !isRuleOf(existing, params.Namespace, params.Name) {
+		return nameHeldError(newRule.Name)
+	}
+	if prometheusSpecsAreEqual(existing, newRule) {
+		return nil
+	}
+	existing.Spec = newRule.Spec
+	return h.k8sClient.UpdatePrometheusRule(ctx, existing)
+}
+
+// nameHeldError reports that the PrometheusRule name of an alert rule is held by another alert
+// rule. It does not name that rule, which can belong to another namespace.
+func nameHeldError(objectName string) error {
+	return fmt.Errorf("PrometheusRule name %q is held by another alert rule", objectName)
 }
 
 // DeleteAlertRule deletes a PrometheusRule CR.

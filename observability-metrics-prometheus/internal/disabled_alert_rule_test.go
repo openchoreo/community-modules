@@ -15,6 +15,7 @@ import (
 
 	"github.com/openchoreo/community-modules/observability-metrics-prometheus/internal/api/gen"
 	"github.com/openchoreo/community-modules/observability-metrics-prometheus/internal/k8s"
+	"github.com/openchoreo/community-modules/observability-metrics-prometheus/internal/prometheus"
 )
 
 const testAlertNamespace = "test-ns"
@@ -45,9 +46,11 @@ func testAlertRuleRequest(name string, enabled bool) gen.AlertRuleRequest {
 	return req
 }
 
+// mustRuleExists checks whether the PrometheusRule of the rule with the given name in the
+// "default" namespace exists.
 func mustRuleExists(t *testing.T, c *k8s.Client, name string, want bool) {
 	t.Helper()
-	got, err := c.PrometheusRuleExists(context.Background(), name)
+	got, err := c.PrometheusRuleExists(context.Background(), prometheus.ObjectName("default", name))
 	if err != nil {
 		t.Fatalf("PrometheusRuleExists: %v", err)
 	}

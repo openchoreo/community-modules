@@ -310,7 +310,7 @@ func (h *MetricsHandler) CreateAlertRule(ctx context.Context, request gen.Create
 	}
 
 	if !params.Enabled {
-		action, backendID, err := h.removeDisabledRule(ctx, params.Name)
+		action, backendID, err := h.removeDisabledRule(ctx, params.Namespace, params.Name)
 		if err != nil {
 			return gen.CreateAlertRule500JSONResponse{
 				Title:  errorTitle(gen.InternalServerError),
@@ -323,14 +323,14 @@ func (h *MetricsHandler) CreateAlertRule(ctx context.Context, request gen.Create
 		}, nil
 	}
 
-	exists, err := h.k8sClient.PrometheusRuleExists(ctx, params.Name)
-	if err != nil {
+	_, _, err = h.findRule(ctx, params.Namespace, params.Name)
+	if err != nil && !apierrors.IsNotFound(err) {
 		return gen.CreateAlertRule500JSONResponse{
 			Title:  errorTitle(gen.InternalServerError),
 			Detail: strPtr(fmt.Sprintf("failed to check existing rule: %v", err)),
 		}, nil
 	}
-	if exists {
+	if err == nil {
 		return gen.CreateAlertRule409JSONResponse{
 			Title:  errorTitle(gen.BadRequest),
 			Detail: strPtr(fmt.Sprintf("alert rule %q already exists", params.Name)),
@@ -339,9 +339,13 @@ func (h *MetricsHandler) CreateAlertRule(ctx context.Context, request gen.Create
 
 	if err := h.k8sClient.CreatePrometheusRule(ctx, rule); err != nil {
 		if apierrors.IsAlreadyExists(err) {
+			detail := fmt.Sprintf("alert rule %q already exists", params.Name)
+			if holder, getErr := h.k8sClient.GetPrometheusRule(ctx, rule.Name); getErr == nil && !isRuleOf(holder, params.Namespace, params.Name) {
+				detail = nameHeldError(rule.Name).Error()
+			}
 			return gen.CreateAlertRule409JSONResponse{
 				Title:  errorTitle(gen.BadRequest),
-				Detail: strPtr(fmt.Sprintf("alert rule %q already exists", params.Name)),
+				Detail: strPtr(detail),
 			}, nil
 		}
 		return gen.CreateAlertRule500JSONResponse{
@@ -351,7 +355,7 @@ func (h *MetricsHandler) CreateAlertRule(ctx context.Context, request gen.Create
 	}
 
 	// Re-fetch to get the assigned UID
-	created, err := h.k8sClient.GetPrometheusRule(ctx, params.Name)
+	created, err := h.k8sClient.GetPrometheusRule(ctx, rule.Name)
 	backendID := ""
 	status := gen.Synced
 	if err == nil {
@@ -378,7 +382,7 @@ func (h *MetricsHandler) GetAlertRule(ctx context.Context, request gen.GetAlertR
 		}, nil
 	}
 
-	existing, err := h.k8sClient.GetPrometheusRule(ctx, request.RuleName)
+	existing, _, err := h.findRule(ctx, derefString(request.Params.Namespace), request.RuleName)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return gen.GetAlertRule404JSONResponse{
@@ -426,6 +430,12 @@ func (h *MetricsHandler) UpdateAlertRule(ctx context.Context, request gen.Update
 			Detail: strPtr(fmt.Sprintf("metadata.name %q must match ruleName %q", params.Name, request.RuleName)),
 		}, nil
 	}
+	if ns := derefString(request.Params.Namespace); ns != "" && ns != params.Namespace {
+		return gen.UpdateAlertRule400JSONResponse{
+			Title:  errorTitle(gen.BadRequest),
+			Detail: strPtr(fmt.Sprintf("metadata.namespace %q must match namespace %q", params.Namespace, ns)),
+		}, nil
+	}
 
 	newRule, err := prometheus.BuildPrometheusRule(params, h.alertNamespace)
 	if err != nil {
@@ -436,7 +446,7 @@ func (h *MetricsHandler) UpdateAlertRule(ctx context.Context, request gen.Update
 	}
 
 	if !params.Enabled {
-		action, backendID, err := h.removeDisabledRule(ctx, request.RuleName)
+		action, backendID, err := h.removeDisabledRule(ctx, params.Namespace, request.RuleName)
 		if err != nil {
 			return gen.UpdateAlertRule500JSONResponse{
 				Title:  errorTitle(gen.InternalServerError),
@@ -449,7 +459,7 @@ func (h *MetricsHandler) UpdateAlertRule(ctx context.Context, request gen.Update
 		}, nil
 	}
 
-	existing, err := h.k8sClient.GetPrometheusRule(ctx, request.RuleName)
+	existing, legacy, err := h.findRule(ctx, params.Namespace, request.RuleName)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return gen.UpdateAlertRule400JSONResponse{
@@ -460,6 +470,16 @@ func (h *MetricsHandler) UpdateAlertRule(ctx context.Context, request gen.Update
 		return gen.UpdateAlertRule500JSONResponse{
 			Title:  errorTitle(gen.InternalServerError),
 			Detail: strPtr(fmt.Sprintf("failed to get existing alert rule: %v", err)),
+		}, nil
+	}
+
+	if legacy {
+		return h.migrateLegacyRule(ctx, existing, newRule, params)
+	}
+	if err := h.removeOwnedLegacyRule(ctx, params.Namespace, request.RuleName); err != nil {
+		return gen.UpdateAlertRule500JSONResponse{
+			Title:  errorTitle(gen.InternalServerError),
+			Detail: strPtr(fmt.Sprintf("failed to delete leftover legacy alert rule: %v", err)),
 		}, nil
 	}
 
@@ -490,22 +510,79 @@ func (h *MetricsHandler) UpdateAlertRule(ctx context.Context, request gen.Update
 
 // removeDisabledRule ensures no PrometheusRule exists for a disabled alert rule, since Prometheus
 // has no per-rule enabled flag. It returns Deleted with the removed rule's UID, or Unchanged if absent.
-func (h *MetricsHandler) removeDisabledRule(ctx context.Context, ruleName string) (gen.AlertingRuleSyncResponseAction, string, error) {
-	existing, err := h.k8sClient.GetPrometheusRule(ctx, ruleName)
+func (h *MetricsHandler) removeDisabledRule(ctx context.Context, namespace, ruleName string) (gen.AlertingRuleSyncResponseAction, string, error) {
+	backendID, err := h.deleteRule(ctx, namespace, ruleName)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return gen.Unchanged, "", nil
 		}
-		return "", "", fmt.Errorf("failed to get existing alert rule: %w", err)
+		return "", "", fmt.Errorf("failed to remove disabled alert rule: %w", err)
 	}
 
-	backendID := string(existing.UID)
-	if err := h.k8sClient.DeletePrometheusRule(ctx, ruleName); err != nil && !apierrors.IsNotFound(err) {
-		return "", "", fmt.Errorf("failed to delete disabled alert rule: %w", err)
-	}
-
-	h.logger.Info("PrometheusRule deleted for disabled alert rule", "rule_name", ruleName, "backend_id", backendID)
+	h.logger.Info("PrometheusRule deleted for disabled alert rule",
+		"rule_namespace", namespace, "rule_name", ruleName, "backend_id", backendID)
 	return gen.Deleted, backendID, nil
+}
+
+// migrateLegacyRule replaces a legacy PrometheusRule, named after the rule alone, with one named
+// after the rule's namespace and name.
+func (h *MetricsHandler) migrateLegacyRule(
+	ctx context.Context,
+	legacy, newRule *monitoringv1.PrometheusRule,
+	params prometheus.AlertRuleParams,
+) (gen.UpdateAlertRuleResponseObject, error) {
+	err := h.k8sClient.CreatePrometheusRule(ctx, newRule)
+	if apierrors.IsAlreadyExists(err) {
+		err = h.syncExistingCurrentRule(ctx, newRule, params)
+	}
+	if err != nil {
+		// The legacy PrometheusRule is kept, so the rule is still evaluated.
+		return gen.UpdateAlertRule500JSONResponse{
+			Title:  errorTitle(gen.InternalServerError),
+			Detail: strPtr(fmt.Sprintf("failed to migrate alert rule: %v", err)),
+		}, nil
+	}
+	if err := h.k8sClient.DeletePrometheusRule(ctx, legacy.Name); err != nil && !apierrors.IsNotFound(err) {
+		return gen.UpdateAlertRule500JSONResponse{
+			Title:  errorTitle(gen.InternalServerError),
+			Detail: strPtr(fmt.Sprintf("failed to delete legacy alert rule: %v", err)),
+		}, nil
+	}
+
+	backendID := ""
+	if created, err := h.k8sClient.GetPrometheusRule(ctx, newRule.Name); err == nil {
+		backendID = string(created.UID)
+	}
+	h.logger.Info("Legacy PrometheusRule migrated", "rule_namespace", params.Namespace, "rule_name", params.Name,
+		"legacy_name", legacy.Name, "backend_id", backendID)
+	return gen.UpdateAlertRule200JSONResponse{
+		Body:    buildSyncResponse(gen.Updated, params.Name, backendID, gen.Synced),
+		Headers: gen.UpdateAlertRule200ResponseHeaders{OpenChoreoReleaseLineApplied: releaseLineApplied(params.ReleaseLineUID, params.ComponentUID)},
+	}, nil
+}
+
+// syncExistingCurrentRule brings the PrometheusRule that already holds newRule's name, as a
+// concurrent migration creates it, to newRule's spec. It changes nothing and fails when that
+// PrometheusRule was built from another rule.
+func (h *MetricsHandler) syncExistingCurrentRule(ctx context.Context, newRule *monitoringv1.PrometheusRule, params prometheus.AlertRuleParams) error {
+	existing, err := h.k8sClient.GetPrometheusRule(ctx, newRule.Name)
+	if err != nil {
+		return err
+	}
+	if !isRuleOf(existing, params.Namespace, params.Name) {
+		return nameHeldError(newRule.Name)
+	}
+	if prometheusSpecsAreEqual(existing, newRule) {
+		return nil
+	}
+	existing.Spec = newRule.Spec
+	return h.k8sClient.UpdatePrometheusRule(ctx, existing)
+}
+
+// nameHeldError reports that the PrometheusRule name of an alert rule is held by another alert
+// rule. It does not name that rule, which can belong to another namespace.
+func nameHeldError(objectName string) error {
+	return fmt.Errorf("PrometheusRule name %q is held by another alert rule", objectName)
 }
 
 // DeleteAlertRule deletes a PrometheusRule CR.
@@ -517,7 +594,7 @@ func (h *MetricsHandler) DeleteAlertRule(ctx context.Context, request gen.Delete
 		}, nil
 	}
 
-	existing, err := h.k8sClient.GetPrometheusRule(ctx, request.RuleName)
+	backendID, err := h.deleteRule(ctx, derefString(request.Params.Namespace), request.RuleName)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return gen.DeleteAlertRule404JSONResponse{
@@ -527,15 +604,7 @@ func (h *MetricsHandler) DeleteAlertRule(ctx context.Context, request gen.Delete
 		}
 		return gen.DeleteAlertRule500JSONResponse{
 			Title:  errorTitle(gen.InternalServerError),
-			Detail: strPtr(fmt.Sprintf("failed to get alert rule: %v", err)),
-		}, nil
-	}
-
-	backendID := string(existing.UID)
-	if err := h.k8sClient.DeletePrometheusRule(ctx, request.RuleName); err != nil {
-		return gen.DeleteAlertRule500JSONResponse{
-			Title:  errorTitle(gen.InternalServerError),
-			Detail: strPtr(fmt.Sprintf("failed to delete alert rule: %v", err)),
+			Detail: strPtr(err.Error()),
 		}, nil
 	}
 

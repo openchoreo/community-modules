@@ -527,6 +527,30 @@ type RuntimeTopologySummary struct {
 	StartTime   time.Time `json:"startTime"`
 }
 
+// DeleteAlertRuleParams defines parameters for DeleteAlertRule.
+type DeleteAlertRuleParams struct {
+	// Namespace The namespace of the alert rule CR. Rules from different namespaces can have the same name, so a rule is identified by its namespace and name. When this parameter is set, the adapter must only return, update or delete the backend rule of that namespace's rule.
+	//
+	// This parameter is optional only so that adapters keep working with observers released before it was added. Those observers omit it, and the adapter then falls back to looking the rule up by name alone, which is ambiguous when several namespaces use the same rule name. The observer always sends it. A future release of this API will make it required and drop the name-only fallback, so adapters must not depend on that fallback.
+	Namespace *string `form:"namespace,omitempty" json:"namespace,omitempty"`
+}
+
+// GetAlertRuleParams defines parameters for GetAlertRule.
+type GetAlertRuleParams struct {
+	// Namespace The namespace of the alert rule CR. Rules from different namespaces can have the same name, so a rule is identified by its namespace and name. When this parameter is set, the adapter must only return, update or delete the backend rule of that namespace's rule.
+	//
+	// This parameter is optional only so that adapters keep working with observers released before it was added. Those observers omit it, and the adapter then falls back to looking the rule up by name alone, which is ambiguous when several namespaces use the same rule name. The observer always sends it. A future release of this API will make it required and drop the name-only fallback, so adapters must not depend on that fallback.
+	Namespace *string `form:"namespace,omitempty" json:"namespace,omitempty"`
+}
+
+// UpdateAlertRuleParams defines parameters for UpdateAlertRule.
+type UpdateAlertRuleParams struct {
+	// Namespace The namespace of the alert rule CR. Rules from different namespaces can have the same name, so a rule is identified by its namespace and name. When this parameter is set, the adapter must only return, update or delete the backend rule of that namespace's rule.
+	//
+	// This parameter is optional only so that adapters keep working with observers released before it was added. Those observers omit it, and the adapter then falls back to looking the rule up by name alone, which is ambiguous when several namespaces use the same rule name. The observer always sends it. A future release of this API will make it required and drop the name-only fallback, so adapters must not depend on that fallback.
+	Namespace *string `form:"namespace,omitempty" json:"namespace,omitempty"`
+}
+
 // HandleAlertWebhookJSONBody defines parameters for HandleAlertWebhook.
 type HandleAlertWebhookJSONBody = map[string]interface{}
 

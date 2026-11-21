@@ -70,6 +70,15 @@ func (c *Client) GetPrometheusRule(ctx context.Context, name string) (*monitorin
 	return rule, nil
 }
 
+// ListPrometheusRules lists the PrometheusRules in the configured namespace.
+func (c *Client) ListPrometheusRules(ctx context.Context) ([]monitoringv1.PrometheusRule, error) {
+	list := &monitoringv1.PrometheusRuleList{}
+	if err := c.client.List(ctx, list, client.InNamespace(c.namespace)); err != nil {
+		return nil, fmt.Errorf("failed to list PrometheusRules: %w", err)
+	}
+	return list.Items, nil
+}
+
 // UpdatePrometheusRule updates an existing PrometheusRule.
 func (c *Client) UpdatePrometheusRule(ctx context.Context, rule *monitoringv1.PrometheusRule) error {
 	if err := c.client.Update(ctx, rule); err != nil {

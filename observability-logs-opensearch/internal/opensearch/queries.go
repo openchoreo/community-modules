@@ -734,7 +734,7 @@ func (qb *QueryBuilder) BuildLogAlertingRuleMonitorBody(params AlertingRuleReque
 	monitorBody := MonitorBody{
 		Type:        "monitor",
 		MonitorType: "query_level_monitor",
-		Name:        params.Metadata.Name,
+		Name:        MonitorName(params.Metadata.Namespace, params.Metadata.Name),
 		Enabled:     params.Condition.Enabled,
 		Schedule: MonitorSchedule{
 			Period: MonitorSchedulePeriod{
@@ -803,6 +803,16 @@ func (qb *QueryBuilder) BuildLogAlertingRuleMonitorBody(params AlertingRuleReque
 	}
 
 	return result, nil
+}
+
+// MonitorName returns the monitor name of the alert rule with the given namespace and name. Rules
+// from every namespace share one monitor list, so the name carries the namespace to keep same-named
+// rules from different namespaces apart.
+func MonitorName(namespace, name string) string {
+	if namespace == "" {
+		return name
+	}
+	return namespace + "/" + name
 }
 
 // GetOperatorSymbol converts an operator string to its symbol.

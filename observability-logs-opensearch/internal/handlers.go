@@ -692,6 +692,25 @@ func (h *LogsHandler) CreateAlertRule(ctx context.Context, request gen.CreateAle
 
 	params := toAlertingRuleRequest(request.Body)
 
+	existing, err := h.findRuleMonitor(ctx, params.Metadata.Namespace, params.Metadata.Name)
+	if err != nil {
+		h.logger.Error("Failed to search for monitor",
+			slog.String("function", "CreateAlertRule"),
+			slog.String("ruleName", params.Metadata.Name),
+			slog.Any("error", err),
+		)
+		return gen.CreateAlertRule500JSONResponse{
+			Title:   ptr(gen.InternalServerError),
+			Message: ptr("internal server error"),
+		}, nil
+	}
+	if existing != nil {
+		return gen.CreateAlertRule409JSONResponse{
+			Title:   ptr(gen.Conflict),
+			Message: ptr("alert rule already exists"),
+		}, nil
+	}
+
 	monitorBody, err := h.queryBuilder.BuildLogAlertingRuleMonitorBody(params)
 	if err != nil {
 		h.logger.Error("Failed to build monitor body",
@@ -734,9 +753,9 @@ func (h *LogsHandler) CreateAlertRule(ctx context.Context, request gen.CreateAle
 
 // DeleteAlertRule implements DELETE /api/v1alpha1/alerts/rules/{ruleName}.
 func (h *LogsHandler) DeleteAlertRule(ctx context.Context, request gen.DeleteAlertRuleRequestObject) (gen.DeleteAlertRuleResponseObject, error) {
-	monitorID, found, err := h.osClient.SearchMonitorByName(ctx, request.RuleName)
+	monitorID, found, err := h.deleteRuleMonitors(ctx, derefString(request.Params.Namespace), request.RuleName)
 	if err != nil {
-		h.logger.Error("Failed to search for monitor",
+		h.logger.Error("Failed to delete monitor",
 			slog.String("function", "DeleteAlertRule"),
 			slog.String("ruleName", request.RuleName),
 			slog.Any("error", err),
@@ -753,18 +772,6 @@ func (h *LogsHandler) DeleteAlertRule(ctx context.Context, request gen.DeleteAle
 		}, nil
 	}
 
-	if err := h.osClient.DeleteMonitor(ctx, monitorID); err != nil {
-		h.logger.Error("Failed to delete monitor",
-			slog.String("function", "DeleteAlertRule"),
-			slog.String("ruleName", request.RuleName),
-			slog.Any("error", err),
-		)
-		return gen.DeleteAlertRule500JSONResponse{
-			Title:   ptr(gen.InternalServerError),
-			Message: ptr("internal server error"),
-		}, nil
-	}
-
 	now := time.Now().UTC().Format(time.RFC3339)
 	return gen.DeleteAlertRule200JSONResponse{
 		Action:        ptr(gen.Deleted),
@@ -777,7 +784,7 @@ func (h *LogsHandler) DeleteAlertRule(ctx context.Context, request gen.DeleteAle
 
 // GetAlertRule implements GET /api/v1alpha1/alerts/rules/{ruleName}.
 func (h *LogsHandler) GetAlertRule(ctx context.Context, request gen.GetAlertRuleRequestObject) (gen.GetAlertRuleResponseObject, error) {
-	monitorID, found, err := h.osClient.SearchMonitorByName(ctx, request.RuleName)
+	rm, err := h.findRuleMonitor(ctx, derefString(request.Params.Namespace), request.RuleName)
 	if err != nil {
 		h.logger.Error("Failed to search for monitor",
 			slog.String("function", "GetAlertRule"),
@@ -789,14 +796,14 @@ func (h *LogsHandler) GetAlertRule(ctx context.Context, request gen.GetAlertRule
 			Message: ptr("internal server error"),
 		}, nil
 	}
-	if !found {
+	if rm == nil {
 		return gen.GetAlertRule404JSONResponse{
 			Title:   ptr(gen.NotFound),
 			Message: ptr("alert rule not found"),
 		}, nil
 	}
 
-	monitor, err := h.osClient.GetMonitorByID(ctx, monitorID)
+	monitor, err := h.osClient.GetMonitorByID(ctx, rm.id)
 	if err != nil {
 		h.logger.Error("Failed to get monitor",
 			slog.String("function", "GetAlertRule"),
@@ -834,7 +841,21 @@ func (h *LogsHandler) UpdateAlertRule(ctx context.Context, request gen.UpdateAle
 		}, nil
 	}
 
-	monitorID, found, err := h.osClient.SearchMonitorByName(ctx, request.RuleName)
+	params := toAlertingRuleRequest(request.Body)
+	if params.Metadata.Name != request.RuleName {
+		return gen.UpdateAlertRule400JSONResponse{
+			Title:   ptr(gen.BadRequest),
+			Message: ptr(fmt.Sprintf("metadata.name %q must match ruleName %q", params.Metadata.Name, request.RuleName)),
+		}, nil
+	}
+	if ns := derefString(request.Params.Namespace); ns != "" && ns != params.Metadata.Namespace {
+		return gen.UpdateAlertRule400JSONResponse{
+			Title:   ptr(gen.BadRequest),
+			Message: ptr(fmt.Sprintf("metadata.namespace %q must match namespace %q", params.Metadata.Namespace, ns)),
+		}, nil
+	}
+
+	monitors, err := h.findRuleMonitors(ctx, params.Metadata.Namespace, request.RuleName)
 	if err != nil {
 		h.logger.Error("Failed to search for monitor",
 			slog.String("function", "UpdateAlertRule"),
@@ -846,14 +867,12 @@ func (h *LogsHandler) UpdateAlertRule(ctx context.Context, request gen.UpdateAle
 			Message: ptr("internal server error"),
 		}, nil
 	}
-	if !found {
+	if len(monitors) == 0 {
 		return gen.UpdateAlertRule404JSONResponse{
 			Title:   ptr(gen.NotFound),
 			Message: ptr("alert rule not found"),
 		}, nil
 	}
-
-	params := toAlertingRuleRequest(request.Body)
 
 	monitorBody, err := h.queryBuilder.BuildLogAlertingRuleMonitorBody(params)
 	if err != nil {
@@ -867,10 +886,30 @@ func (h *LogsHandler) UpdateAlertRule(ctx context.Context, request gen.UpdateAle
 		}, nil
 	}
 
-	if _, err := h.osClient.UpdateMonitor(ctx, monitorID, monitorBody); err != nil {
+	rm := monitors[0]
+	monitorID := rm.id
+	if rm.legacy {
+		// Replace the legacy monitor, named after the rule alone, with one named after the rule's
+		// namespace and name.
+		monitorID, _, err = h.osClient.CreateMonitor(ctx, monitorBody)
+		if err == nil {
+			err = h.osClient.DeleteMonitor(ctx, rm.id)
+		}
+	} else {
+		_, err = h.osClient.UpdateMonitor(ctx, monitorID, monitorBody)
+		// A legacy monitor left next to the current one, as an interrupted migration or a module
+		// downgrade leaves it, would evaluate the rule a second time.
+		for _, leftover := range monitors[1:] {
+			if err == nil {
+				err = h.osClient.DeleteMonitor(ctx, leftover.id)
+			}
+		}
+	}
+	if err != nil {
 		h.logger.Error("Failed to update monitor",
 			slog.String("function", "UpdateAlertRule"),
 			slog.String("ruleName", request.RuleName),
+			slog.Bool("legacy", rm.legacy),
 			slog.Any("error", err),
 		)
 		return gen.UpdateAlertRule500JSONResponse{
@@ -1013,7 +1052,10 @@ func toAlertingRuleRequest(req *gen.AlertRuleRequest) opensearch.AlertingRuleReq
 
 // parseMonitorToAlertRuleResponse parses an OpenSearch monitor to the API AlertRuleResponse.
 func parseMonitorToAlertRuleResponse(monitor map[string]interface{}) (gen.AlertRuleResponse, error) {
-	name := getStringFromMap(monitor, "name")
+	ruleNamespace, name := ruleIdentity(monitor)
+	if name == "" {
+		name = getStringFromMap(monitor, "name")
+	}
 
 	// Extract metadata from the monitor's trigger action message template
 	var namespace, projectUID, environmentUID, componentUID, searchQuery string
@@ -1031,6 +1073,9 @@ func parseMonitorToAlertRuleResponse(monitor map[string]interface{}) (gen.AlertR
 			if search, ok := input["search"].(map[string]interface{}); ok {
 				if queryMap, ok := search["query"].(map[string]interface{}); ok {
 					searchQuery, namespace, projectUID, environmentUID, componentUID = extractQueryMetadata(queryMap)
+					if namespace == "" {
+						namespace = ruleNamespace
+					}
 				}
 			}
 		}

@@ -282,6 +282,11 @@ func TestCreateAlertRule_NilBody(t *testing.T) {
 
 func TestCreateAlertRule_Success(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/_plugins/_alerting/monitors/_search" {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"hits":{"total":{"value":0},"hits":[]}}`)
+			return
+		}
 		if r.URL.Path == "/_plugins/_alerting/monitors" && r.Method == "POST" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
@@ -391,7 +396,7 @@ func deleteAlertRuleServer(monitorFound bool, deleteErr bool) *httptest.Server {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			if monitorFound {
-				fmt.Fprint(w, `{"hits":{"total":{"value":1},"hits":[{"_id":"a1b2c3d4-e5f6-7890-abcd-ef1234567890","_source":{}}]}}`)
+				fmt.Fprint(w, `{"hits":{"total":{"value":1},"hits":[{"_id":"a1b2c3d4-e5f6-7890-abcd-ef1234567890","_source":{"name":"test-ns/test-rule"}}]}}`)
 			} else {
 				fmt.Fprint(w, `{"hits":{"total":{"value":0},"hits":[]}}`)
 			}
@@ -466,7 +471,7 @@ func getAlertRuleServer(monitorFound bool, monitorData map[string]interface{}) *
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			if monitorFound {
-				fmt.Fprint(w, `{"hits":{"total":{"value":1},"hits":[{"_id":"a1b2c3d4-e5f6-7890-abcd-ef1234567890","_source":{}}]}}`)
+				fmt.Fprint(w, `{"hits":{"total":{"value":1},"hits":[{"_id":"a1b2c3d4-e5f6-7890-abcd-ef1234567890","_source":{"name":"test-ns/test-rule"}}]}}`)
 			} else {
 				fmt.Fprint(w, `{"hits":{"total":{"value":0},"hits":[]}}`)
 			}
@@ -581,7 +586,7 @@ func TestGetAlertRule_GetError(t *testing.T) {
 		if r.URL.Path == "/_plugins/_alerting/monitors/_search" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			fmt.Fprint(w, `{"hits":{"total":{"value":1},"hits":[{"_id":"a1b2c3d4-e5f6-7890-abcd-ef1234567890","_source":{}}]}}`)
+			fmt.Fprint(w, `{"hits":{"total":{"value":1},"hits":[{"_id":"a1b2c3d4-e5f6-7890-abcd-ef1234567890","_source":{"name":"test-ns/test-rule"}}]}}`)
 			return
 		}
 		if strings.HasPrefix(r.URL.Path, "/_plugins/_alerting/monitors/") && r.Method == "GET" {
@@ -624,7 +629,7 @@ func TestUpdateAlertRule_Success(t *testing.T) {
 		if r.URL.Path == "/_plugins/_alerting/monitors/_search" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			fmt.Fprint(w, `{"hits":{"total":{"value":1},"hits":[{"_id":"a1b2c3d4-e5f6-7890-abcd-ef1234567890","_source":{}}]}}`)
+			fmt.Fprint(w, `{"hits":{"total":{"value":1},"hits":[{"_id":"a1b2c3d4-e5f6-7890-abcd-ef1234567890","_source":{"name":"test-ns/test-rule"}}]}}`)
 			return
 		}
 		if strings.HasPrefix(r.URL.Path, "/_plugins/_alerting/monitors/") && r.Method == "PUT" {

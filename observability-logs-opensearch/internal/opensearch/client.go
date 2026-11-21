@@ -134,49 +134,80 @@ func (c *Client) Search(ctx context.Context, indices []string, query map[string]
 	return response, nil
 }
 
-// SearchMonitorByName searches alerting monitors by name using the Alerting plugin API.
-func (c *Client) SearchMonitorByName(ctx context.Context, name string) (string, bool, error) {
+// maxMonitorSearchHits bounds the monitors a name search returns.
+const maxMonitorSearchHits = 100
+
+// MonitorRef identifies a monitor found by a name search.
+type MonitorRef struct {
+	ID   string
+	Name string
+}
+
+// SearchMonitorsByName searches alerting monitors by name using the Alerting plugin API. The
+// search matches the name as a phrase, so it can return monitors whose names only contain it;
+// callers compare MonitorRef.Name to pick exact matches. Exact matches rank first.
+func (c *Client) SearchMonitorsByName(ctx context.Context, name string) ([]MonitorRef, error) {
 	path := "/_plugins/_alerting/monitors/_search"
 	nameJSON, err := json.Marshal(name)
 	if err != nil {
-		return "", false, fmt.Errorf("failed to marshal monitor name: %w", err)
+		return nil, fmt.Errorf("failed to marshal monitor name: %w", err)
 	}
 	queryBody := fmt.Sprintf(`{
+		"size": %d,
 		"query": {
-				"match_phrase": {
-						"monitor.name": %s
-				}
+			"bool": {
+				"should": [
+					{"term": {"monitor.name.keyword": %s}},
+					{"match_phrase": {"monitor.name": %s}}
+				],
+				"minimum_should_match": 1
+			}
 		}
-  }`, string(nameJSON))
+	}`, maxMonitorSearchHits, string(nameJSON), string(nameJSON))
 
 	req, err := http.NewRequestWithContext(ctx, "POST", path, strings.NewReader(queryBody))
 	if err != nil {
-		return "", false, fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Add("Content-Type", "application/json")
 
 	res, err := c.client.Client.Perform(req)
 	if err != nil {
-		return "", false, fmt.Errorf("monitor search request failed: %w", err)
+		return nil, fmt.Errorf("monitor search request failed: %w", err)
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		return "", false, fmt.Errorf("monitor search request failed with status: %d", res.StatusCode)
+		return nil, fmt.Errorf("monitor search request failed with status: %d", res.StatusCode)
 	}
 
 	parsed, err := parseSearchResponse(res.Body)
 	if err != nil {
-		return "", false, fmt.Errorf("failed to parse monitor search response: %w", err)
+		return nil, fmt.Errorf("failed to parse monitor search response: %w", err)
 	}
 
-	if parsed.Hits.Total.Value == 0 || len(parsed.Hits.Hits) == 0 {
-		return "", false, nil
+	refs := make([]MonitorRef, 0, len(parsed.Hits.Hits))
+	for _, hit := range parsed.Hits.Hits {
+		if hit.ID == "" {
+			return nil, fmt.Errorf("monitor search response missing _id field")
+		}
+		refs = append(refs, MonitorRef{ID: hit.ID, Name: monitorNameFromSource(hit.Source)})
 	}
-	if parsed.Hits.Hits[0].ID == "" {
-		return "", false, fmt.Errorf("monitor search response missing _id field")
+	return refs, nil
+}
+
+// monitorNameFromSource reads a monitor's name from a search hit's source, which holds either the
+// monitor itself or the monitor under a "monitor" key.
+func monitorNameFromSource(source map[string]interface{}) string {
+	if name, ok := source["name"].(string); ok {
+		return name
 	}
-	return parsed.Hits.Hits[0].ID, true, nil
+	if monitor, ok := source["monitor"].(map[string]interface{}); ok {
+		if name, ok := monitor["name"].(string); ok {
+			return name
+		}
+	}
+	return ""
 }
 
 // CreateMonitor creates a new alerting monitor using the Alerting plugin API.

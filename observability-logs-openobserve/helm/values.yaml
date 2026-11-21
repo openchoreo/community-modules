@@ -16,6 +16,12 @@ common:
   openObserveHost: "openobserve"
   openObservePort: 5080
   openObserveTlsEnabled: false
+  # Used only when openObserveTlsEnabled is true. CA file to verify the OpenObserve or
+  # gateway certificate against (mount it with fluent-bit.extraVolumes), hostname
+  # verification, and an optional SNI name. Empty or false leaves Fluent Bit's defaults.
+  openObserveTlsCaFile: ""
+  openObserveTlsVerifyHostname: false
+  openObserveTlsVhost: ""
 
 auditLogs:
   # Requires fluent-bit where openchoreo-api and observer run.
@@ -41,6 +47,12 @@ auditLogs:
     org: ""
     # Defaults to common.openObserveTlsEnabled.
     tlsEnabled: null
+    # tlsCaFile and tlsVerifyHostname default to common.openObserveTlsCaFile and
+    # common.openObserveTlsVerifyHostname. tlsVhost does not fall back, because the
+    # common SNI name belongs to common.openObserveHost.
+    tlsCaFile: ""
+    tlsVerifyHostname: null
+    tlsVhost: ""
 
 fluent-bit:
   enabled: true

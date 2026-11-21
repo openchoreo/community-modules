@@ -161,10 +161,45 @@ helm upgrade --install observability-logs-openobserve \
 > - `fluentBitCustomizations.clusterInstance` is required and must be unique per remote cluster — it is stamped on every log record and is what the platform logs API filters on to tell the clusters apart.
 > - The `openobserve-admin-credentials` secret must exist on the remote clusters as well, because Fluent Bit basic-authenticates directly to OpenObserve. If you don't have a shared secret backend, create it manually (see the [Multi-Cluster Connectivity](https://openchoreo.dev/docs/platform-engineer-guide/multi-cluster-connectivity/) guide).
 > - `common.openObserveHost` and `common.openObservePort` must point at the gateway endpoint exposed from the observability plane cluster, and `common.openObserveHost` **must be the same hostname** listed in `common.httpRouteHostnames` on the observability plane release — Fluent Bit sends this value both as the connection address and as the HTTP `Host` header, so the two have to match for the `HTTPRoute` to select this module's route instead of another one on the same gateway (Fluent Bit's HTTP output has no option to send a different `Host` header than the one it connects to).
-> - Set `common.openObserveTlsEnabled=true` if the obs gateway listener is HTTPS, or `false` if it is plain HTTP.
+> - Set `common.openObserveTlsEnabled=true` if the obs gateway listener is HTTPS, or `false` if it is plain HTTP. To verify the gateway certificate against a private CA, see [Verifying the gateway certificate](#verifying-the-gateway-certificate).
 > - `common.openObserveOrg` and `common.openObserveStream` must match the organization and stream configured in the observability plane cluster.
 > - The adapter and setup job are disabled because they only need to run on the observability plane cluster.
 > - On the **control plane** cluster, add `--set auditLogs.enabled=true` to also collect the audit trail. See [Enable audit log collection](#enable-audit-log-collection).
+
+### Verifying the gateway certificate
+
+With TLS on, Fluent Bit verifies the server certificate against the image's system trust store and does not check the hostname. To verify a gateway certificate issued by a private CA, mount the CA and set the TLS options. They apply to the container logs output and to the audit output. When `auditLogs.output.host` is set, the audit output takes its own `auditLogs.output.tls*` values, falling back to these for the CA file and hostname verification but not for the SNI name.
+
+| Value                                 | Default | Purpose                                                    |
+| ------------------------------------- | ------- | ---------------------------------------------------------- |
+| `common.openObserveTlsCaFile`         | `""`    | CA file to verify the server certificate against (`tls.ca_file`) |
+| `common.openObserveTlsVerifyHostname` | `false` | Check the certificate's hostname (`tls.verify_hostname`)    |
+| `common.openObserveTlsVhost`          | `""`    | SNI name to send (`tls.vhost`)                              |
+
+They are rendered only when `common.openObserveTlsEnabled` is `true`. Helm replaces lists, so when you add the CA volume keep the module's `db` volume in `fluent-bit.extraVolumes` and `fluent-bit.extraVolumeMounts`:
+
+```yaml
+common:
+  openObserveTlsEnabled: true
+  openObserveTlsCaFile: /etc/telemetry-ca/ca.crt
+  openObserveTlsVerifyHostname: true
+fluent-bit:
+  extraVolumes:
+    - name: db
+      hostPath:
+        path: /var/lib/fluent-bit/db
+        type: DirectoryOrCreate
+    - name: telemetry-ca
+      secret:
+        secretName: telemetry-ca
+  extraVolumeMounts:
+    - name: db
+      mountPath: "/var/lib/fluent-bit/db"
+      readOnly: false
+    - name: telemetry-ca
+      mountPath: /etc/telemetry-ca
+      readOnly: true
+```
 
 ## Enable audit log collection
 
@@ -259,6 +294,9 @@ these entries, or audit collection silently stops.
 | `auditLogs.output.port`                   | `common.openObservePort`       | Port of `auditLogs.output.host`                                           |
 | `auditLogs.output.org`                    | `common.openObserveOrg`        | Organization on `auditLogs.output.host`                                   |
 | `auditLogs.output.tlsEnabled`             | `common.openObserveTlsEnabled` | Use TLS to reach `auditLogs.output.host`                                  |
+| `auditLogs.output.tlsCaFile`              | `common.openObserveTlsCaFile`  | CA file to verify `auditLogs.output.host` against                         |
+| `auditLogs.output.tlsVerifyHostname`      | `common.openObserveTlsVerifyHostname` | Check the certificate's hostname for `auditLogs.output.host`       |
+| `auditLogs.output.tlsVhost`               | `""`                           | SNI name to send to `auditLogs.output.host`; does not fall back to `common.openObserveTlsVhost` |
 
 The setup job creates the audit stream with its retention on every install, and changing
 the retention and upgrading applies it to the existing stream.

@@ -234,6 +234,15 @@ prometheusCustomizations:
     hostnames: [] # multiClusterReceiver: hostnames for the gateway HTTPRoute
   remoteWrite:
     tlsInsecureSkipVerify: false # multiClusterExporter: skip TLS verification for self-signed certs on the receiver
+    # multiClusterExporter: TLS settings for the remote write entry, passed as-is to
+    # the PrometheusAgent (ca, cert, keySecret, serverName, insecureSkipVerify).
+    # tlsInsecureSkipVerify still works and sets insecureSkipVerify on this block.
+    tlsConfig: {}
+    #  ca:
+    #    secret:
+    #      name: telemetry-ca
+    #      key: ca.crt
+    #  serverName: prometheus.observability.example.com
   agent:
     # multiClusterExporter only. The PrometheusAgent CR carries no spec.image by
     # default, so the operator would spawn it with its compiled-in default

@@ -46,7 +46,7 @@ helm upgrade --install observability-events-otel-collector \
   oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-events-otel-collector \
   --create-namespace \
   --namespace openchoreo-observability-plane \
-  --version 0.2.1
+  --version 0.3.0
 ```
 
 Out of the box the collector enriches events and prints them to its pod log via
@@ -72,7 +72,7 @@ Compatible with `observability-logs-opensearch` community module (>= version 0.6
 ```bash
 helm upgrade --install observability-events-otel-collector \
   oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-events-otel-collector \
-  --namespace openchoreo-observability-plane --version 0.2.1 \
+  --namespace openchoreo-observability-plane --version 0.3.0 \
   -f - <<'EOF'
 collector:
   extraEnv: &opensearchEnv
@@ -187,7 +187,7 @@ Compatible with `observability-logs-openobserve` community module (>= version 0.
 ```bash
 helm upgrade --install observability-events-otel-collector \
   oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-events-otel-collector \
-  --namespace openchoreo-observability-plane --create-namespace --version 0.2.1 \
+  --namespace openchoreo-observability-plane --create-namespace --version 0.3.0 \
   -f - <<'EOF'
 collector:
   extraEnv:
@@ -342,7 +342,7 @@ and DCR.
 ```bash
 helm upgrade --install observability-events-otel-collector \
   oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-events-otel-collector \
-  --namespace openchoreo-observability-plane --create-namespace --version 0.2.1 \
+  --namespace openchoreo-observability-plane --create-namespace --version 0.3.0 \
   -f - <<EOF
 serviceAccount:
   annotations:
@@ -425,7 +425,7 @@ no separate mechanism is needed for `${env:...}`:
 ```bash
 helm upgrade --install observability-events-otel-collector \
   oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-events-otel-collector \
-  --namespace openchoreo-observability-plane --version 0.2.1 \
+  --namespace openchoreo-observability-plane --version 0.3.0 \
   -f - <<'EOF'
 collector:
   extraEnv:
@@ -536,7 +536,7 @@ persistence:
 ```bash
 helm upgrade --install observability-events-otel-collector \
   oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-events-otel-collector \
-  --namespace openchoreo-observability-plane --version 0.2.1 --reuse-values \
+  --namespace openchoreo-observability-plane --version 0.3.0 --reuse-values \
   --set persistence.enabled=true \
   --set persistence.storageClassName=<your-storage-class>
 ```
@@ -587,4 +587,5 @@ make docker-build  # container image (override DOCKER=... for a nerdctl wrapper)
 
 | Module Version | OpenChoreo Version |
 | -------------- | ------------------ |
+| >= v0.3.x      | >= v1.4.x          |
 | >= v0.1.x      | >= v1.2.x          |

@@ -496,4 +496,5 @@ make build
 
 | Module Version | OpenChoreo Version |
 |----------------|--------------------|
+| v0.2.x         | v1.4.0 and later   |
 | v0.1.x         | v1.1.x             |

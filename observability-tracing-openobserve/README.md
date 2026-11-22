@@ -169,8 +169,8 @@ helm upgrade --install observability-tracing-openobserve \
 | Feature                | Module version  | Setup                                  |
 | ---------------------- | --------------- | -------------------------------------- |
 | Trace and span queries | All             | None                                   |
-| Release line filtering | 0.3.3 and later | None                                   |
-| Raw trace queries      | 0.3.3 and later | The raw query user's Secret. See below |
+| Release line filtering | 0.5.0 and later | None                                   |
+| Raw trace queries      | 0.5.0 and later | The raw query user's Secret. See below |
 
 ### Raw trace queries
 
@@ -273,5 +273,6 @@ Bundled upstream Helm charts:
 
 | Module Version | OpenChoreo Version |
 |----------------|--------------------|
+| >= v0.5.0      | >= v1.4.0          |
 | >= v0.3.0      | >= v1.2.0          |
 | >= v0.2.x      | >= v1.0.x          |

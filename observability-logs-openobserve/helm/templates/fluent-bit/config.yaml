@@ -44,7 +44,7 @@ data:
         Match kube.*
         multiline.key_content log
         mode parser
-        multiline.parser go, java, python, dotnet
+        multiline.parser go, python, dotnet, java
         buffer On
         flush_ms 2000
 
@@ -130,11 +130,24 @@ data:
         Time_Key time
         Time_Format %Y-%m-%dT%H:%M:%S.%L
 
-    # The go, java and python multiline parsers referenced by the multiline
-    # filter above are built into Fluent Bit. .NET is not, so it is defined
-    # here as a custom parser. A .NET stack trace starts with a line that
-    # ends in "Exception: <message>" and continues with "   at ..." frames and
-    # "--- End of ... stack trace ---" markers.
+    # The go, python and java multiline parsers referenced by the multiline
+    # filter above are built into Fluent Bit. .NET is only partly covered by
+    # the built-in java parser (it misses the unindented
+    # "--- End of stack trace from previous location ---" marker that current
+    # .NET versions print, and FluentValidation detail lines), so it is
+    # defined here as a custom parser.
+    #
+    # A .NET stack trace starts with a line that ends in "Exception: <message>"
+    # and continues with "   at ..." frames, "--- End of ... stack trace ---"
+    # markers and, for FluentValidation, " -- Property: message" detail lines.
+    #
+    # The filter tries the parsers in order and the first start rule that
+    # matches owns the record. .NET and Java exception headers look the same,
+    # so the dotnet parser is listed before java and also accepts the Java
+    # continuation forms ("Caused by:", "Suppressed:", "... N more" and
+    # "nested exception is:"). A Java trace that dotnet picks up is therefore
+    # still kept in one record, and anything dotnet does not match still falls
+    # through to the built-in java parser.
     #
     # To support another log format not covered by the built-ins, add a
     # [MULTILINE_PARSER] here (type regex) and append its name to
@@ -145,7 +158,11 @@ data:
         type          regex
         flush_timeout 2000
         rule          "start_state" "/^.*Exception[:,].*$/" "cont"
-        rule          "cont"        "/^\s+(at\s|--- End of).*$/" "cont"
+        rule          "cont"        "/^(\s+at\s|\s*--- End of).*$/" "cont"
+        rule          "cont"        "/^\s+-- .*$/" "cont"
+        rule          "cont"        "/^\s*(Caused by|Suppressed):.*$/" "cont"
+        rule          "cont"        "/^\s*\.\.\. \d+ (more|common frames omitted).*$/" "cont"
+        rule          "cont"        "/^\s*nested exception is:.*$/" "cont"
 {{- if .Values.auditLogs.enabled }}
 
   audit-parsers.conf: |

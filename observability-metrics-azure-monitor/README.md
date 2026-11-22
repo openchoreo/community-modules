@@ -256,7 +256,7 @@ webhook through the observability-plane gateway.
 helm upgrade --install metrics-adapter-azure-monitor \
   oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-metrics-azure-monitor \
   --namespace openchoreo-observability-plane --create-namespace \
-  --version 0.1.1 \
+  --version 0.2.0 \
   --set region=eastus2 \
   --set workspace.id=<workspace customerId GUID> \
   --set workspace.resourceId=<workspace ARM resource ID> \

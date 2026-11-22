@@ -235,7 +235,7 @@ kubectl rollout restart deployment/opentelemetry-collector -n openchoreo-observa
 | ---------------------- | --------------- | ---------------------------------------------------------------------------------------- |
 | Trace and span queries | All             | None                                                                                     |
 | Release line filtering | 0.9.0 and later | When upgrading from 0.8.x, see Upgrades                                                  |
-| Raw trace queries      | 0.9.2 and later | The read-only user's Secret; optionally, `openSearchSetup.traceIndexMappings`. See below |
+| Raw trace queries      | 0.10.0 and later | The read-only user's Secret; optionally, `openSearchSetup.traceIndexMappings`. See below |
 
 ### Raw trace queries
 
@@ -389,7 +389,7 @@ Bundled upstream Helm charts:
 
 | OpenChoreo Version | Module Version |
 | ------------------ | -------------- |
-| 1.4.0 and later    | 0.9.x          |
+| 1.4.0 and later    | 0.9.x, 0.10.x  |
 | 1.2.x - 1.3.x      | 0.6.x, 0.8.x   |
 | 1.1.x              | 0.4.x          |
 | 1.0.x              | 0.3.x          |

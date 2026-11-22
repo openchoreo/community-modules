@@ -295,7 +295,7 @@ WEBHOOK_TOKEN="<your-webhook-shared-secret>"
 helm upgrade --install observability-logs-azure-loganalytics \
   oci://cr.openchoreo.dev/openchoreo/helm-charts/observability-logs-azure-loganalytics \
   --namespace openchoreo-observability-plane --create-namespace \
-  --version 0.1.3 \
+  --version 0.2.0 \
   --set azure.subscriptionId="$AZURE_SUBSCRIPTION_ID" \
   --set azure.resourceGroup="$AZURE_RESOURCE_GROUP" \
   --set azure.region="$AZURE_REGION" \
@@ -1387,4 +1387,5 @@ through it.
 
 | OpenChoreo Version | Module Version |
 | ------------------ | -------------- |
+| v1.4.0 and later   | 0.2.x          |
 | v1.1.x             | 0.1.x          |

@@ -24,8 +24,6 @@ spec:
       dayOfWeek: 0
       startHour: 2
       startMinute: 0
-  credentials:
-    passwordRevision: 1
   network:
     firewallRules:
       - name: office

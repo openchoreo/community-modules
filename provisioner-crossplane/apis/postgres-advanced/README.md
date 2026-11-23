@@ -1,9 +1,9 @@
 # PostgreSQL (advanced)
 
 The `postgres-crossplane-advanced` ClusterResourceType gives developers a PostgreSQL database that
-can be changed after it is provisioned: scaled, upgraded, tuned, opened to more networks, and given a
-new password. It creates an `AdvancedPostgresInstance` in the cell namespace, and the backing
-installed on that data plane builds it.
+can be changed after it is provisioned: scaled, upgraded, tuned and opened to more networks. It
+creates an `AdvancedPostgresInstance` in the cell namespace, and the backing installed on that data
+plane builds it.
 
 It sits next to [`postgres-crossplane`](../postgres/README.md), which it leaves unchanged. The
 outputs are the same, so a Workload's `envBindings` work with either. Use `postgres-crossplane` when
@@ -38,7 +38,6 @@ A change is made in one of two places:
 | Grow storage when it runs low | `capacity.storageAutoGrow` | Binding | No |
 | Upgrade the major version | `version` | Resource | Yes, during the upgrade |
 | Choose when minor versions and patches are applied | `maintenance.window` | Binding | Only inside the window |
-| Rotate the password | `credentials.passwordRevision` | Binding | Yes, until the Workloads roll |
 | Allow more networks to connect | `network.firewallRules` | Binding | No |
 | Tune server parameters | `configuration` | Binding | Only `connections.maxConnections` |
 | Allow extensions | `extensions` | Resource | No |
@@ -73,8 +72,6 @@ spec:
       window:
         dayOfWeek: 0
         startHour: 2
-    credentials:
-      passwordRevision: 2
     network:
       firewallRules:
         - name: office
@@ -110,12 +107,6 @@ spec:
 | :------ | :------ | :---------- |
 | `window` | Backing chooses | Weekly window, in UTC: `dayOfWeek` (0 is Sunday), `startHour`, `startMinute` (default 0). Minor versions cannot be chosen; the provider applies them in this window. Major versions are the `version` parameter |
 
-### `credentials`: password rotation
-
-| Setting | Default | Description |
-| :------ | :------ | :---------- |
-| `passwordRevision` | `1` | Raise to rotate the password. It cannot be lowered |
-
 ### `network`: who can connect
 
 | Setting | Default | Description |
@@ -139,17 +130,6 @@ Only `connections.maxConnections` restarts the server.
 | `logging.logStatement` | `log_statement` | `none`, `ddl`, `mod` or `all` |
 | `logging.queryStats` | `pg_stat_statements.track` | `none`, `top` or `all` |
 
-### Rotating the password
-
-Raise `credentials.passwordRevision`. The backing sets a new password on the server and, once the
-server accepts it, publishes it in a new Secret. The `password` output then names the new Secret,
-which rolls the Workloads that use it.
-
-Expect connection errors for a few minutes. The server stops accepting the old password as soon as it
-switches, and the Workloads keep the old one until they roll. OpenChoreo picks up the new Secret the
-next time it checks the `AdvancedPostgresInstance`, which can take up to about six minutes once it is
-ready.
-
 ## Outputs
 
 | Output | Kind | Comes from |
@@ -158,7 +138,7 @@ ready.
 | `port` | `value` | `AdvancedPostgresInstance` `status.port` |
 | `database` | `value` | `AdvancedPostgresInstance` `status.database` |
 | `username` | `value` | `AdvancedPostgresInstance` `status.username` |
-| `password` | `secretKeyRef` | The Secret named in `AdvancedPostgresInstance` `status.connectionSecretName`, or `<name>-conn` when unset, key `password` |
+| `password` | `secretKeyRef` | Secret `<name>-conn`, key `password` |
 
 ## Example
 
@@ -221,14 +201,10 @@ A Composition for `AdvancedPostgresInstance` ([`definition.yaml`](definition.yam
 database is reachable:
 
 - set `status.address`, `status.port`, `status.database` and `status.username`
-- write a Secret in the same namespace with the password under the key `password`, and either name it
-  `<name>-conn` or set `status.connectionSecretName` to its name
+- write a Secret `<name>-conn` in the same namespace with the password under the key `password`
 - map `spec.capacity.size` to the platform's CPU, memory and storage, and never ask for less storage
   than the database has, so lowering `size` keeps the current storage
 - apply the other settings, or say in its backing's guide which ones it ignores
-
-To support `credentials.passwordRevision`, give each revision its own Secret and set
-`status.connectionSecretName` to it only once the server accepts that revision's password.
 
 The Azure Composition,
 [`azure/postgres-advanced-composition.yaml`](../../azure/postgres-advanced-composition.yaml), is the

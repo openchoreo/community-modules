@@ -35,11 +35,6 @@ spec:
         dayOfWeek: 0
         startHour: 2
 
-    # Raise to rotate the password. Workloads roll onto the new one once the
-    # server accepts it; expect connection errors for a few minutes.
-    credentials:
-      passwordRevision: 1
-
     # Extra IPv4 ranges allowed to connect, on top of the data plane's rules.
     network:
       firewallRules:

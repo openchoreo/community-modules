@@ -3,9 +3,9 @@
 #
 # The Azure resources as the provider reports them once Azure has finished.
 # Pass with --observed-resources to render a later reconcile, where the
-# AdvancedPostgresInstance gets its address. It does not become Ready: these
-# resources give the server no password, so the Composition does not publish
-# one.
+# AdvancedPostgresInstance gets its address. It does not become Ready: only
+# the server, the database and the data plane's firewall rule are here, so the
+# server parameters and the environment's firewall rule are still pending.
 apiVersion: dbforpostgresql.azure.m.upbound.io/v1beta1
 kind: FlexibleServer
 metadata:

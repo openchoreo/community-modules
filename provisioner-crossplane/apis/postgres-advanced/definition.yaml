@@ -13,9 +13,8 @@
 #
 # Every Composition must, once the database is reachable:
 #   - set status.address, status.port, status.database and status.username
-#   - write a Secret in the same namespace with the password under the key
-#     "password", and set status.connectionSecretName to its name. Leaving
-#     status.connectionSecretName unset means "<name>-conn"
+#   - write a Secret "<name>-conn" in the same namespace with the password
+#     under the key "password"
 #   - map spec.capacity.size to the platform's compute and storage
 #
 # The spec is grouped by day 2 operation:
@@ -23,8 +22,7 @@
 #                        environment
 #   capacity             CPU, memory and storage
 #   maintenance          when minor version and patch updates are applied
-#   credentials          password rotation
-#   network              firewall rules
+#   network             firewall rules
 #   configuration        server parameters, in subgroups
 apiVersion: apiextensions.crossplane.io/v2
 kind: CompositeResourceDefinition
@@ -131,24 +129,6 @@ spec:
                           minimum: 0
                           maximum: 59
                           default: 0
-
-                credentials:
-                  type: object
-                  description: Password rotation.
-                  default: {}
-                  properties:
-                    passwordRevision:
-                      type: integer
-                      description: >-
-                        Raise to rotate the password. Each revision gets a new
-                        password and a new connection Secret, published once
-                        the server accepts the password, so workloads roll onto
-                        it.
-                      minimum: 1
-                      default: 1
-                      x-kubernetes-validations:
-                        - rule: self >= oldSelf
-                          message: passwordRevision can be raised but not lowered
 
                 network:
                   type: object
@@ -274,9 +254,3 @@ spec:
                   type: string
                 username:
                   type: string
-                connectionSecretName:
-                  type: string
-                  description: >-
-                    The Secret, in the same namespace, holding the password
-                    under the key "password". Unset means
-                    "<name>-conn".

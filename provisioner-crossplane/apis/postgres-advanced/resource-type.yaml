@@ -17,8 +17,7 @@
 #   environmentConfigs  per environment, on the binding:
 #     capacity          CPU, memory and storage
 #     maintenance       when minor version and patch updates are applied
-#     credentials       password rotation
-#     network           firewall rules
+#     network          firewall rules
 #     configuration     server parameters: connections, memory, timeouts and
 #                       logging
 apiVersion: openchoreo.dev/v1alpha1
@@ -32,8 +31,8 @@ metadata:
     openchoreo.dev/local-dev-addresses: client=outputs.host:outputs.port
     openchoreo.dev/description: >-
       PostgreSQL provisioned by Crossplane, with day 2 operations: scaling,
-      storage growth, version upgrades, maintenance windows, password
-      rotation, firewall rules and server parameters.
+      storage growth, version upgrades, maintenance windows, firewall rules
+      and server parameters.
 spec:
   parameters:
     openAPIV3Schema:
@@ -113,19 +112,6 @@ spec:
                   minimum: 0
                   maximum: 59
                   default: 0
-
-        credentials:
-          type: object
-          description: Password rotation.
-          default: {}
-          properties:
-            passwordRevision:
-              type: integer
-              description: >-
-                Raise to rotate the password. Workloads that use the password
-                output roll onto the new one once the server accepts it.
-              minimum: 1
-              default: 1
 
         network:
           type: object
@@ -232,15 +218,9 @@ spec:
       value: ${applied.instance.status.database}
     - name: username
       value: ${applied.instance.status.username}
-    # The Composition names the Secret in status.connectionSecretName, and a
-    # new name on each password rotation is what rolls the workloads. Until the
-    # first one is published, the provider's "<name>-conn" stands in.
     - name: password
       secretKeyRef:
-        name: >-
-          ${has(applied.instance.status.connectionSecretName)
-            ? applied.instance.status.connectionSecretName
-            : metadata.name + "-conn"}
+        name: ${metadata.name}-conn
         key: password
 
   resources:
@@ -259,6 +239,5 @@ spec:
           extensions: ${parameters.extensions}
           capacity: ${environmentConfigs.capacity}
           maintenance: ${environmentConfigs.maintenance}
-          credentials: ${environmentConfigs.credentials}
           network: ${environmentConfigs.network}
           configuration: ${environmentConfigs.configuration}

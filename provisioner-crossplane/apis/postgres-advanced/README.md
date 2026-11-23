@@ -101,7 +101,7 @@ spec:
 | Setting | Default | Description |
 | :------ | :------ | :---------- |
 | `size` | `small` | `small`, `medium` or `large`. Each backing maps it to its own CPU and memory, and a default storage size. Changing it restarts the server |
-| `storageGb` | Follows `size` | 32, 64, 128, 256, 512, 1024, 2048 or 4096. It can grow but not shrink, and cannot be unset once set. Set it to the current storage before lowering `size` |
+| `storageGb` | Follows `size` | 32, 64, 128, 256, 512, 1024, 2048 or 4096. It can grow but not shrink, and cannot be unset once set. Lowering `size` keeps the current storage |
 | `storageAutoGrow` | `false` | Grow storage automatically when it runs low |
 
 ### `maintenance`: minor version and patch updates
@@ -223,7 +223,8 @@ database is reachable:
 - set `status.address`, `status.port`, `status.database` and `status.username`
 - write a Secret in the same namespace with the password under the key `password`, and either name it
   `<name>-conn` or set `status.connectionSecretName` to its name
-- map `spec.capacity.size` to the platform's CPU, memory and storage
+- map `spec.capacity.size` to the platform's CPU, memory and storage, and never ask for less storage
+  than the database has, so lowering `size` keeps the current storage
 - apply the other settings, or say in its backing's guide which ones it ignores
 
 To support `credentials.passwordRevision`, give each revision its own Secret and set

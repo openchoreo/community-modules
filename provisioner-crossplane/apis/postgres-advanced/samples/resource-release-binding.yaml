@@ -22,8 +22,7 @@ spec:
   environment: production
   resourceTypeEnvironmentConfigs:
     # Scale up: raising `size` restarts the server. Storage grows online and
-    # cannot shrink; set `storageGb` to the current storage before lowering
-    # `size`.
+    # cannot shrink; lowering `size` later keeps the current storage.
     capacity:
       size: medium
       storageGb: 128

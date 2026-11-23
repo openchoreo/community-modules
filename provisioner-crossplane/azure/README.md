@@ -362,7 +362,7 @@ fields. Measured on a `small` server in southeastasia:
 | Change | What happens on Azure |
 | :----- | :-------------------- |
 | `capacity.size` up (`small` to `medium`) | Azure changed the SKU in about nine minutes and restarted the server; connections were refused during the change. Memory parameters sized by Azure, such as `shared_buffers`, followed the new SKU; parameters set in `configuration` kept their values |
-| `capacity.size` down (`medium` to `small`) | Worked in about seven and a half minutes with `capacity.storageGb` set to the current storage. Without it, storage would have to shrink, which Azure cannot do, so the provider refuses the change |
+| `capacity.size` down (`medium` to `small`) | Azure changed the SKU in about seven and a half minutes and restarted the server; connections were refused for about 20 seconds. Storage stays as it is: the Composition never asks for less storage than the server has, so `capacity.storageGb` does not need to be set first |
 | `capacity.storageGb` up (64 to 128) | Grew online in about three and a half minutes, with no restart. Azure moved the storage tier with it |
 | `capacity.storageGb` down | Rejected before anything reaches Azure. The binding reports `storage can grow but not shrink` |
 | `maintenance.window` | Sets a custom window on the server. Unset, Azure uses its system-managed window |

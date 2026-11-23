@@ -81,8 +81,8 @@ spec:
             storageGb:
               type: integer
               description: >-
-                Storage in GiB. Unset follows size. It can grow but not shrink,
-                so set it to the current size before lowering size.
+                Storage in GiB. Unset follows size. It can grow but not shrink;
+                lowering size keeps the current storage.
               enum: [32, 64, 128, 256, 512, 1024, 2048, 4096]
             storageAutoGrow:
               type: boolean

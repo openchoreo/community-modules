@@ -330,8 +330,9 @@ spec:
                 startIpAddress: {{ .startIpAddress }}
                 endIpAddress: {{ .endIpAddress }}
             {{- end }}
-            {{- /* This environment's rules, prefixed so they cannot clash
-                   with the data plane's. */}}
+            {{- /* This environment's rules, prefixed with "env-" to keep them
+                   apart from the data plane's, whose names should not start
+                   with "env-". */}}
             {{- range (($xr.spec.network | default dict).firewallRules | default list) }}
             ---
             apiVersion: dbforpostgresql.azure.m.upbound.io/v1beta1

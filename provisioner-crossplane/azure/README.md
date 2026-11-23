@@ -364,7 +364,9 @@ postgres:
 
 As for the [PostgreSQL](#networking) Composition, Workloads connect over the server's public
 endpoint, so `postgres.firewallRules` has to admit the data plane's outbound traffic. Each
-environment can add its own rules with `network.firewallRules`.
+environment can add its own rules with `network.firewallRules`. Those are named `env-<name>`, so
+names in `postgres.firewallRules` should not start with `env-`: a clashing environment rule would
+replace the data plane's rule.
 
 ### Day 2 operations
 

@@ -19,7 +19,7 @@ changing the ResourceTypes or the Resources that use them.
 | Resource | ResourceType | Composite resource | Backings | Guide |
 | :------- | :----------- | :----------------- | :------- | :---- |
 | PostgreSQL | `postgres-crossplane` | `PostgresInstance` | Azure, AWS, GCP | [apis/postgres/README.md](apis/postgres/README.md) |
-| PostgreSQL (advanced), with day 2 operations | `postgres-crossplane-advanced` | `AdvancedPostgresInstance` | Azure | [apis/postgres-advanced/README.md](apis/postgres-advanced/README.md) |
+| PostgreSQL (advanced), for maintaining a provisioned database | `postgres-crossplane-advanced` | `AdvancedPostgresInstance` | Azure | [apis/pg-advanced/README.md](apis/pg-advanced/README.md) |
 | Redis | `redis-crossplane` | `RedisInstance` | Azure, AWS, GCP | [apis/redis/README.md](apis/redis/README.md) |
 
 ## Backings
@@ -131,7 +131,7 @@ kubectl apply -f apis/postgres/definition.yaml
 kubectl wait xrd postgresinstances.crossplane.community.openchoreo.dev --for=condition=Established
 
 # PostgreSQL (advanced)
-kubectl apply -f apis/postgres-advanced/definition.yaml
+kubectl apply -f apis/pg-advanced/definition.yaml
 kubectl wait xrd advancedpostgresinstances.crossplane.community.openchoreo.dev --for=condition=Established
 
 # Redis
@@ -151,7 +151,7 @@ planes offer:
 
 ```bash
 kubectl apply -f apis/postgres/resource-type.yaml
-kubectl apply -f apis/postgres-advanced/resource-type.yaml
+kubectl apply -f apis/pg-advanced/resource-type.yaml
 kubectl apply -f apis/redis/resource-type.yaml
 ```
 
@@ -213,12 +213,12 @@ kubectl get composite -A
 
 # 3. On the control plane: remove the ResourceTypes
 kubectl delete --ignore-not-found -f apis/postgres/resource-type.yaml
-kubectl delete --ignore-not-found -f apis/postgres-advanced/resource-type.yaml
+kubectl delete --ignore-not-found -f apis/pg-advanced/resource-type.yaml
 kubectl delete --ignore-not-found -f apis/redis/resource-type.yaml
 
 # 4. On the data plane: remove the APIs, the agent grant, the functions and Crossplane
 kubectl delete --ignore-not-found -f apis/postgres/definition.yaml
-kubectl delete --ignore-not-found -f apis/postgres-advanced/definition.yaml
+kubectl delete --ignore-not-found -f apis/pg-advanced/definition.yaml
 kubectl delete --ignore-not-found -f apis/redis/definition.yaml
 kubectl delete -f cluster-agent-crossplane-rbac.yaml
 kubectl delete -f functions.yaml

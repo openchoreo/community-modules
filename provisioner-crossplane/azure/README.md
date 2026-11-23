@@ -153,7 +153,7 @@ Apply the Composition for each resource this data plane should offer:
 
 ```bash
 kubectl apply -f azure/postgres-composition.yaml
-kubectl apply -f azure/postgres-advanced-composition.yaml
+kubectl apply -f azure/pg-advanced-composition.yaml
 kubectl apply -f azure/redis-composition.yaml
 ```
 
@@ -286,9 +286,9 @@ crossplane composition render azure/render/postgres/xr.yaml azure/postgres-compo
 
 ## PostgreSQL (advanced)
 
-[`postgres-advanced-composition.yaml`](postgres-advanced-composition.yaml) builds an
-`AdvancedPostgresInstance` as an Azure Database for PostgreSQL Flexible Server, and applies its
-[day 2 operations](../apis/postgres-advanced/README.md#day-2-operations). It is separate from the
+[`pg-advanced-composition.yaml`](pg-advanced-composition.yaml) builds an
+`AdvancedPostgresInstance` as an Azure Database for PostgreSQL Flexible Server, and applies the
+[operations that maintain it](../apis/pg-advanced/README.md#maintaining-a-provisioned-database). It is separate from the
 [PostgreSQL](#postgresql) Composition, which it leaves unchanged.
 
 ### What it creates
@@ -304,7 +304,7 @@ For each `AdvancedPostgresInstance`, in the same namespace:
 
 ### Outputs
 
-| [Output](../apis/postgres-advanced/README.md#outputs) | Filled from |
+| [Output](../apis/pg-advanced/README.md#outputs) | Filled from |
 | :----- | :---------- |
 | `host` | The server's fully qualified domain name |
 | `port` | `5432` |
@@ -366,10 +366,10 @@ environment can add its own rules with `network.firewallRules`. Those are named 
 names in `postgres.firewallRules` should not start with `env-`: a clashing environment rule would
 replace the data plane's rule.
 
-### Day 2 operations
+### Maintaining a provisioned database
 
 Each environment's settings go on its `ResourceReleaseBinding`. See the
-[PostgreSQL (advanced) guide](../apis/postgres-advanced/README.md#per-environment-settings) for the
+[PostgreSQL (advanced) guide](../apis/pg-advanced/README.md#per-environment-settings) for the
 fields. Measured in southeastasia:
 
 | Change | What happens on Azure |
@@ -403,20 +403,20 @@ addition:
 
 ### Checking the Composition
 
-[`render/postgres-advanced/xr.yaml`](render/postgres-advanced/xr.yaml) sets every day 2 setting, so a
+[`render/pg-advanced/xr.yaml`](render/pg-advanced/xr.yaml) sets every setting, so a
 render shows how each one is built.
 
 ```bash
 # First reconcile: nothing exists in Azure yet
-crossplane composition render azure/render/postgres-advanced/xr.yaml azure/postgres-advanced-composition.yaml functions.yaml \
-  --xrd apis/postgres-advanced/definition.yaml \
+crossplane composition render azure/render/pg-advanced/xr.yaml azure/pg-advanced-composition.yaml functions.yaml \
+  --xrd apis/pg-advanced/definition.yaml \
   --required-resources azure/environment-config.yaml
 
 # A later reconcile: the AdvancedPostgresInstance gets its address
-crossplane composition render azure/render/postgres-advanced/xr.yaml azure/postgres-advanced-composition.yaml functions.yaml \
-  --xrd apis/postgres-advanced/definition.yaml \
+crossplane composition render azure/render/pg-advanced/xr.yaml azure/pg-advanced-composition.yaml functions.yaml \
+  --xrd apis/pg-advanced/definition.yaml \
   --required-resources azure/environment-config.yaml \
-  --observed-resources azure/render/postgres-advanced/observed.yaml
+  --observed-resources azure/render/pg-advanced/observed.yaml
 ```
 
 ## Redis
@@ -511,7 +511,7 @@ kubectl get managed -A
 
 # 2. Remove the Compositions, the settings, the credentials and the providers
 kubectl delete --ignore-not-found -f azure/postgres-composition.yaml \
-  -f azure/postgres-advanced-composition.yaml -f azure/redis-composition.yaml
+  -f azure/pg-advanced-composition.yaml -f azure/redis-composition.yaml
 kubectl delete -f azure/environment-config.yaml
 kubectl delete -f azure/provider-config.yaml
 kubectl delete -f azure/provider.yaml

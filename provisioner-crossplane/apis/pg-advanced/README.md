@@ -1,14 +1,14 @@
 # PostgreSQL (advanced)
 
 The `postgres-crossplane-advanced` ClusterResourceType gives developers a PostgreSQL database that
-can be changed after it is provisioned: scaled, upgraded, tuned and opened to more networks. It
+can be maintained once it is provisioned: scaled, upgraded, tuned and opened to more networks. It
 creates an `AdvancedPostgresInstance` in the cell namespace, and the backing installed on that data
 plane builds it.
 
 It sits next to [`postgres-crossplane`](../postgres/README.md), which it leaves unchanged. The
 outputs are the same, so a Workload's `envBindings` work with either. Use `postgres-crossplane` when
-a per-environment `size` is all you need, and this one to run the database through its day 2
-operations. The two are separate kinds: changing a Resource from one to the other creates a new
+a per-environment `size` is all you need, and this one to maintain the database once it is
+provisioned. The two are separate kinds: changing a Resource from one to the other creates a new
 database and does not move the data.
 
 For installing the module, see the [module README](../../README.md).
@@ -21,7 +21,7 @@ For installing the module, see the [module README](../../README.md).
 
 AWS and GCP have no Composition for it yet. See [Implementing a backing](#implementing-a-backing).
 
-## Day 2 operations
+## Maintaining a provisioned database
 
 A change is made in one of two places:
 
@@ -58,7 +58,7 @@ Set on the Resource, the same in every environment.
 ## Per-environment settings
 
 Set on the `ResourceReleaseBinding`, under `resourceTypeEnvironmentConfigs`. The settings are
-grouped by day 2 operation, and every group is optional.
+grouped by operation, and every group is optional.
 [`samples/resource-release-binding.yaml`](samples/resource-release-binding.yaml) sets all of them.
 
 ```yaml
@@ -207,5 +207,5 @@ database is reachable:
 - apply the other settings, or say in its backing's guide which ones it ignores
 
 The Azure Composition,
-[`azure/postgres-advanced-composition.yaml`](../../azure/postgres-advanced-composition.yaml), is the
+[`azure/pg-advanced-composition.yaml`](../../azure/pg-advanced-composition.yaml), is the
 working example.

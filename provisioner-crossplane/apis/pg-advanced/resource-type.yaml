@@ -1,17 +1,18 @@
 # Copyright 2026 The OpenChoreo Authors
 # SPDX-License-Identifier: Apache-2.0
 #
-# PostgreSQL with day 2 operations, backed by Crossplane. Apply on the control
-# plane, next to `postgres-crossplane`, which it leaves unchanged.
+# PostgreSQL that can be maintained once provisioned, backed by Crossplane.
+# Apply on the control plane, next to `postgres-crossplane`, which it leaves
+# unchanged.
 #
 # It renders a single AdvancedPostgresInstance into the cell namespace and names
 # no cloud: the data plane that receives it builds it through the Composition
-# installed there. Only Azure has one, azure/postgres-advanced-composition.yaml.
+# installed there. Only Azure has one, azure/pg-advanced-composition.yaml.
 #
 # Outputs match the other Postgres ResourceTypes (host, port, database,
 # username, password), so a Workload's envBindings carry over unchanged.
 #
-# Day 2 operations are grouped:
+# Settings are grouped by operation:
 #   parameters          version upgrades and extensions, the same in every
 #                       environment and promoted with each release
 #   environmentConfigs  per environment, on the binding:
@@ -30,9 +31,9 @@ metadata:
   annotations:
     openchoreo.dev/local-dev-addresses: client=outputs.host:outputs.port
     openchoreo.dev/description: >-
-      PostgreSQL provisioned by Crossplane, with day 2 operations: scaling,
-      storage growth, version upgrades, maintenance windows, firewall rules
-      and server parameters.
+      PostgreSQL provisioned by Crossplane that can be maintained once
+      provisioned: scaling, storage growth, version upgrades, maintenance
+      windows, firewall rules and server parameters.
 spec:
   parameters:
     openAPIV3Schema:

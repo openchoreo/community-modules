@@ -1,9 +1,9 @@
 # Copyright 2026 The OpenChoreo Authors
 # SPDX-License-Identifier: Apache-2.0
 #
-# The `production` binding of `orders-db`, with every day 2 setting. Each change
-# applies to this environment only, without a new ResourceRelease. Every group
-# is optional; leave out what you do not need.
+# The `production` binding of `orders-db`, with every per-environment setting.
+# Each change applies to this environment only, without a new
+# ResourceRelease. Every group is optional; leave out what you do not need.
 #
 # Where a change interrupts connections, it says so below. The timings are from
 # the Azure backing; see azure/README.md, "PostgreSQL (advanced)".

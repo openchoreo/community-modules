@@ -5,7 +5,7 @@
 # Used with `crossplane composition render` to check the Azure Composition
 # without a cluster. See azure/README.md, "PostgreSQL (advanced)".
 #
-# It sets every day 2 setting, so a render shows how each one is built.
+# It sets every setting, so a render shows how each one is built.
 apiVersion: crossplane.community.openchoreo.dev/v1alpha1
 kind: AdvancedPostgresInstance
 metadata:

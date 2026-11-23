@@ -1,13 +1,14 @@
 # Copyright 2026 The OpenChoreo Authors
 # SPDX-License-Identifier: Apache-2.0
 #
-# The AdvancedPostgresInstance API: PostgresInstance with day 2 operations.
+# The AdvancedPostgresInstance API: a PostgresInstance that can be maintained
+# once it is provisioned.
 # The `postgres-crossplane-advanced` ClusterResourceType creates it. It is a
 # separate kind, so the plain PostgresInstance and its Compositions are
 # unchanged.
 #
 # Install on every data plane that serves it. Only Azure has a Composition for
-# it, azure/postgres-advanced-composition.yaml. With more than one Composition
+# it, azure/pg-advanced-composition.yaml. With more than one Composition
 # for this kind on a cluster, set spec.defaultCompositionRef below, or
 # Crossplane picks one of them at random.
 #
@@ -17,7 +18,7 @@
 #     under the key "password"
 #   - map spec.capacity.size to the platform's compute and storage
 #
-# The spec is grouped by day 2 operation:
+# The spec is grouped by operation:
 #   version, extensions  version upgrades and extensions, the same in every
 #                        environment
 #   capacity             CPU, memory and storage

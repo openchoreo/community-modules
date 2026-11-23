@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Builds an AdvancedPostgresInstance as an Azure Database for PostgreSQL
-# Flexible Server, with day 2 operations. The plain PostgresInstance is built by
-# postgres-composition.yaml, which this file leaves unchanged.
+# Flexible Server that can be maintained once provisioned. The plain
+# PostgresInstance is built by postgres-composition.yaml, which this file
+# leaves unchanged.
 #
 # For each AdvancedPostgresInstance, in its own namespace:
 #   FlexibleServer              the server: SKU and storage from spec.capacity,
@@ -27,7 +28,7 @@
 apiVersion: apiextensions.crossplane.io/v1
 kind: Composition
 metadata:
-  name: postgres-advanced-azure
+  name: pg-advanced-azure
   labels:
     app.kubernetes.io/name: provisioner-crossplane
     app.kubernetes.io/part-of: openchoreo

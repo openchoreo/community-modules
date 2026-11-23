@@ -1,9 +1,9 @@
 # Copyright 2026 The OpenChoreo Authors
 # SPDX-License-Identifier: Apache-2.0
 #
-# A Postgres database for the `shop` project, with day 2 operations. Nothing
-# here names a cloud: the data plane each environment runs on decides how it is
-# provisioned.
+# A Postgres database for the `shop` project that can be maintained once
+# provisioned. Nothing here names a cloud: the data plane each environment
+# runs on decides how it is provisioned.
 #
 # The parameters are the same in every environment. Changing one, such as
 # raising `version`, cuts a new ResourceRelease, which each environment picks

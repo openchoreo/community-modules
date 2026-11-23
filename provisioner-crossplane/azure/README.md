@@ -343,9 +343,22 @@ Servers are named the same way as for the PostgreSQL Composition.
 | `large` | `GP_Standard_D4ds_v5` (General Purpose) | 4 | 16 GiB | 128 GiB |
 
 `capacity.storageGb` overrides the default storage. Azure picks the storage performance tier for
-each size. Not every SKU is offered in every region on every subscription: in testing,
-`B_Standard_B1ms` failed in eastus2 with `SkuNotAvailable`, although the region's capability list
-showed it.
+each size.
+
+Not every SKU is offered in every region on every subscription, even when the region's capability
+list shows it. In testing, `B_Standard_B1ms` failed with `SkuNotAvailable` in eastus2, and both
+`B_Standard_B1ms` and `B_Standard_B2s` failed in southeastasia on one subscription. The provider
+retries a failed create only about every ten minutes. Where a SKU is not offered, map the size to
+one that is with `postgres.sizes`:
+
+```yaml
+postgres:
+  sizes:
+    small:
+      sku: GP_Standard_D2ds_v5
+    medium:
+      sku: GP_Standard_D4ds_v5
+```
 
 ### Networking
 
@@ -357,21 +370,21 @@ environment can add its own rules with `network.firewallRules`.
 
 Each environment's settings go on its `ResourceReleaseBinding`. See the
 [PostgreSQL (advanced) guide](../apis/postgres-advanced/README.md#per-environment-settings) for the
-fields. Measured on a `small` server in southeastasia:
+fields. Measured in southeastasia:
 
 | Change | What happens on Azure |
 | :----- | :-------------------- |
-| `capacity.size` up (`small` to `medium`) | Azure changed the SKU in about nine minutes and restarted the server; connections were refused during the change. Memory parameters sized by Azure, such as `shared_buffers`, followed the new SKU; parameters set in `configuration` kept their values |
+| `capacity.size` up (`small` to `medium`) | Azure changed the SKU in six and a half to nine minutes and restarted the server; connections were refused for about 20 seconds. Memory parameters sized by Azure, such as `shared_buffers`, followed the new SKU; parameters set in `configuration` kept their values |
 | `capacity.size` down (`medium` to `small`) | Azure changed the SKU in about seven and a half minutes and restarted the server; connections were refused for about 20 seconds. Storage stays as it is: the Composition never asks for less storage than the server has, so `capacity.storageGb` does not need to be set first |
 | `capacity.storageGb` up (64 to 128) | Grew online in about three and a half minutes, with no restart. Azure moved the storage tier with it |
 | `capacity.storageGb` down | Rejected before anything reaches Azure. The binding reports `storage can grow but not shrink` |
 | `maintenance.window` | Sets a custom window on the server. Unset, Azure uses its system-managed window |
 | `network.firewallRules` | One rule per entry, added next to the data plane's rules and named `env-<name>`. Removing an entry deletes its rule. A rule that admits every address, or Azure's `0.0.0.0` "Allow Azure services" rule, is rejected |
-| `credentials.passwordRevision` | Azure accepted the new password about two minutes after the change, and the binding named the new Secret about four minutes after that. The old password stopped working when Azure switched |
+| `credentials.passwordRevision` | Azure stopped accepting the old password within about 30 seconds. The Composition published the new Secret about two and a half minutes after the change, and the binding named it about six minutes after the change. Workloads cannot connect from when Azure switches until they roll onto the new Secret |
 | `configuration.connections.maxConnections` | The provider restarts the server when the value changes, straight away and outside the maintenance window; the restart took about a minute |
-| Other `configuration` settings | Applied live, with no restart, about 20 seconds after the change. Removing a setting resets it to Azure's default |
+| Other `configuration` settings | Applied live, with no restart. Azure applies them one at a time, about 20 seconds each, so eight settings changed together took about two minutes. Removing a setting resets it to Azure's default |
 | `extensions` (a parameter) | Sets the `azure.extensions` allow-list once the binding is promoted. `CREATE EXTENSION` for an extension not on the list fails |
-| `version` (a parameter) | An in-place upgrade once the binding is promoted to the new release. 15 to 16 took about 17 minutes. The `FlexibleServer` stays Synced and Ready throughout; only Azure shows the progress, as the state `UpgradingMajorVersion` |
+| `version` (a parameter) | An in-place upgrade once the binding is promoted to the new release. 15 to 16 took about 17 minutes. From 16 to 17, the server answered as 17 after about four minutes, with about a minute of refused connections, although Azure reported the upgrade for about 19 minutes. The `FlexibleServer` stays Synced and Ready throughout; only Azure shows the progress, as the state `UpgradingMajorVersion` |
 | Lowering `version` | Rejected before anything reaches Azure. The binding reports `version can be raised but not lowered` |
 
 ### What to expect
@@ -386,6 +399,11 @@ addition:
 - **A new database is not Ready until its first password is published.** Until then, the
   `password` output names the provider's `<name>-conn`. Once the server accepts the revision 1
   password, it moves to `<name>-conn-r1` and the `AdvancedPostgresInstance` becomes Ready.
+- **Changes made together can take longer.** Azure runs one operation on a server at a time. A
+  `maintenance.window` change made together with `configuration` changes failed with
+  `ServerIsBusy`, and was applied on the provider's next retry, about ten minutes later. Changes to
+  the server itself also wait for each other in the provider: a `capacity.size` change made right
+  after a `capacity.storageGb` change waited about six minutes for the storage change to finish.
 
 ### Checking the Composition
 

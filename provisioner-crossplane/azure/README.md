@@ -153,6 +153,7 @@ Apply the Composition for each resource this data plane should offer:
 
 ```bash
 kubectl apply -f azure/postgres-composition.yaml
+kubectl apply -f azure/pg-advanced-composition.yaml
 kubectl apply -f azure/redis-composition.yaml
 ```
 
@@ -283,6 +284,141 @@ crossplane composition render azure/render/postgres/xr.yaml azure/postgres-compo
   --observed-resources azure/render/postgres/observed.yaml
 ```
 
+## PostgreSQL (advanced)
+
+[`pg-advanced-composition.yaml`](pg-advanced-composition.yaml) builds an
+`AdvancedPostgresInstance` as an Azure Database for PostgreSQL Flexible Server, and applies the
+[operations that maintain it](../apis/pg-advanced/README.md#maintaining-a-provisioned-database). It is separate from the
+[PostgreSQL](#postgresql) Composition, which it leaves unchanged.
+
+### What it creates
+
+For each `AdvancedPostgresInstance`, in the same namespace:
+
+| Resource | Purpose |
+| :------- | :------ |
+| `FlexibleServer` | The server: SKU and storage from `capacity`, maintenance window from `maintenance`. The provider generates its administrator password into a Secret on the data plane, and writes the connection Secret `<name>-conn` |
+| `FlexibleServerDatabase` | The application database |
+| `FlexibleServerFirewallRule` | One per entry in `postgres.firewallRules`, and one per entry in the environment's `network.firewallRules`, named with an `env-` prefix |
+| `FlexibleServerConfiguration` | One per setting in `configuration`, named after its PostgreSQL parameter, and `azure.extensions` for the `extensions` parameter |
+
+### Outputs
+
+| [Output](../apis/pg-advanced/README.md#outputs) | Filled from |
+| :----- | :---------- |
+| `host` | The server's fully qualified domain name |
+| `port` | `5432` |
+| `database` | The database it created |
+| `username` | `postgres.administratorLogin` |
+| `password` | The connection Secret the provider writes |
+
+### Settings
+
+It reads the same `postgres` settings as the [PostgreSQL](#postgresql) Composition, so both can run
+on one data plane with one EnvironmentConfig. It also reads one setting of its own:
+
+| Field | Purpose |
+| :---- | :------ |
+| `sizes` | Optional. Overrides the SKU or default storage behind a size on this data plane. Fields left out keep the defaults below |
+
+For example, to use Memory Optimized SKUs for `medium`:
+
+```yaml
+postgres:
+  sizes:
+    medium:
+      sku: MO_Standard_E2ds_v5
+```
+
+Servers are named the same way as for the PostgreSQL Composition.
+
+### Sizes
+
+| `capacity.size` | Azure SKU | vCores | Memory | Default storage |
+| :-------------- | :-------- | :----- | :----- | :-------------- |
+| `small` | `B_Standard_B1ms` (Burstable) | 1 | 2 GiB | 32 GiB |
+| `medium` | `GP_Standard_D2ds_v5` (General Purpose) | 2 | 8 GiB | 64 GiB |
+| `large` | `GP_Standard_D4ds_v5` (General Purpose) | 4 | 16 GiB | 128 GiB |
+
+`capacity.storageGb` overrides the default storage. Azure picks the storage performance tier for
+each size.
+
+Not every SKU is offered in every region on every subscription, even when the region's capability
+list shows it. In testing, `B_Standard_B1ms` failed with `SkuNotAvailable` in eastus2, and both
+`B_Standard_B1ms` and `B_Standard_B2s` failed in southeastasia on one subscription. The provider
+retries a failed create only about every ten minutes. Where a SKU is not offered, map the size to
+one that is with `postgres.sizes`:
+
+```yaml
+postgres:
+  sizes:
+    small:
+      sku: GP_Standard_D2ds_v5
+    medium:
+      sku: GP_Standard_D4ds_v5
+```
+
+### Networking
+
+As for the [PostgreSQL](#networking) Composition, Workloads connect over the server's public
+endpoint, so `postgres.firewallRules` has to admit the data plane's outbound traffic. Each
+environment can add its own rules with `network.firewallRules`. Those are named `env-<name>`, so
+names in `postgres.firewallRules` should not start with `env-`: a clashing environment rule would
+replace the data plane's rule.
+
+### Maintaining a provisioned database
+
+Each environment's settings go on its `ResourceReleaseBinding`. See the
+[PostgreSQL (advanced) guide](../apis/pg-advanced/README.md#per-environment-settings) for the
+fields. Measured in southeastasia:
+
+| Change | What happens on Azure |
+| :----- | :-------------------- |
+| `capacity.size` up (`small` to `medium`) | Azure changed the SKU in six and a half to nine minutes and restarted the server; connections were refused for about 20 seconds. Memory parameters sized by Azure, such as `shared_buffers`, followed the new SKU; parameters set in `configuration` kept their values |
+| `capacity.size` down (`medium` to `small`) | Azure changed the SKU in about seven and a half minutes and restarted the server; connections were refused for about 20 seconds. Storage stays as it is: the Composition never asks for less storage than the server has, so `capacity.storageGb` does not need to be set first |
+| `capacity.storageGb` up (64 to 128) | Grew online in about three and a half minutes, with no restart. Azure moved the storage tier with it |
+| `capacity.storageGb` down | Rejected before anything reaches Azure. The binding reports `storage can grow but not shrink` |
+| `maintenance.window` | Sets a custom window on the server. Unset, Azure uses its system-managed window |
+| `network.firewallRules` | One rule per entry, added next to the data plane's rules and named `env-<name>`. Removing an entry deletes its rule. A rule that admits every address, or Azure's `0.0.0.0` "Allow Azure services" rule, is rejected |
+| `configuration.connections.maxConnections` | The provider restarts the server when the value changes, straight away and outside the maintenance window; the restart took about a minute |
+| Other `configuration` settings | Applied live, with no restart. Azure applies them one at a time, about 20 seconds each, so eight settings changed together took about two minutes. Removing a setting resets it to Azure's default |
+| `extensions` (a parameter) | Sets the `azure.extensions` allow-list once the binding is promoted. `CREATE EXTENSION` for an extension not on the list fails |
+| `version` (a parameter) | An in-place upgrade once the binding is promoted to the new release. 15 to 16 took about 17 minutes. From 16 to 17, the server answered as 17 after about four minutes, with about a minute of refused connections, although Azure reported the upgrade for about 19 minutes. The `FlexibleServer` stays Synced and Ready throughout; only Azure shows the progress, as the state `UpgradingMajorVersion` |
+| Lowering `version` | Rejected before anything reaches Azure. The binding reports `version can be raised but not lowered` |
+
+### What to expect
+
+Creating and deleting a server behave as for the [PostgreSQL](#what-to-expect) Composition. In
+addition:
+
+- **The provider does not copy Azure's choices back into the server's spec.** Otherwise it would hold
+  the server to the storage tier Azure picked for the first size, which blocks every later storage
+  change. The availability zone is the exception: the Composition repeats the zone Azure picked,
+  since the provider reads a missing zone as a request to move the server.
+- **Changes made together can take longer.** Azure runs one operation on a server at a time. A
+  `maintenance.window` change made together with `configuration` changes failed with
+  `ServerIsBusy`, and was applied on the provider's next retry, about ten minutes later. Changes to
+  the server itself also wait for each other in the provider: a `capacity.size` change made right
+  after a `capacity.storageGb` change waited about six minutes for the storage change to finish.
+
+### Checking the Composition
+
+[`render/pg-advanced/xr.yaml`](render/pg-advanced/xr.yaml) sets every setting, so a
+render shows how each one is built.
+
+```bash
+# First reconcile: nothing exists in Azure yet
+crossplane composition render azure/render/pg-advanced/xr.yaml azure/pg-advanced-composition.yaml functions.yaml \
+  --xrd apis/pg-advanced/definition.yaml \
+  --required-resources azure/environment-config.yaml
+
+# A later reconcile: the AdvancedPostgresInstance gets its address
+crossplane composition render azure/render/pg-advanced/xr.yaml azure/pg-advanced-composition.yaml functions.yaml \
+  --xrd apis/pg-advanced/definition.yaml \
+  --required-resources azure/environment-config.yaml \
+  --observed-resources azure/render/pg-advanced/observed.yaml
+```
+
 ## Redis
 
 [`redis-composition.yaml`](redis-composition.yaml) builds a `RedisInstance` as an Azure Managed
@@ -374,7 +510,8 @@ Azure with nothing left to delete them.
 kubectl get managed -A
 
 # 2. Remove the Compositions, the settings, the credentials and the providers
-kubectl delete --ignore-not-found -f azure/postgres-composition.yaml -f azure/redis-composition.yaml
+kubectl delete --ignore-not-found -f azure/postgres-composition.yaml \
+  -f azure/pg-advanced-composition.yaml -f azure/redis-composition.yaml
 kubectl delete -f azure/environment-config.yaml
 kubectl delete -f azure/provider-config.yaml
 kubectl delete -f azure/provider.yaml

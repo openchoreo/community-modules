@@ -1,0 +1,45 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# An AdvancedPostgresInstance as OpenChoreo renders it into a cell namespace.
+# Used with `crossplane composition render` to check the Azure Composition
+# without a cluster. See azure/README.md, "PostgreSQL (advanced)".
+#
+# It sets every setting, so a render shows how each one is built.
+apiVersion: crossplane.community.openchoreo.dev/v1alpha1
+kind: AdvancedPostgresInstance
+metadata:
+  name: r-orders-db-development-1a2b3c4d
+  namespace: dp-default-shop-development-5f6e7d8c
+spec:
+  version: "16"
+  database: orders
+  extensions: [vector, uuid-ossp]
+  capacity:
+    size: small
+    storageGb: 64
+    storageAutoGrow: true
+  maintenance:
+    window:
+      dayOfWeek: 0
+      startHour: 2
+      startMinute: 0
+  network:
+    firewallRules:
+      - name: office
+        startIpAddress: 203.0.113.10
+        endIpAddress: 203.0.113.10
+  configuration:
+    connections:
+      maxConnections: 100
+    memory:
+      workMemMb: 8
+      maintenanceWorkMemMb: 128
+    timeouts:
+      statementTimeoutSeconds: 30
+      idleInTransactionTimeoutSeconds: 60
+      lockTimeoutSeconds: 10
+    logging:
+      slowQueryThresholdMs: 500
+      logStatement: ddl
+      queryStats: top

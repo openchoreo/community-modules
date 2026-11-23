@@ -1,0 +1,30 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# A Workload that consumes `orders-db`. Each output of the ResourceType is
+# bound to an environment variable. The platform resolves them for whichever
+# environment the component is deployed to, so the same Workload picks up the
+# staging database when promoted to staging.
+#
+# `password` reaches the container as a secretKeyRef to a Secret on the data
+# plane; the value never passes through the control plane.
+apiVersion: openchoreo.dev/v1alpha1
+kind: Workload
+metadata:
+  name: orders-api
+  namespace: default
+spec:
+  owner:
+    projectName: shop
+    componentName: orders-api
+  container:
+    image: ghcr.io/example/orders-api:latest
+  dependencies:
+    resources:
+      - ref: orders-db
+        envBindings:
+          host: DB_HOST
+          port: DB_PORT
+          database: DB_NAME
+          username: DB_USER
+          password: DB_PASSWORD

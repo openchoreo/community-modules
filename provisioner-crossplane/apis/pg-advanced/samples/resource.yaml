@@ -1,0 +1,26 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# A Postgres database for the `shop` project that can be maintained once
+# provisioned. Nothing here names a cloud: the data plane each environment
+# runs on decides how it is provisioned.
+#
+# The parameters are the same in every environment. Changing one, such as
+# raising `version`, cuts a new ResourceRelease, which each environment picks
+# up when its binding is promoted. Everything else is per environment, on the
+# ResourceReleaseBinding; see resource-release-binding.yaml.
+apiVersion: openchoreo.dev/v1alpha1
+kind: Resource
+metadata:
+  name: orders-db
+  namespace: default
+spec:
+  owner:
+    projectName: shop
+  type:
+    kind: ClusterResourceType
+    name: postgres-crossplane-advanced
+  parameters:
+    database: orders
+    version: "16"
+    extensions: [vector, uuid-ossp]

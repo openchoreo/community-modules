@@ -7,8 +7,9 @@
 # separate kind, so the plain PostgresInstance and its Compositions are
 # unchanged.
 #
-# Install on every data plane that serves it. Only Azure has a Composition for
-# it, azure/pg-advanced-composition.yaml. With more than one Composition
+# Install on every data plane that serves it. Azure and GCP have a Composition
+# for it: azure/pg-advanced-composition.yaml and
+# gcp/pg-advanced-composition.yaml. With more than one Composition
 # for this kind on a cluster, set spec.defaultCompositionRef below, or
 # Crossplane picks one of them at random.
 #

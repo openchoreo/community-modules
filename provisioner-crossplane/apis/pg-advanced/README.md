@@ -18,8 +18,9 @@ For installing the module, see the [module README](../../README.md).
 | Backing | Builds an `AdvancedPostgresInstance` as | Guide |
 | :------ | :-------------------------------------- | :---- |
 | Azure | Azure Database for PostgreSQL Flexible Server | [azure/README.md](../../azure/README.md#postgresql-advanced) |
+| GCP | Cloud SQL for PostgreSQL | [gcp/README.md](../../gcp/README.md#postgresql-advanced) |
 
-AWS and GCP have no Composition for it yet. See [Implementing a backing](#implementing-a-backing).
+AWS has no Composition for it yet. See [Implementing a backing](#implementing-a-backing).
 
 ## Maintaining a provisioned database
 
@@ -42,8 +43,10 @@ A change is made in one of two places:
 | Tune server parameters | `configuration` | Binding | Only `connections.maxConnections` |
 | Allow extensions | `extensions` | Resource | No |
 
-How long each one takes on Azure, as measured, is in the
-[Azure guide](../../azure/README.md#postgresql-advanced).
+How long each one takes, as measured, is in the
+[Azure guide](../../azure/README.md#postgresql-advanced) and the
+[GCP guide](../../gcp/README.md#postgresql-advanced). A backing may not offer every setting; its
+guide says which ones it does not use.
 
 ## Parameters
 

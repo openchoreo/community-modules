@@ -10,6 +10,7 @@ For how the module fits together, see the [module README](../README.md).
 | Resource | Built as | Provider | Composition |
 | :------- | :------- | :------- | :---------- |
 | PostgreSQL | Cloud SQL for PostgreSQL | `provider-gcp-sql` | [`postgres-composition.yaml`](postgres-composition.yaml) |
+| PostgreSQL (advanced) | Cloud SQL for PostgreSQL | `provider-gcp-sql` | [`pg-advanced-composition.yaml`](pg-advanced-composition.yaml) |
 | Redis | Memorystore for Redis | `provider-gcp-redis` | [`redis-composition.yaml`](redis-composition.yaml) |
 
 | File | What it is |
@@ -234,6 +235,7 @@ Apply the Composition for each resource this data plane should offer:
 
 ```bash
 kubectl apply -f gcp/postgres-composition.yaml
+kubectl apply -f gcp/pg-advanced-composition.yaml
 kubectl apply -f gcp/redis-composition.yaml
 ```
 
@@ -390,6 +392,142 @@ crossplane composition render gcp/render/postgres/xr.yaml gcp/postgres-compositi
 The first render prints a newly generated password in the Secret, a different one each time. The
 second keeps the fake one from `observed.yaml`.
 
+## PostgreSQL (advanced)
+
+[`pg-advanced-composition.yaml`](pg-advanced-composition.yaml) builds an `AdvancedPostgresInstance`
+as a Cloud SQL for PostgreSQL instance, and applies the
+[operations that maintain it](../apis/pg-advanced/README.md#maintaining-a-provisioned-database). It
+is separate from the [PostgreSQL](#postgresql) Composition, which it leaves unchanged.
+
+### What it creates
+
+For each `AdvancedPostgresInstance`, in the same namespace:
+
+| Resource | Purpose |
+| :------- | :------ |
+| `DatabaseInstance` | The instance, Enterprise edition: machine type and storage from `capacity`, maintenance window from `maintenance`, and server parameters from `configuration` as database flags. A private IP in `network`, and a public IP only while `network.firewallRules` lists networks to admit. Encrypted connections only |
+| `Database` | The application database |
+| `User` | The application user, with its password read from the Secret `<name>-conn` |
+| Secret `<name>-conn` | The password, under `password`, generated once and kept, as for the [PostgreSQL](#what-it-creates) Composition |
+
+### Outputs
+
+The same as for the [PostgreSQL](#outputs) Composition: `host` is the instance's private IP address.
+
+### Settings
+
+It reads the same `postgres` settings as the [PostgreSQL](#postgresql) Composition, so both can run
+on one data plane with one EnvironmentConfig. It also reads one setting of its own:
+
+| Field | Purpose |
+| :---- | :------ |
+| `sizes` | Optional. Overrides the machine type (`tier`) or default storage (`storageGb`) behind a size on this data plane. Fields left out keep the defaults below |
+
+For example, to give `medium` more memory:
+
+```yaml
+postgres:
+  sizes:
+    medium:
+      tier: db-custom-2-13312
+```
+
+Instances are named the same way as for the PostgreSQL Composition.
+
+### Sizes
+
+| `capacity.size` | Machine type | vCPUs | Memory | Default storage |
+| :-------------- | :----------- | :---- | :----- | :-------------- |
+| `small` | `db-custom-1-3840` | 1 | 3.75 GB | 32 GB SSD |
+| `medium` | `db-custom-2-7680` | 2 | 7.5 GB | 64 GB SSD |
+| `large` | `db-custom-4-15360` | 4 | 15 GB | 128 GB SSD |
+
+`capacity.storageGb` overrides the default storage. Every size runs in a single zone, with automated
+backups off.
+
+### How each setting is applied
+
+| Setting | On Cloud SQL |
+| :------ | :----------- |
+| `version` | The instance's major version. Raising it upgrades the instance in place |
+| `extensions` | Not used. Cloud SQL has no allow-list: the application user can create any extension Cloud SQL supports |
+| `capacity.size` | The machine type |
+| `capacity.storageGb` | The disk size. The Composition never asks for less than the instance has |
+| `capacity.storageAutoGrow` | Automatic storage increases |
+| `maintenance.window` | The weekly maintenance window. Cloud SQL starts a window on the hour, so `startMinute` is not used |
+| `network.firewallRules` | Authorized networks on a public IP. Cloud SQL takes CIDR blocks, so a range that is not one block becomes the fewest blocks that cover it exactly, named `<name>`, `<name>-2` and so on. A range that starts after it ends stops the Composition with an error naming the rule |
+| `configuration` | One database flag per setting, named after its PostgreSQL parameter, except `timeouts.statementTimeoutSeconds`: `statement_timeout` is not a Cloud SQL flag, so it is not used. Set it per database instead, with `ALTER DATABASE <database> SET statement_timeout = '30s'` |
+
+### Networking
+
+Workloads on the data plane connect to the private IP in `host`, as for the
+[PostgreSQL](#networking) Composition. `network.firewallRules` turns on a public IP and admits the
+listed networks to it, so clients outside the VPC, such as an office, can connect too. They connect
+to the public IP, which is not an output; GCP shows it, as does the `DatabaseInstance`:
+
+```bash
+kubectl get databaseinstances.sql.gcp.m.upbound.io -n <cell namespace> <name> \
+  -o jsonpath='{.status.atProvider.publicIpAddress}'
+```
+
+Removing the last rule turns the public IP off. Encrypted connections are required on both.
+
+### Maintaining a provisioned database
+
+Each environment's settings go on its `ResourceReleaseBinding`. See the
+[PostgreSQL (advanced) guide](../apis/pg-advanced/README.md#per-environment-settings) for the
+fields. Measured on a `small` instance in asia-southeast1. Times are Cloud SQL's own, from its
+operation log; the provider started each operation within about two seconds of the binding change.
+
+| Change | What happens on Cloud SQL |
+| :----- | :------------------------ |
+| `capacity.size` up (`small` to `medium`) | Changed the machine type in just under five minutes; connections were refused for 15 to 20 seconds. Memory parameters sized by Cloud SQL, such as `shared_buffers`, followed the new machine type; flags set in `configuration` kept their values |
+| `capacity.size` down (`medium` to `small`) | Changed the machine type in about four and three-quarter minutes; connections were refused for about 20 seconds. Storage stays as it is: the Composition never asks for less storage than the instance has |
+| `capacity.storageGb` up (32 to 64) | Grew online in under a minute, with no restart |
+| `capacity.storageGb` down, or removed | Rejected before anything reaches GCP. The binding reports `storage can grow but not shrink` or `storageGb cannot be unset once set` |
+| `capacity.storageAutoGrow` | Turned on in about half a minute, with no restart, and no limit on the size |
+| `maintenance.window` | Sets the weekly window. Removing it lets Cloud SQL choose again |
+| `network.firewallRules` | Applied in under half a minute, with no restart. Removing the last rule turned the public IP off in about a minute and a half; the private IP and the outputs did not change |
+| `configuration.connections.maxConnections` | Cloud SQL restarts the instance when the value changes, straight away and outside the maintenance window. Connections were refused for 5 to 10 seconds |
+| Other `configuration` settings | Applied live, with no restart. Every flag goes in one update, so seven settings changed together took 12 seconds. Removing a setting resets it to Cloud SQL's default |
+| `extensions` (a parameter) | Nothing to apply. The application user created `vector` and `uuid-ossp` with `CREATE EXTENSION` |
+| `version` (a parameter) | An in-place upgrade once the binding is promoted to the new release. 16 to 17 took about 14 and a half minutes. Cloud SQL backed the instance up before and after the upgrade, and refused connections for about four and a half minutes in between; it answered as 17 about nine minutes after the promotion. Flags and extensions carried over |
+| Lowering `version` | Rejected before anything reaches GCP. The binding reports `version can be raised but not lowered` |
+
+### What to expect
+
+Creating and deleting an instance behave as for the [PostgreSQL](#what-to-expect) Composition. In
+testing, the instance was running about five and a half minutes after the binding was promoted, and
+the binding was Ready after about eleven. In addition:
+
+- **Changes made together go in one update.** The instance's settings, flags and authorized
+  networks are all part of the `DatabaseInstance`, so Cloud SQL applies a change to several of them
+  as one operation. A maintenance window and two firewall rules changed together took 22 seconds.
+- **One flag Cloud SQL does not support fails the whole update.** Cloud SQL rejects the update with
+  `The requested flag is either misspelled or unsupported by Cloud SQL`, and none of the other flags
+  are applied. This is why `timeouts.statementTimeoutSeconds` is not used.
+- **The provider does not copy Cloud SQL's choices back into the instance's spec.** Otherwise
+  removing a flag, the maintenance window or the last firewall rule would leave the old value in
+  place.
+
+### Checking the Composition
+
+[`render/pg-advanced/xr.yaml`](render/pg-advanced/xr.yaml) sets every setting, including a firewall
+rule that renders as several CIDR blocks.
+
+```bash
+# First reconcile: nothing exists in GCP yet
+crossplane composition render gcp/render/pg-advanced/xr.yaml gcp/pg-advanced-composition.yaml functions.yaml \
+  --xrd apis/pg-advanced/definition.yaml \
+  --required-resources gcp/environment-config.yaml
+
+# A later reconcile: the AdvancedPostgresInstance gets its address and becomes Ready
+crossplane composition render gcp/render/pg-advanced/xr.yaml gcp/pg-advanced-composition.yaml functions.yaml \
+  --xrd apis/pg-advanced/definition.yaml \
+  --required-resources gcp/environment-config.yaml \
+  --observed-resources gcp/render/pg-advanced/observed.yaml
+```
+
 ## Redis
 
 [`redis-composition.yaml`](redis-composition.yaml) builds a `RedisInstance` as a Memorystore for
@@ -492,7 +630,8 @@ with nothing left to delete them.
 kubectl get managed -A
 
 # 2. Remove the Compositions, the settings, the credentials and the providers
-kubectl delete --ignore-not-found -f gcp/postgres-composition.yaml -f gcp/redis-composition.yaml
+kubectl delete --ignore-not-found -f gcp/postgres-composition.yaml -f gcp/pg-advanced-composition.yaml \
+  -f gcp/redis-composition.yaml
 kubectl delete -f gcp/environment-config.yaml
 kubectl delete clusterproviderconfigs.gcp.m.upbound.io default
 sed "s/<project>/$PROJECT/g" gcp/provider.yaml | kubectl delete -f -
@@ -538,6 +677,6 @@ Then continue with the [module uninstall](../README.md#uninstall).
 
 | Component | Compatible version | Notes |
 | :-------- | :----------------- | :---- |
-| **provider-gcp-sql** | `v3.1.x` | Verified against v3.1.0, from `xpkg.crossplane.io/crossplane-contrib`. Uses the namespaced `*.gcp.m.upbound.io` API groups. |
+| **provider-gcp-sql** | `v3.1.x` | Verified against v3.1.0, from `xpkg.crossplane.io/crossplane-contrib`. Uses the namespaced `*.gcp.m.upbound.io` API groups. The PostgreSQL (advanced) Composition was verified with PostgreSQL 16 and 17, from a k3d cluster authenticating through Workload Identity Federation rather than on GKE. |
 | **provider-gcp-redis** | `v3.1.x` | Verified against v3.1.0, from `xpkg.crossplane.io/crossplane-contrib`. |
 | **GKE** | `1.36` | Verified on GKE 1.36.4 (Standard, zonal, VPC-native, kube-proxy networking) with Workload Identity. |

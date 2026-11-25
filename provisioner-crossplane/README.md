@@ -19,7 +19,7 @@ changing the ResourceTypes or the Resources that use them.
 | Resource | ResourceType | Composite resource | Backings | Guide |
 | :------- | :----------- | :----------------- | :------- | :---- |
 | PostgreSQL | `postgres-crossplane` | `PostgresInstance` | Azure, AWS, GCP | [apis/postgres/README.md](apis/postgres/README.md) |
-| PostgreSQL (advanced), for maintaining a provisioned database | `postgres-crossplane-advanced` | `AdvancedPostgresInstance` | Azure | [apis/pg-advanced/README.md](apis/pg-advanced/README.md) |
+| PostgreSQL (advanced), for maintaining a provisioned database | `postgres-crossplane-advanced` | `AdvancedPostgresInstance` | Azure, GCP | [apis/pg-advanced/README.md](apis/pg-advanced/README.md) |
 | Redis | `redis-crossplane` | `RedisInstance` | Azure, AWS, GCP | [apis/redis/README.md](apis/redis/README.md) |
 
 ## Backings
@@ -28,7 +28,7 @@ changing the ResourceTypes or the Resources that use them.
 | :------ | :-------- | :---- |
 | Azure | PostgreSQL, PostgreSQL (advanced), Redis | [azure/README.md](azure/README.md) |
 | AWS | PostgreSQL, Redis | [aws/README.md](aws/README.md) |
-| GCP | PostgreSQL, Redis | [gcp/README.md](gcp/README.md) |
+| GCP | PostgreSQL, PostgreSQL (advanced), Redis | [gcp/README.md](gcp/README.md) |
 
 ## Features
 

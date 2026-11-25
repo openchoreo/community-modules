@@ -1,0 +1,51 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# An AdvancedPostgresInstance as OpenChoreo renders it into a cell namespace.
+# Used with `crossplane composition render` to check the GCP Composition
+# without a cluster. See gcp/README.md, "PostgreSQL (advanced)".
+#
+# It sets every setting, so a render shows how each one is built. The `branch`
+# rule is not a single CIDR block, so it renders as several authorized
+# networks. timeouts.statementTimeoutSeconds is set but renders nothing:
+# statement_timeout is not a Cloud SQL flag.
+apiVersion: crossplane.community.openchoreo.dev/v1alpha1
+kind: AdvancedPostgresInstance
+metadata:
+  name: r-orders-db-development-1a2b3c4d
+  namespace: dp-default-shop-development-5f6e7d8c
+spec:
+  version: "16"
+  database: orders
+  extensions: [vector, uuid-ossp]
+  capacity:
+    size: small
+    storageGb: 64
+    storageAutoGrow: true
+  maintenance:
+    window:
+      dayOfWeek: 0
+      startHour: 2
+      startMinute: 0
+  network:
+    firewallRules:
+      - name: office
+        startIpAddress: 203.0.113.10
+        endIpAddress: 203.0.113.10
+      - name: branch
+        startIpAddress: 198.51.100.10
+        endIpAddress: 198.51.100.20
+  configuration:
+    connections:
+      maxConnections: 100
+    memory:
+      workMemMb: 8
+      maintenanceWorkMemMb: 128
+    timeouts:
+      statementTimeoutSeconds: 30
+      idleInTransactionTimeoutSeconds: 60
+      lockTimeoutSeconds: 10
+    logging:
+      slowQueryThresholdMs: 500
+      logStatement: ddl
+      queryStats: top

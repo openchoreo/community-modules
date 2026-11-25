@@ -46,3 +46,10 @@ data:
     # system users and roles, such as cloudsqladmin and cloudsqlsuperuser,
     # cannot be used, and postgres is the instance's default admin user.
     username: pgadmin
+
+    # Optional, read by pg-advanced-composition.yaml only. Overrides the
+    # machine type (tier) or default storage behind a size; fields left out
+    # keep the defaults in gcp/README.md, "PostgreSQL (advanced)".
+    # sizes:
+    #   medium:
+    #     tier: db-custom-2-13312

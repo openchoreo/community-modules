@@ -1,0 +1,326 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# Builds an AdvancedPostgresInstance as a Cloud SQL for PostgreSQL instance
+# that can be maintained once provisioned. The plain PostgresInstance is built
+# by postgres-composition.yaml, which this file leaves unchanged.
+#
+# For each AdvancedPostgresInstance, in its own namespace:
+#   DatabaseInstance   the instance: machine type and storage from
+#                      spec.capacity, maintenance window from spec.maintenance,
+#                      server parameters from spec.configuration as database
+#                      flags. A private IP in the data plane's VPC; a public IP
+#                      only while spec.network.firewallRules lists networks to
+#                      admit. Encrypted connections only
+#   Database           the application database
+#   User               the application user, with its password read from
+#                      "<name>-conn"
+#   Secret             "<name>-conn", holding the password under "password".
+#                      The provider cannot generate a Cloud SQL password, so
+#                      this Composition does, once, and keeps it; it never
+#                      leaves the data plane
+#
+# Per-data-plane settings come from the `gcp` EnvironmentConfig: the region,
+# network, name prefix and labels shared by every GCP Composition, and the
+# PostgreSQL settings under `postgres`, including an optional `sizes` map that
+# overrides the machine type and storage behind each size. The network is only
+# referenced, never changed here.
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: pg-advanced-gcp
+  labels:
+    app.kubernetes.io/name: provisioner-crossplane
+    app.kubernetes.io/part-of: openchoreo
+spec:
+  compositeTypeRef:
+    apiVersion: crossplane.community.openchoreo.dev/v1alpha1
+    kind: AdvancedPostgresInstance
+  mode: Pipeline
+  pipeline:
+    # 1. Load this data plane's settings into the pipeline context.
+    - step: load-settings
+      functionRef:
+        name: function-environment-configs
+      input:
+        apiVersion: environmentconfigs.fn.crossplane.io/v1beta1
+        kind: Input
+        spec:
+          environmentConfigs:
+            - type: Reference
+              ref:
+                name: gcp
+
+    # 2. Render the instance, its database and user, and the password Secret,
+    #    and copy what clients need into the AdvancedPostgresInstance's status.
+    - step: render
+      functionRef:
+        name: function-go-templating
+      input:
+        apiVersion: gotemplating.fn.crossplane.io/v1beta1
+        kind: GoTemplate
+        source: Inline
+        inline:
+          template: |
+            {{- $xr := .observed.composite.resource }}
+            {{- $settings := index .context "apiextensions.crossplane.io/environment" }}
+            {{- $pg := $settings.postgres }}
+
+            {{- /* Instance names, as for postgres-composition.yaml: unique
+                   per project, lowercase letters, digits and hyphens, at most
+                   63 characters, with a hash of the namespace. An instance
+                   that already exists keeps its name. */}}
+            {{- $fullName := printf "%s%s-%s" $settings.namePrefix $xr.metadata.name ($xr.metadata.namespace | sha256sum | trunc 8) }}
+            {{- $instanceName := regexReplaceAll "-+" (regexReplaceAll "[^a-z0-9-]" (lower $fullName) "-") "-" }}
+            {{- if or (ne $instanceName $fullName) (gt (len $instanceName) 63) }}
+            {{- $instanceName = printf "%s-%s" ($instanceName | trunc 54 | trimSuffix "-") ($fullName | sha256sum | trunc 8) }}
+            {{- end }}
+            {{- with getComposedResource . "instance" }}
+            {{- with dig "metadata" "annotations" "crossplane.io/external-name" "" . }}
+            {{- $instanceName = . }}
+            {{- end }}
+            {{- end }}
+
+            {{- /* The password: generated the first time, then copied back
+                   from the Secret this Composition wrote, so it never
+                   changes. Secret data is already base64-encoded. */}}
+            {{- $password := randAlphaNum 32 | b64enc }}
+            {{- with getComposedResource . "connection-secret" }}
+            {{- with dig "data" "password" "" . }}
+            {{- $password = . }}
+            {{- end }}
+            {{- end }}
+
+            {{- /* Capacity. Each size is a custom machine type, which fixes
+                   CPU and memory, and a default storage size. postgres.sizes
+                   in the EnvironmentConfig can override either for this data
+                   plane. */}}
+            {{- $capacity := $xr.spec.capacity | default dict }}
+            {{- $size := $capacity.size | default "small" }}
+            {{- $sizes := dict
+                  "small" (dict "tier" "db-custom-1-3840" "storageGb" 32)
+                  "medium" (dict "tier" "db-custom-2-7680" "storageGb" 64)
+                  "large" (dict "tier" "db-custom-4-15360" "storageGb" 128) }}
+            {{- $sizes = merge (deepCopy ($pg.sizes | default dict)) $sizes }}
+            {{- $tier := (index $sizes $size).tier }}
+            {{- $diskGb := $capacity.storageGb | default (index $sizes $size).storageGb | int }}
+            {{- /* Never ask for less storage than the instance has: Cloud SQL
+                   cannot shrink it, and automatic increases may have added
+                   some. */}}
+            {{- with getComposedResource . "instance" }}
+            {{- $diskGb = max $diskGb (dig "status" "atProvider" "settings" "diskSize" 0 . | int) }}
+            {{- end }}
+
+            {{- /* Server parameters, as database flags by PostgreSQL name.
+                   Only the ones set are rendered; removing one resets it to
+                   Cloud SQL's default. Timeouts are seconds in the spec and
+                   milliseconds in PostgreSQL, memory MiB and KiB.
+                   statement_timeout is not a Cloud SQL flag, so
+                   timeouts.statementTimeoutSeconds is not used: Cloud SQL
+                   rejects the whole update if any flag is unsupported. */}}
+            {{- $configuration := $xr.spec.configuration | default dict }}
+            {{- $connections := $configuration.connections | default dict }}
+            {{- $memory := $configuration.memory | default dict }}
+            {{- $timeouts := $configuration.timeouts | default dict }}
+            {{- $logging := $configuration.logging | default dict }}
+            {{- $flags := dict }}
+            {{- if hasKey $connections "maxConnections" }}
+            {{- $_ := set $flags "max_connections" ($connections.maxConnections | int | toString) }}
+            {{- end }}
+            {{- if hasKey $memory "workMemMb" }}
+            {{- $_ := set $flags "work_mem" (mul ($memory.workMemMb | int) 1024 | toString) }}
+            {{- end }}
+            {{- if hasKey $memory "maintenanceWorkMemMb" }}
+            {{- $_ := set $flags "maintenance_work_mem" (mul ($memory.maintenanceWorkMemMb | int) 1024 | toString) }}
+            {{- end }}
+            {{- if hasKey $timeouts "idleInTransactionTimeoutSeconds" }}
+            {{- $_ := set $flags "idle_in_transaction_session_timeout" (mul ($timeouts.idleInTransactionTimeoutSeconds | int) 1000 | toString) }}
+            {{- end }}
+            {{- if hasKey $timeouts "lockTimeoutSeconds" }}
+            {{- $_ := set $flags "lock_timeout" (mul ($timeouts.lockTimeoutSeconds | int) 1000 | toString) }}
+            {{- end }}
+            {{- if hasKey $logging "slowQueryThresholdMs" }}
+            {{- $_ := set $flags "log_min_duration_statement" ($logging.slowQueryThresholdMs | int | toString) }}
+            {{- end }}
+            {{- if hasKey $logging "logStatement" }}
+            {{- $_ := set $flags "log_statement" $logging.logStatement }}
+            {{- end }}
+            {{- if hasKey $logging "queryStats" }}
+            {{- $_ := set $flags "pg_stat_statements.track" $logging.queryStats }}
+            {{- end }}
+
+            {{- /* This environment's firewall rules, as authorized networks on
+                   a public IP. Cloud SQL takes CIDR blocks, so each address
+                   range becomes the fewest blocks that cover it exactly: the
+                   largest aligned block that fits, from the start, until the
+                   range is covered. A range is at most 62 blocks. */}}
+            {{- $rules := ($xr.spec.network | default dict).firewallRules | default list }}
+            {{- $authorized := list }}
+            {{- range $rule := $rules }}
+            {{- $start := 0 }}
+            {{- range splitList "." $rule.startIpAddress }}
+            {{- $start = add (mul $start 256) (atoi .) }}
+            {{- end }}
+            {{- $end := 0 }}
+            {{- range splitList "." $rule.endIpAddress }}
+            {{- $end = add (mul $end 256) (atoi .) }}
+            {{- end }}
+            {{- if gt $start $end }}
+            {{- fail (printf "network.firewallRules: rule %q starts at %s, after its end %s" $rule.name $rule.startIpAddress $rule.endIpAddress) }}
+            {{- end }}
+            {{- $part := 0 }}
+            {{- range until 64 }}
+            {{- if le $start $end }}
+            {{- $bits := 0 }}
+            {{- $block := 1 }}
+            {{- $candidate := 1 }}
+            {{- range $b := until 33 }}
+            {{- if and (eq (mod $start $candidate) 0) (le (add $start $candidate -1) $end) }}
+            {{- $bits = $b }}
+            {{- $block = $candidate }}
+            {{- end }}
+            {{- $candidate = mul $candidate 2 }}
+            {{- end }}
+            {{- $part = add1 $part }}
+            {{- $cidr := printf "%d.%d.%d.%d/%d" (div $start 16777216) (mod (div $start 65536) 256) (mod (div $start 256) 256) (mod $start 256) (sub 32 $bits) }}
+            {{- $authorized = append $authorized (dict "name" (ternary $rule.name (printf "%s-%d" $rule.name $part) (eq $part 1)) "value" $cidr) }}
+            {{- $start = add $start $block }}
+            {{- end }}
+            {{- end }}
+            {{- end }}
+
+            ---
+            apiVersion: sql.gcp.m.upbound.io/v1beta1
+            kind: DatabaseInstance
+            metadata:
+              name: {{ $xr.metadata.name }}
+              annotations:
+                {{ setResourceNameAnnotation "instance" }}
+                crossplane.io/external-name: {{ $instanceName | quote }}
+            spec:
+              {{- /* No LateInitialize. Otherwise the provider copies values
+                     Cloud SQL chose into the spec, where this Composition does
+                     not own them, so removing a flag, a window or the last
+                     firewall rule would leave the copied value in place. */}}
+              managementPolicies: ["Observe", "Create", "Update", "Delete"]
+              forProvider:
+                region: {{ $settings.region | quote }}
+                {{- /* A major version: Cloud SQL picks the minor version and
+                       applies minor updates in the maintenance window. Raising
+                       it upgrades the instance in place. */}}
+                databaseVersion: {{ printf "POSTGRES_%s" $xr.spec.version | quote }}
+                {{- /* The provider refuses to delete an instance unless this
+                       is false. */}}
+                deletionProtection: false
+                settings:
+                  {{- /* Custom machine types need the Enterprise edition.
+                         Left unset, PostgreSQL 16 and later default to
+                         Enterprise Plus, and the create fails. */}}
+                  edition: ENTERPRISE
+                  {{- /* Changing the machine type restarts the instance.
+                         Storage grows online and cannot shrink. */}}
+                  tier: {{ $tier }}
+                  availabilityType: ZONAL
+                  diskType: PD_SSD
+                  diskSize: {{ $diskGb }}
+                  diskAutoresize: {{ $capacity.storageAutoGrow | default false }}
+                  {{- with ($xr.spec.maintenance | default dict).window }}
+                  {{- /* Cloud SQL counts days from Monday (1) to Sunday (7)
+                         and starts on the hour, so startMinute is not used. */}}
+                  maintenanceWindow:
+                    day: {{ if eq (.dayOfWeek | int) 0 }}7{{ else }}{{ .dayOfWeek }}{{ end }}
+                    hour: {{ .startHour }}
+                  {{- end }}
+                  {{- /* max_connections restarts the instance when it changes,
+                         straight away and outside the maintenance window. The
+                         other flags apply without a restart. */}}
+                  {{- with $flags }}
+                  databaseFlags:
+                    {{- range $name, $value := . }}
+                    - name: {{ $name | quote }}
+                      value: {{ $value | quote }}
+                    {{- end }}
+                  {{- end }}
+                  ipConfiguration:
+                    {{- /* A public IP only while there are networks to admit:
+                           Cloud SQL's authorized networks apply to the public
+                           IP only. The data plane's workloads use the private
+                           IP either way. */}}
+                    ipv4Enabled: {{ gt (len $authorized) 0 }}
+                    privateNetwork: {{ $settings.network | quote }}
+                    sslMode: ENCRYPTED_ONLY
+                    {{- with $authorized }}
+                    authorizedNetworks:
+                      {{- range . }}
+                      - name: {{ .name | quote }}
+                        value: {{ .value | quote }}
+                      {{- end }}
+                    {{- end }}
+                  {{- with $settings.labels }}
+                  userLabels:
+                    {{- range $key, $value := . }}
+                    {{ $key | quote }}: {{ $value | toString | quote }}
+                    {{- end }}
+                  {{- end }}
+            ---
+            {{- /* No Delete: Cloud SQL removes the database with the instance.
+                   See postgres-composition.yaml. */}}
+            apiVersion: sql.gcp.m.upbound.io/v1beta1
+            kind: Database
+            metadata:
+              name: {{ $xr.metadata.name }}
+              annotations:
+                {{ setResourceNameAnnotation "database" }}
+                crossplane.io/external-name: {{ $xr.spec.database | quote }}
+            spec:
+              managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
+              forProvider:
+                instance: {{ $instanceName | quote }}
+            ---
+            {{- /* No Delete, as for the database. */}}
+            apiVersion: sql.gcp.m.upbound.io/v1beta1
+            kind: User
+            metadata:
+              name: {{ $xr.metadata.name }}
+              annotations:
+                {{ setResourceNameAnnotation "user" }}
+                crossplane.io/external-name: {{ $pg.username | quote }}
+            spec:
+              managementPolicies: ["Observe", "Create", "Update", "LateInitialize"]
+              forProvider:
+                instance: {{ $instanceName | quote }}
+                passwordSecretRef:
+                  name: {{ $xr.metadata.name }}-conn
+                  key: password
+            ---
+            apiVersion: v1
+            kind: Secret
+            metadata:
+              name: {{ $xr.metadata.name }}-conn
+              annotations:
+                {{ setResourceNameAnnotation "connection-secret" }}
+                gotemplating.fn.crossplane.io/ready: "True"
+            type: Opaque
+            data:
+              password: {{ $password }}
+            ---
+            {{- /* No resource-name annotation: this updates the
+                   AdvancedPostgresInstance's own status instead of
+                   composing one. */}}
+            apiVersion: crossplane.community.openchoreo.dev/v1alpha1
+            kind: AdvancedPostgresInstance
+            status:
+              port: 5432
+              database: {{ $xr.spec.database | quote }}
+              username: {{ $pg.username | quote }}
+              {{- with getComposedResource . "instance" }}
+              {{- with dig "status" "atProvider" "privateIpAddress" "" . }}
+              address: {{ . | quote }}
+              {{- end }}
+              {{- end }}
+
+    # 3. Mark each resource Ready when GCP reports it Ready, and the
+    #    AdvancedPostgresInstance Ready when all of them are.
+    - step: ready
+      functionRef:
+        name: function-auto-ready

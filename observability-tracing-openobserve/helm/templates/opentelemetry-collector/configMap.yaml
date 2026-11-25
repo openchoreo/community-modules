@@ -27,8 +27,15 @@ data:
       {{- if eq .Values.global.installationMode "multiClusterExporter" }}
       otlp:
         endpoint: {{ .Values.opentelemetryCollectorCustomizations.http.observabilityPlaneUrl }}
+        {{- $tls := .Values.opentelemetryCollectorCustomizations.http.tls | default dict }}
         tls:
-          insecure: true
+          insecure: {{ if hasKey $tls "insecure" }}{{ $tls.insecure }}{{ else }}true{{ end }}
+          {{- with $tls.caFile }}
+          ca_file: {{ . | quote }}
+          {{- end }}
+          {{- with $tls.serverNameOverride }}
+          server_name_override: {{ . | quote }}
+          {{- end }}
         {{- with .Values.opentelemetryCollectorCustomizations.http.observabilityPlaneVirtualHost }}
         headers:
           Host: {{ . | quote }}

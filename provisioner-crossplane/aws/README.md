@@ -560,7 +560,9 @@ had released it. No snapshot or backup was left behind. In addition:
 
 [`render/pg-advanced/xr.yaml`](render/pg-advanced/xr.yaml) sets every setting, including a firewall
 rule that renders as several CIDR blocks. Without observed resources, the render shows only the
-parameter group and the security group: the instance follows once both exist.
+parameter group and the security group: the instance follows once both exist. In
+[`render/pg-advanced/observed.yaml`](render/pg-advanced/observed.yaml), the instance has 100 GiB,
+more than the 64 GiB asked for, so the later render keeps 100 GiB.
 
 ```bash
 # First reconcile: nothing exists in AWS yet

@@ -6,6 +6,10 @@
 # AdvancedPostgresInstance gets its address and becomes Ready. Without it, the
 # first reconcile renders only the parameter group and the security group: the
 # instance is created once both exist.
+#
+# The instance reports 100 GiB, as if storage autoscaling had grown it past the
+# 64 GiB in xr.yaml, so the render asks for 100: the Composition never asks for
+# less storage than RDS reports.
 apiVersion: rds.aws.m.upbound.io/v1beta1
 kind: Instance
 metadata:
@@ -17,15 +21,10 @@ metadata:
 spec:
   forProvider:
     identifier: xp-r-orders-db-development-1a2b3c4d-a8b59b7c
-    engineVersion: "16"
-    parameterGroupName: xp-r-orders-db-development-1a2b3c4d-a8b59b7c-pg16
 status:
   atProvider:
-    id: db-ABCDEFGHIJKLMNOPQRSTUVWXYZ
     address: xp-r-orders-db-development-1a2b3c4d-a8b59b7c.c1a2b3c4d5e6.us-east-1.rds.amazonaws.com
-    port: 5432
-    allocatedStorage: 64
-    parameterGroupName: xp-r-orders-db-development-1a2b3c4d-a8b59b7c-pg16
+    allocatedStorage: 100
   conditions:
     - type: Ready
       status: "True"

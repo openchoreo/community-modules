@@ -9,7 +9,7 @@ FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS builder
 RUN apk add --no-cache git
 WORKDIR /src
 
-ARG OCB_VERSION=v0.153.0
+ARG OCB_VERSION=v0.166.0
 RUN go install go.opentelemetry.io/collector/cmd/builder@${OCB_VERSION}
 
 COPY builder-config.yaml .

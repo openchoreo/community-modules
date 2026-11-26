@@ -270,7 +270,7 @@ subjects:
 
 ## Compatibility
 
-- OpenTelemetry Collector **v0.153.0** (stable core modules v1.59.0).
+- OpenTelemetry Collector **v0.166.0** (stable core modules v1.72.0).
 - Built with `client-go` v0.36 (Kubernetes 1.36), which requires **Go 1.26+**.
 
 ## Roadmap

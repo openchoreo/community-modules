@@ -3,7 +3,7 @@
 
 MODULE_NAME := $(notdir $(CURDIR))
 PROCESSOR_DIR := k8seventenrichprocessor
-OCB_VERSION ?= v0.153.0
+OCB_VERSION ?= v0.166.0
 OCB_BIN ?= $(shell if [ -n "$$(go env GOBIN)" ]; then echo "$$(go env GOBIN)/builder"; else echo "$$(go env GOPATH)/bin/builder"; fi)
 
 DOCKER ?= docker

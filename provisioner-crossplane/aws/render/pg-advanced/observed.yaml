@@ -66,10 +66,10 @@ status:
 apiVersion: ec2.aws.m.upbound.io/v1beta1
 kind: SecurityGroupIngressRule
 metadata:
-  name: r-orders-db-development-1a2b3c4d-office
+  name: r-orders-db-development-1a2b3c4d-203-0-113-10-32
   namespace: dp-default-shop-development-5f6e7d8c
   annotations:
-    crossplane.io/composition-resource-name: firewall-office
+    crossplane.io/composition-resource-name: firewall-203-0-113-10-32
 status:
   conditions:
     - type: Ready
@@ -80,10 +80,10 @@ status:
 apiVersion: ec2.aws.m.upbound.io/v1beta1
 kind: SecurityGroupIngressRule
 metadata:
-  name: r-orders-db-development-1a2b3c4d-branch
+  name: r-orders-db-development-1a2b3c4d-198-51-100-10-31
   namespace: dp-default-shop-development-5f6e7d8c
   annotations:
-    crossplane.io/composition-resource-name: firewall-branch
+    crossplane.io/composition-resource-name: firewall-198-51-100-10-31
 status:
   conditions:
     - type: Ready
@@ -94,10 +94,10 @@ status:
 apiVersion: ec2.aws.m.upbound.io/v1beta1
 kind: SecurityGroupIngressRule
 metadata:
-  name: r-orders-db-development-1a2b3c4d-branch-2
+  name: r-orders-db-development-1a2b3c4d-198-51-100-12-30
   namespace: dp-default-shop-development-5f6e7d8c
   annotations:
-    crossplane.io/composition-resource-name: firewall-branch-2
+    crossplane.io/composition-resource-name: firewall-198-51-100-12-30
 status:
   conditions:
     - type: Ready
@@ -108,10 +108,10 @@ status:
 apiVersion: ec2.aws.m.upbound.io/v1beta1
 kind: SecurityGroupIngressRule
 metadata:
-  name: r-orders-db-development-1a2b3c4d-branch-3
+  name: r-orders-db-development-1a2b3c4d-198-51-100-16-30
   namespace: dp-default-shop-development-5f6e7d8c
   annotations:
-    crossplane.io/composition-resource-name: firewall-branch-3
+    crossplane.io/composition-resource-name: firewall-198-51-100-16-30
 status:
   conditions:
     - type: Ready
@@ -122,10 +122,10 @@ status:
 apiVersion: ec2.aws.m.upbound.io/v1beta1
 kind: SecurityGroupIngressRule
 metadata:
-  name: r-orders-db-development-1a2b3c4d-branch-4
+  name: r-orders-db-development-1a2b3c4d-198-51-100-20-32
   namespace: dp-default-shop-development-5f6e7d8c
   annotations:
-    crossplane.io/composition-resource-name: firewall-branch-4
+    crossplane.io/composition-resource-name: firewall-198-51-100-20-32
 status:
   conditions:
     - type: Ready

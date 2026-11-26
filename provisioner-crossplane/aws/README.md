@@ -433,7 +433,7 @@ For each `AdvancedPostgresInstance`, in the same namespace:
 | `Instance` | The database instance, with the application database created with it: instance class and storage from `capacity`, maintenance window from `maintenance`. Encrypted gp3 storage, not publicly accessible. The provider generates the master password into the Secret `<name>-conn`, under `password`, as for the [PostgreSQL](#what-it-creates) Composition |
 | `ParameterGroup` | Server parameters from `configuration`, and `rds.allowed_extensions` from the `extensions` parameter. One per major version, named `<identifier>-pg<version>`, since a parameter group serves one version |
 | `SecurityGroup` | Attached to the instance next to the data plane's `securityGroupIds`, holding this environment's rules only. Named after the instance |
-| `SecurityGroupIngressRule` | One per CIDR block in `network.firewallRules`, on port 5432 |
+| `SecurityGroupIngressRule` | One per distinct CIDR block in `network.firewallRules`, on port 5432, named after the block |
 
 The instance is created once its parameter group and security group exist, so it starts with both.
 
@@ -482,9 +482,9 @@ with automated backups off, so RDS takes no snapshot before a major version upgr
 | `extensions` | The `rds.allowed_extensions` parameter. `CREATE EXTENSION` for an extension not on the list fails. Unset or empty, RDS allows every extension it supports |
 | `capacity.size` | The instance class |
 | `capacity.storageGb` | The allocated gp3 storage. The Composition never asks for less than the instance has |
-| `capacity.storageAutoGrow` | Storage autoscaling, up to `postgres.storageAutoGrowLimitGb`, or 1024 GiB. A `storageGb` above the limit raises it, since RDS wants it more than 10% above the storage |
+| `capacity.storageAutoGrow` | Storage autoscaling, up to `postgres.storageAutoGrowLimitGb`, or 1024 GiB. A `storageGb` above the limit raises it, since RDS wants it more than 10% above the storage. It also stays above storage the instance keeps from a larger size, so lowering `size` does not stop autoscaling |
 | `maintenance.window` | The weekly maintenance window, one hour long. RDS refuses a backup window that overlaps it, so the Composition also sets the daily backup window: half an hour, starting an hour after the maintenance window ends. Removing `window` keeps both windows as they are |
-| `network.firewallRules` | Ingress rules in the instance's own security group. An ingress rule takes one CIDR block, so a range that is not one block becomes the fewest blocks that cover it exactly, named `<name>`, `<name>-2` and so on. A range that starts after it ends stops the Composition with an error naming the rule. A security group holds 60 inbound rules unless the account's quota is raised |
+| `network.firewallRules` | Ingress rules in the instance's own security group. An ingress rule takes one CIDR block, so a range that is not one block becomes the fewest blocks that cover it exactly. Each block becomes one ingress rule, described with the names of the rules that cover it; a block several rules cover is created once, since AWS refuses a duplicate. A range that starts after it ends stops the Composition with an error naming the rule. A security group holds 60 inbound rules unless the account's quota is raised |
 | `configuration` | One parameter per setting in the instance's parameter group, named after its PostgreSQL parameter, except `timeouts.lockTimeoutSeconds`: `lock_timeout` is not an RDS parameter, so it is not used. Set it per database instead, with `ALTER DATABASE <database> SET lock_timeout = '10s'` |
 
 ### Networking

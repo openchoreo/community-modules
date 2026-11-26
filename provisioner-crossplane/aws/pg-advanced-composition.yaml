@@ -19,7 +19,8 @@
 #   SecurityGroup             attached to the instance next to the data plane's
 #                             own security groups, holding this environment's
 #                             rules only
-#   SecurityGroupIngressRule  one per CIDR block in spec.network.firewallRules
+#   SecurityGroupIngressRule  one per distinct CIDR block in
+#                             spec.network.firewallRules
 #
 # Per-data-plane settings come from the `aws` EnvironmentConfig: the region,
 # VPC, name prefix, security groups and tags shared by every AWS Composition,
@@ -125,6 +126,20 @@ spec:
             {{- $maxStorageGb := 0 }}
             {{- if $capacity.storageAutoGrow }}
             {{- $maxStorageGb = max ($pg.storageAutoGrowLimitGb | default 1024 | int) (add1 (div (mul $requestedStorageGb 11) 10)) }}
+            {{- /* The instance can keep more storage than is asked for now,
+                   from a larger size before, and a ceiling at or below its
+                   storage stops autoscaling. Keep the ceiling the instance
+                   already has then: it is still above that storage, or
+                   autoscaling has reached it. If autoscaling is only being
+                   turned on, put the ceiling more than 10% above the
+                   storage. */}}
+            {{- if le $maxStorageGb $storageGb }}
+            {{- $currentMaxStorageGb := 0 }}
+            {{- with $instance }}
+            {{- $currentMaxStorageGb = dig "spec" "forProvider" "maxAllocatedStorage" 0 . | int }}
+            {{- end }}
+            {{- $maxStorageGb = ternary $currentMaxStorageGb (add1 (div (mul $storageGb 11) 10)) (gt $currentMaxStorageGb 0) }}
+            {{- end }}
             {{- end }}
 
             {{- /* The weekly maintenance window, one hour long, as RDS writes
@@ -236,9 +251,13 @@ spec:
                    ingress rules. Each takes one CIDR block, so each address
                    range becomes the fewest blocks that cover it exactly: the
                    largest aligned block that fits, from the start, until the
-                   range is covered. A range is at most 62 blocks. */}}
+                   range is covered. A range is at most 62 blocks. Each block
+                   becomes one ingress rule, named after the block and
+                   described with the names of the rules that cover it. A
+                   block several rules cover is created once, since AWS
+                   refuses a duplicate, and stays while any of them does. */}}
             {{- $rules := ($xr.spec.network | default dict).firewallRules | default list }}
-            {{- $ingress := list }}
+            {{- $blocks := dict }}
             {{- range $rule := $rules }}
             {{- $start := 0 }}
             {{- range splitList "." $rule.startIpAddress }}
@@ -251,7 +270,6 @@ spec:
             {{- if gt $start $end }}
             {{- fail (printf "network.firewallRules: rule %q starts at %s, after its end %s" $rule.name $rule.startIpAddress $rule.endIpAddress) }}
             {{- end }}
-            {{- $part := 0 }}
             {{- range until 64 }}
             {{- if le $start $end }}
             {{- $bits := 0 }}
@@ -264,9 +282,8 @@ spec:
             {{- end }}
             {{- $candidate = mul $candidate 2 }}
             {{- end }}
-            {{- $part = add1 $part }}
             {{- $cidr := printf "%d.%d.%d.%d/%d" (div $start 16777216) (mod (div $start 65536) 256) (mod (div $start 256) 256) (mod $start 256) (sub 32 $bits) }}
-            {{- $ingress = append $ingress (dict "name" (ternary $rule.name (printf "%s-%d" $rule.name $part) (eq $part 1)) "cidr" $cidr) }}
+            {{- $_ := set $blocks $cidr (append (get $blocks $cidr | default list) $rule.name) }}
             {{- $start = add $start $block }}
             {{- end }}
             {{- end }}
@@ -418,14 +435,16 @@ spec:
                   {{- range $key, $value := merge (dict "Name" $identifier) ($settings.tags | default dict) }}
                   {{ $key | quote }}: {{ $value | toString | quote }}
                   {{- end }}
-            {{- range $ingress }}
+            {{- range $cidr, $names := $blocks }}
+            {{- $id := $cidr | replace "." "-" | replace "/" "-" }}
+            {{- $description := join "," $names | trunc 255 }}
             ---
             apiVersion: ec2.aws.m.upbound.io/v1beta1
             kind: SecurityGroupIngressRule
             metadata:
-              name: {{ $xr.metadata.name }}-{{ .name }}
+              name: {{ $xr.metadata.name }}-{{ $id }}
               annotations:
-                {{ setResourceNameAnnotation (printf "firewall-%s" .name) }}
+                {{ setResourceNameAnnotation (printf "firewall-%s" $id) }}
             spec:
               forProvider:
                 region: {{ $settings.region | quote }}
@@ -434,10 +453,10 @@ spec:
                 ipProtocol: tcp
                 fromPort: 5432
                 toPort: 5432
-                cidrIpv4: {{ .cidr | quote }}
-                description: {{ .name | quote }}
+                cidrIpv4: {{ $cidr | quote }}
+                description: {{ $description | quote }}
                 tags:
-                  {{- range $key, $value := merge (dict "Name" .name) ($settings.tags | default dict) }}
+                  {{- range $key, $value := merge (dict "Name" $description) ($settings.tags | default dict) }}
                   {{ $key | quote }}: {{ $value | toString | quote }}
                   {{- end }}
             {{- end }}

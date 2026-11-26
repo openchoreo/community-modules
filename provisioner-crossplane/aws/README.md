@@ -10,6 +10,7 @@ For how the module fits together, see the [module README](../README.md).
 | Resource | Built as | Provider | Composition |
 | :------- | :------- | :------- | :---------- |
 | PostgreSQL | Amazon RDS for PostgreSQL | `provider-aws-rds` | [`postgres-composition.yaml`](postgres-composition.yaml) |
+| PostgreSQL (advanced) | Amazon RDS for PostgreSQL | `provider-aws-rds`, `provider-aws-ec2` | [`pg-advanced-composition.yaml`](pg-advanced-composition.yaml) |
 | Redis | Amazon ElastiCache for Valkey | `provider-aws-elasticache` | [`redis-composition.yaml`](redis-composition.yaml) |
 
 | File | What it is |
@@ -41,7 +42,7 @@ flowchart TB
     assoc["Pod Identity association<br/>one per provider"]
     role["IAM role"]
   end
-  svc[("RDS or ElastiCache")]
+  svc[("RDS, EC2 or ElastiCache")]
 
   pod -->|presents its token| agent
   agent --> auth
@@ -89,6 +90,34 @@ iam:
       createServiceAccount: false
       permissionPolicyARNs:
         - arn:aws:iam::aws:policy/AmazonRDSFullAccess
+    # PostgreSQL (advanced) only: a security group for each database
+    - namespace: crossplane-system
+      serviceAccountName: provider-aws-ec2
+      createServiceAccount: false
+      permissionPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - ec2:CreateSecurityGroup
+              - ec2:DeleteSecurityGroup
+              - ec2:DescribeSecurityGroups
+              - ec2:DescribeSecurityGroupRules
+              - ec2:AuthorizeSecurityGroupIngress
+              - ec2:RevokeSecurityGroupIngress
+              - ec2:AuthorizeSecurityGroupEgress
+              - ec2:RevokeSecurityGroupEgress
+              - ec2:ModifySecurityGroupRules
+              - ec2:UpdateSecurityGroupRuleDescriptionsIngress
+              - ec2:CreateTags
+              - ec2:DeleteTags
+              - ec2:DescribeTags
+              - ec2:DescribeVpcs
+              - ec2:DescribeNetworkInterfaces
+            Resource: "*"
+            Condition:
+              StringEquals:
+                aws:RequestedRegion: $REGION
     - namespace: crossplane-system
       serviceAccountName: provider-aws-elasticache
       createServiceAccount: false
@@ -107,7 +136,8 @@ The AWS managed policies cover every region of the account, and grant more than 
 Logs log events, publishing to any SNS topic, and managing CloudWatch alarms and Application Auto
 Scaling. `AmazonElastiCacheFullAccess` allows every ElastiCache action, and creating the VPC
 endpoints that ElastiCache Serverless uses. Use an account that holds only resources this backing
-creates, or replace them with narrower policies.
+creates, or replace them with narrower policies. The EC2 provider's inline policy is already narrow:
+it manages security groups and their rules in the data plane's region, and nothing else in EC2.
 
 For each entry, eksctl creates a CloudFormation stack with an IAM role whose trust policy allows the
 service `pods.eks.amazonaws.com` the actions `sts:AssumeRole` and `sts:TagSession`, attaches the
@@ -132,7 +162,7 @@ ProviderConfig types and needs no AWS access. Each provider's ServiceAccount nam
 Check that EKS gave each provider pod its credentials:
 
 ```bash
-for POD in $(kubectl get pods -n crossplane-system -o name | grep -E 'provider-aws-(rds|elasticache)'); do
+for POD in $(kubectl get pods -n crossplane-system -o name | grep -E 'provider-aws-(rds|ec2|elasticache)'); do
   echo "$POD: $(kubectl get -n crossplane-system "$POD" -o jsonpath='{.spec.containers[0].env[*].name}')"
 done
 ```
@@ -190,7 +220,7 @@ aws elasticache create-cache-subnet-group --region "$REGION" \
   --cache-subnet-group-description "Private subnets for ElastiCache created by Crossplane for OpenChoreo" \
   --subnet-ids "${PRIVATE_SUBNETS[@]}" --query CacheSubnetGroup.CacheSubnetGroupName --output text
 
-echo "$SG"
+echo "$VPC_ID $SG"
 ```
 
 The rules admit the EKS cluster security group. In an EKS managed node group without security groups
@@ -240,8 +270,8 @@ If they stay not ready, `kubectl describe` on them shows the error from AWS.
 
 ### 5. Configure this data plane's settings
 
-Edit [`environment-config.yaml`](environment-config.yaml) with the region, the security group and
-the subnet groups from step 4 (see [Settings](#settings)), then apply it.
+Edit [`environment-config.yaml`](environment-config.yaml) with the region, the VPC, the security
+group and the subnet groups from step 4 (see [Settings](#settings)), then apply it.
 
 ```bash
 kubectl apply -f aws/environment-config.yaml
@@ -253,6 +283,7 @@ Apply the Composition for each resource this data plane should offer:
 
 ```bash
 kubectl apply -f aws/postgres-composition.yaml
+kubectl apply -f aws/pg-advanced-composition.yaml
 kubectl apply -f aws/redis-composition.yaml
 ```
 
@@ -267,6 +298,7 @@ below.
 | Field | Purpose |
 | :---- | :------ |
 | `region` | AWS region for new resources: the region of the data plane's VPC |
+| `vpcId` | The data plane's VPC. Only the [PostgreSQL (advanced)](#postgresql-advanced) Composition reads it, to create a security group for each database |
 | `namePrefix` | Prepended to the name of every AWS resource the Compositions create. Lowercase letters, digits and hyphens, starting with a letter |
 | `securityGroupIds` | Security groups attached to every database and cache. Together they must admit the data plane's pods on each resource's port |
 | `tags` | Optional. Tags added to every AWS resource the Compositions create. Values are written as strings |
@@ -384,6 +416,166 @@ crossplane composition render aws/render/postgres/xr.yaml aws/postgres-compositi
   --observed-resources aws/render/postgres/observed.yaml
 ```
 
+## PostgreSQL (advanced)
+
+[`pg-advanced-composition.yaml`](pg-advanced-composition.yaml) builds an `AdvancedPostgresInstance`
+as an Amazon RDS for PostgreSQL instance, and applies the
+[operations that maintain it](../apis/pg-advanced/README.md#maintaining-a-provisioned-database). It
+is separate from the [PostgreSQL](#postgresql) Composition, which it leaves unchanged. Besides
+`provider-aws-rds`, it needs `provider-aws-ec2`, for the security groups.
+
+### What it creates
+
+For each `AdvancedPostgresInstance`, in the same namespace:
+
+| Resource | Purpose |
+| :------- | :------ |
+| `Instance` | The database instance, with the application database created with it: instance class and storage from `capacity`, maintenance window from `maintenance`. Encrypted gp3 storage, not publicly accessible. The provider generates the master password into the Secret `<name>-conn`, under `password`, as for the [PostgreSQL](#what-it-creates) Composition |
+| `ParameterGroup` | Server parameters from `configuration`, and `rds.allowed_extensions` from the `extensions` parameter. One per major version, named `<identifier>-pg<version>`, since a parameter group serves one version |
+| `SecurityGroup` | Attached to the instance next to the data plane's `securityGroupIds`, holding this environment's rules only. Named after the instance |
+| `SecurityGroupIngressRule` | One per CIDR block in `network.firewallRules`, on port 5432 |
+
+The instance is created once its parameter group and security group exist, so it starts with both.
+
+### Outputs
+
+The same as for the [PostgreSQL](#outputs) Composition: `host` is the instance's endpoint address.
+
+### Settings
+
+It reads the same `postgres` settings as the [PostgreSQL](#postgresql) Composition, so both can run
+on one data plane with one EnvironmentConfig. It also reads `vpcId`, for the security groups, and
+two settings of its own under `postgres`:
+
+| Field | Purpose |
+| :---- | :------ |
+| `sizes` | Optional. Overrides the instance class (`instanceClass`) or default storage (`storageGb`) behind a size on this data plane. Fields left out keep the defaults below |
+| `storageAutoGrowLimitGb` | Optional. The most storage, in GiB, that `capacity.storageAutoGrow` may grow a database to. Default 1024. It may not exceed the instance class's maximum: 6144 for `db.t4g.micro`, 16384 for `db.t4g.small`, 32768 for `db.t4g.medium`, 65536 for most larger classes |
+
+For example, to give `medium` more memory:
+
+```yaml
+postgres:
+  sizes:
+    medium:
+      instanceClass: db.r7g.large
+```
+
+Instances are named the same way as for the PostgreSQL Composition.
+
+### Sizes
+
+| `capacity.size` | Instance class | vCPUs | Memory | Default storage |
+| :-------------- | :------------- | :---- | :----- | :-------------- |
+| `small` | `db.t4g.small` | 2 | 2 GiB | 32 GiB |
+| `medium` | `db.m7g.large` | 2 | 8 GiB | 64 GiB |
+| `large` | `db.m7g.xlarge` | 4 | 16 GiB | 128 GiB |
+
+`capacity.storageGb` overrides the default storage. Every size runs in a single availability zone,
+with automated backups off, so RDS takes no snapshot before a major version upgrade either.
+
+### How each setting is applied
+
+| Setting | On RDS |
+| :------ | :----- |
+| `version` | The instance's major version. RDS picks its default minor version and applies minor updates in the maintenance window. Raising it upgrades the instance in place, moving it to a parameter group for the new version in the same change. The Composition creates that group first, and deletes the old one once the instance has left it |
+| `extensions` | The `rds.allowed_extensions` parameter. `CREATE EXTENSION` for an extension not on the list fails. Unset or empty, RDS allows every extension it supports |
+| `capacity.size` | The instance class |
+| `capacity.storageGb` | The allocated gp3 storage. The Composition never asks for less than the instance has |
+| `capacity.storageAutoGrow` | Storage autoscaling, up to `postgres.storageAutoGrowLimitGb`, or 1024 GiB. A `storageGb` above the limit raises it, since RDS wants it more than 10% above the storage |
+| `maintenance.window` | The weekly maintenance window, one hour long. RDS refuses a backup window that overlaps it, so the Composition also sets the daily backup window: half an hour, starting an hour after the maintenance window ends. Removing `window` keeps both windows as they are |
+| `network.firewallRules` | Ingress rules in the instance's own security group. An ingress rule takes one CIDR block, so a range that is not one block becomes the fewest blocks that cover it exactly, named `<name>`, `<name>-2` and so on. A range that starts after it ends stops the Composition with an error naming the rule. A security group holds 60 inbound rules unless the account's quota is raised |
+| `configuration` | One parameter per setting in the instance's parameter group, named after its PostgreSQL parameter, except `timeouts.lockTimeoutSeconds`: `lock_timeout` is not an RDS parameter, so it is not used. Set it per database instead, with `ALTER DATABASE <database> SET lock_timeout = '10s'` |
+
+### Networking
+
+As for the [PostgreSQL](#networking) Composition, the instance has no public endpoint, and Workloads
+on the data plane connect through the security groups in `securityGroupIds`. `network.firewallRules`
+adds rules to the instance's own security group, apart from the data plane's. Since the instance has
+no public endpoint, a rule only helps addresses that reach the VPC, such as other subnets, peered
+VPCs, or networks connected by VPN or Direct Connect. An office on the internet cannot connect.
+
+Connections must be encrypted: RDS requires TLS by default from PostgreSQL 15, the oldest
+`version` allowed, and refused a client with `sslmode=disable` in testing.
+
+### Maintaining a provisioned database
+
+Each environment's settings go on its `ResourceReleaseBinding`. See the
+[PostgreSQL (advanced) guide](../apis/pg-advanced/README.md#per-environment-settings) for the
+fields. Measured on a `small` instance in eu-north-1, from the binding change, with a client in the
+VPC connecting every five seconds:
+
+| Change | What happens on RDS |
+| :----- | :------------------ |
+| `capacity.size` up (`small` to `medium`) | Changed the instance class in about three and a half minutes. Connections were refused for about two minutes, then for about ten seconds more in a second restart. Parameters set in `configuration` kept their values |
+| `capacity.size` down (`medium` to `small`) | Changed the instance class in about four minutes, with about two minutes of refused connections and a second, shorter restart. Storage stays as it is: the Composition never asks for less storage than the instance has |
+| `capacity.storageGb` up (32 to 64) | Grew online in about four and a half minutes, with no restart and no refused connections. RDS then optimized the storage for about another 14 minutes, during which other changes still applied |
+| `capacity.storageGb` down, or removed | Rejected before anything reaches AWS. The binding reports `storage can grow but not shrink` or `storageGb cannot be unset once set` |
+| `capacity.storageAutoGrow` | Turned on in under a minute, with no restart, up to 1024 GiB |
+| `maintenance.window` | Applied in about ten seconds, with no restart, together with the backup window. Removing it kept both windows on RDS |
+| `network.firewallRules` | An address in the VPC could connect three seconds after its rule was added, and was refused again within six seconds of its removal. The data plane's connections were not affected |
+| `configuration.connections.maxConnections` | Stored in the parameter group within about two minutes, but RDS applies it only at the instance's next restart, and does not restart for it. Restart it with `aws rds reboot-db-instance --db-instance-identifier <identifier>`: connections were refused for under ten seconds. A `capacity.size` change restarts it too, and applied a pending value in testing |
+| Other `configuration` settings | Applied live, with no restart, about ten seconds after the binding changed. Every parameter goes in one update. Removing a setting resets it to the RDS default |
+| `extensions` (a parameter) | Sets `rds.allowed_extensions` about ten seconds after the binding is promoted, with no restart. `CREATE EXTENSION` worked for `vector` and `uuid-ossp`, and failed for `hstore` with `This extension is not specified in "rds.allowed_extensions"` |
+| `version` (a parameter) | An in-place upgrade once the binding is promoted to the new release. The parameter group for 17 existed within seconds, and the instance moved to it in the same change that upgraded it. 16 to 17 took about six minutes, with about two minutes of refused connections; the instance answered as 17.9 about three and a half minutes after the promotion. Parameters and extensions carried over. The old parameter group was deleted about six and a half minutes after the promotion, once the provider saw the instance on the new one |
+| Lowering `version` | Rejected before anything reaches AWS. The binding reports `version can be raised but not lowered` |
+
+### What to expect
+
+Creating and deleting an instance behave as for the [PostgreSQL](#what-to-expect) Composition. In
+testing (`small`, eu-north-1), the instance was available about six minutes after the binding was
+created, and the `AdvancedPostgresInstance` Ready half a minute later. The binding followed about
+four and a half minutes after that. Deleting the binding removed the instance, its parameter group
+and `<name>-conn` in about two minutes, and the security group about forty seconds later, once RDS
+had released it. No snapshot or backup was left behind. In addition:
+
+- **Static parameters wait for a restart.** RDS stores `connections.maxConnections` in the
+  parameter group and reports it as `pending-reboot` until the instance restarts. Every other
+  setting in `configuration` is dynamic and applies straight away.
+- **One parameter RDS does not know fails the whole update.** RDS rejects the update with
+  `Could not find parameter with name`, and none of the other parameters are applied. This is why
+  `timeouts.lockTimeoutSeconds` is not used.
+- **Storage changes are spaced out.** After a storage change, RDS optimizes the storage: about 14
+  minutes for 32 to 64 GiB in testing. RDS documents that it refuses another storage change for six
+  hours, or until the optimization ends if that takes longer, and that storage autoscaling follows
+  the same rule and grows storage when less than 10% is free. An instance class change and parameter
+  changes made during the optimization were applied.
+- **A new resource briefly holds the binding.** A new firewall rule, or the new parameter group of
+  a version upgrade, is not Ready for its first few seconds, and neither is the
+  `AdvancedPostgresInstance`. The binding reported `ResourcesProgressing` for about ten seconds
+  after a firewall rule was added, and for about five minutes after the version upgrade's
+  promotion, although the `AdvancedPostgresInstance` was Ready again within seconds. Its outputs did
+  not change.
+- **The provider does not copy RDS's choices back into the instance's spec.** Otherwise it would
+  hold the instance to values RDS picked for the first size, such as the gp3 IOPS and throughput,
+  which RDS rejects once storage passes 400 GiB. AWS assigns the IDs of the instance, the security
+  group and its rules, so the Composition, or the provider, records each ID as the resource's
+  external name, and a restarted provider finds the resources it created.
+
+> [!WARNING]
+> Deleting the binding deletes the database, with no final snapshot and no automated backups to
+> restore from. Take a snapshot first if the data matters.
+
+### Checking the Composition
+
+[`render/pg-advanced/xr.yaml`](render/pg-advanced/xr.yaml) sets every setting, including a firewall
+rule that renders as several CIDR blocks. Without observed resources, the render shows only the
+parameter group and the security group: the instance follows once both exist.
+
+```bash
+# First reconcile: nothing exists in AWS yet
+crossplane composition render aws/render/pg-advanced/xr.yaml aws/pg-advanced-composition.yaml functions.yaml \
+  --xrd apis/pg-advanced/definition.yaml \
+  --required-resources aws/environment-config.yaml
+
+# A later reconcile: the instance is created, and the AdvancedPostgresInstance gets its address and
+# becomes Ready
+crossplane composition render aws/render/pg-advanced/xr.yaml aws/pg-advanced-composition.yaml functions.yaml \
+  --xrd apis/pg-advanced/definition.yaml \
+  --required-resources aws/environment-config.yaml \
+  --observed-resources aws/render/pg-advanced/observed.yaml
+```
+
 ## Redis
 
 [`redis-composition.yaml`](redis-composition.yaml) builds a `RedisInstance` as an Amazon
@@ -477,7 +669,8 @@ AWS with nothing left to delete them.
 kubectl get managed -A
 
 # 2. Remove the Compositions, the settings, the credentials and the providers
-kubectl delete --ignore-not-found -f aws/postgres-composition.yaml -f aws/redis-composition.yaml
+kubectl delete --ignore-not-found -f aws/postgres-composition.yaml -f aws/pg-advanced-composition.yaml \
+  -f aws/redis-composition.yaml
 kubectl delete -f aws/environment-config.yaml
 kubectl delete -f aws/provider-config.yaml
 kubectl delete -f aws/provider.yaml
@@ -501,6 +694,7 @@ Then continue with the [module uninstall](../README.md#uninstall).
 
 | Component | Compatible version | Notes |
 | :-------- | :----------------- | :---- |
-| **provider-aws-rds** | `v2.9.x` | Verified against v2.9.0, from `xpkg.crossplane.io/crossplane-contrib`. Uses the namespaced `*.aws.m.upbound.io` API groups. |
+| **provider-aws-rds** | `v2.9.x` | Verified against v2.9.0, from `xpkg.crossplane.io/crossplane-contrib`. Uses the namespaced `*.aws.m.upbound.io` API groups. The PostgreSQL (advanced) Composition was verified with PostgreSQL 16 and 17, from a k3d cluster authenticating through an IAM OIDC identity provider (WebIdentity) rather than on EKS. |
+| **provider-aws-ec2** | `v2.9.x` | Verified against v2.9.0, from `xpkg.crossplane.io/crossplane-contrib`, for the PostgreSQL (advanced) Composition. |
 | **provider-aws-elasticache** | `v2.9.x` | Verified against v2.9.0, from `xpkg.crossplane.io/crossplane-contrib`. |
 | **EKS** | `1.36` | Verified on EKS 1.36.4 with the Pod Identity agent add-on v1.3.10. |

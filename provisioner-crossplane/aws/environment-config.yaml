@@ -23,6 +23,11 @@ data:
   # example us-east-1.
   region: <region>
 
+  # The data plane's VPC, for example vpc-0123456789abcdef0. Read by
+  # pg-advanced-composition.yaml only, which creates a security group in it for
+  # each database's own firewall rules.
+  vpcId: <vpc-id>
+
   # Prepended to the name of every AWS resource the Compositions create.
   # Lowercase letters, digits and hyphens, starting with a letter. The provider
   # finds an ElastiCache replication group by its ID and takes over one that
@@ -46,6 +51,19 @@ data:
 
     # Master user for new instances. RDS reserves some names, such as rdsadmin.
     username: pgadmin
+
+    # Optional, read by pg-advanced-composition.yaml only. Overrides the
+    # instance class or default storage behind a size; fields left out keep
+    # the defaults in aws/README.md, "PostgreSQL (advanced)".
+    # sizes:
+    #   medium:
+    #     instanceClass: db.r7g.large
+
+    # Optional, read by pg-advanced-composition.yaml only. The most storage, in
+    # GiB, that capacity.storageAutoGrow may grow a database to. Unset, 1024.
+    # It may not exceed the instance class's maximum, which is 6144 for
+    # db.t4g.micro and 16384 for db.t4g.small.
+    # storageAutoGrowLimitGb: 4096
 
   redis:
     # An existing ElastiCache subnet group over the VPC's private subnets.

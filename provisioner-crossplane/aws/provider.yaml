@@ -13,7 +13,7 @@
 # changes on every upgrade. Create the associations before the providers, since
 # EKS only injects credentials into pods started after an association exists.
 
-# PostgreSQL: Amazon RDS for PostgreSQL
+# PostgreSQL and PostgreSQL (advanced): Amazon RDS for PostgreSQL
 apiVersion: pkg.crossplane.io/v1beta1
 kind: DeploymentRuntimeConfig
 metadata:
@@ -31,6 +31,26 @@ spec:
   package: xpkg.crossplane.io/crossplane-contrib/provider-aws-rds:v2.9.0
   runtimeConfigRef:
     name: provider-aws-rds
+---
+# PostgreSQL (advanced) only: Amazon EC2, for the security group holding each
+# database's own firewall rules
+apiVersion: pkg.crossplane.io/v1beta1
+kind: DeploymentRuntimeConfig
+metadata:
+  name: provider-aws-ec2
+spec:
+  serviceAccountTemplate:
+    metadata:
+      name: provider-aws-ec2
+---
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-aws-ec2
+spec:
+  package: xpkg.crossplane.io/crossplane-contrib/provider-aws-ec2:v2.9.0
+  runtimeConfigRef:
+    name: provider-aws-ec2
 ---
 # Redis: Amazon ElastiCache
 apiVersion: pkg.crossplane.io/v1beta1

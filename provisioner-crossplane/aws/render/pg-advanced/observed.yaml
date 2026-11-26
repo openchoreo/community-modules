@@ -1,0 +1,135 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# The composed resources as the provider reports them once AWS has finished.
+# Pass with --observed-resources to render a later reconcile, where the
+# AdvancedPostgresInstance gets its address and becomes Ready. Without it, the
+# first reconcile renders only the parameter group and the security group: the
+# instance is created once both exist.
+apiVersion: rds.aws.m.upbound.io/v1beta1
+kind: Instance
+metadata:
+  name: r-orders-db-development-1a2b3c4d
+  namespace: dp-default-shop-development-5f6e7d8c
+  annotations:
+    crossplane.io/composition-resource-name: instance
+    crossplane.io/external-name: db-ABCDEFGHIJKLMNOPQRSTUVWXYZ
+spec:
+  forProvider:
+    identifier: xp-r-orders-db-development-1a2b3c4d-a8b59b7c
+    engineVersion: "16"
+    parameterGroupName: xp-r-orders-db-development-1a2b3c4d-a8b59b7c-pg16
+status:
+  atProvider:
+    id: db-ABCDEFGHIJKLMNOPQRSTUVWXYZ
+    address: xp-r-orders-db-development-1a2b3c4d-a8b59b7c.c1a2b3c4d5e6.us-east-1.rds.amazonaws.com
+    port: 5432
+    allocatedStorage: 64
+    parameterGroupName: xp-r-orders-db-development-1a2b3c4d-a8b59b7c-pg16
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: Available
+      lastTransitionTime: "2026-11-26T00:00:00Z"
+---
+apiVersion: rds.aws.m.upbound.io/v1beta1
+kind: ParameterGroup
+metadata:
+  name: r-orders-db-development-1a2b3c4d-pg16
+  namespace: dp-default-shop-development-5f6e7d8c
+  annotations:
+    crossplane.io/composition-resource-name: parameter-group-16
+    crossplane.io/external-name: xp-r-orders-db-development-1a2b3c4d-a8b59b7c-pg16
+status:
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: Available
+      lastTransitionTime: "2026-11-26T00:00:00Z"
+---
+apiVersion: ec2.aws.m.upbound.io/v1beta1
+kind: SecurityGroup
+metadata:
+  name: r-orders-db-development-1a2b3c4d
+  namespace: dp-default-shop-development-5f6e7d8c
+  annotations:
+    crossplane.io/composition-resource-name: security-group
+    crossplane.io/external-name: sg-0a1b2c3d4e5f60718
+status:
+  atProvider:
+    id: sg-0a1b2c3d4e5f60718
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: Available
+      lastTransitionTime: "2026-11-26T00:00:00Z"
+---
+apiVersion: ec2.aws.m.upbound.io/v1beta1
+kind: SecurityGroupIngressRule
+metadata:
+  name: r-orders-db-development-1a2b3c4d-office
+  namespace: dp-default-shop-development-5f6e7d8c
+  annotations:
+    crossplane.io/composition-resource-name: firewall-office
+status:
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: Available
+      lastTransitionTime: "2026-11-26T00:00:00Z"
+---
+apiVersion: ec2.aws.m.upbound.io/v1beta1
+kind: SecurityGroupIngressRule
+metadata:
+  name: r-orders-db-development-1a2b3c4d-branch
+  namespace: dp-default-shop-development-5f6e7d8c
+  annotations:
+    crossplane.io/composition-resource-name: firewall-branch
+status:
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: Available
+      lastTransitionTime: "2026-11-26T00:00:00Z"
+---
+apiVersion: ec2.aws.m.upbound.io/v1beta1
+kind: SecurityGroupIngressRule
+metadata:
+  name: r-orders-db-development-1a2b3c4d-branch-2
+  namespace: dp-default-shop-development-5f6e7d8c
+  annotations:
+    crossplane.io/composition-resource-name: firewall-branch-2
+status:
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: Available
+      lastTransitionTime: "2026-11-26T00:00:00Z"
+---
+apiVersion: ec2.aws.m.upbound.io/v1beta1
+kind: SecurityGroupIngressRule
+metadata:
+  name: r-orders-db-development-1a2b3c4d-branch-3
+  namespace: dp-default-shop-development-5f6e7d8c
+  annotations:
+    crossplane.io/composition-resource-name: firewall-branch-3
+status:
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: Available
+      lastTransitionTime: "2026-11-26T00:00:00Z"
+---
+apiVersion: ec2.aws.m.upbound.io/v1beta1
+kind: SecurityGroupIngressRule
+metadata:
+  name: r-orders-db-development-1a2b3c4d-branch-4
+  namespace: dp-default-shop-development-5f6e7d8c
+  annotations:
+    crossplane.io/composition-resource-name: firewall-branch-4
+status:
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: Available
+      lastTransitionTime: "2026-11-26T00:00:00Z"

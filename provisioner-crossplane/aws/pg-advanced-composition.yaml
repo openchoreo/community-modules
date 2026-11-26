@@ -127,18 +127,19 @@ spec:
             {{- if $capacity.storageAutoGrow }}
             {{- $maxStorageGb = max ($pg.storageAutoGrowLimitGb | default 1024 | int) (add1 (div (mul $requestedStorageGb 11) 10)) }}
             {{- /* The instance can keep more storage than is asked for now,
-                   from a larger size before, and a ceiling at or below its
-                   storage stops autoscaling. Keep the ceiling the instance
-                   already has then: it is still above that storage, or
-                   autoscaling has reached it. If autoscaling is only being
-                   turned on, put the ceiling more than 10% above the
+                   from a larger size before, and RDS refuses a new ceiling
+                   less than 10% above the instance's storage. Keep the
+                   ceiling the instance already has then: it was valid when
+                   set, or autoscaling has reached it. If autoscaling is only
+                   being turned on, put the ceiling just over 10% above the
                    storage. */}}
-            {{- if le $maxStorageGb $storageGb }}
+            {{- $minimumMaxStorageGb := add1 (div (mul $storageGb 11) 10) }}
+            {{- if lt $maxStorageGb $minimumMaxStorageGb }}
             {{- $currentMaxStorageGb := 0 }}
             {{- with $instance }}
             {{- $currentMaxStorageGb = dig "spec" "forProvider" "maxAllocatedStorage" 0 . | int }}
             {{- end }}
-            {{- $maxStorageGb = ternary $currentMaxStorageGb (add1 (div (mul $storageGb 11) 10)) (gt $currentMaxStorageGb 0) }}
+            {{- $maxStorageGb = ternary $currentMaxStorageGb $minimumMaxStorageGb (gt $currentMaxStorageGb 0) }}
             {{- end }}
             {{- end }}
 

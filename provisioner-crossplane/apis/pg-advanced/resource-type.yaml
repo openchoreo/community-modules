@@ -7,8 +7,8 @@
 #
 # It renders a single AdvancedPostgresInstance into the cell namespace and names
 # no cloud: the data plane that receives it builds it through the Composition
-# installed there: azure/pg-advanced-composition.yaml or
-# gcp/pg-advanced-composition.yaml.
+# installed there: azure/pg-advanced-composition.yaml,
+# aws/pg-advanced-composition.yaml or gcp/pg-advanced-composition.yaml.
 #
 # Outputs match the other Postgres ResourceTypes (host, port, database,
 # username, password), so a Workload's envBindings carry over unchanged.

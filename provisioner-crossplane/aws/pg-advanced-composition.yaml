@@ -1,0 +1,484 @@
+# Copyright 2026 The OpenChoreo Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# Builds an AdvancedPostgresInstance as an Amazon RDS for PostgreSQL instance
+# that can be maintained once provisioned. The plain PostgresInstance is built
+# by postgres-composition.yaml, which this file leaves unchanged.
+#
+# For each AdvancedPostgresInstance, in its own namespace:
+#   Instance                  the database instance, in the VPC's private
+#                             subnets: instance class and storage from
+#                             spec.capacity, maintenance window from
+#                             spec.maintenance. The provider generates the
+#                             master password into the Secret "<name>-conn",
+#                             under "password"; it never leaves the data plane
+#   ParameterGroup            server parameters from spec.configuration, and
+#                             rds.allowed_extensions from spec.extensions. One
+#                             per major version, since a parameter group
+#                             serves one version family
+#   SecurityGroup             attached to the instance next to the data plane's
+#                             own security groups, holding this environment's
+#                             rules only
+#   SecurityGroupIngressRule  one per distinct CIDR block in
+#                             spec.network.firewallRules
+#
+# Per-data-plane settings come from the `aws` EnvironmentConfig: the region,
+# VPC, name prefix, security groups and tags shared by every AWS Composition,
+# and the PostgreSQL settings under `postgres`, including an optional `sizes`
+# map that overrides the instance class and storage behind each size. The
+# subnet group (by name), the VPC and the data plane's security groups (by ID)
+# are only referenced, never created or deleted here.
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: pg-advanced-aws
+  labels:
+    app.kubernetes.io/name: provisioner-crossplane
+    app.kubernetes.io/part-of: openchoreo
+spec:
+  compositeTypeRef:
+    apiVersion: crossplane.community.openchoreo.dev/v1alpha1
+    kind: AdvancedPostgresInstance
+  mode: Pipeline
+  pipeline:
+    # 1. Load this data plane's settings into the pipeline context.
+    - step: load-settings
+      functionRef:
+        name: function-environment-configs
+      input:
+        apiVersion: environmentconfigs.fn.crossplane.io/v1beta1
+        kind: Input
+        spec:
+          environmentConfigs:
+            - type: Reference
+              ref:
+                name: aws
+
+    # 2. Render the instance, its parameter group and security group, and copy
+    #    what clients need into the AdvancedPostgresInstance's status.
+    - step: render
+      functionRef:
+        name: function-go-templating
+      input:
+        apiVersion: gotemplating.fn.crossplane.io/v1beta1
+        kind: GoTemplate
+        source: Inline
+        inline:
+          template: |
+            {{- $xr := .observed.composite.resource }}
+            {{- $settings := index .context "apiextensions.crossplane.io/environment" }}
+            {{- $pg := $settings.postgres }}
+            {{- $instance := getComposedResource . "instance" }}
+
+            {{- /* Instance identifiers, as for postgres-composition.yaml:
+                   unique per account and region, 1-63 letters, digits and
+                   hyphens, with a hash of the namespace. An instance that
+                   already exists keeps its identifier. The parameter groups
+                   and the security group are named after it. */}}
+            {{- $fullName := printf "%s%s-%s" $settings.namePrefix $xr.metadata.name ($xr.metadata.namespace | sha256sum | trunc 8) }}
+            {{- $identifier := regexReplaceAll "-+" (regexReplaceAll "[^a-z0-9-]" (lower $fullName) "-") "-" }}
+            {{- if or (ne $identifier $fullName) (gt (len $identifier) 63) }}
+            {{- $identifier = printf "%s-%s" ($identifier | trunc 54 | trimSuffix "-") ($fullName | sha256sum | trunc 8) }}
+            {{- end }}
+            {{- with $instance }}
+            {{- with dig "spec" "forProvider" "identifier" "" . }}
+            {{- $identifier = . }}
+            {{- end }}
+            {{- end }}
+
+            {{- /* The instance's external name is the resource ID AWS
+                   assigns, such as db-ABCDEFGHIJKLMNOPQRSTUVWXYZ. The provider
+                   records it only through LateInitialize, which the instance
+                   leaves out, so copy it here once the provider reports it,
+                   and keep it. Without it, a restarted provider tries to
+                   create the instance again. */}}
+            {{- $instanceId := "" }}
+            {{- with $instance }}
+            {{- $instanceId = dig "metadata" "annotations" "crossplane.io/external-name" "" . | default (dig "status" "atProvider" "id" "" .) }}
+            {{- end }}
+
+            {{- /* Capacity. Each size is an instance class, which fixes CPU
+                   and memory, and a default storage size. postgres.sizes in
+                   the EnvironmentConfig can override either for this data
+                   plane. */}}
+            {{- $capacity := $xr.spec.capacity | default dict }}
+            {{- $size := $capacity.size | default "small" }}
+            {{- $sizes := dict
+                  "small" (dict "instanceClass" "db.t4g.small" "storageGb" 32)
+                  "medium" (dict "instanceClass" "db.m7g.large" "storageGb" 64)
+                  "large" (dict "instanceClass" "db.m7g.xlarge" "storageGb" 128) }}
+            {{- $sizes = merge (deepCopy ($pg.sizes | default dict)) $sizes }}
+            {{- $instanceClass := (index $sizes $size).instanceClass }}
+            {{- $requestedStorageGb := $capacity.storageGb | default (index $sizes $size).storageGb | int }}
+            {{- /* Never ask for less storage than the instance has: RDS
+                   cannot shrink it, and storage autoscaling may have added
+                   some. */}}
+            {{- $storageGb := $requestedStorageGb }}
+            {{- with $instance }}
+            {{- $storageGb = max $storageGb (dig "status" "atProvider" "allocatedStorage" 0 . | int) }}
+            {{- end }}
+            {{- /* Storage autoscaling grows storage up to a ceiling:
+                   postgres.storageAutoGrowLimitGb, or 1024 GiB, which every
+                   instance class allows. RDS wants the ceiling more than 10%
+                   above the storage asked for, so a larger request raises it.
+                   It follows the request, not what autoscaling has added, so
+                   autoscaling stops at the ceiling. 0 turns autoscaling off. */}}
+            {{- $maxStorageGb := 0 }}
+            {{- if $capacity.storageAutoGrow }}
+            {{- $maxStorageGb = max ($pg.storageAutoGrowLimitGb | default 1024 | int) (add1 (div (mul $requestedStorageGb 11) 10)) }}
+            {{- /* The instance can keep more storage than is asked for now,
+                   from a larger size before, and RDS refuses a new ceiling
+                   less than 10% above the instance's storage. Keep the
+                   ceiling the instance already has then: it was valid when
+                   set, or autoscaling has reached it. If autoscaling is only
+                   being turned on, put the ceiling just over 10% above the
+                   storage. */}}
+            {{- $minimumMaxStorageGb := add1 (div (mul $storageGb 11) 10) }}
+            {{- if lt $maxStorageGb $minimumMaxStorageGb }}
+            {{- $currentMaxStorageGb := 0 }}
+            {{- with $instance }}
+            {{- $currentMaxStorageGb = dig "spec" "forProvider" "maxAllocatedStorage" 0 . | int }}
+            {{- end }}
+            {{- $maxStorageGb = ternary $currentMaxStorageGb $minimumMaxStorageGb (gt $currentMaxStorageGb 0) }}
+            {{- end }}
+            {{- end }}
+
+            {{- /* The weekly maintenance window, one hour long, as RDS writes
+                   it: ddd:hh24:mi-ddd:hh24:mi in UTC. RDS refuses a backup
+                   window that overlaps it and picks the daily backup window
+                   itself, so set that too: half an hour, starting an hour
+                   after the maintenance window ends. */}}
+            {{- $maintenanceWindow := "" }}
+            {{- $backupWindow := "" }}
+            {{- with ($xr.spec.maintenance | default dict).window }}
+            {{- $days := list "sun" "mon" "tue" "wed" "thu" "fri" "sat" }}
+            {{- $start := add (mul (.dayOfWeek | int) 1440) (mul (.startHour | int) 60) (.startMinute | default 0 | int) }}
+            {{- $end := mod (add $start 60) 10080 }}
+            {{- $maintenanceWindow = printf "%s:%02d:%02d-%s:%02d:%02d"
+                  (index $days (div $start 1440)) (div (mod $start 1440) 60) (mod $start 60)
+                  (index $days (div $end 1440)) (div (mod $end 1440) 60) (mod $end 60) }}
+            {{- $backupStart := mod (add $start 120) 1440 }}
+            {{- $backupEnd := mod (add $backupStart 30) 1440 }}
+            {{- $backupWindow = printf "%02d:%02d-%02d:%02d"
+                  (div $backupStart 60) (mod $backupStart 60) (div $backupEnd 60) (mod $backupEnd 60) }}
+            {{- end }}
+
+            {{- /* Server parameters, by PostgreSQL name. Only the ones set
+                   are rendered; removing one resets it to the RDS default.
+                   Timeouts are seconds in the spec and milliseconds in
+                   PostgreSQL, memory MiB and KiB. max_connections is static:
+                   RDS applies it at the instance's next restart, and does not
+                   restart for it. The others apply straight away.
+                   lock_timeout is not an RDS parameter, so
+                   timeouts.lockTimeoutSeconds is not used: RDS rejects the
+                   whole update if any parameter is unknown. */}}
+            {{- $configuration := $xr.spec.configuration | default dict }}
+            {{- $connections := $configuration.connections | default dict }}
+            {{- $memory := $configuration.memory | default dict }}
+            {{- $timeouts := $configuration.timeouts | default dict }}
+            {{- $logging := $configuration.logging | default dict }}
+            {{- $parameters := dict }}
+            {{- if hasKey $connections "maxConnections" }}
+            {{- $_ := set $parameters "max_connections" ($connections.maxConnections | int | toString) }}
+            {{- end }}
+            {{- if hasKey $memory "workMemMb" }}
+            {{- $_ := set $parameters "work_mem" (mul ($memory.workMemMb | int) 1024 | toString) }}
+            {{- end }}
+            {{- if hasKey $memory "maintenanceWorkMemMb" }}
+            {{- $_ := set $parameters "maintenance_work_mem" (mul ($memory.maintenanceWorkMemMb | int) 1024 | toString) }}
+            {{- end }}
+            {{- if hasKey $timeouts "statementTimeoutSeconds" }}
+            {{- $_ := set $parameters "statement_timeout" (mul ($timeouts.statementTimeoutSeconds | int) 1000 | toString) }}
+            {{- end }}
+            {{- if hasKey $timeouts "idleInTransactionTimeoutSeconds" }}
+            {{- $_ := set $parameters "idle_in_transaction_session_timeout" (mul ($timeouts.idleInTransactionTimeoutSeconds | int) 1000 | toString) }}
+            {{- end }}
+            {{- if hasKey $logging "slowQueryThresholdMs" }}
+            {{- $_ := set $parameters "log_min_duration_statement" ($logging.slowQueryThresholdMs | int | toString) }}
+            {{- end }}
+            {{- if hasKey $logging "logStatement" }}
+            {{- $_ := set $parameters "log_statement" $logging.logStatement }}
+            {{- end }}
+            {{- if hasKey $logging "queryStats" }}
+            {{- /* RDS lists this parameter's values in capitals. */}}
+            {{- $_ := set $parameters "pg_stat_statements.track" (upper $logging.queryStats) }}
+            {{- end }}
+            {{- /* The extensions the application may create. Unset, RDS
+                   allows every extension it supports. */}}
+            {{- with $xr.spec.extensions }}
+            {{- $_ := set $parameters "rds.allowed_extensions" (join "," .) }}
+            {{- end }}
+
+            {{- /* The major version. A parameter group serves one version
+                   family, so each version gets its own group, and the instance
+                   moves to the new group in the same change that upgrades it.
+                   Until the new group exists, the instance stays on its
+                   current version and group, so the upgrade does not start
+                   without it. */}}
+            {{- $version := $xr.spec.version }}
+            {{- $parameterGroup := printf "%s-pg%s" $identifier $version }}
+            {{- $parameterGroupReady := false }}
+            {{- with getComposedResource . (printf "parameter-group-%s" $version) }}
+            {{- range dig "status" "conditions" list . }}
+            {{- if and (eq .type "Ready") (eq .status "True") }}
+            {{- $parameterGroupReady = true }}
+            {{- end }}
+            {{- end }}
+            {{- end }}
+            {{- $instanceVersion := $version }}
+            {{- $instanceParameterGroup := $parameterGroup }}
+            {{- $attachedParameterGroup := "" }}
+            {{- with $instance }}
+            {{- $attachedParameterGroup = dig "status" "atProvider" "parameterGroupName" "" . }}
+            {{- if not $parameterGroupReady }}
+            {{- $instanceVersion = dig "spec" "forProvider" "engineVersion" $version . }}
+            {{- $instanceParameterGroup = dig "spec" "forProvider" "parameterGroupName" $parameterGroup . }}
+            {{- end }}
+            {{- end }}
+
+            {{- /* This environment's security group, by ID once AWS has
+                   created it. */}}
+            {{- $securityGroupId := "" }}
+            {{- with getComposedResource . "security-group" }}
+            {{- $securityGroupId = dig "status" "atProvider" "id" "" . }}
+            {{- end }}
+
+            {{- /* The instance is created only once its parameter group and
+                   security group exist, so it starts with both. Once it
+                   exists, it is always rendered. */}}
+            {{- $renderInstance := or $instance (and $parameterGroupReady $securityGroupId) }}
+
+            {{- /* This environment's firewall rules, as security group
+                   ingress rules. Each takes one CIDR block, so each address
+                   range becomes the fewest blocks that cover it exactly: the
+                   largest aligned block that fits, from the start, until the
+                   range is covered. A range is at most 62 blocks. Each block
+                   becomes one ingress rule, named after the block and
+                   described with the names of the rules that cover it. A
+                   block several rules cover is created once, since AWS
+                   refuses a duplicate, and stays while any of them does. */}}
+            {{- $rules := ($xr.spec.network | default dict).firewallRules | default list }}
+            {{- $blocks := dict }}
+            {{- range $rule := $rules }}
+            {{- $start := 0 }}
+            {{- range splitList "." $rule.startIpAddress }}
+            {{- $start = add (mul $start 256) (atoi .) }}
+            {{- end }}
+            {{- $end := 0 }}
+            {{- range splitList "." $rule.endIpAddress }}
+            {{- $end = add (mul $end 256) (atoi .) }}
+            {{- end }}
+            {{- if gt $start $end }}
+            {{- fail (printf "network.firewallRules: rule %q starts at %s, after its end %s" $rule.name $rule.startIpAddress $rule.endIpAddress) }}
+            {{- end }}
+            {{- range until 64 }}
+            {{- if le $start $end }}
+            {{- $bits := 0 }}
+            {{- $block := 1 }}
+            {{- $candidate := 1 }}
+            {{- range $b := until 33 }}
+            {{- if and (eq (mod $start $candidate) 0) (le (add $start $candidate -1) $end) }}
+            {{- $bits = $b }}
+            {{- $block = $candidate }}
+            {{- end }}
+            {{- $candidate = mul $candidate 2 }}
+            {{- end }}
+            {{- $cidr := printf "%d.%d.%d.%d/%d" (div $start 16777216) (mod (div $start 65536) 256) (mod (div $start 256) 256) (mod $start 256) (sub 32 $bits) }}
+            {{- $_ := set $blocks $cidr (append (get $blocks $cidr | default list) $rule.name) }}
+            {{- $start = add $start $block }}
+            {{- end }}
+            {{- end }}
+            {{- end }}
+
+            {{- if $renderInstance }}
+            ---
+            apiVersion: rds.aws.m.upbound.io/v1beta1
+            kind: Instance
+            metadata:
+              name: {{ $xr.metadata.name }}
+              annotations:
+                {{ setResourceNameAnnotation "instance" }}
+                {{- with $instanceId }}
+                crossplane.io/external-name: {{ . | quote }}
+                {{- end }}
+            spec:
+              {{- /* No LateInitialize. Otherwise the provider copies values
+                     RDS chose into the spec, where this Composition does not
+                     own them, such as the gp3 IOPS and throughput for the
+                     first storage size, which RDS rejects once storage passes
+                     400 GiB. */}}
+              managementPolicies: ["Observe", "Create", "Update", "Delete"]
+              forProvider:
+                region: {{ $settings.region | quote }}
+                identifier: {{ $identifier | quote }}
+                engine: postgres
+                {{- /* A major version: RDS picks its default minor version
+                       and applies minor updates in the maintenance window.
+                       Raising it upgrades the instance in place, together
+                       with the move to that version's parameter group. */}}
+                engineVersion: {{ $instanceVersion | quote }}
+                allowMajorVersionUpgrade: true
+                autoMinorVersionUpgrade: true
+                parameterGroupName: {{ $instanceParameterGroup | quote }}
+                {{- /* Changing the instance class restarts the instance.
+                       Storage grows online and cannot shrink. */}}
+                instanceClass: {{ $instanceClass }}
+                allocatedStorage: {{ $storageGb }}
+                maxAllocatedStorage: {{ $maxStorageGb }}
+                storageType: gp3
+                storageEncrypted: true
+                multiAz: false
+                {{- /* No automated backups, so RDS takes no snapshot before a
+                       major version upgrade either. Set a retention period in
+                       days for data that matters. */}}
+                backupRetentionPeriod: 0
+                {{- with $maintenanceWindow }}
+                maintenanceWindow: {{ . | quote }}
+                backupWindow: {{ $backupWindow | quote }}
+                {{- end }}
+                dbName: {{ $xr.spec.database | quote }}
+                username: {{ $pg.username | quote }}
+                autoGeneratePassword: true
+                passwordSecretRef:
+                  name: {{ $xr.metadata.name }}-conn
+                  key: password
+                dbSubnetGroupName: {{ $pg.subnetGroupName | quote }}
+                {{- /* The data plane's security groups, and this
+                       environment's. */}}
+                vpcSecurityGroupIds: {{ append $settings.securityGroupIds $securityGroupId | compact | toJson }}
+                publiclyAccessible: false
+                applyImmediately: true
+                {{- /* Without these, deleting the instance fails for want of
+                       a final snapshot name, or leaves backups behind. */}}
+                skipFinalSnapshot: true
+                deleteAutomatedBackups: true
+                {{- with $settings.tags }}
+                tags:
+                  {{- range $key, $value := . }}
+                  {{ $key | quote }}: {{ $value | toString | quote }}
+                  {{- end }}
+                {{- end }}
+            {{- end }}
+            ---
+            apiVersion: rds.aws.m.upbound.io/v1beta1
+            kind: ParameterGroup
+            metadata:
+              name: {{ $xr.metadata.name }}-pg{{ $version }}
+              annotations:
+                {{ setResourceNameAnnotation (printf "parameter-group-%s" $version) }}
+                crossplane.io/external-name: {{ $parameterGroup | quote }}
+            spec:
+              managementPolicies: ["Observe", "Create", "Update", "Delete"]
+              forProvider:
+                region: {{ $settings.region | quote }}
+                family: {{ printf "postgres%s" $version | quote }}
+                description: {{ printf "Server parameters for %s" $identifier | quote }}
+                {{- with $parameters }}
+                parameter:
+                  {{- range $name, $value := . }}
+                  - name: {{ $name | quote }}
+                    value: {{ $value | quote }}
+                    applyMethod: {{ ternary "pending-reboot" "immediate" (eq $name "max_connections") }}
+                  {{- end }}
+                {{- end }}
+                {{- with $settings.tags }}
+                tags:
+                  {{- range $key, $value := . }}
+                  {{ $key | quote }}: {{ $value | toString | quote }}
+                  {{- end }}
+                {{- end }}
+            {{- /* The previous version's parameter group, kept as it is until
+                   the instance has moved off it: RDS refuses to delete a
+                   group an instance still uses. */}}
+            {{- range $name, $observed := .observed.resources }}
+            {{- if and (hasPrefix "parameter-group-" $name) (ne $name (printf "parameter-group-%s" $version)) }}
+            {{- $old := $observed.resource }}
+            {{- $oldName := dig "metadata" "annotations" "crossplane.io/external-name" "" $old }}
+            {{- if or (eq $oldName $instanceParameterGroup) (eq $oldName $attachedParameterGroup) }}
+            ---
+            apiVersion: rds.aws.m.upbound.io/v1beta1
+            kind: ParameterGroup
+            metadata:
+              name: {{ $old.metadata.name }}
+              annotations:
+                {{ setResourceNameAnnotation $name }}
+                crossplane.io/external-name: {{ $oldName | quote }}
+            spec:
+              managementPolicies: ["Observe", "Create", "Update", "Delete"]
+              forProvider: {{ $old.spec.forProvider | toJson }}
+            {{- end }}
+            {{- end }}
+            {{- end }}
+            ---
+            apiVersion: ec2.aws.m.upbound.io/v1beta1
+            kind: SecurityGroup
+            metadata:
+              name: {{ $xr.metadata.name }}
+              annotations:
+                {{ setResourceNameAnnotation "security-group" }}
+                {{- /* Not Ready until the instance is rendered, so the
+                       AdvancedPostgresInstance is not Ready without it. */}}
+                {{- if not $renderInstance }}
+                gotemplating.fn.crossplane.io/ready: "False"
+                {{- end }}
+            spec:
+              {{- /* Every management policy, LateInitialize included: AWS
+                     assigns the group's ID, and the provider records it as
+                     the external name through LateInitialize. Without it, a
+                     restarted provider loses the ID and tries to create the
+                     group again. The same holds for the ingress rules. */}}
+              forProvider:
+                region: {{ $settings.region | quote }}
+                vpcId: {{ $settings.vpcId | quote }}
+                name: {{ $identifier | quote }}
+                description: {{ printf "Firewall rules for the RDS instance %s" $identifier | quote }}
+                tags:
+                  {{- range $key, $value := merge (dict "Name" $identifier) ($settings.tags | default dict) }}
+                  {{ $key | quote }}: {{ $value | toString | quote }}
+                  {{- end }}
+            {{- range $cidr, $names := $blocks }}
+            {{- $id := $cidr | replace "." "-" | replace "/" "-" }}
+            {{- $description := join "," $names | trunc 255 }}
+            ---
+            apiVersion: ec2.aws.m.upbound.io/v1beta1
+            kind: SecurityGroupIngressRule
+            metadata:
+              name: {{ $xr.metadata.name }}-{{ $id }}
+              annotations:
+                {{ setResourceNameAnnotation (printf "firewall-%s" $id) }}
+            spec:
+              forProvider:
+                region: {{ $settings.region | quote }}
+                securityGroupIdRef:
+                  name: {{ $xr.metadata.name }}
+                ipProtocol: tcp
+                fromPort: 5432
+                toPort: 5432
+                cidrIpv4: {{ $cidr | quote }}
+                description: {{ $description | quote }}
+                tags:
+                  {{- range $key, $value := merge (dict "Name" $description) ($settings.tags | default dict) }}
+                  {{ $key | quote }}: {{ $value | toString | quote }}
+                  {{- end }}
+            {{- end }}
+            ---
+            {{- /* No resource-name annotation: this updates the
+                   AdvancedPostgresInstance's own status instead of
+                   composing one. */}}
+            apiVersion: crossplane.community.openchoreo.dev/v1alpha1
+            kind: AdvancedPostgresInstance
+            status:
+              port: 5432
+              database: {{ $xr.spec.database | quote }}
+              username: {{ $pg.username | quote }}
+              {{- with $instance }}
+              {{- with dig "status" "atProvider" "address" "" . }}
+              address: {{ . | quote }}
+              {{- end }}
+              {{- end }}
+
+    # 3. Mark each resource Ready when AWS reports it Ready, and the
+    #    AdvancedPostgresInstance Ready when all of them are.
+    - step: ready
+      functionRef:
+        name: function-auto-ready

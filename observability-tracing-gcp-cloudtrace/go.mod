@@ -3,7 +3,7 @@ module github.com/openchoreo/community-modules/observability-tracing-gcp-cloudtr
 go 1.26.1
 
 require (
-	cloud.google.com/go/trace v1.16.0
+	cloud.google.com/go/trace v1.18.1
 	github.com/getkin/kin-openapi v0.153.0
 	github.com/oapi-codegen/runtime v1.8.0
 	google.golang.org/api v0.315.0
